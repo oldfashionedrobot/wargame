@@ -9,7 +9,7 @@ import {
   Scene,
   Vector3,
 } from '@babylonjs/core'
-import type { Coordinate, GameState, MoveAction } from '@aw/shared'
+import type { Coordinate, GameEvent, GameState } from '@aw/shared'
 import { createGridLines } from './gridLines'
 import { createTileHighlight, setHighlightTile } from './highlight'
 import { createMovementRangeOverlay, setMovementRangeTiles } from './movementRange'
@@ -31,7 +31,8 @@ export interface GameRenderer {
   onTileClick(handler: (coordinate: Coordinate) => void): void
   setSelectedTile(coordinate: Coordinate | null): void
   setMovementRange(coordinates: Coordinate[]): void
-  playMove(move: MoveAction): void
+  /** Animates what the authority says happened. Resolves when done. */
+  playEvents(events: GameEvent[]): Promise<void>
   toggleInspector(): void
   dispose(): void
 }
@@ -130,10 +131,13 @@ export function createGameRenderer(canvas: HTMLCanvasElement, initialState: Game
     setMovementRange(coordinates) {
       setMovementRangeTiles(movementRange, coordinates, gridWidth, gridHeight)
     },
-    playMove(move) {
-      const mesh = unitMeshes.get(move.unitId)
-      if (!mesh) return
-      void animateUnitAlongPath(mesh, move.path, gridWidth, gridHeight, scene)
+    async playEvents(events) {
+      for (const event of events) {
+        if (event.type !== 'unitMoved') continue
+        const mesh = unitMeshes.get(event.unitId)
+        if (!mesh) continue
+        await animateUnitAlongPath(mesh, event.path, gridWidth, gridHeight, scene)
+      }
     },
     toggleInspector() {
       void toggleInspector(scene)

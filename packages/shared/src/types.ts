@@ -33,16 +33,49 @@ export interface GameState {
   currentTurn: PlayerId
 }
 
-export interface MoveAction {
+// --- Commands: what a client asks for -------------------------------------
+// Intent only. No actor, no dice. A command can be rejected. The client can
+// construct nothing else, which is what makes a client-supplied `actor`
+// unrepresentable rather than merely discouraged.
+
+export interface MoveCommand {
   type: 'move'
   unitId: string
   path: Coordinate[]
 }
 
-export interface EndTurnAction {
+export interface EndTurnCommand {
   type: 'endTurn'
 }
 
+export type Command = MoveCommand | EndTurnCommand
+
+// --- Actions: a command as authenticated by the authority ------------------
+// The server attaches `actor` from the connection before handing it to a
+// reducer. Reducers only ever see this shape.
+
+export type MoveAction = MoveCommand & { actor: PlayerId }
+export type EndTurnAction = EndTurnCommand & { actor: PlayerId }
+
 export type Action = MoveAction | EndTurnAction
 
-export type ActionResult = { ok: true; state: GameState } | { ok: false; reason: string }
+// --- Events: what the server decided happened ------------------------------
+// Facts, already resolved. Broadcast to clients, which animate them and never
+// resolve anything themselves.
+
+export interface UnitMovedEvent {
+  type: 'unitMoved'
+  unitId: string
+  path: Coordinate[]
+}
+
+export interface TurnEndedEvent {
+  type: 'turnEnded'
+  nextPlayer: PlayerId
+}
+
+export type GameEvent = UnitMovedEvent | TurnEndedEvent
+
+export type ActionResult =
+  | { ok: true; state: GameState; events: GameEvent[] }
+  | { ok: false; reason: string }

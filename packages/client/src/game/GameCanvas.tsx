@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { createInitialState, createLocalGameServer } from '@aw/server'
+import { getCurrentPlayer } from '@aw/shared'
+import type { GameServer, GameState } from '@aw/shared'
 import { handleTileClick, initialSelectionState } from './interaction/selection'
 import type { SelectionState } from './interaction/selection'
-import { createInitialState } from '@aw/server'
-import { applyAction, getCurrentPlayer } from '@aw/shared'
-import type { GameState } from '@aw/shared'
 import { createGameRenderer } from './render/renderer'
 import type { GameRenderer } from './render/renderer'
 
@@ -17,51 +17,65 @@ function showSelection(renderer: GameRenderer, state: GameState, selection: Sele
 
 export function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [gameState, setGameState] = useState<GameState>(createInitialState)
-  const gameStateRef = useRef(gameState)
+  // Constructed once, never replaced. useState rather than a ref so it can be
+  // read during render without tripping the rules of hooks.
+  const [server] = useState<GameServer>(() => createLocalGameServer(createInitialState()))
+
+  // The server owns game state; this is a render replica, fed by subscribe().
+  // Anything needing the authoritative value reads server.getState() directly
+  // rather than this -- a second copy would only be a second thing to desync.
+  const [gameState, setGameState] = useState<GameState>(() => server.getState())
+  const [rejection, setRejection] = useState<string | null>(null)
   const selectionRef = useRef<SelectionState>(initialSelectionState)
   const rendererRef = useRef<GameRenderer | null>(null)
-
-  useEffect(() => {
-    gameStateRef.current = gameState
-  }, [gameState])
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const renderer = createGameRenderer(canvas, gameStateRef.current)
+    const renderer = createGameRenderer(canvas, server.getState())
     rendererRef.current = renderer
 
+    // Single path for state changes: everything the authority decides arrives
+    // here, whoever caused it. submit() is consulted only for rejections.
+    const unsubscribe = server.subscribe((events, state) => {
+      setGameState(state)
+      setRejection(null)
+      renderer.playEvents(events).catch((error: unknown) => {
+        console.error('animation failed:', error)
+      })
+    })
+
     renderer.onTileClick((coordinate) => {
-      const currentState = gameStateRef.current
+      const currentState = server.getState()
       const result = handleTileClick(currentState, selectionRef.current, coordinate)
       selectionRef.current = result.selection
       showSelection(renderer, currentState, result.selection)
 
       if (!result.command) return
-      const applied = applyAction(currentState, result.command)
-      if (!applied.ok) return
-
-      if (result.command.type === 'move') renderer.playMove(result.command)
-      setGameState(applied.state)
+      void server.submit(result.command).then((response) => {
+        if (!response.ok) setRejection(response.reason)
+      })
     })
 
     return () => {
+      unsubscribe()
       renderer.dispose()
       rendererRef.current = null
     }
-  }, [])
+  }, [server])
 
   const handleEndTurn = (): void => {
-    const applied = applyAction(gameStateRef.current, { type: 'endTurn' })
-    if (!applied.ok) return
-
-    selectionRef.current = initialSelectionState
-    if (rendererRef.current) {
-      showSelection(rendererRef.current, applied.state, initialSelectionState)
-    }
-    setGameState(applied.state)
+    void server.submit({ type: 'endTurn' }).then((response) => {
+      if (!response.ok) {
+        setRejection(response.reason)
+        return
+      }
+      selectionRef.current = initialSelectionState
+      if (rendererRef.current) {
+        showSelection(rendererRef.current, server.getState(), initialSelectionState)
+      }
+    })
   }
 
   return (
@@ -80,6 +94,7 @@ export function GameCanvas() {
             Toggle Inspector
           </button>
         )}
+        {rejection && <span style={{ color: '#c0392b' }}> rejected: {rejection}</span>}
       </div>
     </div>
   )

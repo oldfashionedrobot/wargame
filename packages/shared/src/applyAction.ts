@@ -7,6 +7,6 @@ export function applyAction(state: GameState, action: Action): ActionResult {
     case 'move':
       return applyMove(state, action)
     case 'endTurn':
-      return applyEndTurn(state)
+      return applyEndTurn(state, action)
   }
 }

@@ -1,5 +1,5 @@
 import { canSelectUnit, coordinatesEqual, getReachableTiles, getUnitAt } from '@aw/shared'
-import type { Action, Coordinate, GameState } from '@aw/shared'
+import type { Command, Coordinate, GameState } from '@aw/shared'
 
 export interface SelectionState {
   selectedUnitId: string | null
@@ -16,7 +16,7 @@ export const initialSelectionState: SelectionState = {
 // representable and meaningless.
 export interface TileClickResult {
   selection: SelectionState
-  command: Action | null
+  command: Command | null
 }
 
 export function handleTileClick(

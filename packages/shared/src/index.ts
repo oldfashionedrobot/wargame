@@ -4,17 +4,25 @@
 export type {
   Action,
   ActionResult,
+  Command,
   Coordinate,
   EndTurnAction,
+  EndTurnCommand,
   Facing,
+  GameEvent,
   GameState,
   MoveAction,
+  MoveCommand,
   Player,
   PlayerColor,
   PlayerId,
   TileType,
+  TurnEndedEvent,
   Unit,
+  UnitMovedEvent,
 } from './types'
+
+export type { CommandResult, GameServer, UpdateListener } from './protocol'
 
 export { coordinatesEqual, coordinateKey, isWithinGrid } from './coordinate'
 export { getCurrentPlayer, getUnitAt } from './queries'

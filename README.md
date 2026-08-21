@@ -2,7 +2,7 @@
 
 A turn-based strategy game with an American Revolutionary War theme — infantry, cavalry, and artillery rather than tanks and jets. React + TypeScript + Babylon.js, built with bun.
 
-The full spec lives in `.plan/architecture.md` (gitignored, local only).
+The full spec — architecture, invariants, combat design, roadmap — lives in [`.plan/architecture.md`](.plan/architecture.md). Read it before changing anything structural.
 
 ## Getting started
 
