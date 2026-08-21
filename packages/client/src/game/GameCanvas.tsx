@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { createInitialState, createLocalGameServer } from '@aw/server'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCurrentPlayer } from '@aw/shared'
-import type { GameServer, GameState } from '@aw/shared'
+import type { Command, GameServer, GameState } from '@aw/shared'
 import { handleTileClick, initialSelectionState } from './interaction/selection'
 import type { SelectionState } from './interaction/selection'
+import type { ConnectionStatus } from './net/httpGameServer'
 import { createGameRenderer } from './render/renderer'
 import type { GameRenderer } from './render/renderer'
 
@@ -15,11 +15,13 @@ function showSelection(renderer: GameRenderer, state: GameState, selection: Sele
   renderer.setMovementRange(selection.reachableTiles)
 }
 
-export function GameCanvas() {
+export interface GameCanvasProps {
+  server: GameServer
+  connection: ConnectionStatus
+}
+
+export function GameCanvas({ server, connection }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  // Constructed once, never replaced. useState rather than a ref so it can be
-  // read during render without tripping the rules of hooks.
-  const [server] = useState<GameServer>(() => createLocalGameServer(createInitialState()))
 
   // The server owns game state; this is a render replica, fed by subscribe().
   // Anything needing the authoritative value reads server.getState() directly
@@ -28,6 +30,40 @@ export function GameCanvas() {
   const [rejection, setRejection] = useState<string | null>(null)
   const selectionRef = useRef<SelectionState>(initialSelectionState)
   const rendererRef = useRef<GameRenderer | null>(null)
+  // A command is a round trip now, so a second click can land before the first
+  // resolves. Both would read the same state and submit against it; the server
+  // rejects the loser, but the UI would already have moved on.
+  const pendingRef = useRef(false)
+
+  /**
+   * Submits a command and moves the selection optimistically, rolling the
+   * selection back if the authority refuses.
+   *
+   * Optimistic here means the *UI affordance* only -- game state still comes
+   * exclusively from the server. Clearing the selection instantly is what
+   * keeps a click feeling immediate over a network; restoring it on rejection
+   * is what stops a refused action from looking like it happened.
+   */
+  const submitCommand = useCallback(
+    async (command: Command, nextSelection: SelectionState): Promise<void> => {
+      const renderer = rendererRef.current
+      if (!renderer || pendingRef.current) return
+
+      const previousSelection = selectionRef.current
+      pendingRef.current = true
+      selectionRef.current = nextSelection
+      showSelection(renderer, server.getState(), nextSelection)
+
+      const response = await server.submit(command)
+      pendingRef.current = false
+      if (response.ok) return
+
+      setRejection(response.reason)
+      selectionRef.current = previousSelection
+      showSelection(renderer, server.getState(), previousSelection)
+    },
+    [server],
+  )
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -37,7 +73,8 @@ export function GameCanvas() {
     rendererRef.current = renderer
 
     // Single path for state changes: everything the authority decides arrives
-    // here, whoever caused it. submit() is consulted only for rejections.
+    // here, whoever caused it. The implementation deduplicates by seq, so this
+    // fires once per change whether it came from our own submit or a poll.
     const unsubscribe = server.subscribe((events, state) => {
       setGameState(state)
       setRejection(null)
@@ -47,15 +84,20 @@ export function GameCanvas() {
     })
 
     renderer.onTileClick((coordinate) => {
+      if (pendingRef.current) return
+
       const currentState = server.getState()
       const result = handleTileClick(currentState, selectionRef.current, coordinate)
-      selectionRef.current = result.selection
-      showSelection(renderer, currentState, result.selection)
 
-      if (!result.command) return
-      void server.submit(result.command).then((response) => {
-        if (!response.ok) setRejection(response.reason)
-      })
+      // Selection-only clicks are pure UI and commit immediately; anything
+      // carrying a command goes through submitCommand so it can be undone.
+      if (!result.command) {
+        selectionRef.current = result.selection
+        showSelection(renderer, currentState, result.selection)
+        return
+      }
+
+      void submitCommand(result.command, result.selection)
     })
 
     return () => {
@@ -63,19 +105,10 @@ export function GameCanvas() {
       renderer.dispose()
       rendererRef.current = null
     }
-  }, [server])
+  }, [server, submitCommand])
 
   const handleEndTurn = (): void => {
-    void server.submit({ type: 'endTurn' }).then((response) => {
-      if (!response.ok) {
-        setRejection(response.reason)
-        return
-      }
-      selectionRef.current = initialSelectionState
-      if (rendererRef.current) {
-        showSelection(rendererRef.current, server.getState(), initialSelectionState)
-      }
-    })
+    void submitCommand({ type: 'endTurn' }, initialSelectionState)
   }
 
   return (
@@ -95,6 +128,7 @@ export function GameCanvas() {
           </button>
         )}
         {rejection && <span style={{ color: '#c0392b' }}> rejected: {rejection}</span>}
+        {connection === 'retrying' && <span style={{ color: '#b9770e' }}> reconnecting…</span>}
       </div>
     </div>
   )

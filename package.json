@@ -3,9 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "bun run --filter '@aw/client' dev",
+    "dev": "bun run --filter '@aw/client' --filter '@aw/server' dev",
     "typecheck": "tsc -b",
     "build": "tsc -b && bun run --filter '@aw/client' bundle",
     "lint": "eslint .",

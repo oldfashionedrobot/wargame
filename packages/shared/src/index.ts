@@ -22,7 +22,15 @@ export type {
   UnitMovedEvent,
 } from './types'
 
-export type { CommandResult, GameServer, UpdateListener } from './protocol'
+export type {
+  CommandResponse,
+  CommandResult,
+  EventsResponse,
+  GameServer,
+  StateResponse,
+  UpdateListener,
+} from './protocol'
+export { parseCommand } from './protocol'
 
 export { coordinatesEqual, coordinateKey, isWithinGrid } from './coordinate'
 export { getCurrentPlayer, getUnitAt } from './queries'

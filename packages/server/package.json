@@ -7,9 +7,14 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "dev": "bun --watch src/http.ts",
+    "start": "bun src/http.ts",
     "build": "tsc -b"
   },
   "dependencies": {
     "@aw/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
   }
 }

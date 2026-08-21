@@ -18,19 +18,19 @@ packages/
     src/index.ts    barrel — the package's public surface
     src/  types · coordinate · queries · legality · reachableTiles
           applyMove · applyEndTurn · applyAction
-          protocol.ts  🚧 GameServer / CommandResult ✅ · HTTP request + response shapes ⬜
+          protocol.ts  ✅ GameServer · CommandResult · HTTP shapes · parseCommand
       data/  unitTypes 🚧 · movementCost ⬜ · chargeThresholds ⬜ · damageTable ⬜
   server/     depends on shared only — owns the match
     src/index.ts    barrel
-    src/  initialState ✅ · gameServer ✅ (in-process) · match ⬜ · log ⬜
-          http.ts ⬜ Bun.serve — /api/* plus the client's static build
-  client/     depends on shared + (temporarily) server — Vite + React + Babylon
+    src/  initialState ✅ · match.ts ✅ owns state + log + seq
+          http.ts ✅ Bun.serve — /api/* plus the client's static build
+  client/     depends on shared only — Vite + React + Babylon
     index.html  vite.config.ts  public/
     src/  main.tsx · index.css
           App.tsx  — owns the GameServer and the async connect; renders
                      GameCanvas once there's state to render
       game/  GameCanvas.tsx · interaction/ · render/
-             net/ ⬜ the HTTP + polling GameServer implementation
+             net/ ✅ the HTTP + polling GameServer implementation
 ```
 
 Cross-package imports go through each package's barrel (`@aw/shared`, `@aw/server`), never into individual files.
@@ -39,7 +39,7 @@ The split is by **authority**, not subject matter:
 
 - **`shared/`** — types, legality predicates, queries, pathfinding, the reducers, and the wire protocol. Pure functions either side may read. Reducers live here, not in `server/`: they take a state and return a new one, they never *hold* one.
 - **`server/`** — the mutable state reference, roll generation, the event log, and match construction.
-- **`client/`** — Babylon rendering, input, React, and (phase 3 ⬜) the `GameServer` implementation that talks HTTP.
+- **`client/`** — Babylon rendering, input, React, and the `GameServer` implementation that talks HTTP.
 
 Separate `package.json` files are the point: `server/` doesn't list Babylon or React, so a stray import is a resolution error rather than something caught in review. `shared/` having zero dependencies is the same guarantee for purity.
 
@@ -53,7 +53,7 @@ Separate `package.json` files are the point: `server/` doesn't list Babylon or R
 
 Bun installs these *isolated* rather than hoisted — `packages/server/node_modules/` contains only `@aw/shared`, so a stray `import 'react'` there is a hard resolution failure rather than something caught in review.
 
-*Temporary exception*: `client` depends on `@aw/server` for `createInitialState` and `createLocalGameServer`. Phase 2 **deepened** this rather than removing it, necessarily — the in-process authority lives in `@aw/server`, so the client has to construct one. It goes away in **phase 3**, when the client builds an HTTP implementation locally and takes the `GameServer` interface from `shared` instead.
+No exceptions: phase 3 removed the last one. `client` no longer lists `@aw/server` at all — it constructs an HTTP `GameServer` locally and takes the interface from `shared`.
 
 ## Invariants
 
@@ -70,7 +70,7 @@ Bun installs these *isolated* rather than hoisted — `packages/server/node_modu
 
    The line is **deterministic preview, yes; random resolution, no.**
 
-## Server model 🚧
+## Server model ✅ *(phases 4–5 extend it)*
 
 Pure server authority, no client-side prediction. An ordinary SaaS request/response app that happens to draw a battlefield: the client submits a command, waits, and renders what comes back.
 
@@ -116,7 +116,7 @@ What *does* have to agree is the **cost model** — the `movementCost` table and
 
 `canMoveAndAttack: false` units are rejected if `path` has more than one element.
 
-### Transport ⬜
+### Transport ✅
 
 **Plain HTTP request/response. No SSE, no WebSockets, no server push at all.** Commands are inherently request/response, so the POST response *is* the answer, including the rejection reason. "Another player did something" is discovered by asking.
 
@@ -134,19 +134,28 @@ It also leaves the door open to stateless handlers behind a data store, since no
 
 First load uses `GET /api/state`, which returns state plus its `seq` — there are no events to animate on arrival, only a board to draw. `/api/events?since=N` is for everything after that.
 
-Interval: a couple of seconds while it's the opponent's turn, and back off when the tab is hidden. There's nothing to poll for during your own turn, since only you can change anything.
+Interval: a couple of seconds normally, doubling on failure up to 30s so a dead server isn't hammered, and resetting on the next success. A failed poll costs nothing — the next one asks from the same `lastSeq`.
+
+A hidden tab polls at the slowest interval, and a `visibilitychange` listener resets the backoff and polls immediately on return. Without that reset, restoring a tab could leave it up to thirty seconds stale while looking live.
 
 **Everything is same-origin, in dev and in production alike**, so there is no CORS anywhere and the client has no URL to configure — it calls `/api/*` relative in both environments and the code is identical. See Deployment.
 
 **Commands must be validated at runtime, not just typed.** TypeScript is erased; a POST body is attacker-controlled and can be anything. `shared/protocol.ts` gets a `parseCommand(input: unknown): Command | null` that checks the object shape and field types, and the HTTP handler rejects with 400 before the authority sees it. Hand-rolled — the command union is tiny and a schema library would be the package's first dependency.
 
-`applyAction` also needs an exhaustive `default` returning `{ ok: false, reason }`. Today its switch returns `undefined` for an unknown `type`, and the caller throws reading `.ok` off it — verified, not theoretical. Types make that unreachable in-process and guarantee nothing over a wire.
+`applyAction` also carries an exhaustive `default` returning `{ ok: false, reason }`. Without it the switch returned `undefined` for an unknown `type` and the caller threw reading `.ok` off it — verified, not theoretical. Types make that unreachable in-process and guarantee nothing over a wire.
+
+**Payloads are bounded in two places**, because validating a body means allocating it first:
+
+- `maxRequestBodySize` on `Bun.serve` (64KB) — a command is a few hundred bytes, so anything near this is a bug or an attempt to make us allocate. Rejected with 413 before parsing.
+- `MAX_PATH_STEPS` in `parseCommand` — a defensive allocation bound, *not* a game rule; `validatePath` owns the real limit. Stops a path that fits under the body cap from still materialising thousands of coordinates.
+
+Static file serving resolves against the build directory and confirms the result stays inside it. URL parsing already collapses `..`, so this is belt-and-braces — but "safe because of how the parser happens to behave" is not a property to rest filesystem access on.
 
 - Both events *and* resulting state come back together. Events drive animation; state is the truth to snap to afterward. Under a kilobyte, and it makes the client self-correcting — a missed event is fixed by the next poll rather than desyncing silently.
 - **`seq` makes the double-apply problem disappear.** The acting client applies its own POST response, then records that `seq`; the next poll returns nothing new because it asks for everything *after* it. No dedup logic, and no need for the subscribe-only rule that push required.
 - Bun serves this with no dependencies. HTTP/2 comes free from any reverse proxy at deploy time; the app server doesn't need it.
 
-### Deployment ⬜
+### Deployment 🚧 *(dev verified; production untested)*
 
 **The server serves the client build.** `Bun.serve` handles `/api/*` and serves `packages/client/dist` for everything else — one process, one port, one deploy.
 
@@ -169,7 +178,7 @@ server: { proxy: { '/api': { target: 'http://localhost:3001', changeOrigin: true
 
 Ordinary request/response through a proxy is unremarkable — the buffering and streaming hazards that made this worth worrying about disappeared with push.
 
-### Running it ⬜
+### Running it ✅
 
 Two processes in dev, one in production.
 
@@ -179,7 +188,7 @@ Two processes in dev, one in production.
 | `packages/client` | `"dev": "vite"` (unchanged) |
 | root | `"dev": "bun run --filter '@aw/client' --filter '@aw/server' dev"` — runs both in parallel |
 
-Filter both explicitly rather than `'*'` — `@aw/shared` has no `dev` script.
+Both filtered explicitly for legibility; `'*'` would also work — bun skips packages that lack the script and only errors when none match.
 
 Config surface is one knob: **`PORT` on the server**, defaulting to 3001. The client has none, because same-origin means it never needs a base URL.
 
@@ -194,8 +203,11 @@ interface GameServer {
   getState(): GameState
   submit(command: Command): Promise<CommandResult>
   subscribe(onUpdate: (events: GameEvent[], state: GameState) => void): () => void
+  dispose(): void
 }
 ```
+
+`dispose()` is not optional bookkeeping. **Unsubscribing every listener does not stop the polling loop** — an implementation that polls runs regardless of whether anyone is listening, so whoever constructed the server has to be able to shut it down. `App` calls it from its effect cleanup, and also on a connection that resolves *after* teardown, which is exactly what StrictMode produces: a connect already in flight when the effect unmounts, leaking a second poll loop for the life of the tab if nobody disposes it.
 
 `getState()` is kept for debugging and for reads that need the authoritative value rather than a render replica. It is **synchronous**, which has a consequence worth stating plainly:
 
@@ -211,7 +223,7 @@ The guard is doing real work: a poll already in flight when you submit can retur
 
 Applying its own `submit` response immediately is what keeps your own moves responsive rather than waiting for the next poll interval.
 
-### Identity ⬜
+### Identity 🚧
 
 Server issues an opaque id on first contact and sets it as a cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` in production only (dev runs over plain `http://localhost`).
 
@@ -268,7 +280,7 @@ Known costs, none of them surprises later if they're written down now:
 
 Moving to Turso or Postgres is what buys multi-instance and ephemeral-disk tolerance. Neither is close to necessary.
 
-## Event log ⬜
+## Event log ✅ *(in memory; phase 4 persists it)*
 
 The match is an initial state plus an ordered log of validated changes. Current state is derivable from it, though the server also keeps it materialized.
 
@@ -462,7 +474,7 @@ What phases 1 and 2 bought is the *shape*, not the separation. The authority is 
 
 1. ✅ ~~**Monorepo restructure**~~ — `packages/{shared,server,client}`, bun workspaces, root scripts.
 2. ✅ ~~**`GameServer` interface + in-process implementation**~~ — `GameCanvas` stopped owning `GameState`, `submit` is async, `actor` lands on every action with reducer checks, events are the reducer's output channel. Still one process, still bundled, still no network. Beyond plan: rejection reasons surface in the UI rather than the console.
-3. **Real server** — Bun.serve, `POST /api/commands` + `GET /api/events?since=N` + `GET /api/state`, event log with `seq`, session cookie, `parseCommand` validation at the boundary, exhaustive `default` in `applyAction`, Vite proxy, root dev script running both processes. `App` takes over constructing the server and awaiting initial state; `client` drops its dependency on `@aw/server`. State stays in memory.
+3. ✅ ~~**Real server**~~ — `match.ts` replaced `gameServer.ts`; `Bun.serve` with the three endpoints, event log with `seq`, session cookie, `parseCommand` at the boundary, exhaustive `default` in `applyAction`, Vite proxy, dev script running both processes. `App` owns the connection and the loading state; `GameCanvas` takes the server as a prop; `client` no longer depends on `@aw/server`. State stays in memory.
 
 4. **Durable store** — the event log moves out of memory. See Data store. Nothing above the match abstraction changes; this is what makes a restart survivable and what removes the last reason a process must stay alive between requests.
 
@@ -475,12 +487,15 @@ What phases 1 and 2 bought is the *shape*, not the separation. The authority is 
 
 Persistence comes before multiplayer deliberately: losing a match to a restart is an annoyance alone and unacceptable once a second human is involved and you're shipping updates.
 
-**Phase 3 must also fix these**, all of which are latent today only because the in-process `submit` resolves synchronously:
+**Resolved in phase 3**, having stopped being latent the moment a command became a round trip:
 
-- **Requests can now fail.** A poll or a submit can time out, 500, or hit a dead server — none of which is currently representable, since an in-process call either returns or throws. The client needs a visible connection state (retrying / offline) and the poll loop needs backoff, or a dropped server looks identical to a game where nothing is happening.
-- **Selection clears optimistically.** `handleTileClick`'s result is applied to the UI *before* the command is submitted, so a rejection leaves the selection cleared for an action that never happened. Safe now only because `handleTileClick` and the reducers share `legality.ts` and can barely disagree. Note `handleEndTurn` already does the opposite — it clears only on success — so the two paths need reconciling either way.
-- **No in-flight guard.** Two rapid clicks both read the same state and submit against it. Today the second sees fresh state because `submit` updates synchronously before resolving; over a network it won't. The server rejects the stale one, so this is a UI-correctness bug (a movement overlay that was already invalid), not a state-corruption one.
-- **State commits before animation finishes.** `subscribe` calls `setGameState` and then starts the tween. Harmless while React only renders the turn indicator and Babylon owns the units — but `syncUnits(state)` (step 9) will snap meshes to their destination mid-tween. Whichever lands first has to account for the other.
+- ✅ **Requests can fail.** The polling loop backs off on failure and retries from `lastSeq`, so a missed poll costs nothing; a `retrying` state surfaces in the UI. A dead server no longer looks like a quiet game. A failure of the *initial* connect is different — there's no state to render at all — so `App` shows the error with a Retry rather than leaving a dead page.
+- ✅ **Selection rollback.** A command moves the selection optimistically and restores it if the authority refuses — the affordance is instant, but a refused action never looks like it happened. Both the click path and End Turn go through one `submitCommand`, so they can no longer diverge.
+- ✅ **In-flight guard.** Further input is ignored while a command is outstanding, so two clicks can't both submit against the same stale state.
+
+Still latent, and now owned by step 9:
+
+- **State commits before animation finishes.** `subscribe` sets state and then starts the tween. Harmless while React only renders the turn indicator and Babylon owns the units — but `syncUnits(state)` will snap meshes to their destination mid-tween. Whichever lands first has to account for the other.
 
 **Why 2 and 3 are separate.** Phase 2 changes the *shape* — who owns state, what a call site looks like, sync vs async. Phase 3 changes the *transport*. Collapsing them means any breakage has two candidate causes; kept apart, a phase 3 failure is necessarily the transport.
 
