@@ -20,20 +20,27 @@ packages/
           applyMove · applyEndTurn · applyAction
           protocol.ts  ✅ GameServer · CommandResult · HTTP shapes · parseCommand
       data/  unitTypes 🚧 · movementCost ⬜ · chargeThresholds ⬜ · damageTable ⬜
-  server/     depends on shared only — owns the match
-    src/index.ts    barrel
-    src/  initialState ✅ · match.ts ✅ owns state + log + seq
-          http.ts ✅ Bun.serve — /api/* plus the client's static build
+  server/     depends on shared only — an app, not a library: no barrel
+    src/  http.ts ✅ Bun.serve — /api/* plus the client's static build
+          db.ts ✅ libSQL client, schema, pragmas
+          match.ts ✅ MatchStore over SQLite — create/list/snapshot/since/submit
+          initialState.ts ✅
   client/     depends on shared only — Vite + React + Babylon
     index.html  vite.config.ts  public/
     src/  main.tsx · index.css
-          App.tsx  — owns the GameServer and the async connect; renders
-                     GameCanvas once there's state to render
-      game/  GameCanvas.tsx · interaction/ · render/
-             net/ ✅ the HTTP + polling GameServer implementation
+          App.tsx ⬜ router shell — / and /:matchId
+      routes/ ⬜  StartScreen (list + create) · MatchRoute (connect by id)
+      net/        http.ts ⬜ fetch + error classification
+                  matchesApi.ts ⬜ list / create
+                  gameServer.ts 🚧 polling GameServer — needs match scoping
+      game/       GameCanvas.tsx · interaction/ · render/
 ```
 
-Cross-package imports go through each package's barrel (`@aw/shared`, `@aw/server`), never into individual files.
+The `client/` tree is the 4b target. Today `gameServer.ts` is `game/net/httpGameServer.ts`, `App.tsx` owns the connection directly, and there are no routes.
+
+Cross-package imports go through `@aw/shared`'s barrel, never into individual files. The barrel holds only what `server/` and `client/` actually consume — reducers are reached through `applyAction`, union members through their union, and anything used solely inside `shared/` stays out of it.
+
+**`@aw/server` is an application, not a library.** Nothing imports it, so it has no barrel and no `exports` field; `http.ts` is an entry point that gets run.
 
 The split is by **authority**, not subject matter:
 
@@ -57,7 +64,7 @@ No exceptions: phase 3 removed the last one. `client` no longer lists `@aw/serve
 
 ## Invariants
 
-1. ✅ **Exactly one mutable `GameState` reference exists, and `server/` owns it.** Everyone else holds immutable snapshots — `GameCanvas`'s `useState` is a render replica fed by `subscribe`, and anything needing the authoritative value calls `getState()`.
+1. ✅ **The database is the only mutable state. The server holds nothing between requests.** Every request reads state, computes, and writes back — there is no in-memory `GameState` anywhere in `server/`, and reintroducing a cache would break statelessness rather than satisfy this. On the client, `GameCanvas`'s `useState` is a render replica fed by `subscribe`; anything needing the authoritative value calls `getState()`.
 2. ✅ **`shared/` is pure** — no I/O, no RNG, no Babylon, no React, no `Date.now()`.
 3. ✅ **`GameServer.submit()` is async**, from the first version — sync-to-async is a retrofit that touches every call site.
 4. ✅ **`GameState` is JSON-serializable** — no `Map`, `Set`, class instances, `Date`, or functions reachable from it.
@@ -88,7 +95,7 @@ The server authenticates a command into an action, validates it, resolves it, an
 
 Events, not actions, are what clients receive: a client that renders facts needs no rule parity with the server, so a stale browser tab can't compute a divergent outcome, and animation gets its ordered sequence — move, hit, death — without re-running resolution in the renderer.
 
-### Command shape ⬜ *(step 8 — today it's `MoveCommand | EndTurnCommand`)*
+### Command shape ⬜ *(step 9 — today it's `MoveCommand | EndTurnCommand`)*
 
 One command per unit action, matching AW's move-then-choose flow. Move and attack are a **single atomic command**, not two:
 
@@ -116,15 +123,21 @@ What *does* have to agree is the **cost model** — the `movementCost` table and
 
 `canMoveAndAttack: false` units are rejected if `path` has more than one element.
 
-### Transport ✅
+### Transport 🚧 *(the shape is built; match scoping is 4a)*
 
 **Plain HTTP request/response. No SSE, no WebSockets, no server push at all.** Commands are inherently request/response, so the POST response *is* the answer, including the rejection reason. "Another player did something" is discovered by asking.
 
 ```
-POST /api/commands       → { ok: true, seq, events, state } | { ok: false, reason }
-GET  /api/events?since=N → { seq, events, state }  — everything after seq N
-GET  /api/state          → current state (initial load, and curl-able)
+GET  /api/matches                        ⬜ → MatchSummary[]
+POST /api/matches                        ⬜ → MatchSummary  (creates one)
+
+GET  /api/matches/:id/state              ⬜ → { seq, state }          initial load
+GET  /api/matches/:id/events?since=N     ⬜ → { seq, events, state }  everything after N
+POST /api/matches/:id/commands           ⬜ → { ok: true, seq, events, state }
+                                              | { ok: false, reason }
 ```
+
+Today these exist unscoped — `/api/state`, `/api/events`, `/api/commands` — against a single implicit match. 4a scopes them to a match id. A missing match is a 404; a rejected command is still a 200 with `ok: false`, since rejection is an answer and not a transport failure.
 
 **Why not push.** A push channel is the only thing that would require a process holding connections open, and it buys very little here: an opponent takes tens of seconds to move, so seeing it a second or two late is imperceptible. Dropping it deletes an entire category of work — stream lifecycle, disconnect cleanup, heartbeats, proxy buffering, reconnect handling — none of which existed for any reason except the open connection.
 
@@ -163,9 +176,9 @@ Since a persistent process is required regardless (below), having it also serve 
 
 Splitting the client onto a static host, or putting a reverse proxy in front of both, becomes worth considering when the client outgrows this or CDN edge caching starts to matter. Neither is close.
 
-**The one remaining reason the process must stay alive is in-memory state**, not the transport. Request handling is genuinely stateless — read state, validate, resolve, write, return — and dropping push removed the only thing that needed a connection held open.
+**Handlers are stateless.** Every request reads state from the database, computes, and writes back; nothing is held between them. Dropping push removed the only thing that needed a connection held open, and phase 4 removed the only thing that needed memory held between requests.
 
-So the step to *fully* stateless handlers is now just **a data store**, with no further redesign: the same endpoints, the same reducers, the same client. Nothing would need to stay alive between requests.
+The process stays alive because something has to listen on a port — not because it remembers anything.
 
 In-memory through phase 3 for exactly one reason: **it needs no store**, and the server only runs locally. Phase 4 changes that — see Data store.
 
@@ -184,15 +197,62 @@ Two processes in dev, one in production.
 
 | | |
 |---|---|
-| `packages/server` | `"dev": "bun --watch src/http.ts"` · `"start": "bun src/http.ts"` |
+| `packages/server` | `"dev": "bun --env-file=../../.env --watch src/http.ts"` · `"start"` likewise |
 | `packages/client` | `"dev": "vite"` (unchanged) |
 | root | `"dev": "bun run --filter '@aw/client' --filter '@aw/server' dev"` — runs both in parallel |
 
 Both filtered explicitly for legibility; `'*'` would also work — bun skips packages that lack the script and only errors when none match.
 
-Config surface is one knob: **`PORT` on the server**, defaulting to 3001. The client has none, because same-origin means it never needs a base URL.
+**One `.env`, at the repo root.** Bun reads `.env` from the working directory and does not walk up, and `bun run --filter` runs with the cwd set to the package — so the server scripts pass `--env-file=../../.env` explicitly rather than each package keeping its own.
 
-Note `bun --watch` restarts on every edit, and the match lives in memory — so **editing server code resets the game in progress.** Fine now; it's the first thing durable storage would fix.
+`.env.example` is committed; `.env` is not, and a missing `.env` is not an error — `--env-file` on an absent file just leaves the vars unset, so a fresh clone runs on defaults. Config surface:
+
+| | |
+|---|---|
+| `PORT` | server port, default 3001 |
+| `DATABASE_URL` ⬜ | `file:./aw.db` locally, a `libsql://…` URL on Turso. Read from 4a onward |
+
+The client has none, because same-origin means it never needs a base URL.
+
+### Client-side layering ⬜
+
+`GameServer` is scoped to **one** match — `connectGameServer(matchId)` returns a connection to that match, so listing and creating don't belong on it. Three modules under `client/src/net/`:
+
+| | |
+|---|---|
+| `http.ts` | `/api` base, JSON, and the one place a response becomes `notFound` vs `unreachable` |
+| `matchesApi.ts` | `listMatches()` / `createMatch()` — plain functions, no interface |
+| `gameServer.ts` | the polling `GameServer` for a single match |
+
+`net/` sits beside `game/` rather than inside it: the start screen consumes it and is not part of the game. `game/` is the Babylon canvas and the interaction on it.
+
+Polling, `seq` dedup, and listener management stay together in `gameServer.ts` — they look like three concerns but they're one, the lifecycle of a live connection, and the dedup only makes sense next to the code producing the updates it guards.
+
+**`MatchSummary` lives in `shared/protocol.ts`**, not `server/`. It exists so the client can render what the server sends, which makes it wire contract like `GameServer` and `CommandResult` — and the client cannot import from `@aw/server` by design.
+
+When the server eventually needs fields the client shouldn't see — `ownerId` in phase 5 — **map explicitly, don't extend.** A server type extending the wire type is assignable to it structurally, so `JSON.stringify` ships every added field and the type system reports nothing wrong:
+
+```ts
+interface MatchRecord extends MatchSummary { ownerId }   // leaks on serialize
+const toSummary = (r: MatchRecord): MatchSummary => ({ id: r.id, ... })   // cannot
+```
+
+Nothing to map today — all four fields are rendered, and `list()` already builds the shape from selected columns.
+
+### Routing ⬜
+
+**react-router, declarative** — `<BrowserRouter>` with `<Routes>`, data loaded in effects.
+
+Not the data router: loaders would fetch the match list before render, but **a `GameServer` needs `dispose()` and loaders have no teardown hook**. The match route would keep its effect anyway, leaving two data paradigms with the harder half unimproved. Data routers earn their keep when most routes are data-driven; here one route is a resource with a lifecycle.
+
+| | |
+|---|---|
+| `/` | StartScreen — lists matches, creates one, navigates to it |
+| `/:matchId` | MatchRoute — connects, renders GameCanvas |
+
+Deep links survive a refresh in both environments already: the server falls back to `index.html` for unknown paths, and Vite's dev server does history fallback by default.
+
+**A missing match is not a retryable error.** `connectGameServer` returns `{ ok: true; server } | { ok: false; kind: 'notFound' | 'unreachable' }` rather than throwing — the same reasoning as the reducers, that expected non-success should be representable. The two need different UI: one offers a way back to `/`, the other offers Retry, and a thrown error makes the caller reverse-engineer which it got.
 
 ### The `GameServer` interface
 
@@ -247,27 +307,44 @@ A small OAuth library plus a sessions table, not an auth platform. Hosted provid
 
 Whatever provides identity, **it resolves to a `PlayerId` in one place on the server**, before `actor` is stamped. Auth is a lookup in front of the authority, never something the reducers know about — and game rules never move into the database layer, whatever the store turns out to be.
 
-## Data store ⬜ *(phase 4)*
-
-In-memory through phase 3. That's deliberate — the server runs locally, and a restart losing the match is an accepted cost while it's only you.
+## Data store ✅
 
 **SQLite locally, Turso when deployed — the same code either way.** Use the libSQL client rather than `bun:sqlite` directly: it behaves identically against a local file, and pointing it at a hosted Turso database is a connection string rather than a rewrite. Turso is the destination because it removes the two things that actually bite about SQLite in production — ephemeral disks wiping the file on redeploy, and being pinned to a single machine.
 
 Start with the local file. Nothing has to change to move.
 
 ```sql
-matches      (id, created_at, initial_state JSON, current_state JSON, current_seq)
+matches      (id, created_at, initial_state JSON, current_state JSON,
+              current_seq, current_turn)
 log_entries  (match_id, seq, action JSON, events JSON, created_at,
               PRIMARY KEY (match_id, seq))
 ```
 
-State goes in as **JSON blobs** — nothing ever queries inside them, and invariant 4 already guarantees they survive the round trip. A rule written for the wire pays off again here.
+**`initial_state` is written and never read — on purpose.** Together with the log it makes a match a complete, self-contained history; without it the log is a sequence of deltas with no anchor to replay from. It's what replays, post-mortems, and "does folding the log reproduce `current_state`?" all need. Kept now because it costs a few kilobytes once per match and **cannot be backfilled** — the starting state is exactly the thing that would be missing.
 
-**`PRIMARY KEY (match_id, seq)` is doing real work**, not just identifying rows. Two commands racing to write seq N: one insert wins, the other violates the constraint and retries against fresh state. That's serialization without locks, and it starts mattering exactly when phase 5 introduces a second human.
+`current_turn` is denormalised out of `current_state` so listing matches doesn't parse an entire board per row just to show whose turn it is — the one field the start screen needs without loading a game.
+
+State goes in as **JSON blobs** — nothing ever queries inside them, and invariant 4 already guarantees they survive the round trip. A rule written for the wire pays off again here.
 
 The schema is identical on Postgres, so the engine stays a swap rather than a redesign.
 
-**Set the pragmas.** WAL mode (concurrent readers alongside one writer) and `busy_timeout` (contention retries instead of throwing `SQLITE_BUSY`). Defaults are meaningfully worse and this is easy to not know about.
+### Concurrency
+
+Once `submit` is async, two requests can interleave at `await` boundaries even in a single-threaded process — both read the same state, both compute against it, both try to write.
+
+```
+read state + seq  →  applyAction (pure)  →  batch[ INSERT log, UPDATE match ]
+```
+
+**`batch` makes the two writes atomic in one round trip.** That matters mainly for *crashes*, not races: if the process died between the insert and the update, the log would be one ahead of the materialized state and every later command would fail forever. Atomicity is worth having whether or not anyone else is writing.
+
+**`PRIMARY KEY (match_id, seq)` catches the race for free.** It's the natural key for the log anyway, and it's what makes `WHERE seq > N` an index scan — so it isn't concurrency machinery, it's just the schema. Two writers claiming the same seq means one violates it and throws.
+
+**A violation is left to throw.** It needs one player submitting twice inside a single round trip, which the client's in-flight guard already prevents — so it's an impossible-today condition, and impossible conditions should be loud. It surfaces as a 500 (as JSON, so the client can report it accurately) and lands in the logs. If it ever starts happening, a retry goes in exactly one place.
+
+Explicitly *not* done: no `BEGIN IMMEDIATE` (it would hold the write lock across our own compute and network latency, for a workload that computes a pure function over a snapshot), and no in-process lock (process-local state that does nothing across instances, and would hide the condition rather than surface it).
+
+**Set the pragmas.** WAL mode (concurrent readers alongside one writer) and `busy_timeout` (contention retries instead of throwing `SQLITE_BUSY`). Defaults are meaningfully worse and this is easy to not know about. Both are no-ops against a remote libSQL server, which manages its own concurrency.
 
 ### Deploying SQLite ⬜
 
@@ -280,7 +357,7 @@ Known costs, none of them surprises later if they're written down now:
 
 Moving to Turso or Postgres is what buys multi-instance and ephemeral-disk tolerance. Neither is close to necessary.
 
-## Event log ✅ *(in memory; phase 4 persists it)*
+## Event log ✅
 
 The match is an initial state plus an ordered log of validated changes. Current state is derivable from it, though the server also keeps it materialized.
 
@@ -294,9 +371,9 @@ interface LogEntry {
 
 The action is kept for audit — who tried what, and what the dice said. Events are what replays and what clients receive.
 
-**Materialize, don't fold.** The server holds current state in memory *and* appends to the log. Folding the whole log on every command is O(n) per action to save a kilobyte. The log is for replay, audit, and reconnect catch-up.
+**Materialize, don't fold.** `matches.current_state` is kept alongside the log rather than derived from it. Folding the whole log on every read would be O(n) per request to save a kilobyte of storage. The log is for replay, audit, and catch-up — not for answering "what is the board right now".
 
-In-memory through phase 3; phase 4 moves it into SQLite. See Data store.
+Persisted in SQLite. See Data store.
 
 Events are per-change, at the granularity a client needs to animate:
 
@@ -425,7 +502,7 @@ No clamp needed — it falls out of `luckMax` being bounded. `margin ≤ 0` alwa
 - Terrain is one merged mesh, vertex-colored per tile. Grid lines are a `LineSystem` overlay. Highlights are parameterized single-tile meshes.
 - ✅ **Animation is driven by the authority's events**, not by the command the client sent — `GameRenderer.playEvents(events)` walks the list the server returned and animates each in order.
 - ⬜ **`GameRenderer.syncUnits(state)`** — reconciles meshes against current state. It currently builds every unit mesh once at startup with no add/remove, so the first kill would leave a mesh on the board forever.
-- **`renderer.ts` is the accumulation point** — every feature so far has added wiring there. Not a problem yet, worth watching.
+- **`renderer.ts` is the accumulation point** — every feature so far has added wiring there. Decomposed in step 6, before combat pushes on it twice more.
 
 ## Dev tooling ✅
 
@@ -450,7 +527,7 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 | **Session identity** | Opaque id in an httpOnly cookie; the server trusts it on sight | Phase 5 — OAuth sign-in and a real session record. Same cookie, real meaning. No passwords at any point |
 | **`actor` under hot-seat** | Server stamps `currentTurn` on its one connection | Phase 5 — session→player map established at join |
 | **Match persistence** | In-memory; server restart loses the game | Phase 4 — see Data store. The only thing still requiring the process to stay alive between requests |
-| **One match** | A single global match, no match ids | Match registry, lobby |
+| **Matches are unowned and unbounded** | Anyone can create any number; no delete, no expiry. `list()` is capped at 50 newest — a bound, not pagination | Phase 5 — scope listing to the player, and add deletion. Until identity exists there's nothing to scope by |
 | **Async play** | Both clients assumed live | Mostly free once the log persists — a returning player polls `?since=N` and catches up. Needs match lifecycle more than it needs new mechanics |
 | **Ruleset versioning** | None | Stamp a ruleset id on the match so old logs replay under the rules they were played with |
 | **Reconnect mid-turn** | Nothing | Falls out of `GET /api/events?since=N` once the log exists — the client just asks again from where it left off |
@@ -474,9 +551,17 @@ What phases 1 and 2 bought is the *shape*, not the separation. The authority is 
 
 1. ✅ ~~**Monorepo restructure**~~ — `packages/{shared,server,client}`, bun workspaces, root scripts.
 2. ✅ ~~**`GameServer` interface + in-process implementation**~~ — `GameCanvas` stopped owning `GameState`, `submit` is async, `actor` lands on every action with reducer checks, events are the reducer's output channel. Still one process, still bundled, still no network. Beyond plan: rejection reasons surface in the UI rather than the console.
-3. ✅ ~~**Real server**~~ — `match.ts` replaced `gameServer.ts`; `Bun.serve` with the three endpoints, event log with `seq`, session cookie, `parseCommand` at the boundary, exhaustive `default` in `applyAction`, Vite proxy, dev script running both processes. `App` owns the connection and the loading state; `GameCanvas` takes the server as a prop; `client` no longer depends on `@aw/server`. State stays in memory.
+3. ✅ ~~**Real server**~~ — `match.ts` replaced `gameServer.ts`; `Bun.serve` with the three endpoints, event log with `seq`, session cookie, `parseCommand` at the boundary, exhaustive `default` in `applyAction`, Vite proxy, dev script running both processes. `App` owns the connection and the loading state; `GameCanvas` takes the server as a prop; `client` no longer depends on `@aw/server`. (State was still in memory at this point; phase 4 moved it.)
 
-4. **Durable store** — the event log moves out of memory. See Data store. Nothing above the match abstraction changes; this is what makes a restart survivable and what removes the last reason a process must stay alive between requests.
+4. **Matches become real things.** Split in two, because the schema wants writing once:
+
+   **4a ✅** — ~~server.~~ Match ids; `matches` and `log_entries` in SQLite via the libSQL client; the API becomes match-scoped; `match.ts` becomes an async `MatchStore`; one `.env` at the repo root. Curl-verifiable on its own.
+
+   **4b — client.** react-router (declarative); `/` start screen listing and creating matches; `/:matchId` for the game; `connectGameServer(matchId)` returning a result rather than throwing. `net/` moves out of `game/` and gains `http.ts` and `matchesApi.ts`; `MatchSummary` moves to `shared/protocol.ts`. See Client-side layering and Routing.
+
+   The client is broken between 4a and 4b — `httpGameServer` still calls the old unscoped routes. That's the expected mid-split state.
+
+   This is what makes a restart survivable, and what removes the last reason a process must stay alive between requests.
 
 5. **Real multiplayer** — three pieces, all of which are prerequisites rather than nice-to-haves:
    - **Match lifecycle.** Matches gain ids, and there's a way to create one and for a second person to join it. Today there is one implicit global match, which two people cannot meaningfully share.
@@ -503,16 +588,23 @@ Expect phase 2 to feel like ceremony: an async `submit` that resolves immediatel
 
 ### Then combat
 
+6. **Client refactor, before combat rather than during.** Two files are where every combat step lands, and both are at the size where adding to them starts to hurt:
+
+   - **`renderer.ts`** — `createGameRenderer` wires engine, scene, camera, ortho bounds, resize, light, terrain, grid lines, two highlights, the movement overlay, the unit mesh map, pointer observables, the render loop, and the Inspector. The sub-modules are properly separated; it's the wiring that has accumulated. `syncUnits` and the attack overlay both land here.
+   - **`GameCanvas.tsx`** — render replica, rejection state, selection, in-flight guard, `submitCommand`, the renderer effect, the click handler, End Turn, and the DOM. Cohesive today; the attack UI adds a third overlay and a second command shape, which is the point to extract the interaction wiring.
+
+   Doing this first is the difference between combat being exploratory and combat being exploratory *on top of* two files that are already straining.
+
 Combat depends on none of phases 4–5 — it can proceed as soon as phase 3 lands, or in parallel.
 
-6. **`UnitType` catalog** — migrate `Unit.movementRange` onto it.
-7. **`Unit` gains `health`/`maxHealth`** and `unitTypeId`; update the four starting units.
-8. **`UnitActionCommand`** replaces `MoveCommand` — path + optional attack, atomic. `validatePath` and `findPath` join `shared/`; `canAttack` joins `legality.ts`; resolution joins the reducers.
-9. **`GameRenderer.syncUnits(state)`** — required before combat can kill anything.
-10. **Attack in `handleTileClick`** — clicking an enemy while selected becomes a real action, plus an attack-range overlay.
-11. **Victory conditions** — a game needs an end. Elimination first: a player with no units loses, last standing wins. `GameState` gains a terminal marker (a `winner`/`outcome` field, so "finished" is a fact rather than something re-derived), `applyAction` rejects everything once set, and a `gameEnded` event tells clients to stop and show a result. Turn limits and draws sit on top of the same field.
+7. **`UnitType` catalog** — migrate `Unit.movementRange` onto it.
+8. **`Unit` gains `health`/`maxHealth`** and `unitTypeId`; update the four starting units.
+9. **`UnitActionCommand`** replaces `MoveCommand` — path + optional attack, atomic. `validatePath` and `findPath` join `shared/`; `canAttack` joins `legality.ts`; resolution joins the reducers.
+10. **`GameRenderer.syncUnits(state)`** — required before combat can kill anything.
+11. **Attack in `handleTileClick`** — clicking an enemy while selected becomes a real action, plus an attack-range overlay.
+12. **Victory conditions** — a game needs an end. Elimination first: a player with no units loses, last standing wins. `GameState` gains a terminal marker (a `winner`/`outcome` field, so "finished" is a fact rather than something re-derived), `applyAction` rejects everything once set, and a `gameEnded` event tells clients to stop and show a result. Turn limits and draws sit on top of the same field.
 
-Combat without step 11 produces a board where one side has nothing left and the game keeps accepting End Turn forever. It's a small step but it isn't optional.
+Combat without step 12 produces a board where one side has nothing left and the game keeps accepting End Turn forever. It's a small step but it isn't optional.
 
 Events landed in step 2 as the reducer's output channel and start being served over HTTP in step 3, ahead of the second client rather than alongside it.
 

@@ -1,15 +1,16 @@
 import { join, resolve } from 'node:path'
 import { parseCommand } from '@aw/shared'
 import type { GameState, PlayerId } from '@aw/shared'
-import { createInitialState } from './initialState'
-import { createMatch } from './match'
+import { createDb, migrate } from './db'
+import { createMatchStore } from './match'
 
 const PORT = Number(process.env.PORT ?? 3001)
 const IS_PROD = process.env.NODE_ENV === 'production'
 const CLIENT_DIST = resolve(new URL('../../client/dist', import.meta.url).pathname)
 
-// One global match. A match registry and ids arrive with real multiplayer.
-const match = createMatch(createInitialState())
+const db = createDb()
+await migrate(db)
+const matches = createMatchStore(db)
 
 const SESSION_COOKIE = 'aw_session'
 
@@ -49,20 +50,37 @@ function json(body: unknown, init: ResponseInit = {}): Response {
   })
 }
 
+const notFound = (): Response => json({ error: 'not found' }, { status: 404 })
+
 async function handleApi(request: Request, url: URL, session: string): Promise<Response> {
-  if (url.pathname === '/api/state' && request.method === 'GET') {
-    return json(match.snapshot())
+  // ['api', 'matches'] | ['api', 'matches', :id, 'state' | 'events' | 'commands']
+  const segments = url.pathname.split('/').filter(Boolean)
+  const [, collection, matchId, resource] = segments
+  // Anything longer is a URL we don't understand, and answering it 200 would
+  // be pretending we do.
+  if (collection !== 'matches' || segments.length > 4) return notFound()
+
+  if (matchId === undefined) {
+    if (request.method === 'GET') return json(await matches.list())
+    if (request.method === 'POST') return json(await matches.create(), { status: 201 })
+    return notFound()
   }
 
-  if (url.pathname === '/api/events' && request.method === 'GET') {
+  if (resource === 'state' && request.method === 'GET') {
+    const snapshot = await matches.snapshot(matchId)
+    return snapshot ? json(snapshot) : notFound()
+  }
+
+  if (resource === 'events' && request.method === 'GET') {
     const since = Number(url.searchParams.get('since') ?? 0)
     if (!Number.isInteger(since) || since < 0) {
       return json({ error: 'since must be a non-negative integer' }, { status: 400 })
     }
-    return json(match.since(since))
+    const events = await matches.since(matchId, since)
+    return events ? json(events) : notFound()
   }
 
-  if (url.pathname === '/api/commands' && request.method === 'POST') {
+  if (resource === 'commands' && request.method === 'POST') {
     let body: unknown
     try {
       body = await request.json()
@@ -75,15 +93,17 @@ async function handleApi(request: Request, url: URL, session: string): Promise<R
       return json({ ok: false, reason: 'not a valid command' }, { status: 400 })
     }
 
-    const actor = resolveActor(session, match.getState())
-    const result = match.submit(command, actor)
+    const snapshot = await matches.snapshot(matchId)
+    if (!snapshot) return notFound()
+
+    const result = await matches.submit(matchId, command, resolveActor(session, snapshot.state))
     // A rejected command is a legitimate answer, not an HTTP error -- the
     // client reads `ok`, and 200 keeps rejection distinct from transport
     // failure.
     return json(result)
   }
 
-  return json({ error: 'not found' }, { status: 404 })
+  return notFound()
 }
 
 async function serveClient(url: URL): Promise<Response> {
@@ -117,8 +137,10 @@ const server = Bun.serve({
   maxRequestBodySize: 64 * 1024,
 
   error(cause) {
+    // JSON, so the client can parse it and report accurately rather than
+    // failing to decode and blaming the network.
     console.error('unhandled request error:', cause)
-    return new Response('internal error', { status: 500 })
+    return json({ ok: false, reason: 'internal server error' }, { status: 500 })
   },
 
   async fetch(request) {

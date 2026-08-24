@@ -1,29 +1,29 @@
-// The public surface of the rulebook. Both server/ and client/ import from
-// here rather than reaching into individual files.
+// The public surface of the rulebook: what server/ and client/ actually
+// consume. Anything used only inside shared/ stays unexported from here --
+// reducers are reached through applyAction, and union members through their
+// union.
 
 export type {
   Action,
-  ActionResult,
   Command,
   Coordinate,
-  EndTurnAction,
-  EndTurnCommand,
   Facing,
   GameEvent,
   GameState,
-  MoveAction,
-  MoveCommand,
   Player,
   PlayerColor,
   PlayerId,
   TileType,
-  TurnEndedEvent,
   Unit,
-  UnitMovedEvent,
 } from './types'
 
+export { coordinatesEqual, isWithinGrid } from './coordinate'
+export { getCurrentPlayer, getUnitAt } from './queries'
+export { canSelectUnit } from './legality'
+export { getReachableTiles } from './reachableTiles'
+export { applyAction } from './applyAction'
+
 export type {
-  CommandResponse,
   CommandResult,
   EventsResponse,
   GameServer,
@@ -31,14 +31,3 @@ export type {
   UpdateListener,
 } from './protocol'
 export { parseCommand } from './protocol'
-
-export { coordinatesEqual, coordinateKey, isWithinGrid } from './coordinate'
-export { getCurrentPlayer, getUnitAt } from './queries'
-export { canMoveUnit, canSelectUnit } from './legality'
-export { getReachableTiles } from './reachableTiles'
-export { applyAction } from './applyAction'
-export { applyEndTurn } from './applyEndTurn'
-export { applyMove } from './applyMove'
-
-export type { MovementType, UnitType, UnitTypeId } from './data/unitTypes'
-export { getUnitType, UNIT_TYPES } from './data/unitTypes'

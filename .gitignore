@@ -14,6 +14,21 @@ dist-types
 *.tsbuildinfo
 *.local
 
+# env — one file at the repo root, never committed
+.env
+.env.*
+!.env.example
+
+# local sqlite
+*.db
+*.db-shm
+*.db-wal
+
+# vite writes these next to the config when reloading it
+vite.config.ts.timestamp-*
+
+coverage
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

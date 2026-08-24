@@ -59,9 +59,6 @@ export interface EventsResponse {
   state: GameState
 }
 
-/** POST /api/commands */
-export type CommandResponse = CommandResult
-
 // --- Runtime validation ---------------------------------------------------
 // TypeScript is erased; a POST body is attacker-controlled and can be
 // anything. Hand-rolled because the command union is tiny and a schema library
