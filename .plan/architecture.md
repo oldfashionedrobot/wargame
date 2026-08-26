@@ -19,7 +19,7 @@ packages/
     src/  types · coordinate · queries · legality · reachableTiles
           applyMove · applyEndTurn · applyAction
           protocol.ts  ✅ GameServer · CommandResult · HTTP shapes · parseCommand
-      data/  unitTypes 🚧 · movementCost ⬜ · chargeThresholds ⬜ · damageTable ⬜
+      data/  unitTypes 🚧 · terrain ⬜ · damageTable ⬜ · chargeThresholds ⬜
   server/     depends on shared only — an app, not a library: no barrel
     src/  http.ts ✅ Bun.serve — /api/* plus the client's static build
           db.ts ✅ libSQL client, schema, pragmas
@@ -93,7 +93,7 @@ The server authenticates a command into an action, validates it, resolves it, an
 
 Events, not actions, are what clients receive: a client that renders facts needs no rule parity with the server, so a stale browser tab can't compute a divergent outcome, and animation gets its ordered sequence — move, hit, death — without re-running resolution in the renderer.
 
-### Command shape ⬜ *(step 6e — today it's `MoveCommand | EndTurnCommand`)*
+### Command shape ⬜ *(step 7d — today it's `MoveCommand | EndTurnCommand`)*
 
 One command per unit action, matching AW's move-then-choose flow. Move and attack are a **single atomic command**, not two:
 
@@ -115,9 +115,9 @@ Ownership, `hasActed`, and `actor` are checked separately. `validatePath` answer
 This is the same stance as every other reducer — *check what you're told, don't assume how it was produced* — and it has two payoffs:
 
 - **Manual routing is then a pure UI feature.** Deliberately walking the long way round a forest needs no protocol change, no new validation, nothing server-side. Just a different way of building the array the client already sends.
-- **Pathfinding needs no cross-machine determinism.** Because the server never re-derives a route, `findPath` in `shared/` is a client-side convenience for previewing. It can use any heuristic or tie-break, and change freely, without risking disagreement.
+- **Pathfinding needs no cross-machine determinism.** Because the server never re-derives a route, `exploreMovement` in `shared/` is a client-side convenience for previewing. It can use any heuristic or tie-break, and change freely, without risking disagreement. Only the cost model has to agree — see the invariant in Terrain.
 
-What *does* have to agree is the **cost model** — the `movementCost` table and how cost accumulates. If the client's reachable-tile overlay and the server's budget check disagree, the UI offers a move the server then rejects. That's a UX bug rather than a correctness one, and it's a much weaker constraint than identical search behaviour.
+What *does* have to agree is the **cost model** — the terrain table and how cost accumulates. If the client's reachable-tile overlay and the server's budget check disagree, the UI offers a move the server then rejects. That's a UX bug rather than a correctness one, and it's a much weaker constraint than identical search behaviour.
 
 `canMoveAndAttack: false` units are rejected if `path` has more than one element.
 
@@ -425,11 +425,11 @@ Static content, not runtime state: what damage cavalry deals to infantry never c
 | File | Contents | |
 |---|---|---|
 | `unitTypes.ts` | `UnitType` catalog keyed by `UnitTypeId`, referenced by `Unit.unitTypeId` | 🚧 |
-| `movementCost.ts` | `Record<MovementType, Record<TileType, number \| null>>`, `null` = impassable | ⬜ |
+| `terrain.ts` | Per terrain: a single `defense` value plus `cost` per movement type, `null` = impassable. See Terrain | ⬜ |
 | `chargeThresholds.ts` | `Record<AttackerUnitTypeId, Record<DefenderUnitTypeId, number>>` | ⬜ |
 | `damageTable.ts` | attacker-vs-defender base damage % | ⬜ |
 
-`TileType` moves here from `shared/types.ts` when terrain lands — it's content vocabulary, and `movementCost.ts` needs it.
+`TileType` moves here from `shared/types.ts` when terrain lands — it's content vocabulary, and `terrain.ts` needs it.
 
 ## Units
 
@@ -445,25 +445,133 @@ Movement range, `ranged`, and `charge` are all fields on the same `UnitType` rec
 
 ## Terrain ⬜
 
-`plain | road | forest | mountain | river | sea | beach`.
+`plains · road · bridge · forest · mountain · river · sea · beach`
 
-Movement cost is a function of *(movement type, terrain type)*, not either alone. This makes pathfinding a Dijkstra/uniform-cost search rather than plain BFS, since edge cost varies by who's moving. `getReachableTiles` is currently a terrain-blind BFS placeholder — correct only because every edge costs 1.
+**Bridge is its own type**, mechanically identical to road. The renderer has to *know* it's a bridge to draw a road crossing water, and inferring that from "road adjacent to river" is fragile — a road running alongside a river isn't a bridge. Terrain types are already a mechanics-and-presentation pair, so a presentational distinction is a legitimate reason for one.
 
-**One search, two outputs.** The same Dijkstra should yield both the reachable set (for the overlay) and per-tile predecessors, so `findPath(state, unit, destination)` reconstructs a route without a second traversal.
+Rivers stay meaningful: fordable on foot at a cost, impassable to wheels. `sea` and `beach` are in the list for map shape, not because naval units exist — the v1 roster is entirely land.
 
-`findPath` is a **client-side convenience** — it suggests a route to preview and submit. The server never calls it; it runs `validatePath` on whatever arrives. So pathfinding needs no cross-machine determinism and can change heuristics freely. Only the *cost model* has to agree between the two, so that the reachable overlay doesn't offer moves the server rejects.
+### One table, both axes
 
-`sea` and `beach` are in the list for map shape, not because naval units exist — the v1 roster is entirely land. They're impassable to everything until there's something that floats.
+```ts
+{ plains:   { defense: 1, cost: { foot: 1, horse: 1, wheels: 2 } },
+  forest:   { defense: 2, cost: { foot: 1, horse: 2, wheels: 3 } },
+  mountain: { defense: 4, cost: { foot: 2, horse: null, wheels: null } },
+  river:    { defense: 0, cost: { foot: 2, horse: null, wheels: null } },
+  … }
+```
 
-Bridges are `road` mechanically — same cost, same 0 defense. Purely a renderer concern, not game state.
+Defence is a **single number per terrain**, not a unit×terrain matrix — AW uses 0–5 stars at 1% per star per HP. Cost stays a matrix because it genuinely varies by movement type.
+
+Flying units, if they ever exist, take the AW model: **no terrain defence at all** and unhindered movement. That's `defense = 0` for an air movement type, not a new dimension on the table.
+
+One file rather than separate `movementCost` and defence tables: adding a terrain type is then one edit, and `Record` exhaustiveness covers both axes at once. Combat reads `defense` without terrain needing to know why.
+
+### Movement is a Dijkstra, and it is the pathfinding
+
+Cost varies per tile crossed and by who's crossing, so the terrain-blind BFS in `getReachableTiles` stops being correct. One search yields both outputs:
+
+```ts
+const movement = exploreMovement(state, unit)
+movement.reachable            // the overlay
+movement.pathTo(destination)  // walked back through predecessors, no second search
+```
+
+`pathTo` returns the **cheapest** route. Manual routing — deliberately taking the long way — remains possible later because the protocol carries a path and the server validates rather than derives it; it's a UI feature, not a protocol change.
+
+### ⚠️ Invariant: one cost model
+
+**Client and server read the same terrain table from `shared/`.** Pathfinding needs no cross-machine determinism, because the server validates rather than re-derives — but the *cost model* must agree, or the reachable overlay offers moves the server rejects. Any movement modifier added later belongs in `shared/`, never on one side.
+
+### `validatePath` belongs here, not to combat
+
+It is a movement rule that happens to be needed before attacking, and it fixes an **existing** hole: `path` is currently accepted unvalidated, so a client can submit a straight line through anything. That only becomes exploitable once terrain makes such a line meaningfully different from a legal route — so terrain and validation land together.
+
+### Maps
+
+A character grid, because then the source file looks like the map:
+
+```ts
+const MAP = [
+  '..^^^..b',
+  '..~~~..b',
+  '--===--b',
+  '..~~~..b',
+  '..fff..b',
+]
+// . plains   - road   = bridge   ~ river
+// ^ mountain f forest  b beach   s sea
+```
+
+Readable in an editor, in a diff, and in review. AW and AWBW store maps as terrain-id grids; FFT isn't a useful reference, since its 3D tiles with height solve a different problem.
+
+**Units are a separate list**, not encoded in the grid — they carry type, owner, and facing, which doesn't fit one character:
+
+```ts
+units: [{ at: { col: 1, row: 4 }, type: 'infantry', owner: 0 }, …]
+```
+
+**Maps live in `server/maps/`.** The client never needs map *definitions* — it receives an instantiated `grid` in `GameState`. `shared/data/` is for content both sides read, and this isn't.
+
+Consequence: `createInitialState()` becomes `createMatchState(map)`, and a match records which map it was built from.
 
 ## Combat ⬜
 
-**Damage**: base % from the attacker-vs-defender matchup table, scaled by attacker HP%, reduced by defender terrain defense (itself scaled by defender HP%, so a hurt defender loses most of its terrain bonus), plus a small luck swing. Result is a % of defender max HP removed.
+Modelled on Advance Wars' actual mechanics. What follows is the reference behaviour with sources, then where we intend to diverge — kept together because the divergences only make sense against what they're diverging from.
 
-**Damage preview** is the sharp edge of invariant 8, and AW shows one before you commit. The client computes it from the same formula with the luck term omitted — a deterministic estimate, explicitly not a prediction of the result. The server rolls and decides the real number, which will differ. Preview the formula, never the dice.
+### The damage formula
 
-**Ranged** — one category, not two:
+Stripping CO modifiers (which we don't have), AW reduces to:
+
+```
+damage = baseDamage × (attackerHP / 10) × ((100 − terrainStars × 10 × defenderHP / 10) / 100)
+```
+
+Every step rounds down. Three things fall out of it:
+
+- **A wounded attacker hits softer** — linearly, by HP fraction.
+- **A wounded defender loses its cover.** Terrain defence scales by *defender* HP, so a 4-star mountain protects a full-health unit far more than a nearly-dead one. This accelerates kills and stops damaged units turtling on good ground.
+- **Terrain is not a minor modifier.** Four stars at full health is a 40% reduction. Tuning a matchup table with defence stubbed to zero would produce numbers to throw away — which is why terrain comes first.
+
+**Luck** adds 0 to +9 to base damage, itself scaled by attacker HP: each point of health lost narrows the luck range by 1%, floor of +1%. So damaged units are less swingy as well as weaker. *(Sources disagree slightly on where luck enters relative to the HP multiplier; the magnitude is consistent.)*
+
+### HP representation — where we diverge ⚠️
+
+**AW stores 100 internally and displays 1–10.** A displayed "9" is anywhere from 81 to 90. Three consequences people know the game by:
+
+- You cannot read exact health off the board.
+- **Counter-attacks reliably under-deliver** versus the preview, because the defender counters on its real internal HP while the preview used the rounded display.
+- Chip damage accumulates invisibly until a bar drops.
+
+**We keep 100 internal and display 100.** The 1–10 display was a GBA screen constraint, and inheriting it means permanently explaining why a "9 HP" unit died to 15 damage. The counter-attack surprise is arguably good texture, but it should be a choice rather than an inherited artefact.
+
+This is upstream of the formula, the preview, the health bar, and the tuning harness — which is why it's settled here rather than discovered later.
+
+### Terrain defence
+
+| | Stars |
+|---|---|
+| Road | 0 |
+| Plains | 1 |
+| Woods | 2 |
+| City | 3 |
+| Mountain / HQ | 4 |
+
+Each star is 10% reduction *at full defender HP*. Values live in the terrain table — see Terrain.
+
+### Counter-attacks
+
+**Only when both units are direct combat.** If either side is indirect, no counter in either direction. The defender counters using its post-damage HP.
+
+Our `ranged.min === 1` ↔ direct mapping reproduces this exactly, so a counter fires iff both units have `min === 1`, the defender survives, and the attacker is within the defender's range.
+
+**Not a special case.** A counter is `computeDamage` applied in the other direction with the defender's reduced HP — the same function, called twice. If it becomes a branch inside the attack resolver rather than a second call, that's the smell.
+
+### Damage preview
+
+The sharp edge of invariant 8, and AW shows one before you commit. The client computes it from the same formula with the luck term omitted — a deterministic estimate, explicitly not a prediction. The server rolls and decides the real number, which will differ. **Preview the formula, never the dice.**
+
+### Ranged — one category, not two
 
 ```ts
 ranged: { range: { min, max }, canMoveAndAttack: boolean }
@@ -471,13 +579,15 @@ ranged: { range: { min, max }, canMoveAndAttack: boolean }
 
 `min === 1` behaves like AW direct fire (adjacent through max, symmetric counter-attack). `min > 1` behaves like indirect fire (can't hit adjacent, no counter given or received). The category falls out of the numbers; no separate flag.
 
-`canMoveAndAttack` is independent of range category — a mounted archer can be indirect *and* mobile; a cannon indirect and static.
+`canMoveAndAttack` is independent of range category — a mounted archer can be indirect *and* mobile; a cannon indirect and static. AW ties these together (indirects can't move and fire); we don't, deliberately.
 
-No line-of-sight system. Ranged combat matches AW's actual model, which never had LoS.
+No line-of-sight system. AW never had one either.
 
-**Charge** — a distinct attack type, chosen instead of firing on a given turn, consuming `hasActed` either way. Capability lives on the attacker's `UnitType` (`charge?`), optional; any unit can be a *target* regardless.
+### Charge
 
-Requires the attacker to be able to enter the target's tile — reuses `movementCost.ts`, so if the target's terrain is `null` for the attacker's movement type, charge isn't available.
+A distinct attack type, chosen instead of firing on a given turn, consuming `hasActed` either way. Capability lives on the attacker's `UnitType` (`charge?`), optional; any unit can be a *target* regardless. **This has no AW equivalent** — it's our melee model, and the one part of combat with no reference behaviour to check against.
+
+Requires the attacker to be able to enter the target's tile — reads the terrain table, so if the target's terrain is impassable to the attacker's movement type, charge isn't available.
 
 ```
 margin   = targetCurrentHP% − matchupThreshold%
@@ -490,7 +600,15 @@ No clamp needed — it falls out of `luckMax` being bounded. `margin ≤ 0` alwa
 - **Success**: target dies, attacker displaces onto the vacated tile.
 - **Failure**: attacker takes bonus damage scaled by `margin`, no position change.
 
-**Untuned**: `luckMax`, every threshold value, the failure-damage scaling function, and the whole damage matchup table.
+Fire and charge are **different resolutions, dispatched once** on an `attackKind` discriminant — fire produces damage, charge produces death-plus-displacement or a backfire. Two self-contained functions, not conditionals threaded through one.
+
+### Tuning
+
+**Untuned**: `luckMax`, every charge threshold, the failure-damage scaling function, and the whole damage matchup table.
+
+**Build the harness before tuning.** `shared/` is pure and rolls are inputs, so a script that runs the matchup grid and prints **hits-to-kill** — attacker × defender at full health on plains, then shifted by terrain — is roughly thirty lines and needs no browser. Hits-to-kill is the artefact worth tuning against; a raw damage number isn't. Without it, tuning means editing a table, restarting, creating a match, manoeuvring two units together, and reading one number.
+
+*Sources: [Wars World News — Battle Mechanics](https://www.warsworldnews.com/wp/aw/game-aw/battle-mechanics/) · [AWBW Wiki — Damage Formula](https://awbw.fandom.com/wiki/Damage_Formula) · [Advance Wars Wiki — Luck](https://advancewars.fandom.com/wiki/Luck) · [AWBW Wiki — Terrain](https://awbw.fandom.com/wiki/Terrain) · [Advance Wars Wiki — Indirect Combat](https://advancewars.fandom.com/wiki/Indirect_Combat)*
 
 ## Rendering 🚧
 
@@ -500,7 +618,7 @@ No clamp needed — it falls out of `luckMax` being bounded. `margin ≤ 0` alwa
 - Terrain is one merged mesh, vertex-colored per tile. Grid lines are a `LineSystem` overlay. Highlights are parameterized single-tile meshes.
 - ✅ **Animation is driven by the authority's events**, not by the command the client sent — `GameRenderer.playEvents(events)` walks the list the server returned and animates each in order.
 - ⬜ **`GameRenderer.syncUnits(state)`** — reconciles meshes against current state. It currently builds every unit mesh once at startup with no add/remove, so the first kill would leave a mesh on the board forever.
-- **`renderer.ts` is the accumulation point** — every feature so far has added wiring there. Decomposed in step 5, before combat pushes on it twice more.
+- **`renderer.ts` is the accumulation point** — every feature so far has added wiring there. Deliberately not split: when `syncUnits` lands, `unitMeshes.ts` comes out of it, following the pattern the other render modules already set.
 
 ## Dev tooling ✅
 
@@ -554,31 +672,57 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 
 Three client issues stopped being latent the moment a command became a round trip, and were fixed in phase 3: requests can fail (backoff plus a visible `retrying` state), selection rolls back on rejection, and an in-flight guard stops two clicks submitting against the same stale state.
 
-One is still latent and owned by step 6d: **state commits before animation finishes.** `subscribe` sets state and then starts the tween — harmless while Babylon owns the units, but `syncUnits` will snap meshes to their destination mid-tween.
+One is still latent and owned by step 7c: **state commits before animation finishes.** `subscribe` sets state and then starts the tween — harmless while Babylon owns the units, but `syncUnits` will snap meshes to their destination mid-tween.
 
 ### 5 — Client refactor
 
-Before combat rather than during. Two files are where every combat step lands, and both are at the size where adding to them starts to hurt.
+Before combat rather than during, and smaller than it first looked.
 
-**`renderer.ts`** — `createGameRenderer` wires engine, scene, camera, ortho bounds, resize, light, terrain, grid lines, two highlights, the movement overlay, the unit mesh map, pointer observables, the render loop, and the Inspector. The sub-modules are properly separated; it's the wiring that has accumulated, and `syncUnits` and the attack overlay both land here.
+**`renderer.ts` is not split.** It's 150 lines, the sub-modules are already separate files, and what's left is wiring — which is what an assembly point is for. Splitting scene setup from the returned object would produce two files you always read together. When `syncUnits` lands in phase 7, extract `unitMeshes.ts` for mesh lifecycle and diffing and have `renderer.ts` call it, exactly as it already calls `terrain.ts` and `highlight.ts`. An extraction driven by real content, not a preemptive split.
 
-**`GameCanvas.tsx`** — render replica, rejection state, selection, in-flight guard, `submitCommand`, the renderer effect, the click handler, End Turn, and the DOM. Cohesive today; the attack UI adds a third overlay and a second command shape, which is the point to extract the interaction wiring.
+**`GameCanvas.tsx` owns the session and the canvas at once**, which is what makes it 135 lines. Extract `useGameSession(server)` — render replica, rejection state, in-flight guard, `submitCommand`, subscription. `GameCanvas` keeps the renderer effect (it needs the canvas ref) and the JSX. One hook, not two; the split is *the session* versus *the canvas*.
 
-No behaviour change. Verified by everything still working — which is why it's separate from phase 6, where things are meant to change.
+**`selection.ts` stays pure.** That boundary is already right — state and a coordinate in, new state and a command out, no React and no server. It's the only genuinely testable thing in the client, and moving `submitCommand` into it would destroy that.
 
-### 6 — Combat: the smallest thing you can win
+**Convert `SelectionState` to a union now**, even though phase 5 doesn't need the extra phases:
 
-Terrain-blind throughout: uniform movement cost, zero terrain defense. Not a shortcut — it's what lets the pipeline be proven before the rules get interesting. The integration risk here is the chain (command → resolve → events → animate → death → mesh removal → victory), not the damage formula.
+```ts
+| { phase: 'idle' }
+| { phase: 'unitSelected';      unitId; movement }
+| { phase: 'destinationChosen'; unitId; movement; path }   // phase 6 adds this
+```
 
-- **6a** `UnitType` catalog — migrate `Unit.movementRange` onto it. *(`unitTypes.ts` has existed unreferenced since early on.)*
-- **6b** `Unit` gains `health`/`maxHealth` and `unitTypeId`; update the starting units.
-- **6c** `validatePath` in `shared/` — fixes the **existing** unvalidated `path` field, a bug in shipped code with nothing to do with attacking.
-- **6d** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. Resolves the animation/state-commit ordering noted above.
-- **6e** `UnitActionCommand` replaces `MoveCommand` — path plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events.
-- **6f** Attack in `handleTileClick` — clicking an enemy while selected becomes a real action, plus an attack-range overlay.
-- **6g** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `applyAction` rejects everything once set, and a `gameEnded` event tells clients to stop.
+Today it's `{ selectedUnitId: string | null; reachableTiles: Coordinate[] }` — two independently-settable fields, so "tiles with no selected unit" is representable and meaningless. Converting is the shape change, and shape changes are what this phase is for; phase 6 then adds a member rather than converting a type, and phase 7 adds `choosingTarget` the same way.
 
-Without 6g the board reaches a state where one side has nothing left and End Turn keeps working forever.
+**No behaviour change.** ⚠️ And nothing verifies that beyond playing the game — this is the phase where the absent test suite is most conspicuous. A refactor without tests is worth naming as such before starting rather than after.
+
+### 6 — Terrain and movement
+
+Terrain and pathfinding are one system: the Dijkstra **is** the pathing, `validatePath` is meaningless without a cost table, and route preview is the same search reading its predecessors. Full spec in Terrain.
+
+- Terrain types incl. `bridge`; one table carrying cost-per-movement-type and a single defence value
+- `exploreMovement` — Dijkstra returning the reachable set and `pathTo(destination)`
+- `validatePath` on the server — closes the existing unvalidated-`path` hole
+- Character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`
+- Terrain rendering, and a route highlight on the chosen destination
+- Confirmation step: pick destination → see route → confirm, rather than committing on click
+
+Terrain leads because **terrain defence is not a minor modifier** — four stars at full health halves incoming damage. Tuning a matchup table with it stubbed to zero produces numbers to throw away.
+
+Verifiable with no combat: does the overlay stop at mountains, does cavalry outrange artillery on roads, does the server reject a path through impassable terrain.
+
+### 7 — Combat: the smallest thing you can win
+
+Terrain and pathing already exist by this point, so the numbers mean something. The integration risk here is the chain — command → resolve → events → animate → death → mesh removal → victory — not the damage formula.
+
+- **7a** `UnitType` catalog — migrate `Unit.movementRange` onto it. *(`unitTypes.ts` has existed unreferenced since early on.)*
+- **7b** `Unit` gains `health`/`maxHealth` and `unitTypeId`; update the starting units.
+- **7c** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. Resolves the animation/state-commit ordering noted above.
+- **7d** `UnitActionCommand` replaces `MoveCommand` — path plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events.
+- **7e** Attack in `handleTileClick` — clicking an enemy while selected becomes a real action, plus an attack-range overlay.
+- **7f** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `applyAction` rejects everything once set, and a `gameEnded` event tells clients to stop.
+
+Without 7f the board reaches a state where one side has nothing left and End Turn keeps working forever.
 
 **Keep game outcome separate from lobby status.** An outcome is a fact about the board — produced by a reducer, replayable from the log — so it belongs in `GameState`. "Waiting for an opponent to join" is about *users*, belongs on the `matches` row, and no reducer should know about it. A single `status` field spanning both is the muddle to avoid.
 
@@ -587,10 +731,6 @@ Without 6g the board reaches a state where one side has nothing left and End Tur
 **Where identity shows up.** Two bits of UI here need to know who the user is — a "your units that can still act" indicator, and a victory screen saying *You won* rather than *Blue won*. Get it from one function rather than inlining `state.currentTurn` at each call site. Hot-seat: whoever's turn it is, because two people share one client. With auth: the session. Same concept, different source — nothing to build in advance.
 
 Selection doesn't need it: `canSelectUnit` is a game fact ("may this unit act"), and the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
-
-### 7 — Terrain
-
-The seven types, `movementCost.ts`, real Dijkstra behind `getReachableTiles`, `findPath` for route preview, and terrain defense feeding damage. Upgrades movement, pathfinding, and combat together, because they all read the same cost table.
 
 ### 8 — Combat depth
 
