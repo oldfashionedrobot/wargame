@@ -3,7 +3,7 @@ import { getCurrentPlayer } from '@aw/shared'
 import type { Command, GameServer, GameState } from '@aw/shared'
 import { handleTileClick, initialSelectionState } from './interaction/selection'
 import type { SelectionState } from './interaction/selection'
-import type { ConnectionStatus } from './net/httpGameServer'
+import type { ConnectionStatus } from '../net/gameServer'
 import { createGameRenderer } from './render/renderer'
 import type { GameRenderer } from './render/renderer'
 

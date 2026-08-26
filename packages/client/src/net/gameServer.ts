@@ -7,6 +7,8 @@ import type {
   StateResponse,
   UpdateListener,
 } from '@aw/shared'
+import { getJson, HttpError, postJson } from './http'
+import type { FailureKind } from './http'
 
 const POLL_INTERVAL_MS = 2000
 const MAX_BACKOFF_MS = 30_000
@@ -17,34 +19,42 @@ export interface ConnectOptions {
   onConnectionChange?: (status: ConnectionStatus) => void
 }
 
-// Same-origin: in dev Vite proxies /api to the server, in production the
-// server serves this bundle itself. Either way there is no base URL to
-// configure and the session cookie rides along automatically.
-const API = '/api'
-
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API}${path}`)
-  if (!response.ok) throw new Error(`${path} -> ${response.status}`)
-  return (await response.json()) as T
-}
+export type ConnectResult =
+  | { ok: true; server: GameServer }
+  | { ok: false; kind: FailureKind; reason: string }
 
 /**
  * The GameServer implementation that talks HTTP.
  *
  * Connects before returning, so callers never see a server without state --
- * which is what lets `getState()` stay synchronous.
+ * which is what lets getState() stay synchronous.
+ *
+ * Returns a result rather than throwing because "no such match" is an expected
+ * outcome of a shared link, not an exception, and it needs different UI from a
+ * server that's simply down.
  */
-export async function connectGameServer(options: ConnectOptions = {}): Promise<GameServer> {
-  const initial = await getJson<StateResponse>('/state')
+export async function connectGameServer(
+  matchId: string,
+  options: ConnectOptions = {},
+): Promise<ConnectResult> {
+  const base = `/matches/${encodeURIComponent(matchId)}`
+
+  let initial: StateResponse
+  try {
+    initial = await getJson<StateResponse>(`${base}/state`)
+  } catch (cause) {
+    const kind: FailureKind = cause instanceof HttpError ? cause.kind : 'unreachable'
+    return { ok: false, kind, reason: cause instanceof Error ? cause.message : 'connection failed' }
+  }
 
   let state: GameState = initial.state
-  // Every update the caller sees passes this. Deduplicating here rather than
-  // in the UI is what keeps components ignorant of seq entirely: a poll
-  // already in flight when a command is submitted will return the same events
-  // the POST response is about to deliver, and applying both would animate
-  // the same move twice.
+  // Every update a caller sees passes this. Deduplicating here rather than in
+  // the UI is what keeps components ignorant of seq: a poll already in flight
+  // when a command is submitted returns the same events the POST response is
+  // about to deliver, and applying both would animate the move twice.
   let lastSeq = initial.seq
   let status: ConnectionStatus = 'connected'
+  let disposed = false
 
   const listeners = new Set<UpdateListener>()
 
@@ -54,34 +64,17 @@ export async function connectGameServer(options: ConnectOptions = {}): Promise<G
     options.onConnectionChange?.(next)
   }
 
-  const applyUpdate = (update: EventsResponse | CommandResult): boolean => {
-    if ('ok' in update && !update.ok) return false
-    if (update.seq <= lastSeq) return false
+  const applyUpdate = (update: EventsResponse | CommandResult): void => {
+    if ('ok' in update && !update.ok) return
+    if (update.seq <= lastSeq) return
 
     lastSeq = update.seq
     state = update.state
     for (const listener of listeners) listener(update.events, state)
-    return true
   }
 
   let timer: ReturnType<typeof setTimeout> | null = null
   let backoff = POLL_INTERVAL_MS
-  let disposed = false
-
-  const poll = async (): Promise<void> => {
-    try {
-      applyUpdate(await getJson<EventsResponse>(`/events?since=${lastSeq}`))
-      backoff = POLL_INTERVAL_MS
-      setStatus('connected')
-    } catch {
-      // A failed poll is not fatal -- the next one re-syncs from lastSeq, so
-      // nothing is lost by missing one. Back off so a dead server isn't
-      // hammered every two seconds.
-      backoff = Math.min(backoff * 2, MAX_BACKOFF_MS)
-      setStatus('retrying')
-    }
-    schedule()
-  }
 
   const schedule = (delay = backoff): void => {
     if (disposed) return
@@ -90,6 +83,20 @@ export async function connectGameServer(options: ConnectOptions = {}): Promise<G
     // return, and a hidden tab polling forever is pure waste.
     const hidden = typeof document !== 'undefined' && document.hidden
     timer = setTimeout(() => void poll(), hidden ? MAX_BACKOFF_MS : delay)
+  }
+
+  const poll = async (): Promise<void> => {
+    try {
+      applyUpdate(await getJson<EventsResponse>(`${base}/events?since=${lastSeq}`))
+      backoff = POLL_INTERVAL_MS
+      setStatus('connected')
+    } catch {
+      // Not fatal -- the next poll asks from the same lastSeq, so nothing is
+      // lost by missing one. Back off so a dead server isn't hammered.
+      backoff = Math.min(backoff * 2, MAX_BACKOFF_MS)
+      setStatus('retrying')
+    }
+    schedule()
   }
 
   // Without this, going hidden schedules the next poll 30s out and coming back
@@ -105,21 +112,16 @@ export async function connectGameServer(options: ConnectOptions = {}): Promise<G
 
   schedule()
 
-  return {
+  const server: GameServer = {
     getState: () => state,
 
     async submit(command: Command) {
       let result: CommandResult
       try {
-        const response = await fetch(`${API}/commands`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(command),
-        })
-        result = (await response.json()) as CommandResult
-      } catch {
+        result = await postJson<CommandResult>(`${base}/commands`, command)
+      } catch (cause) {
         setStatus('retrying')
-        return { ok: false, reason: 'could not reach the server' }
+        return { ok: false, reason: cause instanceof Error ? cause.message : 'submit failed' }
       }
 
       setStatus('connected')
@@ -143,4 +145,6 @@ export async function connectGameServer(options: ConnectOptions = {}): Promise<G
       }
     },
   }
+
+  return { ok: true, server }
 }

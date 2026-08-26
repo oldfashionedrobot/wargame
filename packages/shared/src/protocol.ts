@@ -1,4 +1,4 @@
-import type { Command, Coordinate, GameEvent, GameState } from './types'
+import type { Command, Coordinate, GameEvent, GameState, PlayerId } from './types'
 
 // The wire contract. Lives in shared because both sides need it: the server
 // implements it and the client's HTTP implementation must not have to import
@@ -45,6 +45,21 @@ export interface GameServer {
 }
 
 // --- HTTP shapes ----------------------------------------------------------
+
+/**
+ * GET /api/matches -- enough to render a row without loading a board.
+ *
+ * When the server needs fields the client shouldn't see (ownerId, phase 5),
+ * map explicitly rather than extending this. A server type that extends it is
+ * structurally assignable to it, so JSON.stringify would ship the extra fields
+ * and nothing in the type system would object.
+ */
+export interface MatchSummary {
+  id: string
+  createdAt: number
+  seq: number
+  currentTurn: PlayerId
+}
 
 /** GET /api/state -- initial load. No events; there's nothing to animate. */
 export interface StateResponse {

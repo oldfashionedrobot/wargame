@@ -27,6 +27,7 @@ export type {
   CommandResult,
   EventsResponse,
   GameServer,
+  MatchSummary,
   StateResponse,
   UpdateListener,
 } from './protocol'

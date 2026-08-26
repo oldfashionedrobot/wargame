@@ -6,6 +6,7 @@ import type {
   EventsResponse,
   GameEvent,
   GameState,
+  MatchSummary,
   PlayerId,
   StateResponse,
 } from '@aw/shared'
@@ -17,14 +18,6 @@ import { createInitialState } from './initialState'
 // be pagination -- which isn't worth building until matches are owned and
 // there's a reason to look past the newest few.
 const LIST_LIMIT = 50
-
-/** What the start screen needs to render a match without loading its state. */
-export interface MatchSummary {
-  id: string
-  createdAt: number
-  seq: number
-  currentTurn: PlayerId
-}
 
 export interface MatchStore {
   create(): Promise<MatchSummary>
