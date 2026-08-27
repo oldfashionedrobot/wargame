@@ -404,7 +404,7 @@ Each row of `resolutions` holds one **action** and the **events** it produced, k
 
 `GET /events?since=N` is the log's other job, and the reason push could be dropped: the log *is* the subscription mechanism, so polling cost nothing to build.
 
-⬜ Still to come: **the client folds too.** `applyEvents` is exported and the client can already import it; wiring it in belongs with phase 5, and is what fixes the animation/state-commit ordering noted under step 7c — a client that applies each event as it animates tracks the animation instead of snapping to the end state. A late-joining client would then replay rather than depend on a snapshot.
+⬜ Still to come: **the client folds too** — step 5b. `applyEvents` is exported and the client can already import it; wiring it in is what lets a client show a sequence of changes as it animates them rather than jumping to the end state, and it retires the ordering problem 7c would otherwise inherit.
 
 **Rejections are not logged.** `submit` returns before the write, so the log records what happened, never what was attempted. "Who tried what" needs failed actions stored too.
 
@@ -715,29 +715,95 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 
 Three client issues stopped being latent the moment a command became a round trip, and were fixed in phase 3: requests can fail (backoff plus a visible `retrying` state), selection rolls back on rejection, and an in-flight guard stops two clicks submitting against the same stale state.
 
-One is still latent and owned by step 7c: **state commits before animation finishes.** `subscribe` sets state and then starts the tween — harmless while Babylon owns the units, but `syncUnits` will snap meshes to their destination mid-tween.
+One is still latent: **state commits before animation finishes.** `subscribe` sets state and then starts the tween — harmless while Babylon owns the units, but `syncUnits` will snap meshes to their destination mid-tween. **Step 5b owns the fix** now that `applyEvents` exists; 7c is where it stops being harmless.
 
 ### 5 — Client refactor
 
-Before combat rather than during, and smaller than it first looked.
+Before combat rather than during. **Split in two**, for the same reason phases 2
+and 3 were: 5a changes shape and nothing else, 5b changes behaviour. Kept apart,
+a 5a regression is necessarily the refactor.
 
-**`renderer.ts` is not split.** It's 150 lines, the sub-modules are already separate files, and what's left is wiring — which is what an assembly point is for. Splitting scene setup from the returned object would produce two files you always read together. When `syncUnits` lands in phase 7, extract `unitMeshes.ts` for mesh lifecycle and diffing and have `renderer.ts` call it, exactly as it already calls `terrain.ts` and `highlight.ts`. An extraction driven by real content, not a preemptive split.
+**`renderer.ts` is not split.** It's 158 lines, the sub-modules are already
+separate files, and what's left is wiring — which is what an assembly point is
+for. Splitting scene setup from the returned object would produce two files you
+always read together. When `syncUnits` lands in phase 7, extract `unitMeshes.ts`
+for mesh lifecycle and diffing and have `renderer.ts` call it, exactly as it
+already calls `terrain.ts` and `highlight.ts`. An extraction driven by real
+content, not a preemptive split.
 
-**`GameCanvas.tsx` owns the session and the canvas at once**, which is what makes it 135 lines. Extract `useGameSession(server)` — render replica, rejection state, in-flight guard, `submitCommand`, subscription. `GameCanvas` keeps the renderer effect (it needs the canvas ref) and the JSX. One hook, not two; the split is *the session* versus *the canvas*.
+#### 5a — the refactor. No behaviour change.
 
-**`selection.ts` stays pure.** That boundary is already right — state and a coordinate in, new state and a command out, no React and no server. It's the only genuinely testable thing in the client, and moving `submitCommand` into it would destroy that.
+**`GameCanvas.tsx` owns the session and the canvas at once**, which is what makes
+it 135 lines. Extract `useGameSession(server)` — render replica, rejection state,
+in-flight guard, `submitCommand`, subscription. `GameCanvas` keeps the renderer
+effect (it needs the canvas ref) and the JSX. One hook, not two; the split is
+*the session* versus *the canvas*.
 
-**Convert `SelectionState` to a union now**, even though phase 5 doesn't need the extra phases:
+**`selection.ts` stays pure.** State and a coordinate in, new state and a command
+out, no React and no server. Moving `submitCommand` into it would destroy that.
+
+**`SelectionState` becomes a union**, even though 5a doesn't need the extra
+phases:
 
 ```ts
 | { phase: 'idle' }
-| { phase: 'unitSelected';      unitId; movement }
-| { phase: 'destinationChosen'; unitId; movement; path }   // phase 6 adds this
+| { phase: 'unitSelected';      unitId; reachableTiles }
+| { phase: 'destinationChosen'; unitId; reachableTiles; path }   // phase 6 adds this
 ```
 
-Today it's `{ selectedUnitId: string | null; reachableTiles: Coordinate[] }` — two independently-settable fields, so "tiles with no selected unit" is representable and meaningless. Converting is the shape change, and shape changes are what this phase is for; phase 6 then adds a member rather than converting a type, and phase 7 adds `choosingTarget` the same way.
+Today it's `{ selectedUnitId: string | null; reachableTiles: Coordinate[] }` — two
+independently-settable fields, so "tiles with no selected unit" is representable
+and meaningless. Phase 6 then adds a member rather than converting a type, and
+phase 7 adds `choosingTarget` the same way.
 
-**No behaviour change.** ⚠️ And nothing verifies that beyond playing the game — this is the phase where the absent test suite is most conspicuous. A refactor without tests is worth naming as such before starting rather than after.
+*(Phase 6 renames `reachableTiles` to `movement` when it stops being a bare array
+and becomes the `exploreMovement` result with `.reachable` and `.pathTo`. Not
+before: `selection.movement.some(…)` describes something the field isn't yet.)*
+
+**Three decisions 5a has to make, which the extraction forces:**
+
+- **How does the canvas learn the selection?** The hook owns it (it owns
+  `submitCommand`, whose whole job is optimistic set plus rollback), but must not
+  know about Babylon. Either the hook returns it as state and the canvas pushes
+  it in an effect, or the hook takes an `onSelectionChange` callback. The first is
+  idiomatic; the second is the zero-delta option, since today's three
+  `showSelection` calls are imperative and synchronous.
+- **One subscription or two?** Today's single callback sets state, clears
+  rejection, *and* animates. The first two belong to the hook and the third to
+  the canvas. `gameServer` already fans out to a `Set`, so two listeners is
+  natural — but it should be a decision, not a side effect.
+- **`submitCommand`'s `!renderer` guard disappears** — it exists partly to bind
+  `renderer` for the `showSelection` calls below it, and the hook has no renderer.
+  Accept, or have the canvas disable the button until the renderer exists.
+
+**Verifiable now.** The earlier warning here — *"nothing verifies this beyond
+playing the game"* — is retired. `handleTileClick` has 11 Vitest tests, of which
+**4 assertions across 3 tests** touch the record shape; the rest assert
+`initialSelectionState` or the emitted command and survive the conversion
+untouched. Playing it in a browser is still the check for the renderer half.
+
+#### 5b — the client folds events. A behaviour change.
+
+`applyEvents` is exported from `shared/` and unused by the client. Wiring it in is
+what makes the client able to show a sequence of changes *as* it animates them,
+rather than jumping to the end state and tweening afterwards.
+
+- **`useGameSession` applies each event as the renderer animates it**, instead of
+  snapping to the state snapshot. The snapshot keeps coming over the wire and
+  stays the correction: folding makes replay right, the snapshot makes a *missed*
+  event self-healing.
+- **This retires the ordering problem parked at 7c** — *state commits before
+  animation finishes*. Harmless today because Babylon owns the meshes, and fatal
+  once `syncUnits` reconciles them against state mid-tween. The fix lives in
+  exactly the code 5a restructures, which is why it belongs here.
+- **A late-joining client can replay** rather than depend on a snapshot. Not the
+  motivation — `GET /state` is one request — but it falls out.
+- **Hook tests need a DOM.** Vitest is configured with no environment; this adds
+  `happy-dom` and `@testing-library/react` to the client, which is what makes
+  `useGameSession` testable at all.
+
+Folding facts is not resolving anything, so invariant 8 is untouched: the line
+stays *deterministic preview yes, random resolution no*.
 
 ### 6 — Terrain and movement
 
@@ -760,7 +826,7 @@ Terrain and pathing already exist by this point, so the numbers mean something. 
 
 - **7a** `UnitType` catalog — migrate `Unit.movementRange` onto it. *(`unitTypes.ts` has existed unreferenced since early on.)*
 - **7b** `Unit` gains `health`/`maxHealth` and `unitTypeId`; update the starting units.
-- **7c** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. Resolves the animation/state-commit ordering noted above.
+- **7c** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. Assumes 5b landed: without per-event folding, this is where the animation/state-commit ordering bug stops being harmless.
 - **7d** `UnitActionCommand` replaces `MoveCommand` — path plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events.
 - **7e** Attack in `handleTileClick` — clicking an enemy while selected becomes a real action, plus an attack-range overlay.
 - **7f** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop.

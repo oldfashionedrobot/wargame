@@ -8,8 +8,9 @@ this document keeps the reasoning, the measurements, and the alternatives that
 were rejected — the things a spec deliberately does not carry.
 
 One piece is deliberately not here: **client-side event folding**. `applyEvents`
-is exported and the client can import it, but wiring it in belongs with phase 5,
-which is the refactor of the code that consumes events.
+is exported and the client can import it, but wiring it in is now **step 5b** —
+it changes behaviour, and it belongs in the refactor of the code that consumes
+events rather than in a storage change.
 
 **Not part of any roadmap phase.** Same category as *turn on `strict`* — it can
 land between phases and blocks nothing. `architecture.md` describes the system
