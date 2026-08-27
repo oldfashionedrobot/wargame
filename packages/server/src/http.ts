@@ -1,4 +1,5 @@
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseCommand } from '@aw/shared';
 import type { GameState, PlayerId } from '@aw/shared';
 import { createDb, migrate } from './db';
@@ -6,7 +7,10 @@ import { createMatchStore } from './match';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const IS_PROD = process.env.NODE_ENV === 'production';
-const CLIENT_DIST = resolve(new URL('../../client/dist', import.meta.url).pathname);
+// fileURLToPath, not .pathname -- the latter percent-encodes, so a checkout
+// under a path with a space would resolve to a directory that does not exist
+// and every request would fall through to "client not built".
+const CLIENT_DIST = resolve(fileURLToPath(new URL('../../client/dist', import.meta.url)));
 
 const db = createDb();
 await migrate(db);
@@ -133,8 +137,10 @@ async function serveClient(url: URL): Promise<Response> {
   // parsing already collapses `..`, so this is belt-and-braces rather than a
   // known hole -- but "safe because of how the parser happens to behave" is
   // not a property to rely on for filesystem access.
+  // `+ sep` matters: a bare startsWith would also accept a sibling directory
+  // whose name merely begins with the same characters, like dist-types.
   const resolved = resolve(CLIENT_DIST, '.' + url.pathname);
-  if (!resolved.startsWith(CLIENT_DIST)) return serveIndex();
+  if (!resolved.startsWith(CLIENT_DIST + sep)) return serveIndex();
 
   const requested = Bun.file(resolved);
   if (await requested.exists()) return new Response(requested);

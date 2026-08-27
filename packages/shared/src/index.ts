@@ -21,7 +21,7 @@ export { getCurrentPlayer, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';
 export { getReachableTiles } from './reachableTiles';
 export { resolveAction, validateCommand } from './action';
-export type { Action, ValidationResult } from './action';
+export type { Action } from './action';
 export { applyEvents } from './applyEvents';
 
 export type {
