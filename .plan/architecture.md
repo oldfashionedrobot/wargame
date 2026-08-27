@@ -341,9 +341,15 @@ Events remain authoritative (invariant 9), and a test folds the log from `initia
 
 State goes in as **JSON blobs** — nothing ever queries inside them, and invariant 4 already guarantees they survive the round trip. A rule written for the wire pays off again here.
 
+**The log is rows, not a JSON column on `matches`.** A column looks tempting and is quadratic: every command rewrites the whole blob, so 500 commands rewrote 9.8 MB against an append-only log's 40 KB, and a 2000-entry match would rewrite ~160 MB over its life. Within a row, `events` stays a JSON array because events are always consumed as a batch per `seq` — one row per event would need an explicit ordering column to buy something nothing yet wants.
+
 The schema is close to identical on Postgres, but not free: `created_at` holds `Date.now()`, which overflows Postgres `INTEGER` (int4) and would need `BIGINT` or `TIMESTAMPTZ`. It works in SQLite only because SQLite integers are 64-bit.
 
 ### Access ✅ *(Drizzle)*
+
+**What else was evaluated**, so it isn't re-proposed. **Prisma** is the obvious default and lost on two things: it types JSON columns as `JsonValue`, which does not assign to `GameState`, so all four blob columns would need a *double* cast — worse than what this replaced; and Prisma 8 drops SQLite entirely (`--target` accepts postgres or mongodb), which destroys the engine-portability argument that had won it the first evaluation. **Kysely** has the best inference of the group but its libSQL dialect is third-party and pinned nine minor versions behind our driver. **MikroORM** brings a Unit of Work for rows that are JSON blobs; **TypeORM** has no libSQL driver at all. **Atlas** is the best migration tool here, but its Drizzle provider is unpublished and it puts a Go binary in the toolchain.
+
+The fallback, if Drizzle ever stops paying: ~40 lines of `sql` tagged template plus a typed row decoder. That is the one option giving *runtime-checked* coercion rather than an assertion — which is more than any ORM here offers.
 
 `schema.ts` defines both tables in `drizzle-orm/sqlite-core`; queries are typed from it, so a column rename is a compile error rather than a runtime surprise. JSON columns carry `$type<GameState>()` and friends, which removes the `JSON.parse(x as string) as GameState` pattern from every call site.
 
@@ -408,7 +414,7 @@ Each row of `resolutions` holds one **action** and the **events** it produced, k
 
 **Rejections are not logged.** `submit` returns before the write, so the log records what happened, never what was attempted. "Who tried what" needs failed actions stored too.
 
-**Materialize, don't fold.** `matches.current_state` is a **checkpoint** — the degenerate case of the checkpointing every event-sourced system does, at an interval of one. It exists for `submit`, which must validate against current state and already reads that row for the concurrency guard, so `current_state` rides along free. Measured: 0.06 ms materialized versus ~8 ms to fold 2000 entries, on a path that runs per command.
+**Materialize, don't fold.** `matches.current_state` is a checkpoint rather than a second source of truth — see Data store for the reasoning and the numbers.
 
 Persisted in SQLite. See Data store.
 
@@ -674,7 +680,7 @@ Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DE
 Neither of the items below belongs to a phase, which is how things stay recorded forever. Both are self-contained and can be picked up between phases:
 
 - **Turn on `strict`.** Its own increment, because the fallout is unpredictable — see Known compromises.
-- ✅ ~~**The server sidequest**~~ — `server-sidequest.md`. Drizzle and real migrations, `log_entries` became `resolutions`, events made authoritative and independently applicable, `Action` became a branded validated type, and the repo got its first tests. Client-side event folding is the one piece left, and belongs with phase 5.
+- ✅ ~~**The server refactor.**~~ Drizzle and real migrations, `log_entries` became `resolutions`, events made authoritative and independently applicable, `Action` became a branded validated type, and the repo got its first tests. Client-side event folding is the one piece left — step 5b.
 
 ## Known compromises
 
@@ -708,7 +714,7 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 3. ✅ ~~**Real server**~~ — `Bun.serve` with the three endpoints, event log with `seq`, session cookie, `parseCommand` at the boundary, exhaustive `default` in `applyAction`, Vite proxy, dev script running both processes. `App` owned the connection (4b moved it to `MatchRoute`); `GameCanvas` takes the server as a prop; `client` no longer depends on `@aw/server`.
 4. ✅ ~~**Matches become real things.**~~ Split in two, because the schema wanted writing once:
 
-   **4a ✅** Match ids; `matches` and `log_entries` in SQLite via the libSQL client (the sidequest later replaced `log_entries` with `resolutions` and the hand-written SQL with Drizzle); match-scoped API; `match.ts` as an async `MatchStore`; one `.env` at the repo root.
+   **4a ✅** Match ids; `matches` and `log_entries` in SQLite via the libSQL client (later replaced by `resolutions`, and the hand-written SQL by Drizzle); match-scoped API; `match.ts` as an async `MatchStore`; one `.env` at the repo root.
 
    **4b ✅** react-router (declarative); `/` start screen; `/:matchId` for the game; `connectGameServer(matchId)` returning a result rather than throwing. `net/` moved out of `game/`; `MatchSummary` moved to `shared/protocol.ts`.
 
@@ -837,7 +843,7 @@ Terrain and pathfinding are one system: the Dijkstra **is** the pathing, `valida
 - Terrain types incl. `bridge`; one table carrying cost-per-movement-type and a single defence value
 - `exploreMovement` — Dijkstra returning the reachable set and `pathTo(destination)`
 - `validatePath` inside `validateMove` — closes the existing unvalidated-`path` hole. It lands there rather than anywhere else because validation and resolution are already separate: `validateMove` decides legality, `resolveMove` only emits the event
-- Character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`, and `matches` gains `map_id`. **That column is the first real schema migration** — the thing the sidequest's tooling exists for, and worth doing deliberately rather than as an afterthought
+- Character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`, and `matches` gains `map_id`. **That column is the first real schema migration** — the thing the migration tooling exists for, and worth doing deliberately rather than as an afterthought
 - Terrain rendering, and a route highlight on the chosen destination
 - Confirmation step: pick destination → see route → confirm, rather than committing on click
 
