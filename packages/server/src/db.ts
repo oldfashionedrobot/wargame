@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { createClient } from '@libsql/client';
 import type { Client } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
+import type { LibSQLDatabase } from 'drizzle-orm/libsql';
 import { migrate as runMigrations } from 'drizzle-orm/libsql/migrator';
 import * as schema from './schema';
 
@@ -33,6 +34,12 @@ function resolveUrl(url: string): string {
 const MIGRATIONS = fileURLToPath(new URL('../drizzle', import.meta.url));
 
 export interface Database {
+  /** Typed queries. What everything reading or writing game data should use. */
+  db: LibSQLDatabase<typeof schema>;
+  /**
+   * The raw driver, for the two things Drizzle cannot express: pragmas, and
+   * the `'write'` transaction mode on submit's batch.
+   */
   client: Client;
   url: string;
 }
@@ -41,7 +48,8 @@ export interface Database {
 // database than the one it's configuring.
 export function createDb(url: string = process.env.DATABASE_URL ?? DEFAULT_URL): Database {
   const resolved = resolveUrl(url);
-  return { client: createClient({ url: resolved }), url: resolved };
+  const client = createClient({ url: resolved });
+  return { db: drizzle(client, { schema }), client, url: resolved };
 }
 
 /**
@@ -52,7 +60,7 @@ export function createDb(url: string = process.env.DATABASE_URL ?? DEFAULT_URL):
  * runs pending ones at boot, which is fine for a single instance; a rolling
  * deploy would want it as a separate step before the new code starts.
  */
-export async function migrate({ client, url }: Database): Promise<void> {
+export async function migrate({ db, client, url }: Database): Promise<void> {
   // WAL lets readers run alongside the single writer; busy_timeout makes
   // contention wait rather than throw SQLITE_BUSY. Both are better than the
   // defaults and neither is on by default. No-ops against a remote libSQL
@@ -62,5 +70,5 @@ export async function migrate({ client, url }: Database): Promise<void> {
     await client.execute('PRAGMA busy_timeout = 5000');
   }
 
-  await runMigrations(drizzle(client, { schema }), { migrationsFolder: MIGRATIONS });
+  await runMigrations(db, { migrationsFolder: MIGRATIONS });
 }

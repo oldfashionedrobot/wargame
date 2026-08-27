@@ -1,9 +1,9 @@
+import { and, desc, eq, gt } from 'drizzle-orm';
 import { applyEvents, resolveAction, validateCommand } from '@aw/shared';
 import type {
   Command,
   CommandResult,
   EventsResponse,
-  GameEvent,
   GameState,
   MatchSummary,
   PlayerId,
@@ -11,6 +11,7 @@ import type {
 } from '@aw/shared';
 import type { Database } from './db';
 import { createInitialState } from './initialState';
+import { matches, resolutions } from './schema';
 
 // Nothing deletes or expires matches yet, and anyone can create them, so the
 // table only grows. A cap keeps the start screen bounded without pretending to
@@ -31,18 +32,13 @@ interface MatchRow {
   seq: number;
 }
 
-export function createMatchStore({ client: db }: Database): MatchStore {
+export function createMatchStore({ db, client }: Database): MatchStore {
   async function loadMatch(matchId: string): Promise<MatchRow | null> {
-    const { rows } = await db.execute({
-      sql: 'SELECT current_state, current_seq FROM matches WHERE id = ?',
-      args: [matchId],
-    });
-    const row = rows[0];
-    if (!row) return null;
-    return {
-      state: JSON.parse(row.current_state as string) as GameState,
-      seq: Number(row.current_seq),
-    };
+    const [row] = await db
+      .select({ state: matches.currentState, seq: matches.currentSeq })
+      .from(matches)
+      .where(eq(matches.id, matchId));
+    return row ?? null;
   }
 
   return {
@@ -50,37 +46,36 @@ export function createMatchStore({ client: db }: Database): MatchStore {
       const id = crypto.randomUUID();
       const createdAt = Date.now();
       const state = createInitialState();
-      // Written once and never read back yet -- deliberately. initial_state
-      // plus the log is a complete history; without it the log is deltas with
-      // no anchor, and it cannot be reconstructed after the fact. Cheap to
-      // keep, impossible to backfill.
-      const serialized = JSON.stringify(state);
+      // initial_state is written once and never read back -- deliberately.
+      // Together with the log it makes a match a complete history; without it
+      // the log is deltas with no anchor. Cheap to keep, impossible to
+      // backfill.
 
-      await db.execute({
-        sql: `INSERT INTO matches
-                (id, created_at, initial_state, current_state, current_seq, current_turn)
-              VALUES (?, ?, ?, ?, 0, ?)`,
-        args: [id, createdAt, serialized, serialized, state.currentTurn],
+      await db.insert(matches).values({
+        id,
+        createdAt,
+        initialState: state,
+        currentState: state,
+        currentSeq: 0,
+        currentTurn: state.currentTurn,
       });
 
       return { id, createdAt, seq: 0, currentTurn: state.currentTurn };
     },
 
     async list() {
-      const { rows } = await db.execute(
-        `SELECT id, created_at, current_seq, current_turn
-           FROM matches
-          ORDER BY created_at DESC
-          LIMIT ${LIST_LIMIT}`,
-      );
       // No board parsing here -- current_turn is denormalised precisely so
       // listing stays cheap as matches accumulate.
-      return rows.map((row) => ({
-        id: row.id as string,
-        createdAt: Number(row.created_at),
-        seq: Number(row.current_seq),
-        currentTurn: row.current_turn as PlayerId,
-      }));
+      return db
+        .select({
+          id: matches.id,
+          createdAt: matches.createdAt,
+          seq: matches.currentSeq,
+          currentTurn: matches.currentTurn,
+        })
+        .from(matches)
+        .orderBy(desc(matches.createdAt))
+        .limit(LIST_LIMIT);
     },
 
     async snapshot(matchId) {
@@ -92,14 +87,15 @@ export function createMatchStore({ client: db }: Database): MatchStore {
       const match = await loadMatch(matchId);
       if (!match) return null;
 
-      const { rows } = await db.execute({
-        sql: 'SELECT events FROM resolutions WHERE match_id = ? AND seq > ? ORDER BY seq',
-        args: [matchId, from],
-      });
+      const rows = await db
+        .select({ events: resolutions.events })
+        .from(resolutions)
+        .where(and(eq(resolutions.matchId, matchId), gt(resolutions.seq, from)))
+        .orderBy(resolutions.seq);
 
       return {
         seq: match.seq,
-        events: rows.flatMap((row) => JSON.parse(row.events as string) as GameEvent[]),
+        events: rows.flatMap((row) => row.events),
         state: match.state,
       };
     },
@@ -133,7 +129,7 @@ export function createMatchStore({ client: db }: Database): MatchStore {
       // throws. That needs a player submitting twice inside a single round
       // trip, which the client's in-flight guard prevents, so it is left to
       // fail loudly rather than be handled. A retry would go here.
-      await db.batch(
+      await client.batch(
         [
           {
             sql: `INSERT INTO resolutions (match_id, seq, actor, action, events, created_at)
