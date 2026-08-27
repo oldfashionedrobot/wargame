@@ -99,6 +99,12 @@ async function handleApi(request: Request, url: URL, session: string): Promise<R
       return json({ ok: false, reason: 'not a valid command' }, { status: 400 });
     }
 
+    // Reads the match once here and again inside submit(), because
+    // resolveActor needs state to stamp `actor = currentTurn` while submit
+    // owns the read. Deliberately not fixed: phase 9 makes resolveActor a
+    // session lookup that needs no state, and this read disappears with it.
+    // The window between the two reads can only produce a rejection, never a
+    // wrong write -- submit validates against its own, later read.
     const snapshot = await matches.snapshot(matchId);
     if (!snapshot) return notFound();
 

@@ -6,7 +6,6 @@ import type {
   Command,
   CommandResult,
   EventsResponse,
-  GameState,
   MatchSummary,
   PlayerId,
   StateResponse,
@@ -29,11 +28,6 @@ export interface MatchStore {
   submit(matchId: string, command: Command, actor: PlayerId): Promise<CommandResult>;
 }
 
-interface MatchRow {
-  state: GameState;
-  seq: number;
-}
-
 /**
  * Hands a Drizzle-built statement to the raw libSQL driver.
  *
@@ -49,7 +43,10 @@ const bind = (query: Query): InStatement => ({
 });
 
 export function createMatchStore({ db, client }: Database): MatchStore {
-  async function loadMatch(matchId: string): Promise<MatchRow | null> {
+  // Return type is inferred from the schema rather than declared: the columns
+  // are the source of truth for it, and a hand-written mirror is a second
+  // thing to keep in step.
+  async function loadMatch(matchId: string) {
     const [row] = await db
       .select({ state: matches.currentState, seq: matches.currentSeq })
       .from(matches)
@@ -62,10 +59,6 @@ export function createMatchStore({ db, client }: Database): MatchStore {
       const id = crypto.randomUUID();
       const createdAt = Date.now();
       const state = createInitialState();
-      // initial_state is written once and never read back -- deliberately.
-      // Together with the log it makes a match a complete history; without it
-      // the log is deltas with no anchor. Cheap to keep, impossible to
-      // backfill.
 
       await db.insert(matches).values({
         id,
