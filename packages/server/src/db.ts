@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createClient } from '@libsql/client';
 import type { Client } from '@libsql/client';
 
@@ -13,7 +14,9 @@ const DEFAULT_URL = 'file:./packages/server/aw.db';
 // package, while drizzle-kit runs from the root. Left to cwd, one string would
 // mean two different files and migrations would quietly build a second, empty
 // database next to the real one.
-const REPO_ROOT = new URL('../../../', import.meta.url).pathname;
+// fileURLToPath, not .pathname -- the latter percent-encodes, so a checkout
+// under a path with a space would resolve to a literal "my%20name" directory.
+const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 
 function resolveUrl(url: string): string {
   if (!url.startsWith('file:')) return url; // libsql://, http:// -- not a path
