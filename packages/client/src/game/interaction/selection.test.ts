@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { makeState } from '@aw/shared/testing';
-import type { Coordinate, GameState } from '@aw/shared';
+import { makeState } from '@vod/shared/testing';
+import type { Coordinate, GameState } from '@vod/shared';
 import { handleTileClick, initialSelectionState } from './selection';
 import type { SelectionState } from './selection';
 

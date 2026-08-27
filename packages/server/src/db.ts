@@ -10,7 +10,7 @@ import * as schema from './schema';
 // Read from the repo-root .env. A local file today; a libsql:// URL on Turso,
 // which is the whole reason for the libSQL client over bun:sqlite -- the code
 // is identical either way.
-const DEFAULT_URL = 'file:./packages/server/aw.db';
+const DEFAULT_URL = 'file:./packages/server/vod.db';
 
 // `file:` paths in DATABASE_URL are relative to the REPO ROOT, not to whoever
 // is running. That has to be pinned down because two processes read the same

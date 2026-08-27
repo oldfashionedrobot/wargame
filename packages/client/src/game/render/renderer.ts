@@ -9,7 +9,7 @@ import {
   Scene,
   Vector3,
 } from '@babylonjs/core';
-import type { Coordinate, GameEvent, GameState } from '@aw/shared';
+import type { Coordinate, GameEvent, GameState } from '@vod/shared';
 import { createGridLines } from './gridLines';
 import { createTileHighlight, setHighlightTile } from './highlight';
 import { createMovementRangeOverlay, setMovementRangeTiles } from './movementRange';

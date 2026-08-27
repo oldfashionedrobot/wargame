@@ -1,7 +1,7 @@
 import { Matrix } from '@babylonjs/core';
 import type { Camera, Scene } from '@babylonjs/core';
-import { isWithinGrid } from '@aw/shared';
-import type { Coordinate } from '@aw/shared';
+import { isWithinGrid } from '@vod/shared';
+import type { Coordinate } from '@vod/shared';
 
 import { worldToTile } from './coordinates';
 

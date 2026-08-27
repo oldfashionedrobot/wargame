@@ -1,5 +1,5 @@
 {
-  "name": "advance-wars-clone",
+  "name": "victory-or-death",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,16 +7,16 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --filter '@aw/client' --filter '@aw/server' dev",
+    "dev": "bun run --filter '@vod/client' --filter '@vod/server' dev",
     "typecheck": "tsc -b",
-    "build": "tsc -b && bun run --filter '@aw/client' bundle",
+    "build": "tsc -b && bun run --filter '@vod/client' bundle",
     "lint": "eslint .",
-    "test": "bun test packages/shared packages/server && bun run --filter '@aw/client' test",
+    "test": "bun test packages/shared packages/server && bun run --filter '@vod/client' test",
     "db:generate": "drizzle-kit generate --config packages/server/drizzle.config.ts && drizzle-kit export --config packages/server/drizzle.config.ts > packages/server/schema.sql",
     "db:migrate": "drizzle-kit migrate --config packages/server/drizzle.config.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "preview": "bun run --filter '@aw/client' preview"
+    "preview": "bun run --filter '@vod/client' preview"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

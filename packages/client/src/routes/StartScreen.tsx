@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { MatchSummary } from '@aw/shared';
+import type { MatchSummary } from '@vod/shared';
 import { createMatch, listMatches } from '../net/matchesApi';
 
 interface Loaded {
@@ -57,7 +57,7 @@ export function StartScreen() {
 
   return (
     <div style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif' }}>
-      <h1>Advance Wars Clone</h1>
+      <h1>Victory or Death</h1>
 
       <p>
         <button type="button" onClick={onCreate} disabled={creating}>

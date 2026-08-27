@@ -6,7 +6,7 @@ import type {
   GameState,
   StateResponse,
   UpdateListener,
-} from '@aw/shared';
+} from '@vod/shared';
 import { getJson, HttpError, postJson } from './http';
 import type { FailureKind } from './http';
 

@@ -1,7 +1,7 @@
 import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseCommand } from '@aw/shared';
-import type { GameState, PlayerId } from '@aw/shared';
+import { parseCommand } from '@vod/shared';
+import type { GameState, PlayerId } from '@vod/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore } from './match';
 

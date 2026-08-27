@@ -1,5 +1,5 @@
 import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import type { Action, GameEvent, GameState, PlayerId } from '@aw/shared';
+import type { Action, GameEvent, GameState, PlayerId } from '@vod/shared';
 
 export const matches = sqliteTable('matches', {
   id: text('id').primaryKey(),

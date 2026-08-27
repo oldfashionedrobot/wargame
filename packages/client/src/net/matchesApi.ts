@@ -1,4 +1,4 @@
-import type { MatchSummary } from '@aw/shared';
+import type { MatchSummary } from '@vod/shared';
 import { getJson, postJson } from './http';
 
 // Not on GameServer: that interface is scoped to a single match, and listing

@@ -1,5 +1,5 @@
 import { Color3, Mesh, Scene, StandardMaterial, VertexData } from '@babylonjs/core';
-import type { Coordinate } from '@aw/shared';
+import type { Coordinate } from '@vod/shared';
 import { TILE_SIZE, tileToWorld } from './coordinates';
 
 const RANGE_HEIGHT = 0.015; // above grid lines, below the hover/selection highlights

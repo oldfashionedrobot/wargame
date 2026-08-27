@@ -1,5 +1,5 @@
 import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial } from '@babylonjs/core';
-import type { Coordinate } from '@aw/shared';
+import type { Coordinate } from '@vod/shared';
 import { TILE_SIZE, tileToWorld } from './coordinates';
 
 export function createTileHighlight(

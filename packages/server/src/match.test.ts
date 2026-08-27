@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
-import type { Command } from '@aw/shared';
+import type { Command } from '@vod/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore } from './match';
 import type { MatchStore } from './match';
@@ -216,7 +216,7 @@ describe('storage guarantees', () => {
     await store.submit(id, { type: 'endTurn' }, BLUE);
     await store.submit(id, move('red-1', [6, 5], [7, 7]), RED);
 
-    const { applyEvents } = await import('@aw/shared');
+    const { applyEvents } = await import('@vod/shared');
     const { rows } = await db.client.execute({
       sql: 'SELECT initial_state, current_state FROM matches WHERE id = ?',
       args: [id],

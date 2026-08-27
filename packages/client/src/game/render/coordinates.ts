@@ -1,5 +1,5 @@
 import { Vector3 } from '@babylonjs/core';
-import type { Coordinate } from '@aw/shared';
+import type { Coordinate } from '@vod/shared';
 
 export const TILE_SIZE = 1;
 

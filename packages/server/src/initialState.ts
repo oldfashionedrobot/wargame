@@ -1,4 +1,4 @@
-import type { GameState, Player, TileType, Unit } from '@aw/shared';
+import type { GameState, Player, TileType, Unit } from '@vod/shared';
 
 const GRID_WIDTH = 8;
 const GRID_HEIGHT = 8;

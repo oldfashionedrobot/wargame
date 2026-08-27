@@ -1,5 +1,5 @@
-import { canSelectUnit, coordinatesEqual, getReachableTiles, getUnitAt } from '@aw/shared';
-import type { Command, Coordinate, GameState } from '@aw/shared';
+import { canSelectUnit, coordinatesEqual, getReachableTiles, getUnitAt } from '@vod/shared';
+import type { Command, Coordinate, GameState } from '@vod/shared';
 
 export interface SelectionState {
   selectedUnitId: string | null;

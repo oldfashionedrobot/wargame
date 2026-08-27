@@ -1,4 +1,4 @@
-# Advance Wars Clone
+# Victory or Death
 
 A turn-based strategy game with an American Revolutionary War theme — infantry, cavalry, and artillery rather than tanks and jets. React + TypeScript + Babylon.js, built with bun.
 
@@ -17,13 +17,13 @@ Bun workspaces, three packages, split by **authority** rather than by subject ma
 
 | Package | Depends on | Contents |
 |---|---|---|
-| `@aw/shared` | nothing | The rulebook — types, legality predicates, queries, pathfinding, reducers, content tables. Pure functions, no React, no Babylon, no I/O, no randomness. |
-| `@aw/server` | `shared` | The authority. Owns the one mutable `GameState`, generates rolls, keeps the event log. |
-| `@aw/client` | `shared` | Presentation and input — Babylon rendering, pointer handling, React. |
+| `@vod/shared` | nothing | The rulebook — types, legality predicates, queries, pathfinding, reducers, content tables. Pure functions, no React, no Babylon, no I/O, no randomness. |
+| `@vod/server` | `shared` | The authority. Owns the one mutable `GameState`, generates rolls, keeps the event log. |
+| `@vod/client` | `shared` | Presentation and input — Babylon rendering, pointer handling, React. |
 
-Bun installs these isolated rather than hoisted, so `packages/server/node_modules/` contains only `@aw/shared`. A stray `import 'react'` in server code is a resolution failure, not something to catch in review.
+Bun installs these isolated rather than hoisted, so `packages/server/node_modules/` contains only `@vod/shared`. A stray `import 'react'` in server code is a resolution failure, not something to catch in review.
 
-Cross-package imports go through each package's barrel (`@aw/shared`, `@aw/server`), never into individual files.
+Cross-package imports go through each package's barrel (`@vod/shared`, `@vod/server`), never into individual files.
 
 `shared` has no build step and emits nothing at all — its `exports` point at TypeScript source. Bun runs TS natively; Vite compiles it for the browser. `tsc` reads that same source: `server` and `client` pull it into their own programs, so it is typechecked as a byproduct of being imported rather than through declaration files.
 
@@ -41,7 +41,7 @@ Run from the repo root:
 
 Both `lint` and `build` exit non-zero on failure.
 
-Working on a single package? `bun run --filter '@aw/client' build` bundles *without* typechecking — use the root `build` for the real check.
+Working on a single package? `bun run --filter '@vod/client' build` bundles *without* typechecking — use the root `build` for the real check.
 
 ## State of play
 

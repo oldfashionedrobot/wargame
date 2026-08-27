@@ -7,7 +7,7 @@ import {
   StandardMaterial,
   Vector3,
 } from '@babylonjs/core';
-import type { Coordinate, Facing, PlayerColor, Unit } from '@aw/shared';
+import type { Coordinate, Facing, PlayerColor, Unit } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 
 const UNIT_DIAMETER = 0.5;

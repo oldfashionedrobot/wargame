@@ -1,5 +1,5 @@
 import { Color3, Color4, Mesh, Scene, StandardMaterial, VertexData } from '@babylonjs/core';
-import type { TileType } from '@aw/shared';
+import type { TileType } from '@vod/shared';
 import { TILE_SIZE, tileToWorld } from './coordinates';
 
 const TILE_COLORS: Record<TileType, Color4> = {

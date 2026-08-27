@@ -1,7 +1,7 @@
 import type { InStatement, InValue } from '@libsql/client';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import type { Query } from 'drizzle-orm';
-import { applyEvents, resolveAction, validateCommand } from '@aw/shared';
+import { applyEvents, resolveAction, validateCommand } from '@vod/shared';
 import type {
   Command,
   CommandResult,
@@ -9,7 +9,7 @@ import type {
   MatchSummary,
   PlayerId,
   StateResponse,
-} from '@aw/shared';
+} from '@vod/shared';
 import type { Database } from './db';
 import { createInitialState } from './initialState';
 import { matches, resolutions } from './schema';

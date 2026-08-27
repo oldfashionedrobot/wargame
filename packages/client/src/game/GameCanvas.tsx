@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getCurrentPlayer } from '@aw/shared';
-import type { Command, GameServer, GameState } from '@aw/shared';
+import { getCurrentPlayer } from '@vod/shared';
+import type { Command, GameServer, GameState } from '@vod/shared';
 import { handleTileClick, initialSelectionState } from './interaction/selection';
 import type { SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';

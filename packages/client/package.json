@@ -1,5 +1,5 @@
 {
-  "name": "@aw/client",
+  "name": "@vod/client",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,7 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@aw/shared": "workspace:*",
+    "@vod/shared": "workspace:*",
     "@babylonjs/core": "^9.19.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

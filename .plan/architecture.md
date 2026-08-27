@@ -1,4 +1,4 @@
-# Advance Wars Clone — Architecture
+# Victory or Death — Architecture
 
 Turn-based strategy game, American Revolutionary War theme — infantry, cavalry, artillery rather than tanks and jets. React + TypeScript + Babylon.js, built with bun.
 
@@ -41,9 +41,9 @@ packages/
       game/       GameCanvas.tsx · interaction/ · render/
 ```
 
-Cross-package imports go through `@aw/shared`'s barrel, never into individual files. The barrel holds only what `server/` and `client/` actually consume — commands go through `validateCommand` and `resolveAction`, union members are reached through their union, and anything used solely inside `shared/` stays out of it.
+Cross-package imports go through `@vod/shared`'s barrel, never into individual files. The barrel holds only what `server/` and `client/` actually consume — commands go through `validateCommand` and `resolveAction`, union members are reached through their union, and anything used solely inside `shared/` stays out of it.
 
-**`@aw/server` is an application, not a library.** Nothing imports it, so it has no barrel and no `exports` field; `http.ts` is an entry point that gets run.
+**`@vod/server` is an application, not a library.** Nothing imports it, so it has no barrel and no `exports` field; `http.ts` is an entry point that gets run.
 
 The split is by **authority**, not subject matter:
 
@@ -61,9 +61,9 @@ Separate `package.json` files are the point: `server/` doesn't list Babylon or R
 - `shared/` imports from `shared/data/` only
 - `server/` and `client/` both import from `shared/`; neither imports the other
 
-Bun installs these *isolated* rather than hoisted — `packages/server/node_modules/` contains only `@aw/shared`, so a stray `import 'react'` there is a hard resolution failure rather than something caught in review.
+Bun installs these *isolated* rather than hoisted — `packages/server/node_modules/` contains only `@vod/shared`, so a stray `import 'react'` there is a hard resolution failure rather than something caught in review.
 
-No exceptions: phase 3 removed the last one. `client` no longer lists `@aw/server` at all — it constructs an HTTP `GameServer` locally and takes the interface from `shared`.
+No exceptions: phase 3 removed the last one. `client` no longer lists `@vod/server` at all — it constructs an HTTP `GameServer` locally and takes the interface from `shared`.
 
 ## Invariants
 
@@ -206,7 +206,7 @@ Two processes in dev, one in production.
 |---|---|
 | `packages/server` | `"dev": "bun --env-file=../../.env --watch src/http.ts"` · `"start"` likewise |
 | `packages/client` | `"dev": "vite"` (unchanged) |
-| root | `"dev": "bun run --filter '@aw/client' --filter '@aw/server' dev"` — runs both in parallel |
+| root | `"dev": "bun run --filter '@vod/client' --filter '@vod/server' dev"` — runs both in parallel |
 
 Both filtered explicitly for legibility; `'*'` would also work — bun skips packages that lack the script and only errors when none match.
 
@@ -217,7 +217,7 @@ Both filtered explicitly for legibility; `'*'` would also work — bun skips pac
 | | |
 |---|---|
 | `PORT` | server port, default 3001 |
-| `DATABASE_URL` ✅ | `file:./aw.db` locally, a `libsql://…` URL on Turso |
+| `DATABASE_URL` ✅ | `file:./packages/server/vod.db` locally, a `libsql://…` URL on Turso |
 
 The client has none, because same-origin means it never needs a base URL.
 
@@ -235,7 +235,7 @@ The client has none, because same-origin means it never needs a base URL.
 
 Polling, `seq` dedup, and listener management stay together in `gameServer.ts` — they look like three concerns but they're one, the lifecycle of a live connection, and the dedup only makes sense next to the code producing the updates it guards.
 
-**`MatchSummary` lives in `shared/protocol.ts`**, not `server/`. It exists so the client can render what the server sends, which makes it wire contract like `GameServer` and `CommandResult` — and the client cannot import from `@aw/server` by design.
+**`MatchSummary` lives in `shared/protocol.ts`**, not `server/`. It exists so the client can render what the server sends, which makes it wire contract like `GameServer` and `CommandResult` — and the client cannot import from `@vod/server` by design.
 
 When the server eventually needs fields the client shouldn't see — `ownerId` in phase 9 — **map explicitly, don't extend.** A server type extending the wire type is assignable to it structurally, so `JSON.stringify` ships every added field and the type system reports nothing wrong:
 
@@ -263,7 +263,7 @@ Deep links survive a refresh in both environments already: the server falls back
 
 ### The `GameServer` interface
 
-Lives in `shared/protocol.ts` — both sides need it, and phase 3's client-side HTTP implementation must not have to import `@aw/server`. `GameCanvas` talks only to this and never learns what's behind it:
+Lives in `shared/protocol.ts` — both sides need it, and phase 3's client-side HTTP implementation must not have to import `@vod/server`. `GameCanvas` talks only to this and never learns what's behind it:
 
 ```ts
 interface GameServer {
@@ -705,7 +705,7 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 
 1. ✅ ~~**Monorepo restructure**~~ — `packages/{shared,server,client}`, bun workspaces, root scripts.
 2. ✅ ~~**`GameServer` interface + in-process implementation**~~ — `GameCanvas` stopped owning `GameState`, `submit` is async, `actor` lands on every action with reducer checks, events are the reducer's output channel. Beyond plan: rejection reasons surface in the UI rather than the console.
-3. ✅ ~~**Real server**~~ — `Bun.serve` with the three endpoints, event log with `seq`, session cookie, `parseCommand` at the boundary, exhaustive `default` in `applyAction`, Vite proxy, dev script running both processes. `App` owned the connection (4b moved it to `MatchRoute`); `GameCanvas` takes the server as a prop; `client` no longer depends on `@aw/server`.
+3. ✅ ~~**Real server**~~ — `Bun.serve` with the three endpoints, event log with `seq`, session cookie, `parseCommand` at the boundary, exhaustive `default` in `applyAction`, Vite proxy, dev script running both processes. `App` owned the connection (4b moved it to `MatchRoute`); `GameCanvas` takes the server as a prop; `client` no longer depends on `@vod/server`.
 4. ✅ ~~**Matches become real things.**~~ Split in two, because the schema wanted writing once:
 
    **4a ✅** Match ids; `matches` and `log_entries` in SQLite via the libSQL client (later replaced by `resolutions`, and the hand-written SQL by Drizzle); match-scoped API; `match.ts` as an async `MatchStore`; one `.env` at the repo root.
@@ -909,13 +909,13 @@ Two reads of the same header, and — more importantly — concurrent requests f
 
 ⚠️ Check the **exit code**, not the output. `bun run typecheck | tail -3 && echo OK` chains the `&&` to `tail`, which always succeeds, so it prints OK on failure. That happened.
 
-`build` is `tsc -b && bun run --filter '@aw/client' bundle`: one typecheck pass across every package, then bundle. `bun run typecheck` is the `tsc -b` half alone.
+`build` is `tsc -b && bun run --filter '@vod/client' bundle`: one typecheck pass across every package, then bundle. `bun run typecheck` is the `tsc -b` half alone.
 
 `noUnusedLocals` / `noUnusedParameters` are on, and `verbatimModuleSyntax` requires explicit `import type`. Note `strict` is **not** on — see Known compromises.
 
 **Tests: `bun test` for `shared/` and `server/`, Vitest for `client/`.** Two runners because `bun test` needs no dependency or config and covers the pure packages, while Vitest reuses the client's `vite.config.ts` and is the only route to React component and hook tests. Test files are portable between them — the same suite ran under both, differing only in the import line. The root `test` script runs both. Server tests use `:memory:`, one database per test, migrated in `beforeEach`.
 
-**Typechecking reads `shared`'s source directly. No declaration output, no project references across packages.** `server` and `client` resolve `@aw/shared` through its `exports` field to `src/index.ts` and pull that source into their own programs, so `shared` is checked as a byproduct of being imported and needs no pass of its own. The root `tsconfig.json` is a solution file over `server` and `client` only.
+**Typechecking reads `shared`'s source directly. No declaration output, no project references across packages.** `server` and `client` resolve `@vod/shared` through its `exports` field to `src/index.ts` and pull that source into their own programs, so `shared` is checked as a byproduct of being imported and needs no pass of its own. The root `tsconfig.json` is a solution file over `server` and `client` only.
 
 This replaced a project-references setup, and the reasoning is worth keeping because the arguments for references sound better than they measure:
 

@@ -1,5 +1,5 @@
 {
-  "name": "@aw/server",
+  "name": "@vod/server",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,7 +9,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@aw/shared": "workspace:*",
+    "@vod/shared": "workspace:*",
     "@libsql/client": "^0.17.4",
     "drizzle-orm": "0.45.2"
   },

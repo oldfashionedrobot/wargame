@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import type { GameServer } from '@aw/shared';
+import type { GameServer } from '@vod/shared';
 import { GameCanvas } from '../game/GameCanvas';
 import { connectGameServer } from '../net/gameServer';
 import type { ConnectionStatus } from '../net/gameServer';

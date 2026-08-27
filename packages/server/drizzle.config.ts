@@ -12,6 +12,6 @@ export default defineConfig({
     // Same default and the same root-relative reading as db.ts. Keep them in
     // step: pointing these two at different files is the failure this whole
     // arrangement exists to prevent.
-    url: process.env.DATABASE_URL ?? 'file:./packages/server/aw.db',
+    url: process.env.DATABASE_URL ?? 'file:./packages/server/vod.db',
   },
 });
