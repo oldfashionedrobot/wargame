@@ -668,6 +668,7 @@ Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DE
 ## Open questions
 
 - **Counter-attack for `min > 1` units.** "No counter given or received" was settled when indirect fire and immobility were the same thing. Now that `canMoveAndAttack` is independent of range category, it's worth re-checking whether the rule should still key off `min > 1` alone. Probably still correct — nothing has challenged it — but never explicitly revisited.
+- **`net/gameServer.ts` is untested**, and is now the most intricate untested code in the repo: seq deduplication, exponential backoff, the hidden-tab interval, and `dispose`. The dedup is doing real work — without it a poll in flight during a submit animates the same move twice — and nothing checks it. It is mockable: `fetch` and timers are both things Vitest can fake, and the client already has Vitest.
 - ✅ ~~**No automated tests.**~~ 61 of them now: `bun test` for `shared/` and `server/`, Vitest for `client/`. Covers `parseCommand`, validation and resolution, `getReachableTiles`, `handleTileClick`, and the fold. `server/`'s own store is still untested — that arrives with the sidequest's S5.
 
 Neither of the items below belongs to a phase, which is how things stay recorded forever. Both are self-contained and can be picked up between phases:
@@ -811,8 +812,8 @@ Terrain and pathfinding are one system: the Dijkstra **is** the pathing, `valida
 
 - Terrain types incl. `bridge`; one table carrying cost-per-movement-type and a single defence value
 - `exploreMovement` — Dijkstra returning the reachable set and `pathTo(destination)`
-- `validatePath` on the server — closes the existing unvalidated-`path` hole
-- Character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`
+- `validatePath` inside `validateMove` — closes the existing unvalidated-`path` hole. It lands there rather than anywhere else because validation and resolution are already separate: `validateMove` decides legality, `resolveMove` only emits the event
+- Character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`, and `matches` gains `map_id`. **That column is the first real schema migration** — the thing the sidequest's tooling exists for, and worth doing deliberately rather than as an afterthought
 - Terrain rendering, and a route highlight on the chosen destination
 - Confirmation step: pick destination → see route → confirm, rather than committing on click
 
@@ -825,9 +826,11 @@ Verifiable with no combat: does the overlay stop at mountains, does cavalry outr
 Terrain and pathing already exist by this point, so the numbers mean something. The integration risk here is the chain — command → resolve → events → animate → death → mesh removal → victory — not the damage formula.
 
 - **7a** `UnitType` catalog — migrate `Unit.movementRange` onto it. *(`unitTypes.ts` has existed unreferenced since early on.)*
-- **7b** `Unit` gains `health`/`maxHealth` and `unitTypeId`; update the starting units.
+- **7b** `Unit` gains `health`/`maxHealth` and `unitTypeId`; update the starting units. **No migration** — `Unit` lives inside `GameState`, which is a JSON blob, so the shape changes without the schema moving. That is the JSON-blob decision paying off, and it is why `map_id` in phase 6 is the first migration rather than this.
 - **7c** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. Assumes 5b landed: without per-event folding, this is where the animation/state-commit ordering bug stops being harmless.
-- **7d** `UnitActionCommand` replaces `MoveCommand` — path plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events.
+- **7d** `UnitActionCommand` replaces `MoveCommand` — path plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events. Touches three places, all separate now: `parseCommand` for the wire shape, `validateMove`'s successor for legality, and `resolveMove`'s for the events — plus rolls, which arrive as an argument to resolution so `shared/` stays pure.
+
+  ⚠️ **Invariant 9 constrains the events.** `unitAttacked` must carry the target's *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client already knows because it holds the preceding state. And a successful charge emits `unitDied` **plus** `unitMoved`, two independently-applicable events, not one compound event carrying both effects.
 - **7e** Attack in `handleTileClick` — clicking an enemy while selected becomes a real action, plus an attack-range overlay.
 - **7f** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop.
 
@@ -850,6 +853,8 @@ Counter-attacks, ranged bands (`min`/`max`), `canMoveAndAttack`, and charge with
 - **Match lifecycle** — a way for a second person to join, and matches bound to users rather than open to anyone.
 - **OAuth sign-in** with sessions in our own DB — see Identity.
 - **Session→player map** at join, so `actor` comes from *who you are* rather than *whose turn it is*.
+
+Schema work: `owner_id` on `matches`, a lobby `status` column, and a `sessions` table — three migrations, generated from `schema.ts`. Also **removes a read**: `http.ts` currently loads the match twice per command because `resolveActor` needs state to stamp `actor = currentTurn` while `submit` owns the read. A session lookup needs no state, so the extra read goes with it.
 
 `resolveActor` is the only server change: it stops returning `state.currentTurn` and looks up the session. Client-side, the one function that answers "who is the user" reads it from the session instead of deriving it, and gains an ownership check so a browser doesn't offer units it can't command.
 
