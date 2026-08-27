@@ -19,7 +19,7 @@ increment should land before A's port to avoid rewriting `match.ts` twice.
 
 | | What |
 |---|---|
-| **A — Storage** | Drizzle over libSQL, real migrations, the new three-table schema |
+| **A — Storage** | Drizzle over libSQL, real migrations, the new two-table schema |
 | **B — Event model** | Events become authoritative and independently applicable, `Action` becomes a branded validated type, and the client can fold |
 
 ## Why now
@@ -41,40 +41,35 @@ written against the new layer rather than migrated mid-flight.
 
 # The data model
 
-## Three tables
+## Two tables
 
 ```sql
-matches  (id, created_at, initial_state, current_state, current_seq, current_turn,
-          PRIMARY KEY (id))
+matches      (id, created_at, initial_state, current_state, current_seq, current_turn,
+              PRIMARY KEY (id))
 
-actions  (match_id, seq, actor, action, created_at,
-          PRIMARY KEY (match_id, seq),
-          FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE)
-
-events   (match_id, seq, events,
-          PRIMARY KEY (match_id, seq),
-          FOREIGN KEY (match_id, seq) REFERENCES actions(match_id, seq) ON DELETE CASCADE)
+resolutions  (match_id, seq, actor, action, events, created_at,
+              PRIMARY KEY (match_id, seq),
+              FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE)
 ```
 
-`log_entries` is gone. `actions` and `events` name the two halves of the domain
-language: an **action** is the validated instruction, an **event** is the
-resolved change. `actor` and `created_at` live on `actions`, where they belong —
-the actor *instructed*; events are consequences.
+`log_entries` is gone. A **resolution** is one accepted action and everything it
+produced — which is exactly what a row is, and what the old name never said.
+`actor` is promoted out of the JSON blob because it is the one field of an action
+you would ever filter on.
 
-**These are strictly 1:1, and that is a deliberate vertical split**, not
-normalisation for its own sake. Two justifications:
+**An earlier draft split this into `actions` and `events` tables.** The
+justification was access pattern: events are read on every poll, actions only by
+a human debugging, so keeping the hot table small would halve the row read. That
+does not survive scrutiny — the two are strictly 1:1 at roughly 80 bytes each, so
+it buys half a page read at the cost of a second table, a composite foreign key,
+an extra write statement, and a load-bearing ordering constraint inside the
+batch. **A 1:1 split with no independent access pattern is ceremony.**
 
-- **Access pattern.** `events` is read on every poll; `actions` is read only by a
-  human debugging. Splitting keeps the hot table roughly half the row size.
-- **Independent evolution.** `actions` will grow columns — dice at phase 7,
-  possibly rejected commands later. `events` will not.
+The coherent alternative in the *other* direction is one row per event
+(`events(match_id, seq, idx, event)`). That is the shape to revisit if anything
+ever queries inside events — see below for why not yet.
 
-The single-table alternative is `resolutions (match_id, seq, actor, action,
-events, created_at)` — one fewer statement per write, and an accurate name.
-Rejected in favour of the split above, but it is a close call and worth knowing
-it was one.
-
-## Why `events` is a table and not a column on `matches`
+## Why the log is rows and not a column on `matches`
 
 Measured, because it looked tempting:
 
@@ -85,9 +80,10 @@ Measured, because it looked tempting:
 
 Every command rewrites the whole blob, so the cost is **quadratic** — a
 2000-entry match would rewrite ~160 MB over its life. An append-only log has to
-be rows.
+be rows. (That is about *the log* being rows; whether a row holds one event or an
+array of them is the separate question below.)
 
-## Why `events` holds a JSON array rather than one row per event
+## Why `events` is a JSON array rather than one row per event
 
 - **Events are always consumed as a group.** `playEvents(events)` animates one
   action's events as a batch; the array matches the access pattern exactly.
@@ -238,7 +234,7 @@ Advance Wars a turn is *N* plies by one player, so a turn spans several rows.
 | `initial_state` | **Kept.** Write-only on purpose — the replay anchor, and it cannot be backfilled. Phase 6 offers an alternative (derive it from `map_id`), rejected because it would make map definitions immutable forever |
 | `map_id` | **Phase 6**, for provenance and display. `initial_state` stays the authoritative snapshot |
 | `current_seq` / `current_turn` | **Kept** denormalised. The concurrency guard needs one; listing without parsing a board needs the other |
-| `created_at` on `actions` | **Kept**, and now justified — phase 9's async play needs "waiting on you since when". Its absence of justification was the old complaint; moving it to `actions` also removes the duplicate |
+| `created_at` on `resolutions` | **Kept**, and now justified — phase 9's async play needs "waiting on you since when", whose source is `max(created_at)` for a match. It was previously write-only *and* unexplained, unlike `initial_state` |
 | Index on `matches.created_at` | **Deferred.** Not because 5 rows are small, but because phase 9 scopes listing by owner and would want `(owner_id, created_at)` — a *different* index. Building the wrong one now costs write amplification |
 | `owner_id`, lobby `status` | **Phase 9.** Their arrival is what exercises the migration path, which is the point |
 | `created_at` as INTEGER epoch ms | Correct in SQLite (64-bit). App-supplied rather than a DB default, keeping the clock injectable for tests |
@@ -278,13 +274,12 @@ silently drop the deliberate `'write'` (`BEGIN IMMEDIATE`) that `match.ts` uses.
 The resolution keeps both properties:
 
 ```ts
-const insertAction = db.insert(actions).values({ … }).toSQL()   // typed construction
-const insertEvents = db.insert(events).values({ … }).toSQL()
-const updateMatch  = db.update(matches).set({ … }).where(…).toSQL()
+const logIt  = db.insert(resolutions).values({ … }).toSQL()   // typed construction
+const update = db.update(matches).set({ … }).where(…).toSQL()
 
-const [, , updated] = await client.batch(
-  [insertAction, insertEvents, updateMatch].map((q) => ({ sql: q.sql, args: q.params })),
-  'write',                                                       // mode survives
+const [, updated] = await client.batch(
+  [logIt, update].map((q) => ({ sql: q.sql, args: q.params })),
+  'write',                                                     // mode survives
 )
 if (updated.rowsAffected !== 1) throw new Error(`match ${matchId} moved under us`)
 ```
@@ -293,13 +288,6 @@ if (updated.rowsAffected !== 1) throw new Error(`match ${matchId} moved under us
 schema-checked query building **and** `BEGIN IMMEDIATE` — and `rowsAffected`
 comes back, which lets us **assert the guarded UPDATE actually matched**. That
 guard exists today and has never been checked.
-
-⚠️ **Statement order in that batch is load-bearing**, not cosmetic: `events` has
-a composite foreign key to `actions(match_id, seq)`, so the action row must be
-inserted first or the batch fails on the constraint. libSQL executes batch
-statements in order within the transaction, so this works — but reordering them
-would break it, and the failure would look like a foreign-key error rather than
-an ordering bug.
 
 ## Verified by probe
 
@@ -322,9 +310,9 @@ an ordering bug.
 
 ## New files
 
-- **`src/schema.ts`** (~45 lines) — the three tables in `sqlite-core`, with
-  `$type<>()` on the JSON columns, composite primary keys, and the foreign keys.
-  Imports types *from* `shared/`, never the reverse.
+- **`src/schema.ts`** (~40 lines) — the two tables in `sqlite-core`, with
+  `$type<>()` on the JSON columns, a composite primary key on `resolutions`, and
+  the foreign key. Imports types *from* `shared/`, never the reverse.
 - **`drizzle.config.ts`** — `dialect: 'turso'`, with **repo-root-relative** paths.
 - **`drizzle/`** — generated migration SQL plus `meta/` snapshots.
 - **`schema.sql`** — the whole current schema as readable DDL from
@@ -503,8 +491,8 @@ pragmas preserved. Delete the local `aw.db` and let migrations create it.
 **S5 — Port the reads.** `loadMatch`, `list`, `snapshot`, `since`, `create`.
 Add the `MatchStore` tests here; they make S6 safe.
 
-**S6 — Port `submit`** to the three-statement `.toSQL()` batch across `actions`,
-`events`, and `matches`, with the `rowsAffected` assertion.
+**S6 — Port `submit`** to the two-statement `.toSQL()` batch — insert the
+resolution, update the match — with the `rowsAffected` assertion.
 
 **S7 — Fold back into `architecture.md`.** Rewrite Data store and Event log;
 reword invariant 5 for the branded type; document how to add a migration; note
@@ -562,8 +550,8 @@ job. Full request/response is Playwright's layer.
 5. **The fold** *(shared)* — `applyEvents(initial, events)` equals `current_state`.
    Also: every event applied twice equals once, and reordering changes the result.
 6. **`MatchStore`** *(server)* — `create → submit → snapshot → since`, the
-   primary-key race on a duplicate `seq`, the `rowsAffected` guard, and cascade
-   delete. Against `:memory:`.
+   primary-key race on a duplicate `seq`, the `rowsAffected` guard, and that
+   deleting a match cascades its resolutions away. Against `:memory:`.
 7. **Schema drift** *(server)* — migrate a fresh `:memory:` database, read back
    `sqlite_master`, compare against the committed `schema.sql`. Verified working.
 
