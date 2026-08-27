@@ -24,9 +24,12 @@ packages/
       data/  unitTypes 🚧 · terrain ⬜ · damageTable ⬜ · chargeThresholds ⬜
   server/     depends on shared only — an app, not a library: no barrel
     src/  http.ts ✅ Bun.serve — /api/* plus the client's static build
-          db.ts ✅ libSQL client, schema, pragmas
-          match.ts ✅ MatchStore over SQLite — create/list/snapshot/since/submit
+          db.ts ✅ libSQL client + Drizzle, pragmas, migrations at boot
+          schema.ts ✅ matches · resolutions, typed from shared/
+          match.ts ✅ MatchStore — create/list/snapshot/since/submit
           initialState.ts ✅
+    drizzle/ ✅ generated migrations + snapshots, committed
+    schema.sql ✅ the whole current shape, one readable file
   client/     depends on shared only — Vite + React + Babylon
     index.html  vite.config.ts  public/
     src/  main.tsx · index.css
@@ -313,24 +316,44 @@ Whatever provides identity, **it resolves to a `PlayerId` in one place on the se
 
 ## Data store ✅
 
-**SQLite locally, Turso when deployed — the same code either way.** Use the libSQL client rather than `bun:sqlite` directly: it behaves identically against a local file, and pointing it at a hosted Turso database is a connection string rather than a rewrite. Turso is the destination because it removes the two things that actually bite about SQLite in production — ephemeral disks wiping the file on redeploy, and being pinned to a single machine.
+**SQLite locally, Turso when deployed — the same code either way.** The libSQL client rather than `bun:sqlite` directly: it behaves identically against a local file, and pointing it at a hosted Turso database is a connection string rather than a rewrite. `drizzle-orm/libsql` *is* the Turso adapter, so that promise survives the ORM — the URL is the entire difference. Turso is the destination because it removes the two things that actually bite about SQLite in production — ephemeral disks wiping the file on redeploy, and being pinned to a single machine.
 
 Start with the local file. Nothing has to change to move.
 
 ```sql
 matches      (id, created_at, initial_state JSON, current_state JSON,
-              current_seq, current_turn)
-log_entries  (match_id, seq, action JSON, events JSON, created_at,
-              PRIMARY KEY (match_id, seq))
+              current_seq, current_turn,
+              PRIMARY KEY (id))
+resolutions  (match_id, seq, actor, action JSON, events JSON, created_at,
+              PRIMARY KEY (match_id, seq),
+              FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE)
 ```
 
-**`initial_state` is written and never read — on purpose.** Together with the log it makes a match a complete, self-contained history; without it the log is a sequence of deltas with no anchor to replay from. It's what replays, post-mortems, and "does folding the log reproduce `current_state`?" all need. Kept now because it costs a few kilobytes once per match and **cannot be backfilled** — the starting state is exactly the thing that would be missing.
+**A resolution is one accepted action and everything it produced.** That is what a row is, and what the earlier name `log_entries` never said. `actor` is promoted out of the action blob because it is the one field of an action worth filtering on — and the only record of who did something, once phase 9 makes that mean anything.
+
+**`initial_state` is written and never read — on purpose.** Together with the log it makes a match a complete, self-contained history; without it the log is a sequence of deltas with no anchor to replay from. Kept because it costs a few kilobytes once per match and **cannot be backfilled** — the starting state is exactly the thing that would be missing.
+
+**`current_state` is a checkpoint, not a second source of truth.** Every event-sourced system checkpoints; keeping the latest is the degenerate case, at an interval of one. It exists for `submit`, which must validate against current state and already reads that row for the concurrency guard — so reading it costs nothing extra. Measured: 0.06 ms against ~8 ms to fold 2000 entries, on a path that runs per command.
+
+Events remain authoritative (invariant 9), and a test folds the log from `initial_state` on every run to prove the two agree. If they ever diverge, rebuild the checkpoint — the log is the truth.
 
 `current_turn` is denormalised out of `current_state` so listing matches doesn't parse an entire board per row just to show whose turn it is — the one field the start screen needs without loading a game.
 
 State goes in as **JSON blobs** — nothing ever queries inside them, and invariant 4 already guarantees they survive the round trip. A rule written for the wire pays off again here.
 
-The schema is identical on Postgres, so the engine stays a swap rather than a redesign.
+The schema is close to identical on Postgres, but not free: `created_at` holds `Date.now()`, which overflows Postgres `INTEGER` (int4) and would need `BIGINT` or `TIMESTAMPTZ`. It works in SQLite only because SQLite integers are 64-bit.
+
+### Access ✅ *(Drizzle)*
+
+`schema.ts` defines both tables in `drizzle-orm/sqlite-core`; queries are typed from it, so a column rename is a compile error rather than a runtime surprise. JSON columns carry `$type<GameState>()` and friends, which removes the `JSON.parse(x as string) as GameState` pattern from every call site.
+
+Worth knowing what `$type` is: a compile-time assertion, not validation. It centralises a cast rather than performing a check. Real validation would need a validator, and the natural home would cost `shared/` its zero-dependency property.
+
+**Migrations are generated, not hand-written.** `bun run db:generate` diffs `schema.ts` against snapshots in `packages/server/drizzle/meta/` and writes SQL; `migrate()` applies pending ones at boot. Committed, because they record what has been applied to real databases and cannot be regenerated from the schema alone. `schema.sql` is refreshed by the same script — the whole current shape in one readable file, since incremental migrations don't give you that.
+
+Two things stay on the raw driver because Drizzle cannot express them: the pragmas, and the `'write'` transaction mode — see Concurrency.
+
+⚠️ **`file:` paths in `DATABASE_URL` are relative to the repo root**, resolved there regardless of cwd. Two processes read the same variable from different directories — the server runs with cwd set to its own package, `drizzle-kit` runs from the root — so left to cwd, one string would mean two different files and migrations would quietly build a second, empty database beside the real one. The `db:*` scripts live at the root and do **not** use `bun run --filter`, which would set cwd to the package and lose the single root `.env`.
 
 ### Concurrency
 
@@ -340,9 +363,13 @@ Once `submit` is async, two requests can interleave at `await` boundaries even i
 read state + seq  →  validate → resolve → applyEvents (all pure)  →  batch[ INSERT log, UPDATE match ]
 ```
 
+Statements are **built by Drizzle and run by the raw driver**. Drizzle's own `batch()` cannot pass a transaction mode — it always gets libSQL's default, `deferred`, which starts as a read and upgrades on first write. `'write'` is `BEGIN IMMEDIATE`: the lock is taken up front, so the upgrade cannot fail partway through. `.toSQL()` gives typed construction *and* the mode; one cast (`bind`) bridges Drizzle's `unknown[]` params to libSQL's `InValue[]`.
+
 **`batch` makes the two writes atomic in one round trip.** That matters mainly for *crashes*, not races: if the process died between the insert and the update, the log would be one ahead of the materialized state and every later command would fail forever. Atomicity is worth having whether or not anyone else is writing.
 
 **`PRIMARY KEY (match_id, seq)` catches the race for free.** It's the natural key for the log anyway, and it's what makes `WHERE seq > N` an index scan — so it isn't concurrency machinery, it's just the schema. Two writers claiming the same seq means one violates it and throws.
+
+**The `WHERE … AND current_seq = ?` guard is now asserted.** `submit` checks the update's `rowsAffected` and throws if it matched nothing. That branch cannot be reached from the API — verified by trying: twenty attempts to move the row between the read and the write fired it zero times, because libSQL serialises on one connection, and the primary key would violate first regardless. The test covers the mechanism it rests on rather than the branch, and says so.
 
 **A violation is left to throw.** It needs one player submitting twice inside a single round trip, which the client's in-flight guard already prevents — so it's an impossible-today condition, and impossible conditions should be loud. It surfaces as a 500 (as JSON, so the client can report it accurately) and lands in the logs. If it ever starts happening, a retry goes in exactly one place.
 
@@ -365,19 +392,19 @@ Moving to Turso or Postgres is what buys multi-instance and ephemeral-disk toler
 
 The match is an initial state plus an ordered log of validated changes.
 
-Each row of `log_entries` holds one **action** and the **events** it produced, keyed by a monotonic `seq`. Three fields, three jobs — and only one of them is exercised today:
+Each row of `resolutions` holds one **action** and the **events** it produced, keyed by a monotonic `seq`. Three fields, three jobs:
 
 | | | |
 |---|---|---|
 | `seq` | the cursor for catch-up | ✅ |
 | `events` | what happened, at animation granularity | ✅ read on every poll |
-| `action` | the command as authenticated: `+ actor`, later `+ rolls` | ⬜ written, never read |
+| `action` | the accepted command: `+ actor`, later `+ rolls` | ⬜ written, never read — an audit record, not something to act on |
 
 **Events are authoritative.** `applyEvents` is the only thing that mutates state, so `initialState + log` reproduces `currentState` by construction, and a test checks it over a multi-turn script and at every intermediate step. `matches.current_state` is a checkpoint, not a second truth — see below.
 
 `GET /events?since=N` is the log's other job, and the reason push could be dropped: the log *is* the subscription mechanism, so polling cost nothing to build.
 
-⬜ Still to come — see `server-sidequest.md`: `log_entries` becomes `resolutions` with `actor` as a column, and the client folds events as it animates them.
+⬜ Still to come: **the client folds too.** `applyEvents` is exported and the client can already import it; wiring it in belongs with phase 5, and is what fixes the animation/state-commit ordering noted under step 7c — a client that applies each event as it animates tracks the animation instead of snapping to the end state. A late-joining client would then replay rather than depend on a snapshot.
 
 **Rejections are not logged.** `submit` returns before the write, so the log records what happened, never what was attempted. "Who tried what" needs failed actions stored too.
 
@@ -646,7 +673,7 @@ Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DE
 Neither of the items below belongs to a phase, which is how things stay recorded forever. Both are self-contained and can be picked up between phases:
 
 - **Turn on `strict`.** Its own increment, because the fallout is unpredictable — see Known compromises.
-- **The server sidequest** — `server-sidequest.md`. Drizzle and real migrations, `log_entries` split into `actions` and `events`, events made authoritative and independently applicable, and the repo's first tests. Folds back into Data store, Match log, and invariant 5 when it lands.
+- ✅ ~~**The server sidequest**~~ — `server-sidequest.md`. Drizzle and real migrations, `log_entries` became `resolutions`, events made authoritative and independently applicable, `Action` became a branded validated type, and the repo got its first tests. Client-side event folding is the one piece left, and belongs with phase 5.
 
 ## Known compromises
 
@@ -660,6 +687,8 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 | **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | Phase 9 — match lifecycle and, eventually, notification. Not new mechanics |
 | **Ruleset versioning** | None | Stamp a ruleset id on the match so old logs replay under the rules they were played with |
 | **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
+| **Migrations run at boot** | `migrate()` on startup, fine for one instance | A rolling deploy wants it as a separate step before new code starts |
+| **Two reads per command** | `resolveActor` needs state to stamp `actor = currentTurn`, but `submit` owns the read | Phase 9 — `resolveActor` becomes a session lookup and the extra read disappears |
 | **`strict` is off** | Inherited from the Vite template — `noUnusedLocals` etc. are on, but `strictNullChecks` and friends are not | Turn it on as its own increment and fix the fallout |
 
 ## Out of scope for v1
@@ -678,7 +707,7 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 3. ✅ ~~**Real server**~~ — `Bun.serve` with the three endpoints, event log with `seq`, session cookie, `parseCommand` at the boundary, exhaustive `default` in `applyAction`, Vite proxy, dev script running both processes. `App` owned the connection (4b moved it to `MatchRoute`); `GameCanvas` takes the server as a prop; `client` no longer depends on `@aw/server`.
 4. ✅ ~~**Matches become real things.**~~ Split in two, because the schema wanted writing once:
 
-   **4a ✅** Match ids; `matches` and `log_entries` in SQLite via the libSQL client; match-scoped API; `match.ts` as an async `MatchStore`; one `.env` at the repo root.
+   **4a ✅** Match ids; `matches` and `log_entries` in SQLite via the libSQL client (the sidequest later replaced `log_entries` with `resolutions` and the hand-written SQL with Drizzle); match-scoped API; `match.ts` as an async `MatchStore`; one `.env` at the repo root.
 
    **4b ✅** react-router (declarative); `/` start screen; `/:matchId` for the game; `connectGameServer(matchId)` returning a result rather than throwing. `net/` moved out of `game/`; `MatchSummary` moved to `shared/protocol.ts`.
 
@@ -781,11 +810,15 @@ Two reads of the same header, and — more importantly — concurrent requests f
 
 ## Verification
 
-`bun run lint` and `bun run build` after any change — both must stay clean, and both exit non-zero on failure (verified, not assumed).
+`bun run lint`, `bun run test` and `bun run build` after any change — all must stay clean, and all exit non-zero on failure (verified, not assumed).
+
+⚠️ Check the **exit code**, not the output. `bun run typecheck | tail -3 && echo OK` chains the `&&` to `tail`, which always succeeds, so it prints OK on failure. That happened.
 
 `build` is `tsc -b && bun run --filter '@aw/client' bundle`: one typecheck pass across every package, then bundle. `bun run typecheck` is the `tsc -b` half alone.
 
 `noUnusedLocals` / `noUnusedParameters` are on, and `verbatimModuleSyntax` requires explicit `import type`. Note `strict` is **not** on — see Known compromises.
+
+**Tests: `bun test` for `shared/` and `server/`, Vitest for `client/`.** Two runners because `bun test` needs no dependency or config and covers the pure packages, while Vitest reuses the client's `vite.config.ts` and is the only route to React component and hook tests. Test files are portable between them — the same suite ran under both, differing only in the import line. The root `test` script runs both. Server tests use `:memory:`, one database per test, migrated in `beforeEach`.
 
 **Typechecking reads `shared`'s source directly. No declaration output, no project references across packages.** `server` and `client` resolve `@aw/shared` through its `exports` field to `src/index.ts` and pull that source into their own programs, so `shared` is checked as a byproduct of being imported and needs no pass of its own. The root `tsconfig.json` is a solution file over `server` and `client` only.
 
