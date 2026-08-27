@@ -93,7 +93,7 @@ export function createMatchStore({ client: db }: Database): MatchStore {
       if (!match) return null;
 
       const { rows } = await db.execute({
-        sql: 'SELECT events FROM log_entries WHERE match_id = ? AND seq > ? ORDER BY seq',
+        sql: 'SELECT events FROM resolutions WHERE match_id = ? AND seq > ? ORDER BY seq',
         args: [matchId, from],
       });
 
@@ -128,18 +128,20 @@ export function createMatchStore({ client: db }: Database): MatchStore {
       // the materialized state, and every later command would then fail.
       //
       // It also catches concurrent writers for free -- two requests claiming
-      // the same seq means one violates PRIMARY KEY (match_id, seq) and
+      // the same seq means one violates PRIMARY KEY (match_id, seq) on
+      // resolutions and
       // throws. That needs a player submitting twice inside a single round
       // trip, which the client's in-flight guard prevents, so it is left to
       // fail loudly rather than be handled. A retry would go here.
       await db.batch(
         [
           {
-            sql: `INSERT INTO log_entries (match_id, seq, action, events, created_at)
-                  VALUES (?, ?, ?, ?, ?)`,
+            sql: `INSERT INTO resolutions (match_id, seq, actor, action, events, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?)`,
             args: [
               matchId,
               nextSeq,
+              actor,
               JSON.stringify(validation.action),
               JSON.stringify(events),
               Date.now(),
