@@ -341,15 +341,9 @@ Events remain authoritative (invariant 9), and a test folds the log from `initia
 
 State goes in as **JSON blobs** — nothing ever queries inside them, and invariant 4 already guarantees they survive the round trip. A rule written for the wire pays off again here.
 
-**The log is rows, not a JSON column on `matches`.** A column looks tempting and is quadratic: every command rewrites the whole blob, so 500 commands rewrote 9.8 MB against an append-only log's 40 KB, and a 2000-entry match would rewrite ~160 MB over its life. Within a row, `events` stays a JSON array because events are always consumed as a batch per `seq` — one row per event would need an explicit ordering column to buy something nothing yet wants.
-
 The schema is close to identical on Postgres, but not free: `created_at` holds `Date.now()`, which overflows Postgres `INTEGER` (int4) and would need `BIGINT` or `TIMESTAMPTZ`. It works in SQLite only because SQLite integers are 64-bit.
 
 ### Access ✅ *(Drizzle)*
-
-**What else was evaluated**, so it isn't re-proposed. **Prisma** is the obvious default and lost on two things: it types JSON columns as `JsonValue`, which does not assign to `GameState`, so all four blob columns would need a *double* cast — worse than what this replaced; and Prisma 8 drops SQLite entirely (`--target` accepts postgres or mongodb), which destroys the engine-portability argument that had won it the first evaluation. **Kysely** has the best inference of the group but its libSQL dialect is third-party and pinned nine minor versions behind our driver. **MikroORM** brings a Unit of Work for rows that are JSON blobs; **TypeORM** has no libSQL driver at all. **Atlas** is the best migration tool here, but its Drizzle provider is unpublished and it puts a Go binary in the toolchain.
-
-The fallback, if Drizzle ever stops paying: ~40 lines of `sql` tagged template plus a typed row decoder. That is the one option giving *runtime-checked* coercion rather than an assertion — which is more than any ORM here offers.
 
 `schema.ts` defines both tables in `drizzle-orm/sqlite-core`; queries are typed from it, so a column rename is a compile error rather than a runtime surprise. JSON columns carry `$type<GameState>()` and friends, which removes the `JSON.parse(x as string) as GameState` pattern from every call site.
 
