@@ -20,7 +20,7 @@ increment should land before A's port to avoid rewriting `match.ts` twice.
 | | What |
 |---|---|
 | **A — Storage** | Drizzle over libSQL, real migrations, the new two-table schema |
-| **B — Event model** | Events become authoritative and independently applicable, `Action` becomes a branded validated type, and the client can fold |
+| **B — Event model** | ✅ **Done** (S0–S2). Events are authoritative and independently applicable; `Action` is a branded validated type. Client-side folding remains, and belongs with phase 5 |
 
 ## Why now
 
@@ -408,7 +408,7 @@ anything with history.
 
 ---
 
-# Workstream B — the event model
+# Workstream B — the event model ✅
 
 ## `applyEvents`, and the fold
 
@@ -436,7 +436,11 @@ Reducers stop returning state and return events; `applyEvents` produces state.
 One mutation path, so live play and replay cannot diverge — the chess property
 becomes true by construction rather than by hope.
 
-## The client folds too
+## The client folds too ⬜
+
+Not built. `applyEvents` is exported from the barrel and the client can already
+import it; wiring it in belongs with phase 5, which is the refactor of the code
+that consumes events.
 
 A client joining late, or recovering from lost state, replays events to the
 current position rather than depending on a snapshot. Folding *facts* is not
@@ -539,23 +543,24 @@ job. Full request/response is Playwright's layer.
 
 ## What to test, in value order
 
-1. **`handleTileClick`** *(client · Vitest)* — pure, and phase 5's union
-   conversion is a shape change to exactly this input. **Before the conversion.**
-2. **`parseCommand`** *(shared)* — the security boundary. Malformed bodies, extra
+1. ✅ **`handleTileClick`** *(client · Vitest)* — 11 tests. Phase 5's union
+   conversion is a shape change to exactly this input, so about half will need
+   their assertions updated — which is the point of writing them first.
+2. ✅ **`parseCommand`** *(shared)* — 19 tests. The security boundary. Malformed bodies, extra
    properties dropped, `MAX_PATH_STEPS`, and the exhaustive `default`.
-3. **The reducers** *(shared)* — actor checked first, `hasActed` set on move and
+3. ✅ **Validation and resolution** *(shared)* — actor checked first, `hasActed` set on move and
    reset for the incoming player only, each rejection reason.
-4. **`getReachableTiles`** *(shared)* — own tile excluded, enemy tiles impassable,
+4. ✅ **`getReachableTiles`** *(shared)* — own tile excluded, enemy tiles impassable,
    friendly tiles pass-through but not stopping points.
-5. **The fold** *(shared)* — `applyEvents(initial, events)` equals `current_state`.
+5. ✅ **The fold** *(shared)* — `applyEvents(initial, events)` equals `current_state`.
    Also: every event applied twice equals once, and reordering changes the result.
-6. **`MatchStore`** *(server)* — `create → submit → snapshot → since`, the
+6. ⬜ **`MatchStore`** *(server)* — `create → submit → snapshot → since`, the
    primary-key race on a duplicate `seq`, the `rowsAffected` guard, and that
    deleting a match cascades its resolutions away. Against `:memory:`.
-7. **Schema drift** *(server)* — migrate a fresh `:memory:` database, read back
+7. ⬜ **Schema drift** *(server)* — migrate a fresh `:memory:` database, read back
    `sqlite_master`, compare against the committed `schema.sql`. Verified working.
 
-Items 1–4 need neither workstream, which is why they are S0.
+Items 1–5 are done: 1–4 in S0, the fold in S1. 6 and 7 arrive with S5 and S4.
 
 ---
 

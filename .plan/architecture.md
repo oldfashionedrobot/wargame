@@ -92,10 +92,10 @@ Pure server authority, no client-side prediction. An ordinary SaaS request/respo
 | | Direction | Contents |
 |---|---|---|
 | **`Command`** | client → server | Intent only. No actor, no dice. Can be rejected. |
-| **`Action`** | inside the server | `Command` + the `actor` the server attached + any rolls it generated. What reducers consume. |
+| **`Action`** | inside the server | A `Command` the authority has **accepted**: authenticated, checked, plus any rolls it generated. Unforgeable — see invariant 5. |
 | **`GameEvent`** | server → clients | A fact that already happened. What clients fetch and animate. |
 
-The server authenticates a command into an action, validates it, resolves it, and emits events. Keeping `Command` and `Action` distinct is what stops a client from supplying its own `actor` or its own dice — those fields exist only on the type the client can't send.
+`validateCommand` authenticates and checks a command, minting an `Action`; `resolveAction` turns that into events; `applyEvents` folds them into the next state. Keeping `Command` and `Action` distinct is what stops a client from supplying its own `actor` or its own dice — those fields exist only on the type the client can't send.
 
 Events, not actions, are what clients receive: a client that renders facts needs no rule parity with the server, so a stale browser tab can't compute a divergent outcome, and animation gets its ordered sequence — move, hit, death — without re-running resolution in the renderer.
 
@@ -159,7 +159,7 @@ A hidden tab polls at the slowest interval, and a `visibilitychange` listener re
 
 **Commands must be validated at runtime, not just typed.** TypeScript is erased; a POST body is attacker-controlled and can be anything. `shared/protocol.ts` gets a `parseCommand(input: unknown): Command | null` that checks the object shape and field types, and the HTTP handler rejects with 400 before the authority sees it. Hand-rolled — the command union is tiny and a schema library would be the package's first dependency.
 
-`applyAction` also carries an exhaustive `default` returning `{ ok: false, reason }`. Without it the switch returned `undefined` for an unknown `type` and the caller threw reading `.ok` off it — verified, not theoretical. Types make that unreachable in-process and guarantee nothing over a wire.
+`validateCommand` also carries an exhaustive `default` refusing an unknown `type`, and `applyEvents` throws on an unknown event rather than skipping it — silently ignoring one would desync a replay. An earlier switch without such a default returned `undefined` and the caller threw reading `.ok` off it — verified, not theoretical. Types make that unreachable in-process and guarantee nothing over a wire.
 
 **Payloads are bounded in two places**, because validating a body means allocating it first:
 
@@ -337,7 +337,7 @@ The schema is identical on Postgres, so the engine stays a swap rather than a re
 Once `submit` is async, two requests can interleave at `await` boundaries even in a single-threaded process — both read the same state, both compute against it, both try to write.
 
 ```
-read state + seq  →  applyAction (pure)  →  batch[ INSERT log, UPDATE match ]
+read state + seq  →  validate → resolve → applyEvents (all pure)  →  batch[ INSERT log, UPDATE match ]
 ```
 
 **`batch` makes the two writes atomic in one round trip.** That matters mainly for *crashes*, not races: if the process died between the insert and the update, the log would be one ahead of the materialized state and every later command would fail forever. Atomicity is worth having whether or not anyone else is writing.
@@ -373,9 +373,11 @@ Each row of `log_entries` holds one **action** and the **events** it produced, k
 | `events` | what happened, at animation granularity | ✅ read on every poll |
 | `action` | the command as authenticated: `+ actor`, later `+ rolls` | ⬜ written, never read |
 
-⚠️ **What is built is catch-up, not event sourcing.** `GET /events?since=N` is the whole consumer, and it is why push could be dropped: the log *is* the subscription mechanism, so polling cost nothing to build. Nothing folds anything — **state is currently derivable only from `action`s**, because `applyAction` is the fold function; there is no `applyEvent`. So "the log reproduces current state" is a claim, not a checked property.
+**Events are authoritative.** `applyEvents` is the only thing that mutates state, so `initialState + log` reproduces `currentState` by construction, and a test checks it over a multi-turn script and at every intermediate step. `matches.current_state` is a checkpoint, not a second truth — see below.
 
-Making events authoritative (`applyEvents`), splitting `log_entries` into `actions` and `events`, and adding the fold test are all planned — see `server-sidequest.md`.
+`GET /events?since=N` is the log's other job, and the reason push could be dropped: the log *is* the subscription mechanism, so polling cost nothing to build.
+
+⬜ Still to come — see `server-sidequest.md`: `log_entries` becomes `resolutions` with `actor` as a column, and the client folds events as it animates them.
 
 **Rejections are not logged.** `submit` returns before the write, so the log records what happened, never what was attempted. "Who tried what" needs failed actions stored too.
 
@@ -393,10 +395,12 @@ type GameEvent =
   | { type: 'turnEnded'; nextPlayer }
 ```
 
-`applyAction` grows an events channel, additively:
+Resolution returns events and nothing else; state comes from folding them:
 
 ```ts
-applyAction(state, action) → { ok: true, state, events } | { ok: false, reason }
+validateCommand(state, command, actor) → { ok: true, action } | { ok: false, reason }
+resolveAction(state, action)           → GameEvent[]
+applyEvents(state, events)             → GameState
 ```
 
 ## State model
@@ -425,7 +429,7 @@ GameEvent     UnitMovedEvent | TurnEndedEvent                   ✅
 ```
 
 - `PlayerId` is a plain string so player count isn't baked into the type system. Turn order is array rotation over `GameState.players`, wrapping via modulo — works for 2 or 4 players, and is where a "skip eliminated players" rule goes.
-- **One `hasActed` flag**, not separate move/attack flags — one command per unit action sets it exactly once. Reset in `applyEndTurn` for the incoming player only.
+- **One `hasActed` flag**, not separate move/attack flags — one command per unit action sets it exactly once. Reset by the `turnEnded` event, for the incoming player only.
 - ⚠️ **`MoveAction.path` is currently an unvalidated field** — the reducer reads only the last element and never checks the intermediate steps. Fixed by `validatePath`.
 
 ## Content — `shared/data/`
@@ -637,12 +641,11 @@ Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DE
 ## Open questions
 
 - **Counter-attack for `min > 1` units.** "No counter given or received" was settled when indirect fire and immobility were the same thing. Now that `canMoveAndAttack` is independent of range category, it's worth re-checking whether the rule should still key off `min > 1` alone. Probably still correct — nothing has challenged it — but never explicitly revisited.
-- **No automated tests**, despite `shared/` being pure functions designed for exactly that. `applyMove`, `applyEndTurn`, `handleTileClick`, `getReachableTiles` all take plain data and return plain data. The architectural claim is real; it's unexercised.
+- ✅ ~~**No automated tests.**~~ 61 of them now: `bun test` for `shared/` and `server/`, Vitest for `client/`. Covers `parseCommand`, validation and resolution, `getReachableTiles`, `handleTileClick`, and the fold. `server/`'s own store is still untested — that arrives with the sidequest's S5.
 
 Neither of the items below belongs to a phase, which is how things stay recorded forever. Both are self-contained and can be picked up between phases:
 
 - **Turn on `strict`.** Its own increment, because the fallout is unpredictable — see Known compromises.
-- **A test suite for `shared/`.** The reducers, legality predicates, and pathfinding are already pure; phase 2's contract was verified with a throwaway script that should have been a test file.
 - **The server sidequest** — `server-sidequest.md`. Drizzle and real migrations, `log_entries` split into `actions` and `events`, events made authoritative and independently applicable, and the repo's first tests. Folds back into Data store, Match log, and invariant 5 when it lands.
 
 ## Known compromises
@@ -731,7 +734,7 @@ Terrain and pathing already exist by this point, so the numbers mean something. 
 - **7c** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. Resolves the animation/state-commit ordering noted above.
 - **7d** `UnitActionCommand` replaces `MoveCommand` — path plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events.
 - **7e** Attack in `handleTileClick` — clicking an enemy while selected becomes a real action, plus an attack-range overlay.
-- **7f** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `applyAction` rejects everything once set, and a `gameEnded` event tells clients to stop.
+- **7f** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop.
 
 Without 7f the board reaches a state where one side has nothing left and End Turn keeps working forever.
 
