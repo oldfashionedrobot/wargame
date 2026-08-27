@@ -2,7 +2,7 @@
 
 Turn-based strategy game, American Revolutionary War theme — infantry, cavalry, artillery rather than tanks and jets. React + TypeScript + Babylon.js, built with bun.
 
-Hot-seat is the current mode — one client driving both players, and no server process yet. Networked multiplayer is the end goal, so the server/client split exists in the code from the start rather than being retrofitted; phase 3 is what makes it a real process boundary.
+Hot-seat is the current mode — one client driving both players, against a real server process. Networked multiplayer is the end goal, so the server/client split existed in the code from the start rather than being retrofitted; phase 3 made it a real process boundary.
 
 **This document describes the target.** Everything is marked: ✅ built · 🚧 partial · ⬜ not built. It's the single running spec — no decision history, no changelog.
 
@@ -208,7 +208,7 @@ Both filtered explicitly for legibility; `'*'` would also work — bun skips pac
 | | |
 |---|---|
 | `PORT` | server port, default 3001 |
-| `DATABASE_URL` ⬜ | `file:./aw.db` locally, a `libsql://…` URL on Turso. Read from 4a onward |
+| `DATABASE_URL` ✅ | `file:./aw.db` locally, a `libsql://…` URL on Turso |
 
 The client has none, because same-origin means it never needs a base URL.
 
@@ -265,11 +265,11 @@ interface GameServer {
 }
 ```
 
-`dispose()` is not optional bookkeeping. **Unsubscribing every listener does not stop the polling loop** — an implementation that polls runs regardless of whether anyone is listening, so whoever constructed the server has to be able to shut it down. `App` calls it from its effect cleanup, and also on a connection that resolves *after* teardown, which is exactly what StrictMode produces: a connect already in flight when the effect unmounts, leaking a second poll loop for the life of the tab if nobody disposes it.
+`dispose()` is not optional bookkeeping. **Unsubscribing every listener does not stop the polling loop** — an implementation that polls runs regardless of whether anyone is listening, so whoever constructed the server has to be able to shut it down. `MatchRoute` calls it from its effect cleanup, and also on a connection that resolves *after* teardown, which is exactly what StrictMode produces: a connect already in flight when the effect unmounts, leaking a second poll loop for the life of the tab if nobody disposes it.
 
 `getState()` is kept for debugging and for reads that need the authoritative value rather than a render replica. It is **synchronous**, which has a consequence worth stating plainly:
 
-**A remote implementation cannot have state at construction time.** It needs a round trip first. So `App` owns the async bootstrap — it constructs the server, awaits the initial state, and renders `GameCanvas` only once ready, passing the server in as a prop. `GameCanvas` stops constructing its own authority and becomes a pure consumer of one.
+**A remote implementation cannot have state at construction time.** It needs a round trip first. So `MatchRoute` owns the async bootstrap — it constructs the server, awaits the initial state, and renders `GameCanvas` only once ready, passing the server in as a prop. `GameCanvas` stops constructing its own authority and becomes a pure consumer of one.
 
 That is the better shape regardless (a component shouldn't create the thing it talks to), and it's what makes "phase 3 doesn't change `GameCanvas`" nearly true instead of false — the loading state lives one level up.
 
@@ -355,21 +355,25 @@ Known costs, none of them surprises later if they're written down now:
 
 Moving to Turso or Postgres is what buys multi-instance and ephemeral-disk tolerance. Neither is close to necessary.
 
-## Event log ✅
+## Match log 🚧
 
-The match is an initial state plus an ordered log of validated changes. Current state is derivable from it, though the server also keeps it materialized.
+The match is an initial state plus an ordered log of validated changes.
 
-```ts
-interface LogEntry {
-  seq: number           // monotonic per match; the cursor for reconnect
-  action: Action        // the command as authenticated: + actor, + rolls
-  events: GameEvent[]   // what happened — the replayable record
-}
-```
+Each row of `log_entries` holds one **action** and the **events** it produced, keyed by a monotonic `seq`. Three fields, three jobs — and only one of them is exercised today:
 
-The action is kept for audit — who tried what, and what the dice said. Events are what replays and what clients receive.
+| | | |
+|---|---|---|
+| `seq` | the cursor for catch-up | ✅ |
+| `events` | what happened, at animation granularity | ✅ read on every poll |
+| `action` | the command as authenticated: `+ actor`, later `+ rolls` | ⬜ written, never read |
 
-**Materialize, don't fold.** `matches.current_state` is kept alongside the log rather than derived from it. Folding the whole log on every read would be O(n) per request to save a kilobyte of storage. The log is for replay, audit, and catch-up — not for answering "what is the board right now".
+⚠️ **What is built is catch-up, not event sourcing.** `GET /events?since=N` is the whole consumer, and it is why push could be dropped: the log *is* the subscription mechanism, so polling cost nothing to build. Nothing folds anything — **state is currently derivable only from `action`s**, because `applyAction` is the fold function; there is no `applyEvent`. So "the log reproduces current state" is a claim, not a checked property.
+
+Making events authoritative (`applyEvents`), splitting `log_entries` into `actions` and `events`, and adding the fold test are all planned — see `server-sidequest.md`.
+
+**Rejections are not logged.** `submit` returns before the write, so the log records what happened, never what was attempted. "Who tried what" needs failed actions stored too.
+
+**Materialize, don't fold.** `matches.current_state` is a **checkpoint** — the degenerate case of the checkpointing every event-sourced system does, at an interval of one. It exists for `submit`, which must validate against current state and already reads that row for the concurrency guard, so `current_state` rides along free. Measured: 0.06 ms materialized versus ~8 ms to fold 2000 entries, on a path that runs per command.
 
 Persisted in SQLite. See Data store.
 
@@ -633,6 +637,7 @@ Neither of the items below belongs to a phase, which is how things stay recorded
 
 - **Turn on `strict`.** Its own increment, because the fallout is unpredictable — see Known compromises.
 - **A test suite for `shared/`.** The reducers, legality predicates, and pathfinding are already pure; phase 2's contract was verified with a throwaway script that should have been a test file.
+- **The server sidequest** — `server-sidequest.md`. Drizzle and real migrations, `log_entries` split into `actions` and `events`, events made authoritative and independently applicable, and the repo's first tests. Folds back into Data store, Match log, and invariant 5 when it lands.
 
 ## Known compromises
 
@@ -661,7 +666,7 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 
 1. ✅ ~~**Monorepo restructure**~~ — `packages/{shared,server,client}`, bun workspaces, root scripts.
 2. ✅ ~~**`GameServer` interface + in-process implementation**~~ — `GameCanvas` stopped owning `GameState`, `submit` is async, `actor` lands on every action with reducer checks, events are the reducer's output channel. Beyond plan: rejection reasons surface in the UI rather than the console.
-3. ✅ ~~**Real server**~~ — `Bun.serve` with the three endpoints, event log with `seq`, session cookie, `parseCommand` at the boundary, exhaustive `default` in `applyAction`, Vite proxy, dev script running both processes. `App` owns the connection; `GameCanvas` takes the server as a prop; `client` no longer depends on `@aw/server`.
+3. ✅ ~~**Real server**~~ — `Bun.serve` with the three endpoints, event log with `seq`, session cookie, `parseCommand` at the boundary, exhaustive `default` in `applyAction`, Vite proxy, dev script running both processes. `App` owned the connection (4b moved it to `MatchRoute`); `GameCanvas` takes the server as a prop; `client` no longer depends on `@aw/server`.
 4. ✅ ~~**Matches become real things.**~~ Split in two, because the schema wanted writing once:
 
    **4a ✅** Match ids; `matches` and `log_entries` in SQLite via the libSQL client; match-scoped API; `match.ts` as an async `MatchStore`; one `.env` at the repo root.
@@ -745,6 +750,25 @@ Counter-attacks, ranged bands (`min`/`max`), `canMoveAndAttack`, and charge with
 `resolveActor` is the only server change: it stops returning `state.currentTurn` and looks up the session. Client-side, the one function that answers "who is the user" reads it from the session instead of deriving it, and gains an ownership check so a browser doesn't offer units it can't command.
 
 Until all three land, two tabs share control of both players rather than being two players.
+
+#### Security work that only becomes possible here
+
+**Today there is no authorization, not weak authorization.** `resolveActor` ignores the session and returns `state.currentTurn`, so the cookie gates nothing: any client, with or without one, can submit as whichever player's turn it is, to any match id — and `GET /api/matches` hands out the ids. That's the deliberate hot-seat concession, but it's worth stating in those terms, because several defences are pointless until it changes:
+
+- **CSRF hardening is premature.** `SameSite=Lax` already blocks a cross-site POST from carrying the cookie, and an attacker doesn't need the cookie anyway — there is no authority to forge. Tokens and double-submit patterns become meaningful the same day `resolveActor` starts trusting the session, and not before.
+- **`GET /api/matches` becomes an information leak.** It currently lists every match from every visitor. Harmless while matches are unowned; the moment they're owned, listing must be scoped to the player — which is the same change already recorded under Known compromises, arriving for a second reason.
+- **`404` on a missing match stops being neutral.** Once matches are owned, "no such match" and "not yours" should be the same response, or the endpoint becomes an existence oracle.
+
+**The session-id race has to be fixed before the session means anything.** `fetch` currently does:
+
+```ts
+const session = readCookie(request, SESSION_COOKIE) ?? crypto.randomUUID()
+const isNewSession = readCookie(request, SESSION_COOKIE) === null
+```
+
+Two reads of the same header, and — more importantly — concurrent requests from a browser with no cookie yet each mint a *different* id and each set it. Last write wins. Harmless while the id is decorative; once a row in `sessions` hangs off it, that's orphaned rows and a player who is briefly two people. The fix belongs with the sessions table rather than ahead of it.
+
+**Where the check goes.** Whatever provides identity resolves to a `PlayerId` in one place, before `actor` is stamped — see Identity. Ownership is then a lookup in front of the authority, never a rule the reducers know about. Note that `canSelectUnit` deliberately stays a game fact and needs no identity: the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
 
 ## Verification
 
