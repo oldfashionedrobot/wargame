@@ -488,11 +488,27 @@ chess property on its own.
 on the live database** — prove the schema was written from observed reality
 before anything depends on it. Nothing imports it yet.
 
-**S4 — Migrations and client construction.** Baseline migration, root-level
-`db:*` scripts, committed `schema.sql`, `db.ts` on the Drizzle migrator with
-pragmas preserved. Delete the local `aw.db` and let migrations create it.
+**S4 — The schema moves.** `db.ts` switches from `CREATE TABLE IF NOT EXISTS` to
+the Drizzle migrator, pragmas preserved and still gated on `file:`. Delete the
+local `aw.db` and let migrations create it.
 
-**S5 — Port the reads.** `loadMatch`, `list`, `snapshot`, `since`, `create`.
+⚠️ **`match.ts`'s two `log_entries` statements move to `resolutions` in the same
+increment**, still as raw SQL. Otherwise the table the server reads and writes
+stops existing the moment the migrator runs, and the game is broken from S4
+until S6 — which the "every increment leaves it playable" rule forbids. Four
+lines: two table names and the new `actor` column.
+
+That makes the split cleaner than it first looked: **S4 is the schema change,
+S5–S6 are the query-layer change.** Neither touches the other, and each reverts
+on its own.
+
+Two details. The migrator's `migrationsFolder` must resolve from
+`import.meta.url` rather than cwd — the same dependency the `DATABASE_URL` fix
+removed, and leaving its twin would be half a job. And Drizzle exports its own
+`migrate`, so the import needs an alias.
+
+**S5 — Port the reads to Drizzle.** `loadMatch`, `list`, `snapshot`, `since`,
+`create` — raw SQL to typed queries, against the schema S4 already put in place.
 Add the `MatchStore` tests here; they make S6 safe.
 
 **S6 — Port `submit`** to the two-statement `.toSQL()` batch — insert the
