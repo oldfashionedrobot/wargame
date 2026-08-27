@@ -1,5 +1,6 @@
-# Build output and lockfiles -- generated, not authored.
+# Build output, generated migrations, and lockfiles -- generated, not authored.
 dist
+packages/server/drizzle
 dist-ssr
 bun.lock
 *.tsbuildinfo

@@ -12,6 +12,8 @@
     "build": "tsc -b && bun run --filter '@aw/client' bundle",
     "lint": "eslint .",
     "test": "bun test packages/shared packages/server && bun run --filter '@aw/client' test",
+    "db:generate": "drizzle-kit generate --config packages/server/drizzle.config.ts && drizzle-kit export --config packages/server/drizzle.config.ts > packages/server/schema.sql",
+    "db:migrate": "drizzle-kit migrate --config packages/server/drizzle.config.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "preview": "bun run --filter '@aw/client' preview"
@@ -19,6 +21,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.13.2",
+    "drizzle-kit": "0.31.10",
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.1.1",

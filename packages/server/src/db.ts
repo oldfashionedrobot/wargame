@@ -1,10 +1,26 @@
+import { resolve } from 'node:path';
 import { createClient } from '@libsql/client';
 import type { Client } from '@libsql/client';
 
 // Read from the repo-root .env. A local file today; a libsql:// URL on Turso,
 // which is the whole reason for the libSQL client over bun:sqlite -- the code
 // is identical either way.
-const DEFAULT_URL = 'file:./aw.db';
+const DEFAULT_URL = 'file:./packages/server/aw.db';
+
+// `file:` paths in DATABASE_URL are relative to the REPO ROOT, not to whoever
+// is running. That has to be pinned down because two processes read the same
+// variable from different directories: the server runs with cwd set to its own
+// package, while drizzle-kit runs from the root. Left to cwd, one string would
+// mean two different files and migrations would quietly build a second, empty
+// database next to the real one.
+const REPO_ROOT = new URL('../../../', import.meta.url).pathname;
+
+function resolveUrl(url: string): string {
+  if (!url.startsWith('file:')) return url; // libsql://, http:// -- not a path
+  const path = url.slice('file:'.length);
+  if (path.startsWith('/')) return url; // already absolute
+  return `file:${resolve(REPO_ROOT, path)}`;
+}
 
 export interface Database {
   client: Client;
@@ -14,7 +30,8 @@ export interface Database {
 // The url travels with the client so migrate() can't be pointed at a different
 // database than the one it's configuring.
 export function createDb(url: string = process.env.DATABASE_URL ?? DEFAULT_URL): Database {
-  return { client: createClient({ url }), url };
+  const resolved = resolveUrl(url);
+  return { client: createClient({ url: resolved }), url: resolved };
 }
 
 /**

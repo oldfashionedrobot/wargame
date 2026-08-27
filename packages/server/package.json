@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@aw/shared": "workspace:*",
-    "@libsql/client": "^0.17.4"
+    "@libsql/client": "^0.17.4",
+    "drizzle-orm": "0.45.2"
   },
   "devDependencies": {
     "@types/bun": "latest"
