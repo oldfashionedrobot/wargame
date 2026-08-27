@@ -1,4 +1,6 @@
+import type { InStatement, InValue } from '@libsql/client';
 import { and, desc, eq, gt } from 'drizzle-orm';
+import type { Query } from 'drizzle-orm';
 import { applyEvents, resolveAction, validateCommand } from '@aw/shared';
 import type {
   Command,
@@ -31,6 +33,20 @@ interface MatchRow {
   state: GameState;
   seq: number;
 }
+
+/**
+ * Hands a Drizzle-built statement to the raw libSQL driver.
+ *
+ * Needed because `client.batch` takes a transaction mode and Drizzle's own
+ * `batch` does not -- see submit. Drizzle types params as `unknown[]` since it
+ * is dialect-agnostic; libSQL wants `InValue[]`. Every SQLite column type
+ * Drizzle emits maps into libSQL's `Value` union, so the assertion is sound --
+ * but it is an assertion, and this is the one place it lives.
+ */
+const bind = (query: Query): InStatement => ({
+  sql: query.sql,
+  args: query.params as InValue[],
+});
 
 export function createMatchStore({ db, client }: Database): MatchStore {
   async function loadMatch(matchId: string): Promise<MatchRow | null> {
@@ -119,39 +135,51 @@ export function createMatchStore({ db, client }: Database): MatchStore {
       const nextState = applyEvents(match.state, events);
       const nextSeq = match.seq + 1;
 
-      // Both writes in one atomic round trip. This is about crashes more than
-      // races: a process dying between them would leave the log one ahead of
-      // the materialized state, and every later command would then fail.
+      // Built by Drizzle, run by the raw driver. Drizzle's own batch() cannot
+      // pass a transaction mode -- it always gets libSQL's default, `deferred`,
+      // which starts as a read and upgrades on first write. `write` is BEGIN
+      // IMMEDIATE: the lock is taken up front, so the upgrade cannot fail
+      // partway through. Deliberate, and the reason this is not db.batch().
       //
-      // It also catches concurrent writers for free -- two requests claiming
-      // the same seq means one violates PRIMARY KEY (match_id, seq) on
-      // resolutions and
-      // throws. That needs a player submitting twice inside a single round
-      // trip, which the client's in-flight guard prevents, so it is left to
-      // fail loudly rather than be handled. A retry would go here.
-      await client.batch(
+      // Atomicity here is about crashes more than races: a process dying
+      // between the two writes would leave the log one ahead of the
+      // materialized state, and every later command would fail.
+      //
+      // Concurrent writers are caught for free -- two requests claiming the
+      // same seq means one violates PRIMARY KEY (match_id, seq) and throws.
+      // That needs a player submitting twice inside a single round trip, which
+      // the client's in-flight guard prevents, so it is left to fail loudly
+      // rather than be handled. A retry would go here.
+      const [, updated] = await client.batch(
         [
-          {
-            sql: `INSERT INTO resolutions (match_id, seq, actor, action, events, created_at)
-                  VALUES (?, ?, ?, ?, ?, ?)`,
-            args: [
-              matchId,
-              nextSeq,
-              actor,
-              JSON.stringify(validation.action),
-              JSON.stringify(events),
-              Date.now(),
-            ],
-          },
-          {
-            sql: `UPDATE matches
-                     SET current_state = ?, current_seq = ?, current_turn = ?
-                   WHERE id = ? AND current_seq = ?`,
-            args: [JSON.stringify(nextState), nextSeq, nextState.currentTurn, matchId, match.seq],
-          },
-        ],
+          db.insert(resolutions).values({
+            matchId,
+            seq: nextSeq,
+            actor,
+            action: validation.action,
+            events,
+            createdAt: Date.now(),
+          }),
+          db
+            .update(matches)
+            .set({
+              currentState: nextState,
+              currentSeq: nextSeq,
+              currentTurn: nextState.currentTurn,
+            })
+            // Optimistic concurrency: refuse to write over a row that moved
+            // since we read it.
+            .where(and(eq(matches.id, matchId), eq(matches.currentSeq, match.seq))),
+        ].map((query) => bind(query.toSQL())),
         'write',
       );
+
+      // Unreachable while the log's primary key violates first, which is
+      // exactly why it is worth asserting: an impossible condition that goes
+      // unchecked is one nobody notices becoming possible.
+      if (updated.rowsAffected !== 1) {
+        throw new Error(`match ${matchId} moved underneath us at seq ${match.seq}`);
+      }
 
       return { ok: true, seq: nextSeq, events, state: nextState };
     },

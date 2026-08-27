@@ -181,6 +181,35 @@ describe('storage guarantees', () => {
     expect(Number(rows[0].c)).toBe(0);
   });
 
+  /**
+   * submit guards its UPDATE with `WHERE current_seq = <the seq it read>`, and
+   * throws if that matched nothing. The throw itself cannot be reached from
+   * the public API -- verified by trying: twenty interleave attempts, moving
+   * the row between submit's read and its write, fired it zero times, because
+   * libSQL serialises on one connection so the update always queues behind the
+   * batch. The log's primary key would violate first in any case.
+   *
+   * So this covers the mechanism the guard rests on rather than the branch:
+   * that a stale `current_seq` in the WHERE really does match nothing. Without
+   * it the guard would be three lines nothing has ever exercised.
+   */
+  it('refuses to overwrite a match row whose seq has moved', async () => {
+    const { id } = await store.create();
+    await store.submit(id, { type: 'endTurn' }, BLUE);
+
+    const stale = await db.client.execute({
+      sql: 'UPDATE matches SET current_seq = 99 WHERE id = ? AND current_seq = ?',
+      args: [id, 0], // 0 was the seq before that submit -- now out of date
+    });
+    expect(stale.rowsAffected).toBe(0);
+
+    const current = await db.client.execute({
+      sql: 'UPDATE matches SET current_seq = 99 WHERE id = ? AND current_seq = ?',
+      args: [id, 1],
+    });
+    expect(current.rowsAffected).toBe(1);
+  });
+
   it('keeps current_state equal to folding the log from initial_state', async () => {
     const { id } = await store.create();
     await store.submit(id, move('blue-1', [1, 2], [0, 0]), BLUE);
