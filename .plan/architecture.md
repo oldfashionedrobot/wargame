@@ -669,7 +669,7 @@ Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DE
 
 - **Counter-attack for `min > 1` units.** "No counter given or received" was settled when indirect fire and immobility were the same thing. Now that `canMoveAndAttack` is independent of range category, it's worth re-checking whether the rule should still key off `min > 1` alone. Probably still correct — nothing has challenged it — but never explicitly revisited.
 - **`net/gameServer.ts` is untested**, and is now the most intricate untested code in the repo: seq deduplication, exponential backoff, the hidden-tab interval, and `dispose`. The dedup is doing real work — without it a poll in flight during a submit animates the same move twice — and nothing checks it. It is mockable: `fetch` and timers are both things Vitest can fake, and the client already has Vitest.
-- ✅ ~~**No automated tests.**~~ 61 of them now: `bun test` for `shared/` and `server/`, Vitest for `client/`. Covers `parseCommand`, validation and resolution, `getReachableTiles`, `handleTileClick`, and the fold. `server/`'s own store is still untested — that arrives with the sidequest's S5.
+- ✅ ~~**No automated tests.**~~ 80 of them now — 50 in `shared/`, 19 in `server/`, 11 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, `getReachableTiles`, the event fold and its two design rules, `MatchStore` against `:memory:`, and `handleTileClick`. What is *not* covered: the renderer (needs WebGL, so a real browser), and `net/gameServer.ts` — see above.
 
 Neither of the items below belongs to a phase, which is how things stay recorded forever. Both are self-contained and can be picked up between phases:
 
@@ -777,6 +777,24 @@ before: `selection.movement.some(…)` describes something the field isn't yet.)
   `renderer` for the `showSelection` calls below it, and the hook has no renderer.
   Accept, or have the canvas disable the button until the renderer exists.
 
+**`net/gameServer.ts` gets tests, and one simplification.** It is the most
+intricate untested code in the client: seq deduplication, exponential backoff,
+the hidden-tab interval, and `dispose`. The dedup is load-bearing — without it a
+poll in flight during a submit animates the same move twice — and nothing checks
+it. `fetch` and timers are both things Vitest can fake, so the core is testable
+without a DOM; only the `visibilitychange` behaviour needs one, and that arrives
+with 5b.
+
+The simplification: `applyUpdate` takes `EventsResponse | CommandResult` and
+opens with `if ('ok' in update && !update.ok) return`, a union that exists only
+to serve two callers. Moving the check to the one caller that needs it lets it
+take a single shape.
+
+```ts
+poll:    applyUpdate(response)
+submit:  if (result.ok) applyUpdate(result)
+```
+
 **Verifiable now.** The earlier warning here — *"nothing verifies this beyond
 playing the game"* — is retired. `handleTileClick` has 11 Vitest tests, of which
 **4 assertions across 3 tests** touch the record shape; the rest assert
@@ -801,7 +819,13 @@ rather than jumping to the end state and tweening afterwards.
   motivation — `GET /state` is one request — but it falls out.
 - **Hook tests need a DOM.** Vitest is configured with no environment; this adds
   `happy-dom` and `@testing-library/react` to the client, which is what makes
-  `useGameSession` testable at all.
+  `useGameSession` testable at all — and finishes `gameServer.ts`'s coverage,
+  whose `visibilitychange` handling 5a cannot reach.
+
+**The client's model stays simpler than the server's.** It folds events to
+animate them and snaps to the snapshot as a correction. It needs no checkpoint,
+because the server hands it one on every update — so none of the server's
+checkpoint-and-rebuild machinery belongs here.
 
 Folding facts is not resolving anything, so invariant 8 is untouched: the line
 stays *deterministic preview yes, random resolution no*.
