@@ -1,4 +1,4 @@
-import { applyAction } from '@aw/shared'
+import { applyAction } from '@aw/shared';
 import type {
   Action,
   Command,
@@ -9,27 +9,27 @@ import type {
   MatchSummary,
   PlayerId,
   StateResponse,
-} from '@aw/shared'
-import type { Database } from './db'
-import { createInitialState } from './initialState'
+} from '@aw/shared';
+import type { Database } from './db';
+import { createInitialState } from './initialState';
 
 // Nothing deletes or expires matches yet, and anyone can create them, so the
 // table only grows. A cap keeps the start screen bounded without pretending to
 // be pagination -- which isn't worth building until matches are owned and
 // there's a reason to look past the newest few.
-const LIST_LIMIT = 50
+const LIST_LIMIT = 50;
 
 export interface MatchStore {
-  create(): Promise<MatchSummary>
-  list(): Promise<MatchSummary[]>
-  snapshot(matchId: string): Promise<StateResponse | null>
-  since(matchId: string, from: number): Promise<EventsResponse | null>
-  submit(matchId: string, command: Command, actor: PlayerId): Promise<CommandResult>
+  create(): Promise<MatchSummary>;
+  list(): Promise<MatchSummary[]>;
+  snapshot(matchId: string): Promise<StateResponse | null>;
+  since(matchId: string, from: number): Promise<EventsResponse | null>;
+  submit(matchId: string, command: Command, actor: PlayerId): Promise<CommandResult>;
 }
 
 interface MatchRow {
-  state: GameState
-  seq: number
+  state: GameState;
+  seq: number;
 }
 
 export function createMatchStore({ client: db }: Database): MatchStore {
@@ -37,34 +37,34 @@ export function createMatchStore({ client: db }: Database): MatchStore {
     const { rows } = await db.execute({
       sql: 'SELECT current_state, current_seq FROM matches WHERE id = ?',
       args: [matchId],
-    })
-    const row = rows[0]
-    if (!row) return null
+    });
+    const row = rows[0];
+    if (!row) return null;
     return {
       state: JSON.parse(row.current_state as string) as GameState,
       seq: Number(row.current_seq),
-    }
+    };
   }
 
   return {
     async create() {
-      const id = crypto.randomUUID()
-      const createdAt = Date.now()
-      const state = createInitialState()
+      const id = crypto.randomUUID();
+      const createdAt = Date.now();
+      const state = createInitialState();
       // Written once and never read back yet -- deliberately. initial_state
       // plus the log is a complete history; without it the log is deltas with
       // no anchor, and it cannot be reconstructed after the fact. Cheap to
       // keep, impossible to backfill.
-      const serialized = JSON.stringify(state)
+      const serialized = JSON.stringify(state);
 
       await db.execute({
         sql: `INSERT INTO matches
                 (id, created_at, initial_state, current_state, current_seq, current_turn)
               VALUES (?, ?, ?, ?, 0, ?)`,
         args: [id, createdAt, serialized, serialized, state.currentTurn],
-      })
+      });
 
-      return { id, createdAt, seq: 0, currentTurn: state.currentTurn }
+      return { id, createdAt, seq: 0, currentTurn: state.currentTurn };
     },
 
     async list() {
@@ -73,7 +73,7 @@ export function createMatchStore({ client: db }: Database): MatchStore {
            FROM matches
           ORDER BY created_at DESC
           LIMIT ${LIST_LIMIT}`,
-      )
+      );
       // No board parsing here -- current_turn is denormalised precisely so
       // listing stays cheap as matches accumulate.
       return rows.map((row) => ({
@@ -81,43 +81,43 @@ export function createMatchStore({ client: db }: Database): MatchStore {
         createdAt: Number(row.created_at),
         seq: Number(row.current_seq),
         currentTurn: row.current_turn as PlayerId,
-      }))
+      }));
     },
 
     async snapshot(matchId) {
-      const match = await loadMatch(matchId)
-      return match && { seq: match.seq, state: match.state }
+      const match = await loadMatch(matchId);
+      return match && { seq: match.seq, state: match.state };
     },
 
     async since(matchId, from) {
-      const match = await loadMatch(matchId)
-      if (!match) return null
+      const match = await loadMatch(matchId);
+      if (!match) return null;
 
       const { rows } = await db.execute({
         sql: 'SELECT events FROM log_entries WHERE match_id = ? AND seq > ? ORDER BY seq',
         args: [matchId, from],
-      })
+      });
 
       return {
         seq: match.seq,
         events: rows.flatMap((row) => JSON.parse(row.events as string) as GameEvent[]),
         state: match.state,
-      }
+      };
     },
 
     async submit(matchId, command, actor) {
-      const match = await loadMatch(matchId)
-      if (!match) return { ok: false, reason: 'no such match' }
+      const match = await loadMatch(matchId);
+      if (!match) return { ok: false, reason: 'no such match' };
 
       // `actor` is assigned AFTER the spread, so a client-supplied `actor` in
       // the JSON body is overwritten rather than honoured. Swapping these two
       // would be a privilege escalation the type system cannot catch.
-      const action: Action = { ...command, actor }
+      const action: Action = { ...command, actor };
 
-      const result = applyAction(match.state, action)
-      if (!result.ok) return { ok: false, reason: result.reason }
+      const result = applyAction(match.state, action);
+      if (!result.ok) return { ok: false, reason: result.reason };
 
-      const nextSeq = match.seq + 1
+      const nextSeq = match.seq + 1;
 
       // Both writes in one atomic round trip. This is about crashes more than
       // races: a process dying between them would leave the log one ahead of
@@ -155,9 +155,9 @@ export function createMatchStore({ client: db }: Database): MatchStore {
           },
         ],
         'write',
-      )
+      );
 
-      return { ok: true, seq: nextSeq, events: result.events, state: result.state }
+      return { ok: true, seq: nextSeq, events: result.events, state: result.state };
     },
-  }
+  };
 }

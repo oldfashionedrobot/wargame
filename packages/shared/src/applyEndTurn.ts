@@ -1,17 +1,17 @@
-import type { ActionResult, EndTurnAction, GameState, PlayerId } from './types'
+import type { ActionResult, EndTurnAction, GameState, PlayerId } from './types';
 
 function getNextPlayer(state: GameState): PlayerId {
-  const currentIndex = state.players.findIndex((player) => player.id === state.currentTurn)
-  const nextIndex = (currentIndex + 1) % state.players.length
-  return state.players[nextIndex].id
+  const currentIndex = state.players.findIndex((player) => player.id === state.currentTurn);
+  const nextIndex = (currentIndex + 1) % state.players.length;
+  return state.players[nextIndex].id;
 }
 
 export function applyEndTurn(state: GameState, action: EndTurnAction): ActionResult {
   if (action.actor !== state.currentTurn) {
-    return { ok: false, reason: 'not your turn' }
+    return { ok: false, reason: 'not your turn' };
   }
 
-  const nextPlayer = getNextPlayer(state)
+  const nextPlayer = getNextPlayer(state);
 
   return {
     ok: true,
@@ -23,5 +23,5 @@ export function applyEndTurn(state: GameState, action: EndTurnAction): ActionRes
       ),
     },
     events: [{ type: 'turnEnded', nextPlayer }],
-  }
+  };
 }

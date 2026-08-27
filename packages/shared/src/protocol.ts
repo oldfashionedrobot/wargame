@@ -1,4 +1,4 @@
-import type { Command, Coordinate, GameEvent, GameState, PlayerId } from './types'
+import type { Command, Coordinate, GameEvent, GameState, PlayerId } from './types';
 
 // The wire contract. Lives in shared because both sides need it: the server
 // implements it and the client's HTTP implementation must not have to import
@@ -7,19 +7,18 @@ import type { Command, Coordinate, GameEvent, GameState, PlayerId } from './type
 // --- The interface the client talks to ------------------------------------
 
 export type CommandResult =
-  | { ok: true; seq: number; events: GameEvent[]; state: GameState }
-  | { ok: false; reason: string }
+  { ok: true; seq: number; events: GameEvent[]; state: GameState } | { ok: false; reason: string };
 
-export type UpdateListener = (events: GameEvent[], state: GameState) => void
+export type UpdateListener = (events: GameEvent[], state: GameState) => void;
 
 export interface GameServer {
   /** Latest known authoritative state. Synchronous, so a remote implementation
    *  serves it from a cache primed before construction completes. */
-  getState(): GameState
+  getState(): GameState;
 
   /** Submit intent. Async from the first version -- sync-to-async is a
    *  retrofit that touches every call site. */
-  submit(command: Command): Promise<CommandResult>
+  submit(command: Command): Promise<CommandResult>;
 
   /**
    * Register for state changes. Fires with current state as soon as it has
@@ -32,7 +31,7 @@ export interface GameServer {
    *
    * Returns an unsubscribe function.
    */
-  subscribe(onUpdate: UpdateListener): () => void
+  subscribe(onUpdate: UpdateListener): () => void;
 
   /**
    * Release the connection: stop polling, drop listeners.
@@ -41,7 +40,7 @@ export interface GameServer {
    * keeps running regardless of whether anyone is listening, so whoever
    * constructed the server has to be able to shut it down.
    */
-  dispose(): void
+  dispose(): void;
 }
 
 // --- HTTP shapes ----------------------------------------------------------
@@ -55,23 +54,23 @@ export interface GameServer {
  * and nothing in the type system would object.
  */
 export interface MatchSummary {
-  id: string
-  createdAt: number
-  seq: number
-  currentTurn: PlayerId
+  id: string;
+  createdAt: number;
+  seq: number;
+  currentTurn: PlayerId;
 }
 
 /** GET /api/state -- initial load. No events; there's nothing to animate. */
 export interface StateResponse {
-  seq: number
-  state: GameState
+  seq: number;
+  state: GameState;
 }
 
 /** GET /api/events?since=N -- everything after N. */
 export interface EventsResponse {
-  seq: number
-  events: GameEvent[]
-  state: GameState
+  seq: number;
+  events: GameEvent[];
+  state: GameState;
 }
 
 // --- Runtime validation ---------------------------------------------------
@@ -83,17 +82,17 @@ export interface EventsResponse {
 // real limit (the unit's movement budget). This exists so a hostile payload
 // can't make us materialise a million coordinates before the reducer gets a
 // chance to reject it. Far above any legitimate path on any plausible map.
-const MAX_PATH_STEPS = 256
+const MAX_PATH_STEPS = 256;
 
 function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
 function parseCoordinate(v: unknown): Coordinate | null {
-  if (!isObject(v)) return null
-  const { col, row } = v
-  if (!Number.isInteger(col) || !Number.isInteger(row)) return null
-  return { col: col as number, row: row as number }
+  if (!isObject(v)) return null;
+  const { col, row } = v;
+  if (!Number.isInteger(col) || !Number.isInteger(row)) return null;
+  return { col: col as number, row: row as number };
 }
 
 /**
@@ -104,24 +103,24 @@ function parseCoordinate(v: unknown): Coordinate | null {
  * `actor` or anything else into the authority.
  */
 export function parseCommand(input: unknown): Command | null {
-  if (!isObject(input)) return null
+  if (!isObject(input)) return null;
 
   switch (input.type) {
     case 'move': {
-      if (typeof input.unitId !== 'string') return null
-      if (!Array.isArray(input.path)) return null
-      if (input.path.length === 0 || input.path.length > MAX_PATH_STEPS) return null
-      const path: Coordinate[] = []
+      if (typeof input.unitId !== 'string') return null;
+      if (!Array.isArray(input.path)) return null;
+      if (input.path.length === 0 || input.path.length > MAX_PATH_STEPS) return null;
+      const path: Coordinate[] = [];
       for (const step of input.path) {
-        const coordinate = parseCoordinate(step)
-        if (!coordinate) return null
-        path.push(coordinate)
+        const coordinate = parseCoordinate(step);
+        if (!coordinate) return null;
+        path.push(coordinate);
       }
-      return { type: 'move', unitId: input.unitId, path }
+      return { type: 'move', unitId: input.unitId, path };
     }
     case 'endTurn':
-      return { type: 'endTurn' }
+      return { type: 'endTurn' };
     default:
-      return null
+      return null;
   }
 }

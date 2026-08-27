@@ -10,11 +10,7 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
-    "composite": true,
-    "declaration": true,
-    "emitDeclarationOnly": true,
-    "outDir": "./dist-types",
-    "rootDir": "./src",
+    "noEmit": true,
 
     /* Linting */
     "noUnusedLocals": true,

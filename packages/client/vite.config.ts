@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 // The client calls /api/* relative in every environment. In dev this proxy
 // forwards to the server process; in production the server serves this bundle
@@ -12,4 +12,4 @@ export default defineConfig({
       '/api': { target: 'http://localhost:3001', changeOrigin: true },
     },
   },
-})
+});

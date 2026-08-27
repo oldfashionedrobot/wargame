@@ -1,59 +1,59 @@
-import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
-import type { MatchSummary } from '@aw/shared'
-import { createMatch, listMatches } from '../net/matchesApi'
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router';
+import type { MatchSummary } from '@aw/shared';
+import { createMatch, listMatches } from '../net/matchesApi';
 
 interface Loaded {
-  matches: MatchSummary[] | null
-  error: string | null
+  matches: MatchSummary[] | null;
+  error: string | null;
 }
 
 const message = (cause: unknown, fallback: string): string =>
-  cause instanceof Error ? cause.message : fallback
+  cause instanceof Error ? cause.message : fallback;
 
 // Plain function rather than a hook: it does no state work, so the effect and
 // the Refresh button can share it and each decide whether the result still
 // matters by the time it arrives.
 async function fetchMatches(): Promise<Loaded> {
   try {
-    return { matches: await listMatches(), error: null }
+    return { matches: await listMatches(), error: null };
   } catch (cause) {
-    return { matches: null, error: message(cause, 'could not load matches') }
+    return { matches: null, error: message(cause, 'could not load matches') };
   }
 }
 
 function formatWhen(timestamp: number): string {
-  return new Date(timestamp).toLocaleString()
+  return new Date(timestamp).toLocaleString();
 }
 
 export function StartScreen() {
-  const navigate = useNavigate()
-  const [{ matches, error }, setLoaded] = useState<Loaded>({ matches: null, error: null })
-  const [creating, setCreating] = useState(false)
+  const navigate = useNavigate();
+  const [{ matches, error }, setLoaded] = useState<Loaded>({ matches: null, error: null });
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
     void fetchMatches().then((result) => {
-      if (!cancelled) setLoaded(result)
-    })
+      if (!cancelled) setLoaded(result);
+    });
     return () => {
-      cancelled = true
-    }
-  }, [])
+      cancelled = true;
+    };
+  }, []);
 
   const onRefresh = (): void => {
-    void fetchMatches().then(setLoaded)
-  }
+    void fetchMatches().then(setLoaded);
+  };
 
   const onCreate = (): void => {
-    setCreating(true)
+    setCreating(true);
     createMatch()
       .then((match) => void navigate(`/${match.id}`))
       .catch((cause: unknown) => {
-        setCreating(false)
-        setLoaded({ matches, error: message(cause, 'could not create a match') })
-      })
-  }
+        setCreating(false);
+        setLoaded({ matches, error: message(cause, 'could not create a match') });
+      });
+  };
 
   return (
     <div style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif' }}>
@@ -88,5 +88,5 @@ export function StartScreen() {
         </ul>
       )}
     </div>
-  )
+  );
 }

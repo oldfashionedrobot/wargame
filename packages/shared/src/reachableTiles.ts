@@ -1,6 +1,6 @@
-import { coordinateKey, isWithinGrid } from './coordinate'
-import { getUnitAt } from './queries'
-import type { Coordinate, GameState, Unit } from './types'
+import { coordinateKey, isWithinGrid } from './coordinate';
+import { getUnitAt } from './queries';
+import type { Coordinate, GameState, Unit } from './types';
 
 function neighborsOf(coordinate: Coordinate): Coordinate[] {
   return [
@@ -8,7 +8,7 @@ function neighborsOf(coordinate: Coordinate): Coordinate[] {
     { col: coordinate.col - 1, row: coordinate.row },
     { col: coordinate.col, row: coordinate.row + 1 },
     { col: coordinate.col, row: coordinate.row - 1 },
-  ]
+  ];
 }
 
 // Placeholder movement model: every tile costs 1 to enter, terrain is
@@ -21,40 +21,40 @@ function neighborsOf(coordinate: Coordinate): Coordinate[] {
 // Friendly-occupied tiles can be passed through but aren't valid stopping
 // points -- matches how Advance Wars handles unit collision.
 export function getReachableTiles(state: GameState, unit: Unit): Coordinate[] {
-  const gridHeight = state.grid.length
-  const gridWidth = state.grid[0]?.length ?? 0
+  const gridHeight = state.grid.length;
+  const gridWidth = state.grid[0]?.length ?? 0;
 
   // Keyed by coordinateKey because Coordinate has no value equality in JS, but
   // the coordinate is carried alongside its cost so nothing ever has to parse a
   // key back into numbers.
-  const visited = new Map<string, { coordinate: Coordinate; cost: number }>()
-  visited.set(coordinateKey(unit.position), { coordinate: unit.position, cost: 0 })
-  const queue: Coordinate[] = [unit.position]
+  const visited = new Map<string, { coordinate: Coordinate; cost: number }>();
+  visited.set(coordinateKey(unit.position), { coordinate: unit.position, cost: 0 });
+  const queue: Coordinate[] = [unit.position];
 
   while (queue.length > 0) {
-    const current = queue.shift()
-    if (!current) break
-    const currentCost = visited.get(coordinateKey(current))?.cost ?? 0
-    if (currentCost >= unit.movementRange) continue
+    const current = queue.shift();
+    if (!current) break;
+    const currentCost = visited.get(coordinateKey(current))?.cost ?? 0;
+    if (currentCost >= unit.movementRange) continue;
 
     for (const next of neighborsOf(current)) {
-      if (!isWithinGrid(next, gridWidth, gridHeight)) continue
+      if (!isWithinGrid(next, gridWidth, gridHeight)) continue;
 
-      const occupant = getUnitAt(state, next)
-      if (occupant && occupant.owner !== unit.owner) continue
+      const occupant = getUnitAt(state, next);
+      if (occupant && occupant.owner !== unit.owner) continue;
 
-      const nextCost = currentCost + 1
-      const key = coordinateKey(next)
-      const known = visited.get(key)
-      if (known !== undefined && known.cost <= nextCost) continue
+      const nextCost = currentCost + 1;
+      const key = coordinateKey(next);
+      const known = visited.get(key);
+      if (known !== undefined && known.cost <= nextCost) continue;
 
-      visited.set(key, { coordinate: next, cost: nextCost })
-      queue.push(next)
+      visited.set(key, { coordinate: next, cost: nextCost });
+      queue.push(next);
     }
   }
 
-  visited.delete(coordinateKey(unit.position))
+  visited.delete(coordinateKey(unit.position));
   return [...visited.values()]
     .map((entry) => entry.coordinate)
-    .filter((coordinate) => !getUnitAt(state, coordinate))
+    .filter((coordinate) => !getUnitAt(state, coordinate));
 }

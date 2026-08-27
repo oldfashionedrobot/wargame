@@ -12,7 +12,6 @@
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
-    "disableSourceOfProjectReferenceRedirect": true,
 
     /* Linting */
     "noUnusedLocals": true,
@@ -20,6 +19,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
-  "references": [{ "path": "../shared" }]
+  "include": ["src"]
 }

@@ -6,22 +6,21 @@ import type {
   GameState,
   StateResponse,
   UpdateListener,
-} from '@aw/shared'
-import { getJson, HttpError, postJson } from './http'
-import type { FailureKind } from './http'
+} from '@aw/shared';
+import { getJson, HttpError, postJson } from './http';
+import type { FailureKind } from './http';
 
-const POLL_INTERVAL_MS = 2000
-const MAX_BACKOFF_MS = 30_000
+const POLL_INTERVAL_MS = 2000;
+const MAX_BACKOFF_MS = 30_000;
 
-export type ConnectionStatus = 'connected' | 'retrying'
+export type ConnectionStatus = 'connected' | 'retrying';
 
 export interface ConnectOptions {
-  onConnectionChange?: (status: ConnectionStatus) => void
+  onConnectionChange?: (status: ConnectionStatus) => void;
 }
 
 export type ConnectResult =
-  | { ok: true; server: GameServer }
-  | { ok: false; kind: FailureKind; reason: string }
+  { ok: true; server: GameServer } | { ok: false; kind: FailureKind; reason: string };
 
 /**
  * The GameServer implementation that talks HTTP.
@@ -37,114 +36,118 @@ export async function connectGameServer(
   matchId: string,
   options: ConnectOptions = {},
 ): Promise<ConnectResult> {
-  const base = `/matches/${encodeURIComponent(matchId)}`
+  const base = `/matches/${encodeURIComponent(matchId)}`;
 
-  let initial: StateResponse
+  let initial: StateResponse;
   try {
-    initial = await getJson<StateResponse>(`${base}/state`)
+    initial = await getJson<StateResponse>(`${base}/state`);
   } catch (cause) {
-    const kind: FailureKind = cause instanceof HttpError ? cause.kind : 'unreachable'
-    return { ok: false, kind, reason: cause instanceof Error ? cause.message : 'connection failed' }
+    const kind: FailureKind = cause instanceof HttpError ? cause.kind : 'unreachable';
+    return {
+      ok: false,
+      kind,
+      reason: cause instanceof Error ? cause.message : 'connection failed',
+    };
   }
 
-  let state: GameState = initial.state
+  let state: GameState = initial.state;
   // Every update a caller sees passes this. Deduplicating here rather than in
   // the UI is what keeps components ignorant of seq: a poll already in flight
   // when a command is submitted returns the same events the POST response is
   // about to deliver, and applying both would animate the move twice.
-  let lastSeq = initial.seq
-  let status: ConnectionStatus = 'connected'
-  let disposed = false
+  let lastSeq = initial.seq;
+  let status: ConnectionStatus = 'connected';
+  let disposed = false;
 
-  const listeners = new Set<UpdateListener>()
+  const listeners = new Set<UpdateListener>();
 
   const setStatus = (next: ConnectionStatus): void => {
-    if (next === status) return
-    status = next
-    options.onConnectionChange?.(next)
-  }
+    if (next === status) return;
+    status = next;
+    options.onConnectionChange?.(next);
+  };
 
   const applyUpdate = (update: EventsResponse | CommandResult): void => {
-    if ('ok' in update && !update.ok) return
-    if (update.seq <= lastSeq) return
+    if ('ok' in update && !update.ok) return;
+    if (update.seq <= lastSeq) return;
 
-    lastSeq = update.seq
-    state = update.state
-    for (const listener of listeners) listener(update.events, state)
-  }
+    lastSeq = update.seq;
+    state = update.state;
+    for (const listener of listeners) listener(update.events, state);
+  };
 
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let backoff = POLL_INTERVAL_MS
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let backoff = POLL_INTERVAL_MS;
 
   const schedule = (delay = backoff): void => {
-    if (disposed) return
-    if (timer !== null) clearTimeout(timer)
+    if (disposed) return;
+    if (timer !== null) clearTimeout(timer);
     // Nothing changes while the tab is hidden that can't be caught up on
     // return, and a hidden tab polling forever is pure waste.
-    const hidden = typeof document !== 'undefined' && document.hidden
-    timer = setTimeout(() => void poll(), hidden ? MAX_BACKOFF_MS : delay)
-  }
+    const hidden = typeof document !== 'undefined' && document.hidden;
+    timer = setTimeout(() => void poll(), hidden ? MAX_BACKOFF_MS : delay);
+  };
 
   const poll = async (): Promise<void> => {
     try {
-      applyUpdate(await getJson<EventsResponse>(`${base}/events?since=${lastSeq}`))
-      backoff = POLL_INTERVAL_MS
-      setStatus('connected')
+      applyUpdate(await getJson<EventsResponse>(`${base}/events?since=${lastSeq}`));
+      backoff = POLL_INTERVAL_MS;
+      setStatus('connected');
     } catch {
       // Not fatal -- the next poll asks from the same lastSeq, so nothing is
       // lost by missing one. Back off so a dead server isn't hammered.
-      backoff = Math.min(backoff * 2, MAX_BACKOFF_MS)
-      setStatus('retrying')
+      backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
+      setStatus('retrying');
     }
-    schedule()
-  }
+    schedule();
+  };
 
   // Without this, going hidden schedules the next poll 30s out and coming back
   // doesn't reschedule -- so a visible tab could sit stale for half a minute.
   const onVisibilityChange = (): void => {
-    if (document.hidden) return
-    backoff = POLL_INTERVAL_MS
-    schedule(0)
-  }
+    if (document.hidden) return;
+    backoff = POLL_INTERVAL_MS;
+    schedule(0);
+  };
   if (typeof document !== 'undefined') {
-    document.addEventListener('visibilitychange', onVisibilityChange)
+    document.addEventListener('visibilitychange', onVisibilityChange);
   }
 
-  schedule()
+  schedule();
 
   const server: GameServer = {
     getState: () => state,
 
     async submit(command: Command) {
-      let result: CommandResult
+      let result: CommandResult;
       try {
-        result = await postJson<CommandResult>(`${base}/commands`, command)
+        result = await postJson<CommandResult>(`${base}/commands`, command);
       } catch (cause) {
-        setStatus('retrying')
-        return { ok: false, reason: cause instanceof Error ? cause.message : 'submit failed' }
+        setStatus('retrying');
+        return { ok: false, reason: cause instanceof Error ? cause.message : 'submit failed' };
       }
 
-      setStatus('connected')
-      applyUpdate(result)
-      return result
+      setStatus('connected');
+      applyUpdate(result);
+      return result;
     },
 
     subscribe(onUpdate) {
-      listeners.add(onUpdate)
-      onUpdate([], state) // so a subscriber needs no separate initial fetch
-      return () => listeners.delete(onUpdate)
+      listeners.add(onUpdate);
+      onUpdate([], state); // so a subscriber needs no separate initial fetch
+      return () => listeners.delete(onUpdate);
     },
 
     dispose() {
-      disposed = true
-      if (timer !== null) clearTimeout(timer)
-      timer = null
-      listeners.clear()
+      disposed = true;
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      listeners.clear();
       if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', onVisibilityChange)
+        document.removeEventListener('visibilitychange', onVisibilityChange);
       }
     },
-  }
+  };
 
-  return { ok: true, server }
+  return { ok: true, server };
 }

@@ -750,17 +750,21 @@ Until all three land, two tabs share control of both players rather than being t
 
 `bun run lint` and `bun run build` after any change — both must stay clean, and both exit non-zero on failure (verified, not assumed).
 
-`build` is `tsc -b && bun run --filter '@aw/client' bundle`: one typecheck pass across all packages in dependency order, then bundle. `bun run typecheck` is the `tsc -b` half alone.
+`build` is `tsc -b && bun run --filter '@aw/client' bundle`: one typecheck pass across every package, then bundle. `bun run typecheck` is the `tsc -b` half alone.
 
 `noUnusedLocals` / `noUnusedParameters` are on, and `verbatimModuleSyntax` requires explicit `import type`. Note `strict` is **not** on — see Known compromises.
 
-**Typechecking uses project references with declaration output.** `shared` is `composite` with `emitDeclarationOnly`, writing `.d.ts` to a gitignored `dist-types/`; `server` and `client` reference it with `disableSourceOfProjectReferenceRedirect`, so they typecheck against those declarations rather than re-reading source. Two reasons this is worth the artifacts:
+**Typechecking reads `shared`'s source directly. No declaration output, no project references across packages.** `server` and `client` resolve `@aw/shared` through its `exports` field to `src/index.ts` and pull that source into their own programs, so `shared` is checked as a byproduct of being imported and needs no pass of its own. The root `tsconfig.json` is a solution file over `server` and `client` only.
 
-- **An error in `shared` is reported once, not once per package that imports it.**
-- Incremental caching actually works — `noEmit` everywhere made every project look perpetually out of date.
+This replaced a project-references setup, and the reasoning is worth keeping because the arguments for references sound better than they measure:
 
-This does not reintroduce a runtime build step: package `exports` still point at `src/*.ts`, and both Vite and bun load the TypeScript directly. `dist-types/` is consumed only by `tsc`.
+- **Ordering was circular.** References are what made `server` unable to typecheck before `shared` had emitted; `tsc -b` then solved a constraint nothing else imposed. Without them there is no artifact to wait for and no order to get wrong — and the whole `TS6305` failure class goes with it.
+- **Incremental caching didn't apply.** Only the referenced project was ever skipped; `server` and `client` are `noEmit`, so they have no output to prove currency and re-check every run regardless. Three consecutive no-op runs measured 2.80s / 2.74s / 2.62s — flat.
+- **The one real cost of removing them**: an error inside `shared` is now reported twice, once per consuming program. Verified. Accepted as cheap at two consumers; it's the thing to re-examine if a third appears or `shared` grows a lot.
+- Stale artifacts were a live hazard rather than a theoretical one. Deleting `dist-types/` left `.tsbuildinfo` still claiming everything was current, and `tsc -b` declined to regenerate — recovery meant deleting every `.tsbuildinfo` by hand.
 
-Ordering matters as a result — `server` cannot typecheck before `shared` has emitted. That's why `build` runs a single root `tsc -b` rather than fanning out per package; the fan-out could run `server` first and fail cold with `TS6305`. Per-package `build` scripts are `tsc -b`, which resolve their own references correctly when run alone.
+`client` keeps its own `tsconfig.app.json` / `tsconfig.node.json` split, which is unrelated: `vite.config.ts` needs Node types and `nodenext`, `src/` needs DOM and `bundler`. Two genuinely different programs.
+
+None of this ever was a runtime build step: package `exports` point at `src/*.ts`, and both Vite and bun load the TypeScript directly.
 
 For anything visual, run the dev server and check in a browser. Hot reload usually suffices, but hard-reload if something that worked stops — Babylon's engine/scene lifecycle doesn't always survive HMR cleanly.

@@ -15,13 +15,13 @@ export type {
   PlayerId,
   TileType,
   Unit,
-} from './types'
+} from './types';
 
-export { coordinatesEqual, isWithinGrid } from './coordinate'
-export { getCurrentPlayer, getUnitAt } from './queries'
-export { canSelectUnit } from './legality'
-export { getReachableTiles } from './reachableTiles'
-export { applyAction } from './applyAction'
+export { coordinatesEqual, isWithinGrid } from './coordinate';
+export { getCurrentPlayer, getUnitAt } from './queries';
+export { canSelectUnit } from './legality';
+export { getReachableTiles } from './reachableTiles';
+export { applyAction } from './applyAction';
 
 export type {
   CommandResult,
@@ -30,5 +30,5 @@ export type {
   MatchSummary,
   StateResponse,
   UpdateListener,
-} from './protocol'
-export { parseCommand } from './protocol'
+} from './protocol';
+export { parseCommand } from './protocol';

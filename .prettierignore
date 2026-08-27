@@ -1,0 +1,14 @@
+# Build output and lockfiles -- generated, not authored.
+dist
+dist-ssr
+bun.lock
+*.tsbuildinfo
+
+# Local database files.
+*.db
+*.db-shm
+*.db-wal
+
+# Prose is formatted by hand: Prettier reflows tables and list markers, which
+# churns the architecture doc without improving it. Opt in per-file if wanted.
+*.md

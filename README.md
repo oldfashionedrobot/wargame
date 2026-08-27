@@ -25,7 +25,7 @@ Bun installs these isolated rather than hoisted, so `packages/server/node_module
 
 Cross-package imports go through each package's barrel (`@aw/shared`, `@aw/server`), never into individual files.
 
-`shared` has no build step — its `exports` point at TypeScript source. Bun runs TS natively; Vite compiles it for the browser. The `.d.ts` files under `packages/shared/dist-types/` exist only so downstream packages typecheck against declarations instead of re-reading source; nothing at runtime uses them.
+`shared` has no build step and emits nothing at all — its `exports` point at TypeScript source. Bun runs TS natively; Vite compiles it for the browser. `tsc` reads that same source: `server` and `client` pull it into their own programs, so it is typechecked as a byproduct of being imported rather than through declaration files.
 
 ## Scripts
 
@@ -34,7 +34,7 @@ Run from the repo root:
 | Command | Does |
 |---|---|
 | `bun run dev` | Vite dev server for the client |
-| `bun run typecheck` | `tsc -b` across all packages, in dependency order |
+| `bun run typecheck` | `tsc -b` across all packages |
 | `bun run build` | Typecheck everything, then bundle the client |
 | `bun run lint` | ESLint across the repo |
 | `bun run preview` | Serve the production build |
