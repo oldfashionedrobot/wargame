@@ -76,5 +76,7 @@ export interface TurnEndedEvent {
 
 export type GameEvent = UnitMovedEvent | TurnEndedEvent;
 
-export type ActionResult =
-  { ok: true; state: GameState; events: GameEvent[] } | { ok: false; reason: string };
+// Reducers decide what happened; applyEvents turns that into a new state. They
+// deliberately do not return one -- a second mutation path is how live play and
+// replay drift apart.
+export type ActionResult = { ok: true; events: GameEvent[] } | { ok: false; reason: string };

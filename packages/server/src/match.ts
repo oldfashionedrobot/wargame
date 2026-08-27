@@ -1,4 +1,4 @@
-import { applyAction } from '@aw/shared';
+import { applyAction, applyEvents } from '@aw/shared';
 import type {
   Action,
   Command,
@@ -117,6 +117,10 @@ export function createMatchStore({ client: db }: Database): MatchStore {
       const result = applyAction(match.state, action);
       if (!result.ok) return { ok: false, reason: result.reason };
 
+      // Reducers return events, not state. Folding them here is the only way a
+      // new state is ever produced, so what gets stored and what a replay of
+      // the log produces are the same computation.
+      const nextState = applyEvents(match.state, result.events);
       const nextSeq = match.seq + 1;
 
       // Both writes in one atomic round trip. This is about crashes more than
@@ -145,19 +149,13 @@ export function createMatchStore({ client: db }: Database): MatchStore {
             sql: `UPDATE matches
                      SET current_state = ?, current_seq = ?, current_turn = ?
                    WHERE id = ? AND current_seq = ?`,
-            args: [
-              JSON.stringify(result.state),
-              nextSeq,
-              result.state.currentTurn,
-              matchId,
-              match.seq,
-            ],
+            args: [JSON.stringify(nextState), nextSeq, nextState.currentTurn, matchId, match.seq],
           },
         ],
         'write',
       );
 
-      return { ok: true, seq: nextSeq, events: result.events, state: result.state };
+      return { ok: true, seq: nextSeq, events: result.events, state: nextState };
     },
   };
 }

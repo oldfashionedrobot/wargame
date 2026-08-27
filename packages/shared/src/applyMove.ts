@@ -18,14 +18,7 @@ export function applyMove(state: GameState, action: MoveAction): ActionResult {
     return { ok: false, reason: 'illegal move' };
   }
 
-  return {
-    ok: true,
-    state: {
-      ...state,
-      units: state.units.map((u) =>
-        u.id === unit.id ? { ...u, position: destination, hasActed: true } : u,
-      ),
-    },
-    events: [{ type: 'unitMoved', unitId: unit.id, path: action.path }],
-  };
+  // The event carries the whole path: the client animates every step, and the
+  // final tile is the new position.
+  return { ok: true, events: [{ type: 'unitMoved', unitId: unit.id, path: action.path }] };
 }

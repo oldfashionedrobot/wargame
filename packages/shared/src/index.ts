@@ -22,6 +22,7 @@ export { getCurrentPlayer, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';
 export { getReachableTiles } from './reachableTiles';
 export { applyAction } from './applyAction';
+export { applyEvents } from './applyEvents';
 
 export type {
   CommandResult,

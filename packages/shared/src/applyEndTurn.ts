@@ -13,15 +13,5 @@ export function applyEndTurn(state: GameState, action: EndTurnAction): ActionRes
 
   const nextPlayer = getNextPlayer(state);
 
-  return {
-    ok: true,
-    state: {
-      ...state,
-      currentTurn: nextPlayer,
-      units: state.units.map((unit) =>
-        unit.owner === nextPlayer ? { ...unit, hasActed: false } : unit,
-      ),
-    },
-    events: [{ type: 'turnEnded', nextPlayer }],
-  };
+  return { ok: true, events: [{ type: 'turnEnded', nextPlayer }] };
 }
