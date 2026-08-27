@@ -200,15 +200,15 @@ under this repo's exact settings — `strict` **off**, `erasableSyntaxOnly` on:
 declare const validated: unique symbol
 export type Action = Command & { actor: PlayerId; readonly [validated]: true }
 
-export function validate(state, command, actor): Action | Rejection   // only constructor
-export function resolve(state, action: Action, rolls): GameEvent[]    // uncallable otherwise
-export function applyEvents(state, events): GameState                 // the only mutator
+export function validateCommand(state, command, actor): ValidationResult  // only constructor
+export function resolveAction(state, action: Action): GameEvent[]         // uncallable otherwise
+export function applyEvents(state, events): GameState                     // the only mutator
 ```
 
 | | |
 |---|---|
-| legitimate `validate` → `resolve` | ✅ compiles |
-| forging `resolve(s, { type: 'endTurn', actor: 'p1' })` | ❌ *"Property `[validated]` is missing"* |
+| legitimate `validateCommand` → `resolveAction` | ✅ compiles |
+| forging `resolveAction(s, { type: 'endTurn', actor: 'p1' })` | ❌ *"Property `[validated]` is missing"* |
 | reviving from `JSON.parse` without a cast | ❌ same |
 
 ⚠️ **This changes invariant 5, and strengthens it.** Today `applyMove` has to
@@ -471,12 +471,12 @@ Increments. Each leaves `lint`, `typecheck`, `build` and `test` clean and the
 game playable. `MatchStore`'s interface never moves, so `http.ts` is untouched
 throughout and any increment can be the last one.
 
-**S0 — Tests first, against the code as it stands.** Both runners: `bun test`
+**S0 — Tests first, against the code as it stands.** ✅ **Done.** Both runners: `bun test`
 for `shared/` and `server/`, Vitest in `client/`, plus the root `test` script.
 Cover `handleTileClick`, `parseCommand`, the reducers, `getReachableTiles`. No
 production changes. Lands phase 5's missing safety net as a side effect.
 
-**S1 — `applyEvents` in `shared/`.** Workstream B's core. Reducers stop returning
+**S1 — `applyEvents` in `shared/`.** ✅ **Done.** Workstream B's core. Reducers stop returning
 state and return events; `applyEvents` folds. Adopt both event design rules while
 there are only two event types. Add the fold test — which gives the storage work
 a correctness check to run against.
@@ -487,7 +487,7 @@ a correctness check to run against.
 **S1 should land before S5–S6** — otherwise `match.ts` gets rewritten twice, and
 the storage port happens against a shape that is about to change.
 
-**S2 — Branded `Action`, `validate` / `resolve`.** The rest of workstream B.
+**S2 — Branded `Action`, `validateCommand` / `resolveAction`.** ✅ **Done.** The rest of workstream B.
 Separable from S1, and optional if it feels like scope creep — S1 delivers the
 chess property on its own.
 

@@ -1,6 +1,5 @@
-import { applyAction, applyEvents } from '@aw/shared';
+import { applyEvents, resolveAction, validateCommand } from '@aw/shared';
 import type {
-  Action,
   Command,
   CommandResult,
   EventsResponse,
@@ -109,18 +108,19 @@ export function createMatchStore({ client: db }: Database): MatchStore {
       const match = await loadMatch(matchId);
       if (!match) return { ok: false, reason: 'no such match' };
 
-      // `actor` is assigned AFTER the spread, so a client-supplied `actor` in
-      // the JSON body is overwritten rather than honoured. Swapping these two
-      // would be a privilege escalation the type system cannot catch.
-      const action: Action = { ...command, actor };
+      // validateCommand is the only thing that can mint an Action, and it
+      // stamps `actor` itself -- so a client-supplied `actor` in the JSON body
+      // cannot survive, and resolveAction cannot be reached without this
+      // having succeeded.
+      const validation = validateCommand(match.state, command, actor);
+      if (!validation.ok) return { ok: false, reason: validation.reason };
 
-      const result = applyAction(match.state, action);
-      if (!result.ok) return { ok: false, reason: result.reason };
+      const events = resolveAction(match.state, validation.action);
 
       // Reducers return events, not state. Folding them here is the only way a
       // new state is ever produced, so what gets stored and what a replay of
       // the log produces are the same computation.
-      const nextState = applyEvents(match.state, result.events);
+      const nextState = applyEvents(match.state, events);
       const nextSeq = match.seq + 1;
 
       // Both writes in one atomic round trip. This is about crashes more than
@@ -140,8 +140,8 @@ export function createMatchStore({ client: db }: Database): MatchStore {
             args: [
               matchId,
               nextSeq,
-              JSON.stringify(action),
-              JSON.stringify(result.events),
+              JSON.stringify(validation.action),
+              JSON.stringify(events),
               Date.now(),
             ],
           },
@@ -155,7 +155,7 @@ export function createMatchStore({ client: db }: Database): MatchStore {
         'write',
       );
 
-      return { ok: true, seq: nextSeq, events: result.events, state: nextState };
+      return { ok: true, seq: nextSeq, events, state: nextState };
     },
   };
 }

@@ -17,7 +17,9 @@ packages/
   shared/     zero dependencies — pure rulebook, no React, no Babylon, no I/O, no RNG
     src/index.ts    barrel — the package's public surface
     src/  types · coordinate · queries · legality · reachableTiles
-          applyMove · applyEndTurn · applyAction
+          action.ts ✅ validateCommand (the only Action constructor) · resolveAction
+          move · endTurn  per-command validate + resolve
+          applyEvents.ts ✅ the only mutator — folds events into state
           protocol.ts  ✅ GameServer · CommandResult · HTTP shapes · parseCommand
       data/  unitTypes 🚧 · terrain ⬜ · damageTable ⬜ · chargeThresholds ⬜
   server/     depends on shared only — an app, not a library: no barrel
@@ -36,13 +38,13 @@ packages/
       game/       GameCanvas.tsx · interaction/ · render/
 ```
 
-Cross-package imports go through `@aw/shared`'s barrel, never into individual files. The barrel holds only what `server/` and `client/` actually consume — reducers are reached through `applyAction`, union members through their union, and anything used solely inside `shared/` stays out of it.
+Cross-package imports go through `@aw/shared`'s barrel, never into individual files. The barrel holds only what `server/` and `client/` actually consume — commands go through `validateCommand` and `resolveAction`, union members are reached through their union, and anything used solely inside `shared/` stays out of it.
 
 **`@aw/server` is an application, not a library.** Nothing imports it, so it has no barrel and no `exports` field; `http.ts` is an entry point that gets run.
 
 The split is by **authority**, not subject matter:
 
-- **`shared/`** — types, legality predicates, queries, pathfinding, the reducers, and the wire protocol. Pure functions either side may read. Reducers live here, not in `server/`: they take a state and return a new one, they never *hold* one.
+- **`shared/`** — types, legality predicates, queries, pathfinding, command validation and resolution, the event fold, and the wire protocol. Pure functions either side may read. They live here, not in `server/`: they take a state and return events or a new state, they never *hold* one.
 - **`server/`** — the mutable state reference, roll generation, the event log, and match construction.
 - **`client/`** — Babylon rendering, input, React, and the `GameServer` implementation that talks HTTP.
 
@@ -66,7 +68,9 @@ No exceptions: phase 3 removed the last one. `client` no longer lists `@aw/serve
 2. ✅ **`shared/` is pure** — no I/O, no RNG, no Babylon, no React, no `Date.now()`.
 3. ✅ **`GameServer.submit()` is async**, from the first version — sync-to-async is a retrofit that touches every call site.
 4. ✅ **`GameState` is JSON-serializable** — no `Map`, `Set`, class instances, `Date`, or functions reachable from it.
-5. ✅ **Reducers validate their own input.** Legality is checked inside the reducer, never assumed from the caller. Reducers return `{ ok: true; state; events } | { ok: false; reason }`, and check `action.actor === state.currentTurn` before anything else.
+5. ✅ **An unvalidated action is unrepresentable.** `validateCommand` is the only constructor of an `Action` — it checks `actor === state.currentTurn` before anything else, then legality — and `resolveAction` accepts nothing else. The ordering a convention used to ask for is now enforced by the compiler: resolution cannot happen without validation having happened. `Action` carries a `unique symbol` brand that is never exported, so forging one or reviving one from JSON does not compile (verified; a deliberate `as unknown as Action` still does, which is the honest limit).
+
+   Resolution returns **events, not state** — see invariant 9.
 6. ✅ **Single source of truth, derive the rest.** A unit's position lives only in `unit.position`. Tile occupancy, selection, transport cargo — all derived by querying `state.units`.
 7. ✅ **Ephemeral UI state stays out of `GameState`** — hover, selection, camera, animation progress.
 8. ✅ **The client never resolves game outcomes** — no rolls, no damage math, no combat resolution. It submits commands and renders the events it gets back. *(Structurally in place; genuinely exercised only once combat introduces an outcome worth resolving.)*
@@ -74,6 +78,8 @@ No exceptions: phase 3 removed the last one. `client` no longer lists `@aw/serve
    It *may* read any deterministic part of `shared/` to **preview** — what's selectable (`legality.ts`), where a unit can move (`reachableTiles.ts`, already driving the blue overlay), what it could attack from there. That's consulting the rulebook for UI affordance, not deciding anything, and the server re-checks all of it as the actual enforcement.
 
    The line is **deterministic preview, yes; random resolution, no.**
+
+9. ✅ **`applyEvents` is the only thing that mutates state.** Reducers decide what happened and return events; folding them produces the next state. One mutation path, so live play and replay run the same code and `initialState + log` reproduces `currentState` by construction. Two rules bind every event: **independently applicable** to the state before it, and **absolute values, not deltas** — which is what makes applying one twice a no-op. Both are covered by tests, per event type.
 
 ## Server model ✅ *(phase 9 extends it with real identity)*
 

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { applyAction } from './applyAction';
+import { resolveAction, validateCommand } from './action';
 import { applyEvents } from './applyEvents';
 import { makeState, unitAt } from './testing';
-import type { Action, GameEvent, GameState } from './types';
+import type { Command, GameEvent, GameState, PlayerId } from './types';
+
+const pos = (col: number, row: number) => ({ col, row });
 
 const moved = (unitId: string, from: [number, number], to: [number, number]): GameEvent => ({
   type: 'unitMoved',
@@ -97,57 +99,28 @@ describe('the fold: initial state + events reproduces current state', () => {
       { id: 'r2', col: 6, row: 7, owner: 'red' },
     ]);
 
-    const script: Action[] = [
-      {
-        type: 'move',
-        unitId: 'b1',
-        path: [
-          { col: 0, row: 0 },
-          { col: 1, row: 2 },
-        ],
-        actor: 'blue',
-      },
-      {
-        type: 'move',
-        unitId: 'b2',
-        path: [
-          { col: 1, row: 0 },
-          { col: 2, row: 2 },
-        ],
-        actor: 'blue',
-      },
-      { type: 'endTurn', actor: 'blue' },
-      {
-        type: 'move',
-        unitId: 'r1',
-        path: [
-          { col: 7, row: 7 },
-          { col: 6, row: 5 },
-        ],
-        actor: 'red',
-      },
-      { type: 'endTurn', actor: 'red' },
-      {
-        type: 'move',
-        unitId: 'b1',
-        path: [
-          { col: 1, row: 2 },
-          { col: 2, row: 4 },
-        ],
-        actor: 'blue',
-      },
-      { type: 'endTurn', actor: 'blue' },
+    // Commands plus the actor the server would stamp. Tests cannot build an
+    // Action directly -- that is the brand doing its job.
+    const script: [Command, PlayerId][] = [
+      [{ type: 'move', unitId: 'b1', path: [pos(0, 0), pos(1, 2)] }, 'blue'],
+      [{ type: 'move', unitId: 'b2', path: [pos(1, 0), pos(2, 2)] }, 'blue'],
+      [{ type: 'endTurn' }, 'blue'],
+      [{ type: 'move', unitId: 'r1', path: [pos(7, 7), pos(6, 5)] }, 'red'],
+      [{ type: 'endTurn' }, 'red'],
+      [{ type: 'move', unitId: 'b1', path: [pos(1, 2), pos(2, 4)] }, 'blue'],
+      [{ type: 'endTurn' }, 'blue'],
     ];
 
-    // Play it the way the server does, accumulating the log as it goes.
+    // Play it exactly the way the server does: validate, resolve, fold.
     let live: GameState = initial;
     const log: GameEvent[] = [];
-    for (const action of script) {
-      const result = applyAction(live, action);
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      log.push(...result.events);
-      live = applyEvents(live, result.events);
+    for (const [command, actor] of script) {
+      const validation = validateCommand(live, command, actor);
+      expect(validation.ok).toBe(true);
+      if (!validation.ok) return;
+      const events = resolveAction(live, validation.action);
+      log.push(...events);
+      live = applyEvents(live, events);
     }
 
     expect(log).toHaveLength(script.length);

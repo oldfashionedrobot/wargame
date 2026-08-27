@@ -1,10 +1,9 @@
 // The public surface of the rulebook: what server/ and client/ actually
 // consume. Anything used only inside shared/ stays unexported from here --
-// reducers are reached through applyAction, and union members through their
-// union.
+// commands are validated and resolved through action.ts, and union members
+// are reached through their union.
 
 export type {
-  Action,
   Command,
   Coordinate,
   Facing,
@@ -21,7 +20,8 @@ export { coordinatesEqual, isWithinGrid } from './coordinate';
 export { getCurrentPlayer, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';
 export { getReachableTiles } from './reachableTiles';
-export { applyAction } from './applyAction';
+export { resolveAction, validateCommand } from './action';
+export type { Action, ValidationResult } from './action';
 export { applyEvents } from './applyEvents';
 
 export type {

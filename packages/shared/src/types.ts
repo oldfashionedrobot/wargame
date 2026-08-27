@@ -50,14 +50,10 @@ export interface EndTurnCommand {
 
 export type Command = MoveCommand | EndTurnCommand;
 
-// --- Actions: a command as authenticated by the authority ------------------
-// The server attaches `actor` from the connection before handing it to a
-// reducer. Reducers only ever see this shape.
-
-export type MoveAction = MoveCommand & { actor: PlayerId };
-export type EndTurnAction = EndTurnCommand & { actor: PlayerId };
-
-export type Action = MoveAction | EndTurnAction;
+// --- Actions ---------------------------------------------------------------
+// A Command that the authority has accepted. Lives in action.ts, because the
+// brand that makes it unforgeable has to be declared where the only
+// constructor can see it.
 
 // --- Events: what the server decided happened ------------------------------
 // Facts, already resolved. Broadcast to clients, which animate them and never
@@ -75,8 +71,3 @@ export interface TurnEndedEvent {
 }
 
 export type GameEvent = UnitMovedEvent | TurnEndedEvent;
-
-// Reducers decide what happened; applyEvents turns that into a new state. They
-// deliberately do not return one -- a second mutation path is how live play and
-// replay drift apart.
-export type ActionResult = { ok: true; events: GameEvent[] } | { ok: false; reason: string };
