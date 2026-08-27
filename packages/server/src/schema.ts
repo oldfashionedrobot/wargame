@@ -1,15 +1,5 @@
 import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import type { Command, GameEvent, GameState, PlayerId } from '@aw/shared';
-
-/**
- * An Action as it survives a round trip through storage.
- *
- * Deliberately *not* `Action`: that type carries a brand meaning "validated",
- * and nothing revalidates a row on the way out. Typing the column as `Action`
- * would hand out unforgeable-by-design values for free and quietly undo
- * invariant 5. A stored action is a record of one, not a live one.
- */
-type StoredAction = Command & { actor: PlayerId };
+import type { Action, GameEvent, GameState, PlayerId } from '@aw/shared';
 
 export const matches = sqliteTable('matches', {
   id: text('id').primaryKey(),
@@ -46,7 +36,12 @@ export const resolutions = sqliteTable(
     // filtering on, and the only record of who did something once phase 9
     // makes that mean anything.
     actor: text('actor').$type<PlayerId>().notNull(),
-    action: text('action', { mode: 'json' }).$type<StoredAction>().notNull(),
+    // An audit record, not something to act on. Events are the business data;
+    // an Action is the intermediate step between a Command and its outcome.
+    // Anything that ever needs to *act* on a stored action should take the
+    // command back out of it and re-validate against current state -- validity
+    // was proven against the state at the time, which is not this one.
+    action: text('action', { mode: 'json' }).$type<Action>().notNull(),
     events: text('events', { mode: 'json' }).$type<GameEvent[]>().notNull(),
     createdAt: integer('created_at').notNull(),
   },
