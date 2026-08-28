@@ -105,6 +105,14 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
       // method an endpoint does not serve. Answering those 200 through the
       // client fallback would be pretending we understand them.
       '/api/*': withSession(async () => notFound()),
+
+      // Everything else is the client build. A route rather than the `fetch`
+      // fallback, for two reasons: the table then accounts for every path in
+      // one place, and only `routes` receive a `BunRequest` -- which is what
+      // lets withSession use bun's cookie map for this too instead of the
+      // fallback hand-rolling its own. Last because it is least specific;
+      // '/api/*' out-matches it for anything under /api.
+      '/*': withSession(async (request) => serveClient(new URL(request.url))),
     },
 
     error(cause) {
@@ -113,10 +121,6 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
       console.error('unhandled request error:', cause);
       return json({ ok: false, reason: 'internal server error' }, { status: 500 });
     },
-
-    // Everything that is not /api: the client build. Unmatched routes fall
-    // through to here, wearing the same wrapper as every route above.
-    fetch: withSession(async (request) => serveClient(new URL(request.url))),
   });
 
   console.log(`server listening on http://localhost:${server.port}`);
@@ -160,16 +164,16 @@ async function serveClient(url: URL): Promise<Response> {
  * issuing a session. Hence a visible decorator on every line of the table
  * rather than something ambient.
  *
- * Typed as `BunRequest<T>` rather than a plain `Request` so the path literal
- * survives the wrapper and route handlers keep `request.params` typed. Widening
- * it costs that silently: params degrade to `Record<string, string>` and a typo
- * starts compiling (verified both ways).
+ * Typed as `BunRequest<T>` rather than a plain `Request` for two reasons: the
+ * path literal survives the wrapper, so route handlers keep `request.params`
+ * typed -- widening it silently degrades them to `Record<string, string>` and
+ * lets a typo compile (verified both ways) -- and only a `BunRequest` carries
+ * `cookies`. That second one is why the client fallback is a `'/*'` route
+ * rather than the `fetch` handler, which receives a plain `Request`.
  *
- * `fetch` reuses it anyway, even though it is handed an ordinary `Request`.
- * That is sound here because the body only touches `headers`, which both have,
- * and it typechecks because bun declares `fetch` with method syntax, whose
- * parameters stay bivariant even under `strictFunctionTypes` -- checked against
- * 5a turning `strict` on.
+ * Nothing here writes a `Set-Cookie` header: bun applies changes made to
+ * `request.cookies` to the response itself. The header is also not parsed until
+ * `cookies` is first touched, so this costs nothing on a request that has one.
  *
  * ⚠️ Two concurrent requests from a browser with no cookie yet each mint a
  * *different* id, and last write wins. Harmless while the id is decorative; it
@@ -183,18 +187,14 @@ function withSession<T extends string>(
     // `||` rather than `??`: a present-but-empty cookie (`vod_session=`, which
     // any client can send) is as useless as no cookie, and both have to mint.
     // `??` would keep the empty string and hand it down as the session.
-    const existing = new Bun.CookieMap(request.headers.get('cookie') ?? '').get(SESSION_COOKIE);
+    const existing = request.cookies.get(SESSION_COOKIE);
     const session = existing || crypto.randomUUID();
 
-    const response = await handler(request, session);
-    // True exactly when the line above minted, empty cookie included.
-    if (session !== existing) {
-      response.headers.append(
-        'set-cookie',
-        new Bun.Cookie(SESSION_COOKIE, session, COOKIE_OPTIONS).serialize(),
-      );
-    }
-    return response;
+    // Set before the handler runs, not after: bun collects the change either
+    // way, and this keeps the mint and the write on adjacent lines.
+    if (session !== existing) request.cookies.set(SESSION_COOKIE, session, COOKIE_OPTIONS);
+
+    return handler(request, session);
   };
 }
 
