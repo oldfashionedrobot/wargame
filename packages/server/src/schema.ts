@@ -1,7 +1,7 @@
 import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import type { Action, GameEvent, GameState, PlayerId } from '@vod/shared';
 
-export const matches = sqliteTable('matches', {
+export const Matches = sqliteTable('matches', {
   id: text('id').primaryKey(),
   createdAt: integer('created_at').notNull(),
   // Written once and never read back -- deliberately. initial_state plus the
@@ -25,12 +25,12 @@ export const matches = sqliteTable('matches', {
  * `WHERE seq > ?` an index scan, and catches two writers claiming the same seq
  * for free.
  */
-export const resolutions = sqliteTable(
+export const Resolutions = sqliteTable(
   'resolutions',
   {
     matchId: text('match_id')
       .notNull()
-      .references(() => matches.id, { onDelete: 'cascade' }),
+      .references(() => Matches.id, { onDelete: 'cascade' }),
     seq: integer('seq').notNull(),
     // Promoted out of the action blob: the one field of an action worth
     // filtering on, and the only record of who did something once phase 9

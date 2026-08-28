@@ -1,4 +1,5 @@
 import { defineConfig } from 'drizzle-kit';
+import { DEFAULT_DB_URL } from './src/const';
 
 // Paths are relative to the REPO ROOT, because drizzle-kit resolves them
 // against cwd and the db:* scripts always run from there -- which is also how
@@ -9,9 +10,6 @@ export default defineConfig({
   schema: './packages/server/src/schema.ts',
   out: './packages/server/drizzle',
   dbCredentials: {
-    // Same default and the same root-relative reading as db.ts. Keep them in
-    // step: pointing these two at different files is the failure this whole
-    // arrangement exists to prevent.
-    url: process.env.DATABASE_URL ?? 'file:./packages/server/vod.db',
+    url: DEFAULT_DB_URL,
   },
 });

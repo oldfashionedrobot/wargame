@@ -23,8 +23,10 @@ packages/
           protocol.ts  ✅ GameServer · CommandResult · HTTP shapes · parseCommand
       data/  unitTypes 🚧 · terrain ⬜ · damageTable ⬜ · chargeThresholds ⬜
   server/     depends on shared only — an app, not a library: no barrel
-    src/  http.ts ✅ Bun.serve — /api/* plus the client's static build
+    src/  http.ts ✅ Bun.serve routes — /api/* plus the client's static build
+          http.test.ts ✅ the HTTP surface, driven over real requests
           db.ts ✅ libSQL client + Drizzle, pragmas, migrations at boot
+          const.ts ✅ the env-derived defaults, read once in one place
           schema.ts ✅ matches · resolutions, typed from shared/
           match.ts ✅ MatchStore — create/list/snapshot/since/submit
           initialState.ts ✅
@@ -145,6 +147,10 @@ POST /api/matches/:id/commands        → { ok: true, seq, events, state }
 ```
 
 A missing match is a 404; a rejected command is still a 200 with `ok: false`, since rejection is an answer and not a transport failure.
+
+**Dispatch is `Bun.serve`'s own `routes` table**, not hand-rolled path parsing — one entry per endpoint above, keyed by method. Params come from the path literal, so `request.params.id` is typed and a typo in it is a compile error rather than `undefined` at runtime (verified). A `'/api/*'` entry catches everything the table does not claim, including a method an endpoint does not serve, which keeps those 404 rather than 405. `fetch` is left as the fallback for non-`/api` paths, which is the client build.
+
+The session cookie is the one thing this cost: `routes` bypass `fetch`, so the single choke point that used to stamp every response is gone. A `withSession` wrapper sits on each route entry instead — visible on every line of the table, so a new route that forgets it is visible in review.
 
 **Why not push.** A push channel is the only thing that would require a process holding connections open, and it buys very little here: an opponent takes tens of seconds to move, so seeing it a second or two late is imperceptible. Dropping it deletes an entire category of work — stream lifecycle, disconnect cleanup, heartbeats, proxy buffering, reconnect handling — none of which existed for any reason except the open connection.
 
@@ -354,6 +360,10 @@ Worth knowing what `$type` is: a compile-time assertion, not validation. It cent
 Two things stay on the raw driver because Drizzle cannot express them: the pragmas, and the `'write'` transaction mode — see Concurrency.
 
 ⚠️ **`file:` paths in `DATABASE_URL` are relative to the repo root**, resolved there regardless of cwd. Two processes read the same variable from different directories — the server runs with cwd set to its own package, `drizzle-kit` runs from the root — so left to cwd, one string would mean two different files and migrations would quietly build a second, empty database beside the real one. The `db:*` scripts live at the root and do **not** use `bun run --filter`, which would set cwd to the package and lose the single root `.env`.
+
+**The fallback itself lives once**, in `src/const.ts`: `createDb` takes it as its default, and `drizzle.config.ts` imports the same constant. There is no second literal to keep in step — drizzle-kit transpiles the config and resolves its relative imports, so reaching into the app's module graph works (verified: both `db:generate` and `db:migrate` run, and no stray database appears beside the real one).
+
+What that does *not* remove is the cwd dependency above. `DEFAULT_DB_URL` is a repo-root-relative `file:` path; `db.ts` resolves it against `REPO_ROOT` explicitly, while drizzle-kit resolves it against cwd. They agree only because the `db:*` scripts run from the root — which is why those scripts must not move to `bun run --filter`.
 
 ### Concurrency
 
@@ -669,11 +679,10 @@ Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DE
 
 - **Counter-attack for `min > 1` units.** "No counter given or received" was settled when indirect fire and immobility were the same thing. Now that `canMoveAndAttack` is independent of range category, it's worth re-checking whether the rule should still key off `min > 1` alone. Probably still correct — nothing has challenged it — but never explicitly revisited.
 - **`net/gameServer.ts` is untested**, and is now the most intricate untested code in the repo: seq deduplication, exponential backoff, the hidden-tab interval, and `dispose`. The dedup is doing real work — without it a poll in flight during a submit animates the same move twice — and nothing checks it. It is mockable: `fetch` and timers are both things Vitest can fake, and the client already has Vitest.
-- ✅ ~~**No automated tests.**~~ 80 of them now — 50 in `shared/`, 19 in `server/`, 11 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, `getReachableTiles`, the event fold and its two design rules, `MatchStore` against `:memory:`, and `handleTileClick`. What is *not* covered: the renderer (needs WebGL, so a real browser), and `net/gameServer.ts` — see above.
+- ✅ ~~**No automated tests.**~~ 100 of them now — 50 in `shared/`, 39 in `server/`, 11 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, `getReachableTiles`, the event fold and its two design rules, `MatchStore` against `:memory:`, the HTTP surface end to end, and `handleTileClick`. What is *not* covered: the renderer (needs WebGL, so a real browser), and `net/gameServer.ts` — see above.
 
-Neither of the items below belongs to a phase, which is how things stay recorded forever. Both are self-contained and can be picked up between phases:
+The item below does not belong to a phase, which is how things stay recorded forever:
 
-- **Turn on `strict`.** Its own increment, because the fallout is unpredictable — see Known compromises.
 - ✅ ~~**The server refactor.**~~ Drizzle and real migrations, `log_entries` became `resolutions`, events made authoritative and independently applicable, `Action` became a branded validated type, and the repo got its first tests. Client-side event folding is the one piece left — step 5b.
 
 ## Known compromises
@@ -690,7 +699,8 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 | **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
 | **Migrations run at boot** | `migrate()` on startup, fine for one instance | A rolling deploy wants it as a separate step before new code starts |
 | **Two reads per command** | `resolveActor` needs state to stamp `actor = currentTurn`, but `submit` owns the read | Phase 9 — `resolveActor` becomes a session lookup and the extra read disappears |
-| **`strict` is off** | Inherited from the Vite template — `noUnusedLocals` etc. are on, but `strictNullChecks` and friends are not | Turn it on as its own increment and fix the fallout |
+| **`typecheck` can pass stale** | `tsc -b` skips work its `.tsbuildinfo` believes current — observed reporting 0 while `tsc -p packages/server` flagged two `TS6133`s | Run `tsc -b --force` in the gate, or drop the incremental cache |
+| **`strict` is off** | Inherited from the Vite template — `noUnusedLocals` etc. are on, but `strictNullChecks` and friends are not | Step 5a, as its own commit — it pairs with the `SelectionState` union, which forces the same nullability work |
 
 ## Out of scope for v1
 
@@ -723,6 +733,9 @@ One is still latent: **state commits before animation finishes.** `subscribe` se
 Before combat rather than during. **Split in two**, for the same reason phases 2
 and 3 were: 5a changes shape and nothing else, 5b changes behaviour. Kept apart,
 a 5a regression is necessarily the refactor.
+
+5c is appended rather than part of that split: it is tooling, not refactor, and
+nothing in 5a or 5b depends on it.
 
 **`renderer.ts` is not split.** It's 158 lines, the sub-modules are already
 separate files, and what's left is wiring — which is what an assembly point is
@@ -795,6 +808,20 @@ poll:    applyUpdate(response)
 submit:  if (result.ok) applyUpdate(result)
 ```
 
+**`strict` goes on here.** It was previously parked as its own increment
+because the fallout is unpredictable — that reasoning still holds, so it lands
+as a *separate commit inside* 5a rather than tangled into the extraction.
+
+It belongs with 5a specifically because the two reinforce each other:
+`SelectionState` today is `{ selectedUnitId: string | null }`, and converting it
+to a union is the same work `strictNullChecks` would force anyway. Doing them
+together means handling nullability once.
+
+⚠️ **It is the one part of 5a that can change behaviour.** Everything else here
+is shape-only, which is what makes "a 5a regression is necessarily the refactor"
+worth having. Fixing `strictNullChecks` fallout can alter a runtime path, so
+land it first and verify separately — then the refactor commits stay clean.
+
 **Verifiable now.** The earlier warning here — *"nothing verifies this beyond
 playing the game"* — is retired. `handleTileClick` has 11 Vitest tests, of which
 **4 assertions across 3 tests** touch the record shape; the rest assert
@@ -829,6 +856,70 @@ checkpoint-and-rebuild machinery belongs here.
 
 Folding facts is not resolving anything, so invariant 8 is untouched: the line
 stays *deterministic preview yes, random resolution no*.
+
+#### 5c — the client moves onto bun's bundler ⬜
+
+Vite and Vitest come out; `bun build` and `bun test` go in. Sequenced last
+because nothing depends on it — and because doing it earlier would mean writing
+the repo's trickiest tests while changing the runner underneath them.
+
+What it deletes:
+
+- **`serveClient` in `http.ts`** — an HTML import becomes a route value and bun
+  serves the hashed assets itself. Fifteen lines of production-only code that
+  never runs during development.
+- **The Vite proxy**, and with it the two-process dev setup. One `bun --hot`
+  serves the API and the client together.
+- **One of two test runners**, so the root `test` script stops being two
+  commands.
+
+What it changes:
+
+- `import.meta.env` is not supported — bun replaces literal `process.env.FOO`
+  only, via `define`. Two call sites, both gating the Inspector: `renderer.ts`
+  and `GameCanvas.tsx`.
+- **The Inspector guarantee has to be re-earned, not assumed.** It is documented
+  to survive — *"if the only reference to a module exists within unreachable
+  code, the chunk isn't generated"* — but the ✅ under Dev tooling was earned by
+  checking `dist/`, and it should be re-earned the same way.
+
+Verified up front rather than assumed, because each was a candidate blocker:
+
+- `jest.advanceTimersByTime` exists in `bun test` and drives a self-rescheduling
+  async poll loop with exponential backoff — `gameServer.ts`'s exact shape —
+  with no real waiting. Only the *async* variants are missing, which costs a
+  three-line helper flushing microtasks between firings.
+- React component tests work: `@happy-dom/global-registrator` preloaded through
+  `bunfig.toml`, plus `@testing-library/react`.
+- The existing client tests port by changing one import line — which
+  Verification already records as true of this repo's suites.
+
+**The workspaces collapse here too.** `packages/{shared,server,client}` become
+`src/{shared,server,client}` under a single `package.json`, and `@vod/*` imports
+become relative. It belongs in 5c rather than standing alone because 5c already
+removes Vite and Vitest — the main tooling reason the client held its own
+manifest — so doing them together is one restructure instead of two.
+
+**This trades a resolution-enforced boundary for a lint-enforced one, knowingly.** Today `packages/server/node_modules/` contains no React and no Babylon, so a stray import is `TS2307` rather than something caught in review — verified by trying it. One `node_modules` ends that, and the barrel rule (`@vod/shared`'s `exports` map, and `./testing` as a deliberate second surface) goes with it.
+
+The replacement is the core `no-restricted-imports` rule scoped by flat config, which needs no new dependency. Verified against fixtures — server importing React, Babylon, or client code all fail; `shared` importing anything bare fails while relative imports inside it pass:
+
+```js
+{ files: ['src/server/**/*.ts', 'src/client/**/*.ts'],
+  rules: { 'no-restricted-imports': ['error', { patterns: [
+    { group: ['react', 'react-dom', '@babylonjs/*'] },
+    { group: ['**/client/**'] } ] }] } },
+// shared is pure: anything not starting with "." is external
+{ files: ['src/shared/**/*.ts'],
+  rules: { 'no-restricted-imports': ['error', {
+    patterns: [{ regex: '^[^.]' }] }] } },
+```
+
+Note this is *stronger* than today in one respect: the direction rules — `shared/` importing only from `shared/data/`, and `server`/`client` not importing each other — are currently convention checked by review, and become enforced. Structure and Dependency rule above get rewritten when this lands.
+
+⬜ **The one open unknown**: whether bun's bundler produces a comparable Babylon
+build. Today's is 6.9 MB across 73 chunks and rolldown already warns about chunk
+size. Spike that before starting; everything else is settled.
 
 ### 6 — Terrain and movement
 
@@ -914,6 +1005,10 @@ Two reads of the same header, and — more importantly — concurrent requests f
 `noUnusedLocals` / `noUnusedParameters` are on, and `verbatimModuleSyntax` requires explicit `import type`. Note `strict` is **not** on — see Known compromises.
 
 **Tests: `bun test` for `shared/` and `server/`, Vitest for `client/`.** Two runners because `bun test` needs no dependency or config and covers the pure packages, while Vitest reuses the client's `vite.config.ts` and is the only route to React component and hook tests. Test files are portable between them — the same suite ran under both, differing only in the import line. The root `test` script runs both. Server tests use `:memory:`, one database per test, migrated in `beforeEach`.
+
+**`http.test.ts` is a black box over real requests**, not a call into a handler: it calls `createServer({ port: 0, databaseUrl: ':memory:' })`, reads `server.url`, and drives it with `fetch`. Nothing in it knows how a URL is dispatched, which is why swapping hand-rolled parsing for `routes` did not touch a line of it — the property worth keeping the next time routing changes.
+
+Both inputs are **arguments rather than environment**, which is what makes the setup three lines and a plain static import. Port 0 lets the OS pick, so a running dev server cannot collide with the suite; `:memory:` keeps the real database out of reach. `http.ts` starts a server only under `import.meta.main`, so importing it for the factory listens on nothing — verified in both directions, since a module that opened a port on import would have made all of this ordering-dependent.
 
 **Typechecking reads `shared`'s source directly. No declaration output, no project references across packages.** `server` and `client` resolve `@vod/shared` through its `exports` field to `src/index.ts` and pull that source into their own programs, so `shared` is checked as a byproduct of being imported and needs no pass of its own. The root `tsconfig.json` is a solution file over `server` and `client` only.
 

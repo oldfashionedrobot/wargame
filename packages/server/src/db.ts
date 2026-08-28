@@ -6,11 +6,7 @@ import { drizzle } from 'drizzle-orm/libsql';
 import type { LibSQLDatabase } from 'drizzle-orm/libsql';
 import { migrate as runMigrations } from 'drizzle-orm/libsql/migrator';
 import * as schema from './schema';
-
-// Read from the repo-root .env. A local file today; a libsql:// URL on Turso,
-// which is the whole reason for the libSQL client over bun:sqlite -- the code
-// is identical either way.
-const DEFAULT_URL = 'file:./packages/server/vod.db';
+import { DEFAULT_DB_URL } from './const';
 
 // `file:` paths in DATABASE_URL are relative to the REPO ROOT, not to whoever
 // is running. That has to be pinned down because two processes read the same
@@ -21,13 +17,6 @@ const DEFAULT_URL = 'file:./packages/server/vod.db';
 // fileURLToPath, not .pathname -- the latter percent-encodes, so a checkout
 // under a path with a space would resolve to a literal "my%20name" directory.
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
-
-function resolveUrl(url: string): string {
-  if (!url.startsWith('file:')) return url; // libsql://, http:// -- not a path
-  const path = url.slice('file:'.length);
-  if (path.startsWith('/')) return url; // already absolute
-  return `file:${resolve(REPO_ROOT, path)}`;
-}
 
 // Generated SQL lives beside this file's package, not beside whoever is
 // running -- the same reason DATABASE_URL is resolved against the repo root.
@@ -46,7 +35,7 @@ export interface Database {
 
 // The url travels with the client so migrate() can't be pointed at a different
 // database than the one it's configuring.
-export function createDb(url: string = process.env.DATABASE_URL ?? DEFAULT_URL): Database {
+export function createDb(url: string = DEFAULT_DB_URL): Database {
   const resolved = resolveUrl(url);
   const client = createClient({ url: resolved });
   return { db: drizzle(client, { schema }), client, url: resolved };
@@ -71,4 +60,11 @@ export async function migrate({ db, client, url }: Database): Promise<void> {
   }
 
   await runMigrations(db, { migrationsFolder: MIGRATIONS });
+}
+
+function resolveUrl(url: string): string {
+  if (!url.startsWith('file:')) return url; // libsql://, http:// -- not a path
+  const path = url.slice('file:'.length);
+  if (path.startsWith('/')) return url; // already absolute
+  return `file:${resolve(REPO_ROOT, path)}`;
 }

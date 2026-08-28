@@ -12,7 +12,7 @@ import type {
 } from '@vod/shared';
 import type { Database } from './db';
 import { createInitialState } from './initialState';
-import { matches, resolutions } from './schema';
+import { Matches, Resolutions } from './schema';
 
 // Nothing deletes or expires matches yet, and anyone can create them, so the
 // table only grows. A cap keeps the start screen bounded without pretending to
@@ -48,9 +48,9 @@ export function createMatchStore({ db, client }: Database): MatchStore {
   // thing to keep in step.
   async function loadMatch(matchId: string) {
     const [row] = await db
-      .select({ state: matches.currentState, seq: matches.currentSeq })
-      .from(matches)
-      .where(eq(matches.id, matchId));
+      .select({ state: Matches.currentState, seq: Matches.currentSeq })
+      .from(Matches)
+      .where(eq(Matches.id, matchId));
     return row ?? null;
   }
 
@@ -60,7 +60,7 @@ export function createMatchStore({ db, client }: Database): MatchStore {
       const createdAt = Date.now();
       const state = createInitialState();
 
-      await db.insert(matches).values({
+      await db.insert(Matches).values({
         id,
         createdAt,
         initialState: state,
@@ -77,13 +77,13 @@ export function createMatchStore({ db, client }: Database): MatchStore {
       // listing stays cheap as matches accumulate.
       return db
         .select({
-          id: matches.id,
-          createdAt: matches.createdAt,
-          seq: matches.currentSeq,
-          currentTurn: matches.currentTurn,
+          id: Matches.id,
+          createdAt: Matches.createdAt,
+          seq: Matches.currentSeq,
+          currentTurn: Matches.currentTurn,
         })
-        .from(matches)
-        .orderBy(desc(matches.createdAt))
+        .from(Matches)
+        .orderBy(desc(Matches.createdAt))
         .limit(LIST_LIMIT);
     },
 
@@ -97,10 +97,10 @@ export function createMatchStore({ db, client }: Database): MatchStore {
       if (!match) return null;
 
       const rows = await db
-        .select({ events: resolutions.events })
-        .from(resolutions)
-        .where(and(eq(resolutions.matchId, matchId), gt(resolutions.seq, from)))
-        .orderBy(resolutions.seq);
+        .select({ events: Resolutions.events })
+        .from(Resolutions)
+        .where(and(eq(Resolutions.matchId, matchId), gt(Resolutions.seq, from)))
+        .orderBy(Resolutions.seq);
 
       return {
         seq: match.seq,
@@ -145,7 +145,7 @@ export function createMatchStore({ db, client }: Database): MatchStore {
       // rather than be handled. A retry would go here.
       const [, updated] = await client.batch(
         [
-          db.insert(resolutions).values({
+          db.insert(Resolutions).values({
             matchId,
             seq: nextSeq,
             actor,
@@ -154,7 +154,7 @@ export function createMatchStore({ db, client }: Database): MatchStore {
             createdAt: Date.now(),
           }),
           db
-            .update(matches)
+            .update(Matches)
             .set({
               currentState: nextState,
               currentSeq: nextSeq,
@@ -162,7 +162,7 @@ export function createMatchStore({ db, client }: Database): MatchStore {
             })
             // Optimistic concurrency: refuse to write over a row that moved
             // since we read it.
-            .where(and(eq(matches.id, matchId), eq(matches.currentSeq, match.seq))),
+            .where(and(eq(Matches.id, matchId), eq(Matches.currentSeq, match.seq))),
         ].map((query) => bind(query.toSQL())),
         'write',
       );

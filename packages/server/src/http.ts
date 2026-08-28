@@ -1,22 +1,173 @@
 import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { BunRequest } from 'bun';
 import { parseCommand } from '@vod/shared';
 import type { GameState, PlayerId } from '@vod/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore } from './match';
+import { DEFAULT_PORT, IS_PROD, SESSION_COOKIE } from './const';
 
-const PORT = Number(process.env.PORT ?? 3001);
-const IS_PROD = process.env.NODE_ENV === 'production';
 // fileURLToPath, not .pathname -- the latter percent-encodes, so a checkout
 // under a path with a space would resolve to a directory that does not exist
 // and every request would fall through to "client not built".
-const CLIENT_DIST = resolve(fileURLToPath(new URL('../../client/dist', import.meta.url)));
+export const CLIENT_DIST = resolve(fileURLToPath(new URL('../../client/dist', import.meta.url)));
 
-const db = createDb();
-await migrate(db);
-const matches = createMatchStore(db);
+export interface ServerOptions {
+  /** Defaults to $PORT, then 3001. Pass 0 to let the OS pick a free one. */
+  port?: number;
+  /** Defaults to $DATABASE_URL, then the local file. `:memory:` for tests. */
+  databaseUrl?: string;
+}
 
-const SESSION_COOKIE = 'aw_session';
+/**
+ * Builds and starts the server.
+ */
+export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
+  const db = createDb(databaseUrl);
+  await migrate(db);
+  const matches = createMatchStore(db);
+
+  const server = Bun.serve({
+    port: port ?? DEFAULT_PORT,
+    // A command is only a few hundred bytes
+    maxRequestBodySize: 64 * 1024,
+    routes: {
+      '/api/matches': {
+        GET: withSession(async () => json(await matches.list())),
+        POST: withSession(async () => json(await matches.create(), { status: 201 })),
+      },
+
+      '/api/matches/:id/state': {
+        GET: withSession(async (request) => {
+          const snapshot = await matches.snapshot(request.params.id);
+          return snapshot ? json(snapshot) : notFound();
+        }),
+      },
+
+      '/api/matches/:id/events': {
+        GET: withSession(async (request) => {
+          const since = Number(new URL(request.url).searchParams.get('since') ?? 0);
+          if (!Number.isInteger(since) || since < 0) {
+            return json({ error: 'since must be a non-negative integer' }, { status: 400 });
+          }
+          const events = await matches.since(request.params.id, since);
+          return events ? json(events) : notFound();
+        }),
+      },
+
+      '/api/matches/:id/commands': {
+        POST: withSession(async (request, session) => {
+          let body: unknown;
+          try {
+            body = await request.json();
+          } catch {
+            return json({ ok: false, reason: 'malformed JSON' }, { status: 400 });
+          }
+
+          const command = parseCommand(body);
+          if (!command) {
+            return json({ ok: false, reason: 'not a valid command' }, { status: 400 });
+          }
+
+          const matchId = request.params.id;
+          // Reads the match once here and again inside submit(), because
+          // resolveActor needs state to stamp `actor = currentTurn` while submit
+          // owns the read. Deliberately not fixed: phase 9 makes resolveActor a
+          // session lookup that needs no state, and this read disappears with it.
+          // The window between the two reads can only produce a rejection, never
+          // a wrong write -- submit validates against its own, later read.
+          const snapshot = await matches.snapshot(matchId);
+          if (!snapshot) return notFound();
+
+          const result = await matches.submit(
+            matchId,
+            command,
+            resolveActor(session, snapshot.state),
+          );
+          // A rejected command is a legitimate answer, not an HTTP error -- the
+          // client reads `ok`, and 200 keeps rejection distinct from transport
+          // failure.
+          return json(result);
+        }),
+      },
+
+      // Catches every /api URL the table above does not claim, including a
+      // method an endpoint does not serve. Answering those 200 through the
+      // client fallback would be pretending we understand them.
+      '/api/*': withSession(async () => notFound()),
+    },
+
+    error(cause) {
+      // JSON, so the client can parse it and report accurately rather than
+      // failing to decode and blaming the network.
+      console.error('unhandled request error:', cause);
+      return json({ ok: false, reason: 'internal server error' }, { status: 500 });
+    },
+
+    // Everything that is not /api: the client build. Unmatched routes fall
+    // through to here, which is exactly the shape this already had.
+    async fetch(request) {
+      const existing = readCookie(request, SESSION_COOKIE);
+      const response = await serveClient(new URL(request.url));
+      if (existing === null) {
+        response.headers.append('set-cookie', sessionCookie(crypto.randomUUID()));
+      }
+      return response;
+    },
+  });
+
+  console.log(`server listening on http://localhost:${server.port}`);
+
+  return server;
+}
+
+async function serveClient(url: URL): Promise<Response> {
+  // Production only: in dev the client is served by Vite, which proxies
+  // /api here. Falls back to index.html so client routing works.
+  const index = Bun.file(join(CLIENT_DIST, 'index.html'));
+  const serveIndex = async (): Promise<Response> =>
+    (await index.exists())
+      ? new Response(index)
+      : new Response('client not built -- run `bun run build`', { status: 404 });
+
+  if (url.pathname === '/') return serveIndex();
+
+  // Resolve and confirm the result is still inside the build directory. URL
+  // parsing already collapses `..`, so this is belt-and-braces rather than a
+  // known hole -- but "safe because of how the parser happens to behave" is
+  // not a property to rely on for filesystem access.
+  // `+ sep` matters: a bare startsWith would also accept a sibling directory
+  // whose name merely begins with the same characters, like dist-types.
+  const resolved = resolve(CLIENT_DIST, '.' + url.pathname);
+  if (!resolved.startsWith(CLIENT_DIST + sep)) return serveIndex();
+
+  const requested = Bun.file(resolved);
+  if (await requested.exists()) return new Response(requested);
+
+  return serveIndex();
+}
+
+/**
+ * Wraps a route handler so its response carries a session, minting one when
+ * the request arrives without it.
+ *
+ * This has to wrap each route rather than sit in one place, because `routes`
+ * bypass the `fetch` handler entirely -- so the single choke point that used
+ * to exist there is gone. Forgetting the wrapper on a new route means that
+ * route stops issuing a session, which is why it reads as a visible decorator
+ * on every entry in the table rather than something ambient.
+ */
+function withSession<T extends string>(
+  handler: (request: BunRequest<T>, session: string) => Promise<Response>,
+): (request: BunRequest<T>) => Promise<Response> {
+  return async (request) => {
+    const existing = readCookie(request, SESSION_COOKIE);
+    const session = existing ?? crypto.randomUUID();
+    const response = await handler(request, session);
+    if (existing === null) response.headers.append('set-cookie', sessionCookie(session));
+    return response;
+  };
+}
 
 function readCookie(request: Request, name: string): string | null {
   const header = request.headers.get('cookie');
@@ -62,117 +213,9 @@ function json(body: unknown, init: ResponseInit = {}): Response {
 
 const notFound = (): Response => json({ error: 'not found' }, { status: 404 });
 
-async function handleApi(request: Request, url: URL, session: string): Promise<Response> {
-  // ['api', 'matches'] | ['api', 'matches', :id, 'state' | 'events' | 'commands']
-  const segments = url.pathname.split('/').filter(Boolean);
-  const [, collection, matchId, resource] = segments;
-  // Anything longer is a URL we don't understand, and answering it 200 would
-  // be pretending we do.
-  if (collection !== 'matches' || segments.length > 4) return notFound();
-
-  if (matchId === undefined) {
-    if (request.method === 'GET') return json(await matches.list());
-    if (request.method === 'POST') return json(await matches.create(), { status: 201 });
-    return notFound();
-  }
-
-  if (resource === 'state' && request.method === 'GET') {
-    const snapshot = await matches.snapshot(matchId);
-    return snapshot ? json(snapshot) : notFound();
-  }
-
-  if (resource === 'events' && request.method === 'GET') {
-    const since = Number(url.searchParams.get('since') ?? 0);
-    if (!Number.isInteger(since) || since < 0) {
-      return json({ error: 'since must be a non-negative integer' }, { status: 400 });
-    }
-    const events = await matches.since(matchId, since);
-    return events ? json(events) : notFound();
-  }
-
-  if (resource === 'commands' && request.method === 'POST') {
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return json({ ok: false, reason: 'malformed JSON' }, { status: 400 });
-    }
-
-    const command = parseCommand(body);
-    if (!command) {
-      return json({ ok: false, reason: 'not a valid command' }, { status: 400 });
-    }
-
-    // Reads the match once here and again inside submit(), because
-    // resolveActor needs state to stamp `actor = currentTurn` while submit
-    // owns the read. Deliberately not fixed: phase 9 makes resolveActor a
-    // session lookup that needs no state, and this read disappears with it.
-    // The window between the two reads can only produce a rejection, never a
-    // wrong write -- submit validates against its own, later read.
-    const snapshot = await matches.snapshot(matchId);
-    if (!snapshot) return notFound();
-
-    const result = await matches.submit(matchId, command, resolveActor(session, snapshot.state));
-    // A rejected command is a legitimate answer, not an HTTP error -- the
-    // client reads `ok`, and 200 keeps rejection distinct from transport
-    // failure.
-    return json(result);
-  }
-
-  return notFound();
-}
-
-async function serveClient(url: URL): Promise<Response> {
-  // Production only: in dev the client is served by Vite, which proxies
-  // /api here. Falls back to index.html so client routing works.
-  const index = Bun.file(join(CLIENT_DIST, 'index.html'));
-  const serveIndex = async (): Promise<Response> =>
-    (await index.exists())
-      ? new Response(index)
-      : new Response('client not built -- run `bun run build`', { status: 404 });
-
-  if (url.pathname === '/') return serveIndex();
-
-  // Resolve and confirm the result is still inside the build directory. URL
-  // parsing already collapses `..`, so this is belt-and-braces rather than a
-  // known hole -- but "safe because of how the parser happens to behave" is
-  // not a property to rely on for filesystem access.
-  // `+ sep` matters: a bare startsWith would also accept a sibling directory
-  // whose name merely begins with the same characters, like dist-types.
-  const resolved = resolve(CLIENT_DIST, '.' + url.pathname);
-  if (!resolved.startsWith(CLIENT_DIST + sep)) return serveIndex();
-
-  const requested = Bun.file(resolved);
-  if (await requested.exists()) return new Response(requested);
-
-  return serveIndex();
-}
-
-const server = Bun.serve({
-  port: PORT,
-  // A command is a few hundred bytes. Anything approaching this is either a
-  // bug or an attempt to make us allocate; parseCommand caps path length too.
-  maxRequestBodySize: 64 * 1024,
-
-  error(cause) {
-    // JSON, so the client can parse it and report accurately rather than
-    // failing to decode and blaming the network.
-    console.error('unhandled request error:', cause);
-    return json({ ok: false, reason: 'internal server error' }, { status: 500 });
-  },
-
-  async fetch(request) {
-    const url = new URL(request.url);
-    const session = readCookie(request, SESSION_COOKIE) ?? crypto.randomUUID();
-    const isNewSession = readCookie(request, SESSION_COOKIE) === null;
-
-    const response = url.pathname.startsWith('/api/')
-      ? await handleApi(request, url, session)
-      : await serveClient(url);
-
-    if (isNewSession) response.headers.append('set-cookie', sessionCookie(session));
-    return response;
-  },
-});
-
-console.log(`server listening on http://localhost:${server.port}`);
+// The entry point, and the only thing here that acts on import -- guarded, so
+// it acts only when this file *is* the program. `bun run dev` and `bun run
+// start` both execute it; importing the module (a test) gets the factory and
+// nothing else. Without the guard the scripts define createServer and exit
+// without listening.
+if (import.meta.main) await createServer();
