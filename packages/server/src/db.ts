@@ -33,11 +33,24 @@ export interface Database {
   url: string;
 }
 
-// The url travels with the client so migrate() can't be pointed at a different
-// database than the one it's configuring.
-export function createDb(url: string = DEFAULT_DB_URL): Database {
+/**
+ * Opens a connection and applies the pragmas that belong to it.
+ *
+ * `busy_timeout` is per *connection* and resets to 0 on every new one, so it
+ * has to be set here rather than anywhere that runs once (verified). Without it
+ * contention throws SQLITE_BUSY instead of waiting. `journal_mode = WAL` is by
+ * contrast a property of the file that survives restarts -- see setUpDatabase.
+ *
+ * Both are no-ops against a remote libSQL server, which manages its own
+ * concurrency, hence the `file:` guard.
+ *
+ * The url travels with the client so migrate() can't be pointed at a different
+ * database than the one it's configuring.
+ */
+export async function createDb(url: string = DEFAULT_DB_URL): Promise<Database> {
   const resolved = resolveUrl(url);
   const client = createClient({ url: resolved });
+  if (resolved.startsWith('file:')) await client.execute('PRAGMA busy_timeout = 5000');
   return { db: drizzle(client, { schema }), client, url: resolved };
 }
 
@@ -47,17 +60,16 @@ export function createDb(url: string = DEFAULT_DB_URL): Database {
  * The DDL is generated -- `bun run db:generate` after changing the schema, and
  * the migration files it writes are the record of what has been applied. This
  * runs pending ones at boot, which is fine for a single instance; a rolling
- * deploy would want it as a separate step before the new code starts.
+ * deploy would want `bun run db:migrate` as a step before the new code starts.
+ * Costs ~0.4 ms once there is nothing pending.
+ *
+ * Deliberately does not touch connection settings: pairing them here is how
+ * moving this to a deploy step would silently take busy_timeout with it.
  */
 export async function migrate({ db, client, url }: Database): Promise<void> {
-  // WAL lets readers run alongside the single writer; busy_timeout makes
-  // contention wait rather than throw SQLITE_BUSY. Both are better than the
-  // defaults and neither is on by default. No-ops against a remote libSQL
-  // server, which manages its own concurrency.
-  if (url.startsWith('file:')) {
-    await client.execute('PRAGMA journal_mode = WAL');
-    await client.execute('PRAGMA busy_timeout = 5000');
-  }
+  // A property of the database file, not the connection -- set once, survives
+  // every restart. Lets readers run alongside the single writer.
+  if (url.startsWith('file:')) await client.execute('PRAGMA journal_mode = WAL');
 
   await runMigrations(db, { migrationsFolder: MIGRATIONS });
 }

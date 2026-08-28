@@ -30,7 +30,7 @@ export interface ServerOptions {
 }
 
 export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
-  const db = createDb(databaseUrl);
+  const db = await createDb(databaseUrl);
   await migrate(db);
   const matches = createMatchStore(db);
 

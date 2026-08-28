@@ -7,10 +7,10 @@ import type { MatchStore } from './match';
 // Each test gets its own in-memory database: real queries, real migrations, no
 // files to clean up, and no way for one test to see another's rows.
 let store: MatchStore;
-let db: ReturnType<typeof createDb>;
+let db: Awaited<ReturnType<typeof createDb>>;
 
 beforeEach(async () => {
-  db = createDb(':memory:');
+  db = await createDb(':memory:');
   await migrate(db);
   store = createMatchStore(db);
 });

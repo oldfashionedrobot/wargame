@@ -390,7 +390,9 @@ Statements are **built by Drizzle and run by the raw driver**. Drizzle's own `ba
 
 Explicitly *not* done: no `BEGIN IMMEDIATE` (it would hold the write lock across our own compute and network latency, for a workload that computes a pure function over a snapshot), and no in-process lock (process-local state that does nothing across instances, and would hide the condition rather than surface it).
 
-**Set the pragmas.** WAL mode (concurrent readers alongside one writer) and `busy_timeout` (contention retries instead of throwing `SQLITE_BUSY`). Defaults are meaningfully worse and this is easy to not know about. Both are no-ops against a remote libSQL server, which manages its own concurrency.
+**Set the pragmas, in the two places their lifetimes belong.** WAL mode (concurrent readers alongside one writer) and `busy_timeout` (contention waits instead of throwing `SQLITE_BUSY`). Defaults are meaningfully worse and this is easy to not know about. Both are no-ops against a remote libSQL server, which manages its own concurrency.
+
+They are not the same kind of setting, which is worth stating because pairing them looks natural and is a trap. **`journal_mode = WAL` is a property of the database file** and survives every restart, so it belongs with `migrate()` — set once. **`busy_timeout` is per connection and resets to 0 on each new one** (verified), so it belongs in `createDb`. Together in `migrate()` they worked only because every caller happened to call both; the day migrations move to a deploy step, that pairing would have taken `busy_timeout` with them and produced intermittent `SQLITE_BUSY` a long way from the change.
 
 ### Deploying SQLite ⬜
 
@@ -702,7 +704,7 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 | **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | Phase 9 — match lifecycle and, eventually, notification. Not new mechanics |
 | **Ruleset versioning** | None | Stamp a ruleset id on the match so old logs replay under the rules they were played with |
 | **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
-| **Migrations run at boot** | `migrate()` on startup, fine for one instance | A rolling deploy wants it as a separate step before new code starts |
+| **Migrations run at boot** | `migrate()` on startup, fine for one instance and ~0.4 ms once nothing is pending. Drizzle lists runtime migration as a first-class flow for monoliths, so this is a choice rather than a shortcut | `bun run db:migrate` as a deploy step, once there is more than one instance, a rolling deploy, or a reason to deny the runtime DDL rights |
 | **Two reads per command** | `resolveActor` needs state to stamp `actor = currentTurn`, but `submit` owns the read | Phase 9 — `resolveActor` becomes a session lookup and the extra read disappears |
 | **`typecheck` can pass stale** | `tsc -b` skips work its `.tsbuildinfo` believes current — observed reporting 0 while `tsc -p packages/server` flagged two `TS6133`s | Run `tsc -b --force` in the gate, or drop the incremental cache |
 | **`strict` is off** | Inherited from the Vite template — `noUnusedLocals` etc. are on, but `strictNullChecks` and friends are not | Step 5a, as its own commit — it pairs with the `SelectionState` union, which forces the same nullability work |
