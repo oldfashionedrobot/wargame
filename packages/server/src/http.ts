@@ -12,6 +12,16 @@ import { DEFAULT_PORT, IS_PROD, SESSION_COOKIE } from './const';
 // and every request would fall through to "client not built".
 export const CLIENT_DIST = resolve(fileURLToPath(new URL('../../client/dist', import.meta.url)));
 
+// Secure only in production -- dev runs over plain http://localhost.
+// SameSite=Lax is what covers CSRF, which is the risk cookies introduce.
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  sameSite: 'lax',
+  path: '/',
+  maxAge: 31536000,
+  secure: IS_PROD,
+} as const;
+
 export interface ServerOptions {
   /** Defaults to $PORT, then 3001. Pass 0 to let the OS pick a free one. */
   port?: number;
@@ -105,15 +115,8 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
     },
 
     // Everything that is not /api: the client build. Unmatched routes fall
-    // through to here, which is exactly the shape this already had.
-    async fetch(request) {
-      const existing = readCookie(request, SESSION_COOKIE);
-      const response = await serveClient(new URL(request.url));
-      if (existing === null) {
-        response.headers.append('set-cookie', sessionCookie(crypto.randomUUID()));
-      }
-      return response;
-    },
+    // through to here, wearing the same wrapper as every route above.
+    fetch: withSession(async (request) => serveClient(new URL(request.url))),
   });
 
   console.log(`server listening on http://localhost:${server.port}`);
@@ -148,49 +151,51 @@ async function serveClient(url: URL): Promise<Response> {
 }
 
 /**
- * Wraps a route handler so its response carries a session, minting one when
- * the request arrives without it.
+ * Wraps a handler so its response carries a session, minting one when the
+ * request arrives without it and passing it down.
  *
- * This has to wrap each route rather than sit in one place, because `routes`
- * bypass the `fetch` handler entirely -- so the single choke point that used
- * to exist there is gone. Forgetting the wrapper on a new route means that
- * route stops issuing a session, which is why it reads as a visible decorator
- * on every entry in the table rather than something ambient.
+ * It has to wrap each entry rather than sit in one place, because `routes`
+ * bypass the `fetch` handler entirely -- the single choke point that used to
+ * exist there is gone, and forgetting the wrapper silently stops that route
+ * issuing a session. Hence a visible decorator on every line of the table
+ * rather than something ambient.
+ *
+ * Typed as `BunRequest<T>` rather than a plain `Request` so the path literal
+ * survives the wrapper and route handlers keep `request.params` typed. Widening
+ * it costs that silently: params degrade to `Record<string, string>` and a typo
+ * starts compiling (verified both ways).
+ *
+ * `fetch` reuses it anyway, even though it is handed an ordinary `Request`.
+ * That is sound here because the body only touches `headers`, which both have,
+ * and it typechecks because bun declares `fetch` with method syntax, whose
+ * parameters stay bivariant even under `strictFunctionTypes` -- checked against
+ * 5a turning `strict` on.
+ *
+ * ⚠️ Two concurrent requests from a browser with no cookie yet each mint a
+ * *different* id, and last write wins. Harmless while the id is decorative; it
+ * becomes orphaned rows the moment a sessions table hangs off it. The fix
+ * belongs with that table, not here -- see Identity in the plan.
  */
 function withSession<T extends string>(
   handler: (request: BunRequest<T>, session: string) => Promise<Response>,
 ): (request: BunRequest<T>) => Promise<Response> {
   return async (request) => {
-    const existing = readCookie(request, SESSION_COOKIE);
-    const session = existing ?? crypto.randomUUID();
+    // `||` rather than `??`: a present-but-empty cookie (`vod_session=`, which
+    // any client can send) is as useless as no cookie, and both have to mint.
+    // `??` would keep the empty string and hand it down as the session.
+    const existing = new Bun.CookieMap(request.headers.get('cookie') ?? '').get(SESSION_COOKIE);
+    const session = existing || crypto.randomUUID();
+
     const response = await handler(request, session);
-    if (existing === null) response.headers.append('set-cookie', sessionCookie(session));
+    // True exactly when the line above minted, empty cookie included.
+    if (session !== existing) {
+      response.headers.append(
+        'set-cookie',
+        new Bun.Cookie(SESSION_COOKIE, session, COOKIE_OPTIONS).serialize(),
+      );
+    }
     return response;
   };
-}
-
-function readCookie(request: Request, name: string): string | null {
-  const header = request.headers.get('cookie');
-  if (!header) return null;
-  for (const part of header.split(';')) {
-    const [key, ...rest] = part.trim().split('=');
-    if (key === name) return rest.join('=');
-  }
-  return null;
-}
-
-function sessionCookie(id: string): string {
-  // Secure only in production -- dev runs over plain http://localhost.
-  // SameSite=Lax is what covers CSRF, which is the risk cookies introduce.
-  const parts = [
-    `${SESSION_COOKIE}=${id}`,
-    'HttpOnly',
-    'SameSite=Lax',
-    'Path=/',
-    'Max-Age=31536000',
-  ];
-  if (IS_PROD) parts.push('Secure');
-  return parts.join('; ');
 }
 
 /**

@@ -235,6 +235,18 @@ describe('session cookie', () => {
     expect(cookie).not.toContain('Secure');
   });
 
+  // An empty value is trivially sendable and useless as an id. Treating it as
+  // "present" would hand the handler an empty session and echo `vod_session=`
+  // back forever -- which is exactly what `??` instead of `||` produced.
+  it('mints a real one when the cookie is present but empty', async () => {
+    const response = await get('/api/matches', {
+      headers: { cookie: `${SESSION_COOKIE}=` },
+    });
+    expect(response.headers.get('set-cookie')).toMatch(
+      new RegExp(`${SESSION_COOKIE}=[0-9a-f]{8}-[0-9a-f-]{27}`),
+    );
+  });
+
   it('does not reissue one that was presented', async () => {
     const response = await get('/api/matches', {
       headers: { cookie: `${SESSION_COOKIE}=already-have-one` },

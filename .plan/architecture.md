@@ -300,6 +300,8 @@ Applying its own `submit` response immediately is what keeps your own moves resp
 
 Server issues an opaque id on first contact and sets it as a cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` in production only (dev runs over plain `http://localhost`).
 
+One implementation serves both paths. `routes` produce a `BunRequest` carrying `.cookies`; the `fetch` fallback gets an ordinary `Request` that does not — but `Bun.CookieMap` and `Bun.Cookie` are constructible from a raw header, so `ensureSession(request: Request)` covers both rather than each hand-rolling its own parse and serialize.
+
 **The client never touches it.** The browser returns it automatically, so there is no token to read, store, or attach — less client code than a `localStorage` scheme, not more, and nothing to migrate when phase 9 makes the session mean something. Same-origin makes this work with no CORS involved, in dev through the Vite proxy as well.
 
 `SameSite=Lax` is what covers CSRF, which is the risk cookies introduce and bearer tokens don't. The trade is deliberate: `localStorage` is immune to CSRF but readable by any XSS, and for a same-origin app an `HttpOnly` cookie is the better side of it.
@@ -315,6 +317,8 @@ Sign in with a provider (Discord is the natural fit for a game; GitHub or Google
 The point of never accepting a password is that it deletes the parts of auth that are both hardest and most dangerous — hashing, reset flows, verification email, breach response. We never hold a credential worth stealing. A **magic link** is the natural later addition for people who don't want a third-party account; it keeps the same property.
 
 A small OAuth library plus a sessions table, not an auth platform. Hosted providers (Clerk, WorkOS, Auth0) stay a contained swap if auth ever becomes a distraction.
+
+**Better Auth is the candidate to evaluate first**, because it *is* that description rather than an alternative to it: sessions in our own database, a first-class Drizzle adapter, SQLite supported, httpOnly cookies, OAuth providers, and no password path required. It would replace `resolveActor`, supply the `sessions` table, and subsume `ensureSession` entirely — session creation becomes an insert, which retires the concurrent-mint race rather than working around it. To check when we get there: whether its cookie replaces `vod_session` cleanly, and what it assumes about a framework, since `Bun.serve` is not one.
 
 **The transport doesn't change** — it's the same cookie phase 3 already sets. What changes is what the session *means*: a row in `sessions` tied to a real player record, rather than an opaque id the server trusts on sight.
 
@@ -982,6 +986,8 @@ Until all three land, two tabs share control of both players rather than being t
 - **CSRF hardening is premature.** `SameSite=Lax` already blocks a cross-site POST from carrying the cookie, and an attacker doesn't need the cookie anyway — there is no authority to forge. Tokens and double-submit patterns become meaningful the same day `resolveActor` starts trusting the session, and not before.
 - **`GET /api/matches` becomes an information leak.** It currently lists every match from every visitor. Harmless while matches are unowned; the moment they're owned, listing must be scoped to the player — which is the same change already recorded under Known compromises, arriving for a second reason.
 - **`404` on a missing match stops being neutral.** Once matches are owned, "no such match" and "not yours" should be the same response, or the endpoint becomes an existence oracle.
+
+⚠️ **5c widens this.** The race below is survivable today partly by accident: in dev, Vite serves `index.html`, so the browser's first contact with *our* server is already an API call, and in production the HTML response sets the cookie before any API call can race. Once 5c makes one process serve both, that accidental ordering is the only thing between us and concurrent cookie-less requests on a cold load — so it stops being a production-only concern.
 
 **The session-id race has to be fixed before the session means anything.** `fetch` currently does:
 
