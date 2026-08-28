@@ -209,9 +209,10 @@ describe('routing', () => {
 
   it('hands non-api paths to the client, not the api 404', async () => {
     // Either index.html or the "client not built" notice, depending on whether
-    // dist exists -- both are the client fallback, and neither is JSON.
+    // dist has been built -- both are the client path. Discriminated by body
+    // rather than content type, since every non-2xx is JSON including that one.
     const response = await get('/some/client/route');
-    expect(response.headers.get('content-type')).not.toContain('application/json');
+    expect(await response.text()).not.toContain('"error":"not found"');
   });
 
   it('does not serve files outside the client build', async () => {

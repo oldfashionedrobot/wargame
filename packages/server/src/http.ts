@@ -10,7 +10,7 @@ import { DEFAULT_PORT, IS_PROD, SESSION_COOKIE } from './const';
 // fileURLToPath, not .pathname -- the latter percent-encodes, so a checkout
 // under a path with a space would resolve to a directory that does not exist
 // and every request would fall through to "client not built".
-export const CLIENT_DIST = resolve(fileURLToPath(new URL('../../client/dist', import.meta.url)));
+const CLIENT_DIST = resolve(fileURLToPath(new URL('../../client/dist', import.meta.url)));
 
 // Secure only in production -- dev runs over plain http://localhost.
 // SameSite=Lax is what covers CSRF, which is the risk cookies introduce.
@@ -125,7 +125,7 @@ async function serveClient(url: URL): Promise<Response> {
   const serveIndex = async (): Promise<Response> =>
     (await index.exists())
       ? new Response(index)
-      : new Response('client not built -- run `bun run build`', { status: 404 });
+      : errorResponse('client not built -- run `bun run build`', 404);
 
   if (url.pathname === '/') return serveIndex();
 
