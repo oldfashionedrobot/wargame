@@ -29,9 +29,6 @@ export interface ServerOptions {
   databaseUrl?: string;
 }
 
-/**
- * Builds and starts the server.
- */
 export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
   const db = createDb(databaseUrl);
   await migrate(db);
@@ -80,12 +77,9 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
           }
 
           const matchId = request.params.id;
-          // Reads the match once here and again inside submit(), because
-          // resolveActor needs state to stamp `actor = currentTurn` while submit
-          // owns the read. Deliberately not fixed: phase 9 makes resolveActor a
-          // session lookup that needs no state, and this read disappears with it.
-          // The window between the two reads can only produce a rejection, never
-          // a wrong write -- submit validates against its own, later read.
+          // Second read of the match -- submit() does its own. Deliberate: it
+          // goes away in phase 9 when resolveActor stops needing state. The
+          // window can only produce a rejection, never a wrong write.
           const snapshot = await matches.snapshot(matchId);
           if (!snapshot) return notFound();
 
@@ -94,24 +88,19 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
             command,
             resolveActor(session, snapshot.state),
           );
-          // A rejected command is a legitimate answer, not an HTTP error -- the
-          // client reads `ok`, and 200 keeps rejection distinct from transport
-          // failure.
+          // 200 even when rejected: the client reads `ok`, and this keeps a
+          // refusal distinct from a transport failure.
           return json(result);
         }),
       },
 
-      // Catches every /api URL the table above does not claim, including a
-      // method an endpoint does not serve. Answering those 200 through the
-      // client fallback would be pretending we understand them.
+      // Unclaimed /api URLs, including a method an endpoint does not serve.
+      // Keeps those 404 rather than falling through to the client build.
       '/api/*': withSession(async () => notFound()),
 
-      // Everything else is the client build. A route rather than the `fetch`
-      // fallback, for two reasons: the table then accounts for every path in
-      // one place, and only `routes` receive a `BunRequest` -- which is what
-      // lets withSession use bun's cookie map for this too instead of the
-      // fallback hand-rolling its own. Last because it is least specific;
-      // '/api/*' out-matches it for anything under /api.
+      // The client build. A route rather than a `fetch` fallback so that every
+      // path is in this table and every handler gets a BunRequest -- which is
+      // what carries `cookies`. Least specific, so '/api/*' out-matches it.
       '/*': withSession(async (request) => serveClient(new URL(request.url))),
     },
 
@@ -139,12 +128,9 @@ async function serveClient(url: URL): Promise<Response> {
 
   if (url.pathname === '/') return serveIndex();
 
-  // Resolve and confirm the result is still inside the build directory. URL
-  // parsing already collapses `..`, so this is belt-and-braces rather than a
-  // known hole -- but "safe because of how the parser happens to behave" is
-  // not a property to rely on for filesystem access.
-  // `+ sep` matters: a bare startsWith would also accept a sibling directory
-  // whose name merely begins with the same characters, like dist-types.
+  // Belt-and-braces: URL parsing already collapses `..`, but filesystem access
+  // should not rest on how the parser happens to behave. `+ sep` is load-
+  // bearing -- a bare startsWith would accept a sibling like dist-types.
   const resolved = resolve(CLIENT_DIST, '.' + url.pathname);
   if (!resolved.startsWith(CLIENT_DIST + sep)) return serveIndex();
 
@@ -155,42 +141,30 @@ async function serveClient(url: URL): Promise<Response> {
 }
 
 /**
- * Wraps a handler so its response carries a session, minting one when the
- * request arrives without it and passing it down.
+ * Gives a handler a session, minting one if the request arrives without it.
+ * Bun applies the cookie change to the response, so nothing here writes a
+ * header.
  *
- * It wraps each entry rather than sitting in one place because `Bun.serve` has
- * no middleware -- an open request upstream, not an oversight here -- and a
- * matched route never reaches the `fetch` fallback (verified), so there is no
- * choke point to use. A visible decorator on every line of the table is the
- * deliberate half of that: forgetting it is otherwise silent, since the
- * endpoint keeps working and merely stops issuing a session.
+ * Per entry rather than in one place because `Bun.serve` has no middleware and
+ * a matched route reaches no fallback. Forgetting it on a new route is silent
+ * -- the endpoint still works, it just stops issuing a session -- hence a
+ * decorator visible on every line of the table.
  *
- * Typed as `BunRequest<T>` rather than a plain `Request` for two reasons: the
- * path literal survives the wrapper, so route handlers keep `request.params`
- * typed -- widening it silently degrades them to `Record<string, string>` and
- * lets a typo compile (verified both ways) -- and only a `BunRequest` carries
- * `cookies`. That second one is why the client fallback is a `'/*'` route
- * rather than the `fetch` handler, which receives a plain `Request`.
+ * Keep it `BunRequest<T>`: widening to `Request` compiles but degrades
+ * `request.params` to `Record<string, string>`, so a param typo stops being an
+ * error.
  *
- * Nothing here writes a `Set-Cookie` header: bun applies changes made to
- * `request.cookies` to the response itself. The header is also not parsed until
- * `cookies` is first touched, so this costs nothing on a request that has one.
- *
- * The id is decorative until phase 9 -- nothing reads it, and nothing stores
- * it. Two constraints follow for whatever does: see Identity in the plan.
+ * The id is decorative until phase 9. See Identity in the plan for the two
+ * constraints that fall on whatever starts storing it.
  */
 function withSession<T extends string>(
   handler: (request: BunRequest<T>, session: string) => Promise<Response>,
 ): (request: BunRequest<T>) => Promise<Response> {
   return async (request) => {
-    // `||` rather than `??`: a present-but-empty cookie (`vod_session=`, which
-    // any client can send) is as useless as no cookie, and both have to mint.
-    // `??` would keep the empty string and hand it down as the session.
+    // `||`, not `??`: `vod_session=` parses to '' and must mint like a missing
+    // cookie. `??` would pass the empty string down as the session.
     const existing = request.cookies.get(SESSION_COOKIE);
     const session = existing || crypto.randomUUID();
-
-    // Set before the handler runs, not after: bun collects the change either
-    // way, and this keeps the mint and the write on adjacent lines.
     if (session !== existing) request.cookies.set(SESSION_COOKIE, session, COOKIE_OPTIONS);
 
     return handler(request, session);
@@ -217,9 +191,6 @@ function json(body: unknown, init: ResponseInit = {}): Response {
 
 const notFound = (): Response => json({ error: 'not found' }, { status: 404 });
 
-// The entry point, and the only thing here that acts on import -- guarded, so
-// it acts only when this file *is* the program. `bun run dev` and `bun run
-// start` both execute it; importing the module (a test) gets the factory and
-// nothing else. Without the guard the scripts define createServer and exit
-// without listening.
+// Guarded so importing this module (a test) starts nothing. Without it, the
+// dev and start scripts define createServer and exit without listening.
 if (import.meta.main) await createServer();
