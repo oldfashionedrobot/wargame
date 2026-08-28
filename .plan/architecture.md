@@ -989,14 +989,12 @@ Until all three land, two tabs share control of both players rather than being t
 
 ⚠️ **5c widens this.** The race below is survivable today partly by accident: in dev, Vite serves `index.html`, so the browser's first contact with *our* server is already an API call, and in production the HTML response sets the cookie before any API call can race. Once 5c makes one process serve both, that accidental ordering is the only thing between us and concurrent cookie-less requests on a cold load — so it stops being a production-only concern.
 
-**The session-id race has to be fixed before the session means anything.** `fetch` currently does:
+**Two constraints on the sessions table, from how the cookie behaves today.** `withSession` mints an id for any request arriving without one, so concurrent requests from a browser with no cookie yet each mint a *different* id and each set it — last write wins. That is not a defect: nothing reads the id (`resolveActor` ignores it) and nothing persists it, so there is no state to corrupt. It becomes one the moment a session store assumes otherwise, which is why the requirements are recorded here rather than worked around in the wrapper:
 
-```ts
-const session = readCookie(request, SESSION_COOKIE) ?? crypto.randomUUID()
-const isNewSession = readCookie(request, SESSION_COOKIE) === null
-```
+- **Create session rows at sign-in, not on arrival.** The orphan problem is a *rows* problem. If a row only exists once someone authenticates, the ids a browser mints and discards never become rows, and the race stops mattering without needing to be prevented — which is the only approach that works, since two cookie-less requests are indistinguishable and cannot be serialised.
+- **Rotate the id on sign-in.** An id minted for an anonymous visitor must not survive into an authenticated one, or an attacker who plants a known cookie inherits the session after the victim logs in. Standard session-fixation defence, and it makes every pre-auth id irrelevant by construction.
 
-Two reads of the same header, and — more importantly — concurrent requests from a browser with no cookie yet each mint a *different* id and each set it. Last write wins. Harmless while the id is decorative; once a row in `sessions` hangs off it, that's orphaned rows and a player who is briefly two people. The fix belongs with the sessions table rather than ahead of it.
+Both are defaults in Better Auth, which is a further point in its favour above.
 
 **Where the check goes.** Whatever provides identity resolves to a `PlayerId` in one place, before `actor` is stamped — see Identity. Ownership is then a lookup in front of the authority, never a rule the reducers know about. Note that `canSelectUnit` deliberately stays a game fact and needs no identity: the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
 

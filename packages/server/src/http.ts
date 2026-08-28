@@ -158,11 +158,12 @@ async function serveClient(url: URL): Promise<Response> {
  * Wraps a handler so its response carries a session, minting one when the
  * request arrives without it and passing it down.
  *
- * It has to wrap each entry rather than sit in one place, because `routes`
- * bypass the `fetch` handler entirely -- the single choke point that used to
- * exist there is gone, and forgetting the wrapper silently stops that route
- * issuing a session. Hence a visible decorator on every line of the table
- * rather than something ambient.
+ * It wraps each entry rather than sitting in one place because `Bun.serve` has
+ * no middleware -- an open request upstream, not an oversight here -- and a
+ * matched route never reaches the `fetch` fallback (verified), so there is no
+ * choke point to use. A visible decorator on every line of the table is the
+ * deliberate half of that: forgetting it is otherwise silent, since the
+ * endpoint keeps working and merely stops issuing a session.
  *
  * Typed as `BunRequest<T>` rather than a plain `Request` for two reasons: the
  * path literal survives the wrapper, so route handlers keep `request.params`
@@ -175,10 +176,8 @@ async function serveClient(url: URL): Promise<Response> {
  * `request.cookies` to the response itself. The header is also not parsed until
  * `cookies` is first touched, so this costs nothing on a request that has one.
  *
- * ⚠️ Two concurrent requests from a browser with no cookie yet each mint a
- * *different* id, and last write wins. Harmless while the id is decorative; it
- * becomes orphaned rows the moment a sessions table hangs off it. The fix
- * belongs with that table, not here -- see Identity in the plan.
+ * The id is decorative until phase 9 -- nothing reads it, and nothing stores
+ * it. Two constraints follow for whatever does: see Identity in the plan.
  */
 function withSession<T extends string>(
   handler: (request: BunRequest<T>, session: string) => Promise<Response>,
