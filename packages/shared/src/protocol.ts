@@ -73,6 +73,19 @@ export interface EventsResponse {
   state: GameState;
 }
 
+/**
+ * The body of any non-2xx response.
+ *
+ * Deliberately not `CommandResult`'s `{ ok: false, reason }`, even though that
+ * shape was once used here. The two mean different things: a `CommandResult`
+ * says the *rules* refused a well-formed command and arrives with a 200, while
+ * this says the *request* never reached them. Sharing a shape invites a client
+ * to conflate "your move was illegal" with "that wasn't a command".
+ */
+export interface ErrorResponse {
+  error: string;
+}
+
 // --- Runtime validation ---------------------------------------------------
 // TypeScript is erased; a POST body is attacker-controlled and can be
 // anything. Hand-rolled because the command union is tiny and a schema library

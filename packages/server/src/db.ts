@@ -23,13 +23,12 @@ const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const MIGRATIONS = fileURLToPath(new URL('../drizzle', import.meta.url));
 
 export interface Database {
-  /** Typed queries. What everything reading or writing game data should use. */
-  db: LibSQLDatabase<typeof schema>;
   /**
-   * The raw driver, for the two things Drizzle cannot express: pragmas, and
-   * the `'write'` transaction mode on submit's batch.
+   * Typed queries, and `db.$client` for the two things Drizzle cannot express:
+   * pragmas, and the `'write'` transaction mode on submit's batch. Carrying the
+   * raw client separately would be a second reference to the same object.
    */
-  client: Client;
+  db: LibSQLDatabase<typeof schema> & { $client: Client };
   url: string;
 }
 
@@ -51,7 +50,7 @@ export async function createDb(url: string = DEFAULT_DB_URL): Promise<Database> 
   const resolved = resolveUrl(url);
   const client = createClient({ url: resolved });
   if (resolved.startsWith('file:')) await client.execute('PRAGMA busy_timeout = 5000');
-  return { db: drizzle(client, { schema }), client, url: resolved };
+  return { db: drizzle(client, { schema }), url: resolved };
 }
 
 /**
@@ -66,10 +65,10 @@ export async function createDb(url: string = DEFAULT_DB_URL): Promise<Database> 
  * Deliberately does not touch connection settings: pairing them here is how
  * moving this to a deploy step would silently take busy_timeout with it.
  */
-export async function migrate({ db, client, url }: Database): Promise<void> {
+export async function migrate({ db, url }: Database): Promise<void> {
   // A property of the database file, not the connection -- set once, survives
   // every restart. Lets readers run alongside the single writer.
-  if (url.startsWith('file:')) await client.execute('PRAGMA journal_mode = WAL');
+  if (url.startsWith('file:')) await db.$client.execute('PRAGMA journal_mode = WAL');
 
   await runMigrations(db, { migrationsFolder: MIGRATIONS });
 }

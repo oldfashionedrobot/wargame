@@ -42,7 +42,7 @@ const bind = (query: Query): InStatement => ({
   args: query.params as InValue[],
 });
 
-export function createMatchStore({ db, client }: Database): MatchStore {
+export function createMatchStore({ db }: Database): MatchStore {
   // Return type is inferred from the schema rather than declared: the columns
   // are the source of truth for it, and a hand-written mirror is a second
   // thing to keep in step.
@@ -143,7 +143,7 @@ export function createMatchStore({ db, client }: Database): MatchStore {
       // That needs a player submitting twice inside a single round trip, which
       // the client's in-flight guard prevents, so it is left to fail loudly
       // rather than be handled. A retry would go here.
-      const [, updated] = await client.batch(
+      const [, updated] = await db.$client.batch(
         [
           db.insert(Resolutions).values({
             matchId,

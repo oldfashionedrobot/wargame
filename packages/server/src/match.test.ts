@@ -7,12 +7,15 @@ import type { MatchStore } from './match';
 // Each test gets its own in-memory database: real queries, real migrations, no
 // files to clean up, and no way for one test to see another's rows.
 let store: MatchStore;
-let db: Awaited<ReturnType<typeof createDb>>;
+// The raw driver, for assertions that deliberately bypass the store and read
+// what actually landed in the tables.
+let sql: Awaited<ReturnType<typeof createDb>>['db']['$client'];
 
 beforeEach(async () => {
-  db = await createDb(':memory:');
-  await migrate(db);
-  store = createMatchStore(db);
+  const database = await createDb(':memory:');
+  await migrate(database);
+  store = createMatchStore(database);
+  sql = database.db.$client;
 });
 
 const move = (unitId: string, to: [number, number], from: [number, number]): Command => ({
@@ -45,7 +48,7 @@ describe('create', () => {
 
   it('writes initial_state and current_state identically to begin with', async () => {
     const { id } = await store.create();
-    const { rows } = await db.client.execute({
+    const { rows } = await sql.execute({
       sql: 'SELECT initial_state, current_state FROM matches WHERE id = ?',
       args: [id],
     });
@@ -150,7 +153,7 @@ describe('submit', () => {
     // point -- `actor` exists only on Action. Cast through unknown to build it.
     const smuggled = { ...move('blue-1', [1, 2], [0, 0]), actor: RED } as unknown as Command;
     await store.submit(id, smuggled, BLUE);
-    const { rows } = await db.client.execute({
+    const { rows } = await sql.execute({
       sql: 'SELECT actor, action FROM resolutions WHERE match_id = ?',
       args: [id],
     });
@@ -165,7 +168,7 @@ describe('storage guarantees', () => {
   it('refuses two resolutions claiming the same seq', async () => {
     const { id } = await store.create();
     await store.submit(id, move('blue-1', [1, 2], [0, 0]), BLUE);
-    const duplicate = db.client.execute({
+    const duplicate = sql.execute({
       sql: `INSERT INTO resolutions (match_id, seq, actor, action, events, created_at)
             VALUES (?, 1, ?, '{}', '[]', 0)`,
       args: [id, BLUE],
@@ -176,8 +179,8 @@ describe('storage guarantees', () => {
   it('cascades resolutions away when a match is deleted', async () => {
     const { id } = await store.create();
     await store.submit(id, { type: 'endTurn' }, BLUE);
-    await db.client.execute({ sql: 'DELETE FROM matches WHERE id = ?', args: [id] });
-    const { rows } = await db.client.execute('SELECT COUNT(*) c FROM resolutions');
+    await sql.execute({ sql: 'DELETE FROM matches WHERE id = ?', args: [id] });
+    const { rows } = await sql.execute('SELECT COUNT(*) c FROM resolutions');
     expect(Number(rows[0].c)).toBe(0);
   });
 
@@ -197,13 +200,13 @@ describe('storage guarantees', () => {
     const { id } = await store.create();
     await store.submit(id, { type: 'endTurn' }, BLUE);
 
-    const stale = await db.client.execute({
+    const stale = await sql.execute({
       sql: 'UPDATE matches SET current_seq = 99 WHERE id = ? AND current_seq = ?',
       args: [id, 0], // 0 was the seq before that submit -- now out of date
     });
     expect(stale.rowsAffected).toBe(0);
 
-    const current = await db.client.execute({
+    const current = await sql.execute({
       sql: 'UPDATE matches SET current_seq = 99 WHERE id = ? AND current_seq = ?',
       args: [id, 1],
     });
@@ -217,7 +220,7 @@ describe('storage guarantees', () => {
     await store.submit(id, move('red-1', [6, 5], [7, 7]), RED);
 
     const { applyEvents } = await import('@vod/shared');
-    const { rows } = await db.client.execute({
+    const { rows } = await sql.execute({
       sql: 'SELECT initial_state, current_state FROM matches WHERE id = ?',
       args: [id],
     });

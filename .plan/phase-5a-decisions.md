@@ -147,6 +147,13 @@ replace the real reason with "server returned 422". The client half lands in
 `gameServer.ts` — the file 5a puts under test — which is the other reason to
 sequence it after.
 
+**The server half is now done.** Every non-2xx carries `{ error: string }`
+(`ErrorResponse` in `shared/protocol.ts`). The client still ignores it —
+`http.ts` builds its message from the status code — so `HttpError` should learn
+to read the body and carry the server's wording. That is a prerequisite for the
+422 change, and it is worth doing on its own: today a 400 surfaces as "server
+returned 400" when the server already said "not a valid command".
+
 Separately and much smaller: **`match.ts:114`** returns
 `{ ok: false, reason: 'no such match' }` where `snapshot` and `since` both
 signal not-found with `null`. Unreachable over HTTP — `http.ts:112` pre-reads

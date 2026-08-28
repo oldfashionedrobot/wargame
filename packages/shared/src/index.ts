@@ -26,6 +26,7 @@ export { applyEvents } from './applyEvents';
 
 export type {
   CommandResult,
+  ErrorResponse,
   EventsResponse,
   GameServer,
   MatchSummary,

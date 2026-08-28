@@ -2,7 +2,7 @@ import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { BunRequest } from 'bun';
 import { parseCommand } from '@vod/shared';
-import type { GameState, PlayerId } from '@vod/shared';
+import type { ErrorResponse, GameState, PlayerId } from '@vod/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore } from './match';
 import { DEFAULT_PORT, IS_PROD, SESSION_COOKIE } from './const';
@@ -40,14 +40,14 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
     maxRequestBodySize: 64 * 1024,
     routes: {
       '/api/matches': {
-        GET: withSession(async () => json(await matches.list())),
-        POST: withSession(async () => json(await matches.create(), { status: 201 })),
+        GET: withSession(async () => Response.json(await matches.list())),
+        POST: withSession(async () => Response.json(await matches.create(), { status: 201 })),
       },
 
       '/api/matches/:id/state': {
         GET: withSession(async (request) => {
           const snapshot = await matches.snapshot(request.params.id);
-          return snapshot ? json(snapshot) : notFound();
+          return snapshot ? Response.json(snapshot) : notFound();
         }),
       },
 
@@ -55,10 +55,10 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
         GET: withSession(async (request) => {
           const since = Number(new URL(request.url).searchParams.get('since') ?? 0);
           if (!Number.isInteger(since) || since < 0) {
-            return json({ error: 'since must be a non-negative integer' }, { status: 400 });
+            return badRequest('since must be a non-negative integer');
           }
           const events = await matches.since(request.params.id, since);
-          return events ? json(events) : notFound();
+          return events ? Response.json(events) : notFound();
         }),
       },
 
@@ -68,12 +68,12 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
           try {
             body = await request.json();
           } catch {
-            return json({ ok: false, reason: 'malformed JSON' }, { status: 400 });
+            return badRequest('malformed JSON');
           }
 
           const command = parseCommand(body);
           if (!command) {
-            return json({ ok: false, reason: 'not a valid command' }, { status: 400 });
+            return badRequest('not a valid command');
           }
 
           const matchId = request.params.id;
@@ -90,7 +90,7 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
           );
           // 200 even when rejected: the client reads `ok`, and this keeps a
           // refusal distinct from a transport failure.
-          return json(result);
+          return Response.json(result);
         }),
       },
 
@@ -105,10 +105,11 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
     },
 
     error(cause) {
-      // JSON, so the client can parse it and report accurately rather than
-      // failing to decode and blaming the network.
+      // An ErrorResponse rather than bun's default, so a client that reads the
+      // body gets the same shape here as from any other failure. Nothing reads
+      // it yet -- the client branches on status alone until phase 5.
       console.error('unhandled request error:', cause);
-      return json({ ok: false, reason: 'internal server error' }, { status: 500 });
+      return errorResponse('internal server error', 500);
     },
   });
 
@@ -182,14 +183,13 @@ function resolveActor(_session: string, state: GameState): PlayerId {
   return state.currentTurn;
 }
 
-function json(body: unknown, init: ResponseInit = {}): Response {
-  return new Response(JSON.stringify(body), {
-    ...init,
-    headers: { 'content-type': 'application/json', ...init.headers },
-  });
-}
+// Every non-2xx body is an ErrorResponse. `Response.json` sets the content
+// type itself, so there is nothing here to wrap.
+const errorResponse = (error: string, status: number): Response =>
+  Response.json({ error } satisfies ErrorResponse, { status });
 
-const notFound = (): Response => json({ error: 'not found' }, { status: 404 });
+const badRequest = (error: string): Response => errorResponse(error, 400);
+const notFound = (): Response => errorResponse('not found', 404);
 
 // Guarded so importing this module (a test) starts nothing. Without it, the
 // dev and start scripts define createServer and exit without listening.
