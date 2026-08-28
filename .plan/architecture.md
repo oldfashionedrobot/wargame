@@ -23,8 +23,7 @@ packages/
           protocol.ts  ✅ GameServer · CommandResult · HTTP shapes · parseCommand
       data/  unitTypes 🚧 · terrain ⬜ · damageTable ⬜ · chargeThresholds ⬜
   server/     depends on shared only — an app, not a library: no barrel
-    src/  http.ts ✅ Bun.serve routes — /api/* plus the client's static build
-          http.test.ts ✅ the HTTP surface, driven over real requests
+    src/  http.ts ✅ createServer() — Bun.serve routes, /api/* plus the client build
           db.ts ✅ libSQL client + Drizzle, pragmas, migrations at boot
           const.ts ✅ the env-derived defaults, read once in one place
           schema.ts ✅ matches · resolutions, typed from shared/
@@ -148,9 +147,9 @@ POST /api/matches/:id/commands        → { ok: true, seq, events, state }
 
 A missing match is a 404; a rejected command is still a 200 with `ok: false`, since rejection is an answer and not a transport failure.
 
-**Dispatch is `Bun.serve`'s own `routes` table**, not hand-rolled path parsing — one entry per endpoint above, keyed by method. Params come from the path literal, so `request.params.id` is typed and a typo in it is a compile error rather than `undefined` at runtime (verified). A `'/api/*'` entry catches everything the table does not claim, including a method an endpoint does not serve, which keeps those 404 rather than 405. `fetch` is left as the fallback for non-`/api` paths, which is the client build.
+**Dispatch is `Bun.serve`'s own `routes` table**, not hand-rolled path parsing — one entry per endpoint above, keyed by method. Params come from the path literal, so `request.params.id` is typed and a typo in it is a compile error rather than `undefined` at runtime (verified). A `'/api/*'` entry catches everything the table does not claim, including a method an endpoint does not serve, which keeps those 404 rather than 405, and a `'/*'` entry below it serves the client build. There is no `fetch` handler at all: every path is accounted for in the table, and only `routes` receive a `BunRequest` — which is what carries `cookies`.
 
-The session cookie is the one thing this cost: `routes` bypass `fetch`, so the single choke point that used to stamp every response is gone. A `withSession` wrapper sits on each route entry instead — visible on every line of the table, so a new route that forgets it is visible in review.
+The session cookie is the one thing this cost. `Bun.serve` has no middleware — [an open request upstream](https://github.com/oven-sh/bun/issues/17608), not an oversight here — and a matched route never reaches a fallback, so there is no choke point to stamp every response from. A `withSession` wrapper sits on each entry instead, visible on every line of the table: forgetting it is otherwise silent, since the endpoint keeps working and merely stops issuing a session.
 
 **Why not push.** A push channel is the only thing that would require a process holding connections open, and it buys very little here: an opponent takes tens of seconds to move, so seeing it a second or two late is imperceptible. Dropping it deletes an entire category of work — stream lifecycle, disconnect cleanup, heartbeats, proxy buffering, reconnect handling — none of which existed for any reason except the open connection.
 
@@ -215,6 +214,8 @@ Two processes in dev, one in production.
 | root | `"dev": "bun run --filter '@vod/client' --filter '@vod/server' dev"` — runs both in parallel |
 
 Both filtered explicitly for legibility; `'*'` would also work — bun skips packages that lack the script and only errors when none match.
+
+**`http.ts` exports `createServer({ port, databaseUrl })` and starts one only under `import.meta.main`.** Running the file is what listens; importing it yields the factory and nothing else. That is what keeps the module free of side effects at import — both inputs are arguments rather than ambient environment, which is the difference between the server being testable and merely importable. Without the guard the scripts would define the factory and exit without serving (observed).
 
 **One `.env`, at the repo root.** Bun reads `.env` from the working directory and does not walk up, and `bun run --filter` runs with the cwd set to the package — so the server scripts pass `--env-file=../../.env` explicitly rather than each package keeping its own.
 
@@ -300,7 +301,7 @@ Applying its own `submit` response immediately is what keeps your own moves resp
 
 Server issues an opaque id on first contact and sets it as a cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` in production only (dev runs over plain `http://localhost`).
 
-One implementation serves both paths. `routes` produce a `BunRequest` carrying `.cookies`; the `fetch` fallback gets an ordinary `Request` that does not — but `Bun.CookieMap` and `Bun.Cookie` are constructible from a raw header, so `ensureSession(request: Request)` covers both rather than each hand-rolling its own parse and serialize.
+One implementation, using bun's own cookie map. Only `routes` receive a `BunRequest`, and only a `BunRequest` carries `.cookies` — which is why the client build is a `'/*'` route rather than a `fetch` fallback. With every handler holding one, `withSession` reads and writes through `request.cookies` and never builds a `Set-Cookie` header itself; bun applies the change to the response, and does not parse the header until `cookies` is first touched.
 
 **The client never touches it.** The browser returns it automatically, so there is no token to read, store, or attach — less client code than a `localStorage` scheme, not more, and nothing to migrate when phase 9 makes the session mean something. Same-origin makes this work with no CORS involved, in dev through the Vite proxy as well.
 
@@ -318,7 +319,7 @@ The point of never accepting a password is that it deletes the parts of auth tha
 
 A small OAuth library plus a sessions table, not an auth platform. Hosted providers (Clerk, WorkOS, Auth0) stay a contained swap if auth ever becomes a distraction.
 
-**Better Auth is the candidate to evaluate first**, because it *is* that description rather than an alternative to it: sessions in our own database, a first-class Drizzle adapter, SQLite supported, httpOnly cookies, OAuth providers, and no password path required. It would replace `resolveActor`, supply the `sessions` table, and subsume `ensureSession` entirely — session creation becomes an insert, which retires the concurrent-mint race rather than working around it. To check when we get there: whether its cookie replaces `vod_session` cleanly, and what it assumes about a framework, since `Bun.serve` is not one.
+**Better Auth is the candidate to evaluate first**, because it *is* that description rather than an alternative to it: sessions in our own database, a first-class Drizzle adapter, SQLite supported, httpOnly cookies, OAuth providers, and no password path required. It would replace `resolveActor`, supply the `sessions` table, and subsume `withSession` entirely — session creation becomes an insert, which retires the concurrent-mint race rather than working around it. To check when we get there: whether its cookie replaces `vod_session` cleanly, and what it assumes about a framework, since `Bun.serve` is not one.
 
 **The transport doesn't change** — it's the same cookie phase 3 already sets. What changes is what the session *means*: a row in `sessions` tied to a real player record, rather than an opaque id the server trusts on sight.
 
@@ -683,7 +684,7 @@ Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DE
 
 - **Counter-attack for `min > 1` units.** "No counter given or received" was settled when indirect fire and immobility were the same thing. Now that `canMoveAndAttack` is independent of range category, it's worth re-checking whether the rule should still key off `min > 1` alone. Probably still correct — nothing has challenged it — but never explicitly revisited.
 - **`net/gameServer.ts` is untested**, and is now the most intricate untested code in the repo: seq deduplication, exponential backoff, the hidden-tab interval, and `dispose`. The dedup is doing real work — without it a poll in flight during a submit animates the same move twice — and nothing checks it. It is mockable: `fetch` and timers are both things Vitest can fake, and the client already has Vitest.
-- ✅ ~~**No automated tests.**~~ 100 of them now — 50 in `shared/`, 39 in `server/`, 11 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, `getReachableTiles`, the event fold and its two design rules, `MatchStore` against `:memory:`, the HTTP surface end to end, and `handleTileClick`. What is *not* covered: the renderer (needs WebGL, so a real browser), and `net/gameServer.ts` — see above.
+- ✅ ~~**No automated tests.**~~ 101 of them now — 50 in `shared/`, 40 in `server/`, 11 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, `getReachableTiles`, the event fold and its two design rules, `MatchStore` against `:memory:`, the HTTP surface end to end, and `handleTileClick`. What is *not* covered: the renderer (needs WebGL, so a real browser), and `net/gameServer.ts` — see above.
 
 The item below does not belong to a phase, which is how things stay recorded forever:
 
