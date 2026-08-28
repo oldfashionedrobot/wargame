@@ -469,7 +469,9 @@ Command       MoveCommand | EndTurnCommand                      ✅
               UnitActionCommand (move + optional attack)        ⬜ replaces MoveCommand
 Action        Command & { actor: PlayerId }                     ✅
               + rolls                                          ⬜ arrives with combat
-ActionResult  { ok, state, events } | { ok: false, reason }      ✅
+ValidationResult { ok, action } | { ok: false, reason }         ✅
+CommandResult { ok, seq, events, state } | { ok: false, reason } ✅
+ErrorResponse { error } — the body of every non-2xx              ✅
 GameEvent     UnitMovedEvent | TurnEndedEvent                   ✅
               damage / death / charge outcomes                  ⬜
 ```

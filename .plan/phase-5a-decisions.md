@@ -59,7 +59,7 @@ today (`GameCanvas.tsx:31`, read synchronously at `:90`).
 So either the canvas re-registers the handler in an effect, or the hook keeps a
 `selectionRef` and we are back to two copies of one thing.
 
-**Re-register.** It is safe: `onTileClick` in `renderer.ts:129` *sets*
+**Re-register.** It is safe: `onTileClick` in `renderer.ts:133` *sets*
 `clickHandler` rather than adding to a list, so re-running the effect replaces
 the handler instead of accumulating listeners. Verified by reading it, not
 assumed.
@@ -123,7 +123,7 @@ Three separately verifiable steps:
    `vi.advanceTimersByTimeAsync`, not the sync form. `visibilitychange` stays
    out of reach until 5b adds a DOM.
 2. **`SelectionState` becomes a union**, plus the four assertions in
-   `selection.test.ts` that touch the record shape (lines 29, 30, 82, 93 —
+   `selection.test.ts` that touch the record shape (lines 29, 30, 82, 94 —
    the doc's count is exact; the other seven tests survive untouched).
 3. **Extract `useGameSession`.**
 
@@ -133,7 +133,7 @@ Three separately verifiable steps:
 
 Decided to fix, deliberately not now. Both ends of one problem:
 
-- **`http.ts:119`** returns 200 for a rejected command, by documented decision
+- **`http.ts:93`** returns 200 for a rejected command, by documented decision
   (*"rejection is an answer and not a transport failure"*). Candidate: 422,
   leaving 400 to mean what it already means here — the body was not a parseable
   command.
@@ -141,7 +141,7 @@ Decided to fix, deliberately not now. Both ends of one problem:
   `{ ok: false, reason }`, the same shape a rejection arrives in, so the UI
   renders "could not reach the server" and "unit has already acted" identically.
 
-They have to move together. `client/net/http.ts:33` throws on any non-2xx that
+They have to move together. `client/net/http.ts:37` throws on any non-2xx that
 is not 404, so a server-only change would flip the UI to "reconnecting…" and
 replace the real reason with "server returned 422". The client half lands in
 `gameServer.ts` — the file 5a puts under test — which is the other reason to
@@ -156,7 +156,7 @@ returned 400" when the server already said "not a valid command".
 
 Separately and much smaller: **`match.ts:114`** returns
 `{ ok: false, reason: 'no such match' }` where `snapshot` and `since` both
-signal not-found with `null`. Unreachable over HTTP — `http.ts:112` pre-reads
+signal not-found with `null`. Unreachable over HTTP — `http.ts:83` pre-reads
 and 404s first — so this is a `MatchStore` contract inconsistency, not a live
 bug. Folding it into the above makes `CommandResult.ok === false` mean exactly
 one thing: the authority refused a well-formed command.
@@ -164,4 +164,4 @@ one thing: the authority refused a well-formed command.
   taken when the unit was selected, not against current state. Fine today; phase
   6's confirmation step is where it gets interesting.
 - **`renderer.ts` unit meshes** are built once with no add/remove
-  (`renderer.ts:98`), which is 7c and is why nothing can die yet.
+  (`renderer.ts:100`), which is 7c and is why nothing can die yet.
