@@ -124,8 +124,8 @@ describe('submit', () => {
   it('advances seq and returns the resulting state', async () => {
     const { id } = await store.create();
     const result = await store.submit(id, move('blue-1', [1, 2], [0, 0]), BLUE);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    expect(result?.ok).toBe(true);
+    if (!result?.ok) return;
     expect(result.seq).toBe(1);
     expect(result.events).toHaveLength(1);
     expect(result.state.units.find((u) => u.id === 'blue-1')?.position).toEqual({ col: 1, row: 2 });
@@ -140,11 +140,10 @@ describe('submit', () => {
     expect((await store.since(id, 0))?.events).toEqual([]);
   });
 
-  it('refuses a match that does not exist', async () => {
-    expect(await store.submit('nope', { type: 'endTurn' }, BLUE)).toEqual({
-      ok: false,
-      reason: 'no such match',
-    });
+  // null, not a rejection: `ok: false` is reserved for a well-formed command
+  // the rules refused, which is what lets http.ts map the two to 404 and 422.
+  it('returns null for a match that does not exist', async () => {
+    expect(await store.submit('nope', { type: 'endTurn' }, BLUE)).toBeNull();
   });
 
   it('stamps the actor it was given, ignoring any the client supplied', async () => {

@@ -141,11 +141,15 @@ POST /api/matches                     → MatchSummary  (creates one)
 
 GET  /api/matches/:id/state           → { seq, state }          initial load
 GET  /api/matches/:id/events?since=N  → { seq, events, state }  everything after N
-POST /api/matches/:id/commands        → { ok: true, seq, events, state }
-                                      | { ok: false, reason }
+POST /api/matches/:id/commands        → { ok: true, seq, events, state }   200
+                                      | { error }                        422
 ```
 
-A missing match is a 404; a rejected command is still a 200 with `ok: false`, since rejection is an answer and not a transport failure.
+**Status carries the outcome, not just the transport.** A missing match is 404. A body that was never a command is 400. A well-formed command the *rules* refused is **422** — distinct from both, with the reason in the body. That last one used to answer 200 with `{ ok: false, reason }` on the argument that a rejection is an answer rather than a failure; the argument is fine but it left the client unable to tell a refused move from a broken request without parsing, and it made 200 mean two things.
+
+`MatchStore.submit` returns `CommandResult | null` — `null` for a missing match, as `snapshot` and `since` already did. That is what makes the mapping one line each: `ok: false` now means exactly one thing.
+
+🚧 **The client has not caught up.** `client/net/http.ts` throws on any non-2xx that is not 404, so a rejected move currently surfaces as *"server returned 422"* and falsely shows "reconnecting…". Fixed in phase 5 — see the ordered steps in 5a.
 
 **Every non-2xx body is an `ErrorResponse` — `{ error: string }`** — declared in `shared/protocol.ts` alongside the rest of the wire contract, with no exceptions: the client-serving path's "not built" 404 uses it too, so the rule needs no footnote. Deliberately *not* `CommandResult`'s `{ ok: false, reason }`, which the 400s and the 500 used to borrow: the two mean different things, and sharing a shape invites a client to conflate "your move was illegal" with "that was not a command". Success bodies go out through `Response.json`, which sets the content type itself.
 
@@ -801,6 +805,14 @@ before: `selection.movement.some(…)` describes something the field isn't yet.)
   `renderer` for the `showSelection` calls below it, and the hook has no renderer.
   Accept, or have the canvas disable the button until the renderer exists.
 
+**The client learns about 422.** The server now answers a rule-rejected command
+with 422 and an `ErrorResponse` body, and the client still throws on any non-2xx
+that is not 404 — so a refused move reads *"server returned 422"* and raises the
+reconnecting banner. `client/net/http.ts` gains a `rejected` failure kind and
+reads the reason off the body; `gameServer.submit` stops treating a rejection as
+a transport failure. `GameCanvas` is untouched, since `submit()` still returns a
+`CommandResult`.
+
 **`net/gameServer.ts` gets tests, and one simplification.** It is the most
 intricate untested code in the client: seq deduplication, exponential backoff,
 the hidden-tab interval, and `dispose`. The dedup is load-bearing — without it a
@@ -827,9 +839,14 @@ package. Verified the measurement rather than trusting it — a deliberate
 `string | null` assignment in client code is caught, so `strict` genuinely
 reaches the source being checked.
 
-So there is no fallout to absorb, and nothing here can change behaviour. That
-retires the ⚠️ this section used to carry: every step of 5a is now shape-only,
-which is what makes "a 5a regression is necessarily the refactor" strictly true.
+So there is no fallout to absorb, and turning it on cannot change behaviour —
+this step is as shape-only as the refactor around it.
+
+⚠️ 5a does carry one behaviour-changing step, but it is not this one: teaching
+the client to read the server's 422 alters the error text a user sees. It lands
+as its own commit, after the `gameServer` tests exist to cover it. Everything
+else in 5a is shape-only, which is what "a 5a regression is necessarily the
+refactor" depends on.
 
 It still goes **first**, but for a different reason than absorbing risk: 5a
 writes new code — the `SelectionState` union, `useGameSession`, the `gameServer`

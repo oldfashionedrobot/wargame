@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import type { Command, EventsResponse, MatchSummary, StateResponse } from '@vod/shared';
+import type {
+  Command,
+  ErrorResponse,
+  EventsResponse,
+  MatchSummary,
+  StateResponse,
+} from '@vod/shared';
 import { createServer } from './http';
 
 // Black box on purpose. Nothing below knows how a URL is dispatched, so the
@@ -147,11 +153,9 @@ describe('POST /api/matches/:id/commands', () => {
     expect(result.events).toHaveLength(1);
   });
 
-  // ⚠️ Locks in current behaviour, which is documented and deliberate: a
-  // rejection is an answer, not a transport failure. See the parked decision
-  // in .plan/phase-5a-decisions.md -- when that changes, this test is the one
-  // that should fail, and it should be updated rather than deleted.
-  it('answers 200 with ok:false when the rulebook refuses', async () => {
+  // 422, not 200: well-formed, and refused on its merits. Distinct from the
+  // 400s above, which mean the body was never a command at all.
+  it('answers 422 when the rulebook refuses', async () => {
     const { id } = await newMatch();
     const outOfRange: Command = {
       type: 'move',
@@ -163,12 +167,12 @@ describe('POST /api/matches/:id/commands', () => {
     };
 
     const response = await postJson(`/api/matches/${id}/commands`, outOfRange);
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(422);
 
     // The wording belongs to shared/, so assert the envelope, not the reason.
-    const result = (await response.json()) as { ok: boolean; reason: string };
-    expect(result.ok).toBe(false);
-    expect(typeof result.reason).toBe('string');
+    const body = (await response.json()) as ErrorResponse;
+    expect(typeof body.error).toBe('string');
+    expect(body.error.length).toBeGreaterThan(0);
   });
 
   it('400s a malformed body before the authority sees it', async () => {

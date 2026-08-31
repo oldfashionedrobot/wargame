@@ -115,11 +115,11 @@ acting on a board a beat old.
 
 ## Proposed order
 
-Four separately verifiable steps:
+Five separately verifiable steps:
 
 0. **Turn on `strict`.** Measured at zero errors across every package, so this
    is a flag flip rather than the risky increment it was parked as — see 5a in
-   `architecture.md`. First, so the code the next three steps write is written
+   `architecture.md`. First, so the code the later steps write is written
    under it rather than retrofitted.
 1. **`net/gameServer.ts` tests + the `applyUpdate` simplification.** Independent
    of the refactor, so they are a net the refactor cannot invalidate. Note the
@@ -130,47 +130,44 @@ Four separately verifiable steps:
    ⚠️ **Do not assert on the text of a transport failure.** `HttpError`'s
    message is built from the status code today (`server returned 400`), and the
    server now sends a real reason in the body that the client will start reading
-   — see the parked item below. Assert the `kind` and that `ok` is false; a test
+   — see the 422 section below. Assert the `kind` and that `ok` is false; a test
    pinned to today's wording would have to be rewritten by a change that is
    otherwise additive.
-2. **`SelectionState` becomes a union**, plus the four assertions in
+2. **Teach the client about 422.** The server already sends it — see the
+   section below. After step 1 so the new tests cover it, and as its own commit
+   because ⚠️ **this is the one step of 5a that changes behaviour**: error text
+   the user sees, and whether the reconnecting banner appears. Everything else
+   here is shape-only.
+3. **`SelectionState` becomes a union**, plus the four assertions in
    `selection.test.ts` that touch the record shape (lines 29, 30, 82, 94 —
    the doc's count is exact; the other seven tests survive untouched).
-3. **Extract `useGameSession`.**
+4. **Extract `useGameSession`.**
 
 ## Parked questions, unrelated to the three above
 
-### Command rejections answer 200 — deferred until after phase 5
+### ✅ Command rejections answer 422 — server done, client owed
 
-Decided to fix, deliberately not now. Both ends of one problem:
+**The server half is built.** `POST /commands` now answers **422** with
+`{ error: reason }` when the rules refuse a well-formed command, keeping 400 for
+a body that was never a command and 404 for a missing match.
+`MatchStore.submit` returns `CommandResult | null`, so `ok: false` means exactly
+one thing and each status is a one-line mapping.
 
-- **`http.ts:93`** returns 200 for a rejected command, by documented decision
-  (*"rejection is an answer and not a transport failure"*). Candidate: 422,
-  leaving 400 to mean what it already means here — the body was not a parseable
-  command.
-- **`gameServer.ts:127`** synthesises a transport failure into
-  `{ ok: false, reason }`, the same shape a rejection arrives in, so the UI
-  renders "could not reach the server" and "unit has already acted" identically.
+**The client half is step 2 below, and it is owed rather than optional.** Until
+it lands the game is visibly worse than before: `client/net/http.ts:37` throws on
+any non-2xx that is not 404, so a rejected move surfaces as *"rejected: server
+returned 422"* and falsely flips the UI to "reconnecting…". Two small edits, and
+`GameCanvas` does not change at all because `submit()` still returns
+`CommandResult`:
 
-They have to move together. `client/net/http.ts:37` throws on any non-2xx that
-is not 404, so a server-only change would flip the UI to "reconnecting…" and
-replace the real reason with "server returned 422". The client half lands in
-`gameServer.ts` — the file 5a puts under test — which is the other reason to
-sequence it after.
+- **`client/net/http.ts`** — add `'rejected'` to `FailureKind`, and on a 4xx read
+  the `ErrorResponse` body so `HttpError` carries the server's wording instead of
+  "server returned 422".
+- **`gameServer.ts:127`** — when the kind is `rejected`, return
+  `{ ok: false, reason }` *without* `setStatus('retrying')`. That also retires the
+  conflation this section used to describe: a transport failure and a rule
+  rejection currently arrive at the UI wearing the same shape.
 
-**The server half is now done.** Every non-2xx carries `{ error: string }`
-(`ErrorResponse` in `shared/protocol.ts`). The client still ignores it —
-`http.ts` builds its message from the status code — so `HttpError` should learn
-to read the body and carry the server's wording. That is a prerequisite for the
-422 change, and it is worth doing on its own: today a 400 surfaces as "server
-returned 400" when the server already said "not a valid command".
-
-Separately and much smaller: **`match.ts:114`** returns
-`{ ok: false, reason: 'no such match' }` where `snapshot` and `since` both
-signal not-found with `null`. Unreachable over HTTP — `http.ts:83` pre-reads
-and 404s first — so this is a `MatchStore` contract inconsistency, not a live
-bug. Folding it into the above makes `CommandResult.ok === false` mean exactly
-one thing: the authority refused a well-formed command.
 - **`selection.ts:47`** tests `isInRange` against the snapshot of reachable tiles
   taken when the unit was selected, not against current state. Fine today; phase
   6's confirmation step is where it gets interesting.

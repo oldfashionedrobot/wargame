@@ -88,8 +88,11 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
             command,
             resolveActor(session, snapshot.state),
           );
-          // 200 even when rejected: the client reads `ok`, and this keeps a
-          // refusal distinct from a transport failure.
+          if (!result) return notFound();
+          // 422: the body was a well-formed command, the rules refused it. That
+          // is distinct from 400 (not a command at all) and from 5xx, and the
+          // reason is the server's to state.
+          if (!result.ok) return errorResponse(result.reason, 422);
           return Response.json(result);
         }),
       },

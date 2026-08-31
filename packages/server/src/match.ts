@@ -25,7 +25,10 @@ export interface MatchStore {
   list(): Promise<MatchSummary[]>;
   snapshot(matchId: string): Promise<StateResponse | null>;
   since(matchId: string, from: number): Promise<EventsResponse | null>;
-  submit(matchId: string, command: Command, actor: PlayerId): Promise<CommandResult>;
+  /** `null` when the match does not exist, as with snapshot and since. A
+   *  `CommandResult` of `ok: false` then means exactly one thing: the rules
+   *  refused a well-formed command. */
+  submit(matchId: string, command: Command, actor: PlayerId): Promise<CommandResult | null>;
 }
 
 /**
@@ -111,7 +114,7 @@ export function createMatchStore({ db }: Database): MatchStore {
 
     async submit(matchId, command, actor) {
       const match = await loadMatch(matchId);
-      if (!match) return { ok: false, reason: 'no such match' };
+      if (!match) return null;
 
       // validateCommand is the only thing that can mint an Action, and it
       // stamps `actor` itself -- so a client-supplied `actor` in the JSON body
