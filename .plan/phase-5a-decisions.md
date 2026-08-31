@@ -115,13 +115,24 @@ acting on a board a beat old.
 
 ## Proposed order
 
-Three separately verifiable steps:
+Four separately verifiable steps:
 
+0. **Turn on `strict`.** Measured at zero errors across every package, so this
+   is a flag flip rather than the risky increment it was parked as — see 5a in
+   `architecture.md`. First, so the code the next three steps write is written
+   under it rather than retrofitted.
 1. **`net/gameServer.ts` tests + the `applyUpdate` simplification.** Independent
    of the refactor, so they are a net the refactor cannot invalidate. Note the
    poll loop reschedules from an async callback, so the tests need
    `vi.advanceTimersByTimeAsync`, not the sync form. `visibilitychange` stays
    out of reach until 5b adds a DOM.
+
+   ⚠️ **Do not assert on the text of a transport failure.** `HttpError`'s
+   message is built from the status code today (`server returned 400`), and the
+   server now sends a real reason in the body that the client will start reading
+   — see the parked item below. Assert the `kind` and that `ok` is false; a test
+   pinned to today's wording would have to be rewritten by a change that is
+   otherwise additive.
 2. **`SelectionState` becomes a union**, plus the four assertions in
    `selection.test.ts` that touch the record shape (lines 29, 30, 82, 94 —
    the doc's count is exact; the other seven tests survive untouched).

@@ -711,7 +711,7 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 | **Migrations run at boot** | `migrate()` on startup, fine for one instance and ~0.4 ms once nothing is pending. Drizzle lists runtime migration as a first-class flow for monoliths, so this is a choice rather than a shortcut | `bun run db:migrate` as a deploy step, once there is more than one instance, a rolling deploy, or a reason to deny the runtime DDL rights |
 | **Two reads per command** | `resolveActor` needs state to stamp `actor = currentTurn`, but `submit` owns the read | Phase 9 — `resolveActor` becomes a session lookup and the extra read disappears |
 | **`typecheck` can pass stale** | `tsc -b` skips work its `.tsbuildinfo` believes current — observed reporting 0 while `tsc -p packages/server` flagged two `TS6133`s | Run `tsc -b --force` in the gate, or drop the incremental cache |
-| **`strict` is off** | Inherited from the Vite template — `noUnusedLocals` etc. are on, but `strictNullChecks` and friends are not | Step 5a, as its own commit — it pairs with the `SelectionState` union, which forces the same nullability work |
+| **`strict` is off** | Inherited from the Vite template — `noUnusedLocals` etc. are on, but `strictNullChecks` and friends are not. Measured as **zero errors** to turn on, so this is a stale compromise rather than a real one | Step 5a, first commit — a flag flip, done before 5a writes new code so that code is written strict from the start |
 
 ## Out of scope for v1
 
@@ -819,19 +819,27 @@ poll:    applyUpdate(response)
 submit:  if (result.ok) applyUpdate(result)
 ```
 
-**`strict` goes on here.** It was previously parked as its own increment
-because the fallout is unpredictable — that reasoning still holds, so it lands
-as a *separate commit inside* 5a rather than tangled into the extraction.
+**`strict` goes on here, and it is a one-line flag flip.** It was parked for
+years as its own increment on the grounds that the fallout is unpredictable.
+Measured: adding `"strict": true` to `packages/server/tsconfig.json` and
+`packages/client/tsconfig.app.json` produces **zero errors** across every
+package. Verified the measurement rather than trusting it — a deliberate
+`string | null` assignment in client code is caught, so `strict` genuinely
+reaches the source being checked.
 
-It belongs with 5a specifically because the two reinforce each other:
-`SelectionState` today is `{ selectedUnitId: string | null }`, and converting it
-to a union is the same work `strictNullChecks` would force anyway. Doing them
-together means handling nullability once.
+So there is no fallout to absorb, and nothing here can change behaviour. That
+retires the ⚠️ this section used to carry: every step of 5a is now shape-only,
+which is what makes "a 5a regression is necessarily the refactor" strictly true.
 
-⚠️ **It is the one part of 5a that can change behaviour.** Everything else here
-is shape-only, which is what makes "a 5a regression is necessarily the refactor"
-worth having. Fixing `strictNullChecks` fallout can alter a runtime path, so
-land it first and verify separately — then the refactor commits stay clean.
+It still goes **first**, but for a different reason than absorbing risk: 5a
+writes new code — the `SelectionState` union, `useGameSession`, the `gameServer`
+tests — and writing that under `strict` from the start is cheaper than
+retrofitting it. The union is the clearest case: `{ selectedUnitId: string |
+null }` becoming a discriminated union is the same nullability work
+`strictNullChecks` would force anyway.
+
+*(`packages/client/tsconfig.node.json` covers only `vite.config.ts` and was not
+included in the measurement; 5c deletes it.)*
 
 **Verifiable now.** The earlier warning here — *"nothing verifies this beyond
 playing the game"* — is retired. `handleTileClick` has 11 Vitest tests, of which
