@@ -807,8 +807,7 @@ regardless.
 and becomes the `exploreMovement` result with `.reachable` and `.pathTo`. Not
 before: `selection.movement.some(…)` describes something the field isn't yet.)*
 
-**Three decisions the extraction forces, all settled** — reasoning in
-`.plan/phase-5a-decisions.md`:
+**Three decisions the extraction forced, all settled:**
 
 - **How does the canvas learn the selection?** → **an `onSelectionChange`
   callback**, not returned state. The hook owns the selection (it owns
@@ -823,15 +822,26 @@ before: `selection.movement.some(…)` describes something the field isn't yet.)
   rollback-into-a-disposed-renderer hazard `submitCommand` carries today, since
   it captures the renderer before its await.
 - **One subscription or two?** → **one, in the hook, with an `onEvents`
-  callback.** Today's single callback sets state, clears rejection, *and*
-  animates; the first two belong to the hook and the third to the canvas, so two
+  callback.** The single callback sets state, clears rejection, *and* animates;
+  the first two belong to the hook and the third to the canvas, so two
   listeners looks natural. Rejected because 5b interleaves the fold with
   animation — two listeners would be split here and merged there. It also makes
   both hook inputs one shape rather than two mechanisms.
+
+  The load-bearing line inside: the hook holds both callbacks in a
+  **latest-ref**, so the subscription depends on `server` alone. `subscribe`
+  fires synchronously and the listener clears the rejection — a subscription
+  effect that depended on the callbacks' identities would re-run per render
+  and wipe a rejection before anyone saw it. A hook test re-renders with fresh
+  identities and asserts the rejection survives; it was verified to fail
+  against the dependent-subscription shape.
 - **`submitCommand`'s `!renderer` guard** → **accept that it disappears.** It
-  exists partly to bind `renderer` for the `showSelection` calls below it, and
+  existed partly to bind `renderer` for the `showSelection` calls below it, and
   the hook has no renderer. The `pendingRef` half survives; the push guards a
-  null renderer itself.
+  null renderer itself. The honest delta: a click in the sub-frame window
+  before the renderer effect runs changed from *silently refused* to
+  *submitted normally* — unobservable in practice, named rather than rounded
+  to zero because 5a's zero-delta claim is load-bearing.
 
 ✅ **One `MatchRoute` bug fell out of this and was fixed first.** It never
 reset `server` when `matchId` changed, and react-router reuses the component for
@@ -874,9 +884,8 @@ submit:  if (result.ok) applyUpdate(result)
 
 ✅ **The DOM harness moved up from 5b** — `happy-dom` plus
 `@testing-library/react` — because 5a's riskiest change was otherwise the one
-thing 5a could not test. The extraction's failure mode is the `onEvents` wipe (a
-subscription effect re-running on every render clears a rejection before it is
-seen — reasoning in the decisions doc), and every client test had been
+thing 5a could not test. The extraction's failure mode is the `onEvents` wipe
+described under the second decision above, and every client test had been
 `handleTileClick`: the refactor could have broken the rejection UI with the gate
 green, and "a 5a regression is necessarily the refactor" has teeth only if the
 regression is detectable. Two dev dependencies one increment early bought

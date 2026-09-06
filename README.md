@@ -47,4 +47,4 @@ Working on a single package? `bun run --filter '@vod/client' build` bundles *wit
 
 Hot-seat: select a unit, see its movement range, move it, end turn. Two players, three units each.
 
-Combat is designed but unbuilt, terrain is a single `land` placeholder, and the client still owns `GameState` directly — the `GameServer` boundary is the next piece of work. See the architecture doc for the roadmap.
+Combat is designed but unbuilt, and terrain is a single `land` placeholder. The server is a real process — SQLite behind an event log, one `seq`-cursored poll away — and the client talks to it only through the `GameServer` interface. Next: the client folds events as it animates them (phase 5b), then terrain and pathfinding (6), then combat (7). See the architecture doc for the roadmap.
