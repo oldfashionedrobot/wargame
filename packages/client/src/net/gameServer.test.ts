@@ -227,16 +227,35 @@ describe('submit', () => {
     expect(listener).toHaveBeenCalledTimes(1); // nothing to deliver
   });
 
-  it('treats a 422 rejection as a transport failure -- the bug step 2 fixes', async () => {
+  // A rejection is an answer, not a connection problem. The server's own
+  // wording is the contract here -- passing it through is the point -- so
+  // asserting it is not the message-pinning the transport tests avoid.
+  it('returns a 422 rejection with the server reason, without touching the connection', async () => {
     const onConnectionChange = vi.fn();
     const server = await connect({ onConnectionChange });
+    const listener = vi.fn();
+    server.subscribe(listener);
     onCommands = () => Promise.resolve(json({ error: 'unit has already acted' }, 422));
     const result = await server.submit({ type: 'endTurn' });
-    expect(result.ok).toBe(false);
-    // Wrong, and pinned deliberately: a rule rejection is not a connection
-    // problem, but today it raises the reconnecting banner. Step 2 flips this
-    // assertion to .not.toHaveBeenCalled() in the same commit.
+    expect(result).toEqual({ ok: false, reason: 'unit has already acted' });
+    expect(onConnectionChange).not.toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledTimes(1); // nothing to deliver
+  });
+
+  it('carries the server reason on a non-422 failure too, still as transport', async () => {
+    const onConnectionChange = vi.fn();
+    const server = await connect({ onConnectionChange });
+    onCommands = () => Promise.resolve(json({ error: 'seq guard matched nothing' }, 500));
+    const result = await server.submit({ type: 'endTurn' });
+    expect(result).toEqual({ ok: false, reason: 'seq guard matched nothing' });
     expect(onConnectionChange).toHaveBeenCalledWith('retrying');
+  });
+
+  it('falls back to the status when the failure body is not ours', async () => {
+    const server = await connect();
+    onCommands = () => Promise.resolve(new Response('<html>Bad Gateway</html>', { status: 502 }));
+    const result = await server.submit({ type: 'endTurn' });
+    expect(result).toEqual({ ok: false, reason: 'server returned 502' });
   });
 });
 

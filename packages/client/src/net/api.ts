@@ -1,4 +1,4 @@
-import type { MatchSummary } from '@vod/shared';
+import type { ErrorResponse, MatchSummary } from '@vod/shared';
 
 // Same-origin: in dev Vite proxies /api to the server, in production the
 // server serves this bundle itself. Either way there's no base URL to
@@ -27,6 +27,35 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * A well-formed command the rules refused -- the server's 422, with its reason
+ * as the message. Deliberately not an `HttpError` and not a `FailureKind`:
+ * a rejection is an answer, not a connection problem, and keeping it a
+ * separate type keeps it unrepresentable in the connect path, whose two-case
+ * UI it can never reach. A 422 anywhere but a command submit means a broken
+ * server, and falls through `instanceof HttpError` checks to `unreachable` --
+ * which is what a broken server is.
+ */
+export class RejectedError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'RejectedError';
+  }
+}
+
+// Every non-2xx body is an ErrorResponse -- the server has no exceptions to
+// that rule -- but the network in between can produce anything, so fall back
+// to the status when the body isn't ours.
+async function reason(response: Response): Promise<string> {
+  try {
+    const { error } = (await response.json()) as ErrorResponse;
+    if (typeof error === 'string') return error;
+  } catch {
+    // not JSON: a proxy or something else answered, not our server
+  }
+  return `server returned ${response.status}`;
+}
+
 async function request(path: string, init?: RequestInit): Promise<Response> {
   let response: Response;
   try {
@@ -34,10 +63,12 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
   } catch {
     throw new HttpError('unreachable', 'could not reach the server');
   }
+  if (response.ok) return response;
 
-  if (response.status === 404) throw new HttpError('notFound', 'not found');
-  if (!response.ok) throw new HttpError('unreachable', `server returned ${response.status}`);
-  return response;
+  const why = await reason(response);
+  if (response.status === 404) throw new HttpError('notFound', why);
+  if (response.status === 422) throw new RejectedError(why);
+  throw new HttpError('unreachable', why);
 }
 
 export async function getJson<T>(path: string): Promise<T> {

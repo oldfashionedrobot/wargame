@@ -7,7 +7,7 @@ import type {
   StateResponse,
   UpdateListener,
 } from '@vod/shared';
-import { getJson, HttpError, postJson } from './api';
+import { getJson, HttpError, postJson, RejectedError } from './api';
 import type { FailureKind } from './api';
 
 const POLL_INTERVAL_MS = 2000;
@@ -122,6 +122,9 @@ export async function connectGameServer(
       try {
         result = await postJson<CommandResult>(`${base}/commands`, command);
       } catch (cause) {
+        // A rejection is an answer, not a transport failure: the server heard
+        // us and refused, so the reconnecting banner stays down.
+        if (cause instanceof RejectedError) return { ok: false, reason: cause.message };
         setStatus('retrying');
         return { ok: false, reason: cause instanceof Error ? cause.message : 'submit failed' };
       }

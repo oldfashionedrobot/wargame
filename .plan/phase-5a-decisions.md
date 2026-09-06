@@ -3,8 +3,8 @@
 Scratch doc. Everything here belongs in `architecture.md` once 5a lands; absorb
 it and delete this file, the way `server-sidequest.md` went.
 
-Steps 0 (`strict`) and 1 (`gameServer` tests) are done; nothing else below is
-built.
+Steps 0 (`strict`), 1 (`gameServer` tests) and 2 (the client reads 422) are
+done; nothing else below is built.
 
 ## The three decisions the doc asked for
 
@@ -193,22 +193,20 @@ Seven separately verifiable steps:
    — see the 422 section below. Assert the `kind` and that `ok` is false; a test
    pinned to today's wording would have to be rewritten by a change that is
    otherwise additive.
-2. **Teach the client about 422.** The server already sends it — see the
-   section below. After step 1 so the new tests cover it, and as its own commit
-   because ⚠️ **this is the one step of 5a that changes behaviour**: error text
-   the user sees, and whether the reconnecting banner appears. Everything else
-   here is shape-only.
+2. ✅ ~~**Teach the client about 422.**~~ The one step of 5a that changed
+   behaviour: a refused move now shows the server's reason instead of *"server
+   returned 422"*, and no longer raises the reconnecting banner. Landed after
+   step 1's tests, which flipped their pinned assertion in the same commit.
 
-   ⚠️ **Keep `rejected` out of the vocabulary the connect path consumes.**
-   `ConnectResult` and `MatchRoute`'s failure UI are a two-case union —
-   `notFound` gets a way back, `unreachable` gets Retry — and
+   The guardrail held: `rejected` stayed out of the vocabulary the connect
+   path consumes. `ConnectResult` and `MatchRoute`'s failure UI are a two-case
+   union — `notFound` gets a way back, `unreachable` gets Retry — and
    `connectGameServer` maps `HttpError.kind` straight into it
-   (`gameServer.ts:45`). Widening `FailureKind` itself would flow `rejected`
-   into a component with no UI for it, silently rendering the retry branch for
-   a case that cannot happen unless the server is broken. Give the rejection
-   its own discriminant instead — a separate kind on `HttpError` that the
-   connect path never maps into `FailureKind`, or a separate error type — so
-   the connect union stays exactly the two cases it renders.
+   (`gameServer.ts:45`). Widening `FailureKind` would have flowed `rejected`
+   into a component with no UI for it. The rejection became a separate error
+   type instead (`RejectedError`), which also left the connect path literally
+   untouched: a stray 422 there falls through `instanceof HttpError` to
+   `unreachable`, which is what a broken server is.
 3. **`SelectionState` becomes a union, and the member carries `position`** —
    captured at selection time exactly as `reachableTiles` already is, so the
    type stops being half snapshot, half lookup, and the highlight push becomes
@@ -251,30 +249,20 @@ Seven separately verifiable steps:
 
 ## Parked questions, unrelated to the three above
 
-### ✅ Command rejections answer 422 — server done, client owed
+### ✅ Command rejections answer 422 — both halves done
 
-**The server half is built.** `POST /commands` now answers **422** with
-`{ error: reason }` when the rules refuse a well-formed command, keeping 400 for
-a body that was never a command and 404 for a missing match.
-`MatchStore.submit` returns `CommandResult | null`, so `ok: false` means exactly
-one thing and each status is a one-line mapping.
+**The server half:** `POST /commands` answers **422** with `{ error: reason }`
+when the rules refuse a well-formed command, keeping 400 for a body that was
+never a command and 404 for a missing match. `MatchStore.submit` returns
+`CommandResult | null`, so `ok: false` means exactly one thing and each status
+is a one-line mapping.
 
-**The client half is step 2 below, and it is owed rather than optional.** Until
-it lands the game is visibly worse than before: `client/net/api.ts:39` throws on
-any non-2xx that is not 404, so a rejected move surfaces as *"rejected: server
-returned 422"* and falsely flips the UI to "reconnecting…". Two small edits, and
-`GameCanvas` does not change at all because `submit()` still returns
-`CommandResult`:
-
-- **`client/net/api.ts`** — classify a 422 as its own `rejected` discriminant,
-  *not* a widening of `FailureKind` (see step 2's ⚠️ — `ConnectResult` and
-  `MatchRoute` consume that type and stay the two cases they render), and on a
-  4xx read the `ErrorResponse` body so the error carries the server's wording
-  instead of "server returned 422".
-- **`gameServer.ts:127`** — when the kind is `rejected`, return
-  `{ ok: false, reason }` *without* `setStatus('retrying')`. That also retires the
-  conflation this section used to describe: a transport failure and a rule
-  rejection currently arrive at the UI wearing the same shape.
+**The client half landed as step 2.** `client/net/api.ts` classifies a 422 as
+`RejectedError` and reads the `ErrorResponse` body of every non-2xx, so errors
+carry the server's wording; `gameServer.submit` returns a rejection as
+`{ ok: false, reason }` without `setStatus('retrying')`. That retired the
+conflation this section used to describe: a transport failure and a rule
+rejection no longer arrive at the UI wearing the same shape.
 
 - **`selection.ts:47`** tests `isInRange` against the snapshot of reachable tiles
   taken when the unit was selected, not against current state. Fine today; phase
