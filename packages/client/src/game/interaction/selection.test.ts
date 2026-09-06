@@ -23,10 +23,13 @@ const withB1Selected = (state: GameState): SelectionState =>
   handleTileClick(state, initialSelectionState, at(1, 1)).selection;
 
 describe('handleTileClick, nothing selected', () => {
-  it('selects a unit that can act', () => {
+  it('selects a unit that can act, snapshotting its position and range', () => {
     const { selection, command } = handleTileClick(board(), initialSelectionState, at(1, 1));
     expect(command).toBeNull();
-    expect(selection.selectedUnitId).toBe('b1');
+    expect(selection.phase).toBe('unitSelected');
+    if (selection.phase !== 'unitSelected') return;
+    expect(selection.unitId).toBe('b1');
+    expect(selection.position).toEqual(at(1, 1));
     expect(selection.reachableTiles.length).toBeGreaterThan(0);
   });
 
@@ -79,7 +82,7 @@ describe('handleTileClick, a unit selected', () => {
     ]);
     const { selection, command } = handleTileClick(state, withB1Selected(state), at(6, 1));
     expect(command).toBeNull();
-    expect(selection.selectedUnitId).toBe('b3');
+    expect(selection).toMatchObject({ phase: 'unitSelected', unitId: 'b3' });
   });
 
   // A friendly unit is pass-through but not a stopping point, so its tile is
@@ -91,7 +94,7 @@ describe('handleTileClick, a unit selected', () => {
     ]);
     const { selection, command } = handleTileClick(state, withB1Selected(state), at(1, 2));
     expect(command).toBeNull();
-    expect(selection.selectedUnitId).toBe('b3');
+    expect(selection).toMatchObject({ phase: 'unitSelected', unitId: 'b3' });
   });
 
   it('does not offer a move onto an enemy', () => {

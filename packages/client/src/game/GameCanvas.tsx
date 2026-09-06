@@ -9,10 +9,11 @@ import type { GameRenderer } from './render/renderer';
 
 // Pushes a selection to the renderer. Module-level so there's one place that
 // knows how a selection is displayed -- attacking adds a third overlay here.
-function showSelection(renderer: GameRenderer, state: GameState, selection: SelectionState): void {
-  const selectedUnit = state.units.find((unit) => unit.id === selection.selectedUnitId);
-  renderer.setSelectedTile(selectedUnit ? selectedUnit.position : null);
-  renderer.setMovementRange(selection.reachableTiles);
+// A pure projection of the selection: everything it draws is on the snapshot,
+// so there is no game state to fetch and no question of which copy to read.
+function showSelection(renderer: GameRenderer, selection: SelectionState): void {
+  renderer.setSelectedTile(selection.phase === 'unitSelected' ? selection.position : null);
+  renderer.setMovementRange(selection.phase === 'unitSelected' ? selection.reachableTiles : []);
 }
 
 export interface GameCanvasProps {
@@ -52,7 +53,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
       const previousSelection = selectionRef.current;
       pendingRef.current = true;
       selectionRef.current = nextSelection;
-      showSelection(renderer, server.getState(), nextSelection);
+      showSelection(renderer, nextSelection);
 
       const response = await server.submit(command);
       pendingRef.current = false;
@@ -60,7 +61,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
 
       setRejection(response.reason);
       selectionRef.current = previousSelection;
-      showSelection(renderer, server.getState(), previousSelection);
+      showSelection(renderer, previousSelection);
     },
     [server],
   );
@@ -86,14 +87,13 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
     renderer.onTileClick((coordinate) => {
       if (pendingRef.current) return;
 
-      const currentState = server.getState();
-      const result = handleTileClick(currentState, selectionRef.current, coordinate);
+      const result = handleTileClick(server.getState(), selectionRef.current, coordinate);
 
       // Selection-only clicks are pure UI and commit immediately; anything
       // carrying a command goes through submitCommand so it can be undone.
       if (!result.command) {
         selectionRef.current = result.selection;
-        showSelection(renderer, currentState, result.selection);
+        showSelection(renderer, result.selection);
         return;
       }
 

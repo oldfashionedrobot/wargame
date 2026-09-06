@@ -777,7 +777,7 @@ split is *the session* versus *the canvas*.
 **`selection.ts` stays pure.** State and a coordinate in, new state and a command
 out, no React and no server. Moving `submitCommand` into it would destroy that.
 
-**`SelectionState` becomes a union**, even though 5a doesn't need the extra
+✅ **`SelectionState` became a union**, even though 5a doesn't need the extra
 phases:
 
 ```ts

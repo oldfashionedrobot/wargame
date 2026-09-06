@@ -3,8 +3,8 @@
 Scratch doc. Everything here belongs in `architecture.md` once 5a lands; absorb
 it and delete this file, the way `server-sidequest.md` went.
 
-Steps 0 (`strict`), 1 (`gameServer` tests) and 2 (the client reads 422) are
-done; nothing else below is built.
+Steps 0 (`strict`), 1 (`gameServer` tests), 2 (the client reads 422) and 3
+(the `SelectionState` union) are done; nothing else below is built.
 
 ## The three decisions the doc asked for
 
@@ -207,19 +207,19 @@ Seven separately verifiable steps:
    type instead (`RejectedError`), which also left the connect path literally
    untouched: a stray 422 there falls through `instanceof HttpError` to
    `unreachable`, which is what a broken server is.
-3. **`SelectionState` becomes a union, and the member carries `position`** —
-   captured at selection time exactly as `reachableTiles` already is, so the
-   type stops being half snapshot, half lookup, and the highlight push becomes
-   a projection of the selection with no `state` parameter (see above). On
-   invariant 6: selection is ephemeral UI state (invariant 7), not
-   `GameState`, so snapshotting what it previews takes nothing from "derive
-   the rest" — and the parked `selection.ts:47` note already committed the
-   type to snapshot semantics, which phase 6's confirmation step needs anyway.
-   The same edit collapses `handleTileClick`'s two identical selection
-   literals (`selection.ts:35`, `:57`) into one helper rather than writing the
-   new shape twice. Four assertions in `selection.test.ts` touch the record
-   shape (lines 29, 30, 82, 94 — the count is exact; the other seven tests
-   survive untouched).
+3. ✅ ~~**`SelectionState` becomes a union, and the member carries
+   `position`**~~ — captured at selection time exactly as `reachableTiles`
+   already is, so the type stopped being half snapshot, half lookup, and the
+   highlight push became a projection of the selection with no `state`
+   parameter (see above). On invariant 6: selection is ephemeral UI state
+   (invariant 7), not `GameState`, so snapshotting what it previews takes
+   nothing from "derive the rest" — and the parked `selection.ts:47` note had
+   already committed the type to snapshot semantics, which phase 6's
+   confirmation step needs anyway. The two identical selection literals
+   collapsed into one `trySelect` constructor, which also turned out to *be*
+   the "switch or deselect" branch — the tail of `handleTileClick` is now one
+   call. The four record-shape assertions were updated as counted; the other
+   seven tests survived untouched.
 4. **Fix `MatchRoute`'s stale server** — two lines, its own commit, and a real
    bug fix rather than refactor. See the resolved ⚠️ above. Before the
    extraction, because it is what lets the renderer stay a `ref`. The Retry
