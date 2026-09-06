@@ -55,9 +55,9 @@ export async function postJson<T>(path: string, body?: unknown): Promise<T> {
 }
 
 // Not on GameServer: that interface is scoped to a single match, and listing
-// or creating isn't. Plain functions rather than an interface -- there's only
+// or creating isn't. A plain object rather than an interface -- there's only
 // ever going to be one implementation of "call this endpoint".
-export default {
+export const api = {
   matches: {
     list(): Promise<MatchSummary[]> {
       return getJson<MatchSummary[]>('/matches');

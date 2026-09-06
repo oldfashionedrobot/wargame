@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { MatchSummary } from '@vod/shared';
-import api from '../net/api';
+import { api } from '../net/api';
 
 interface MatchData {
   matches: MatchSummary[] | null;
@@ -15,7 +15,7 @@ export function StartScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchMatches().then((result) => {
+    void fetchMatches().then((result) => {
       if (!cancelled) setMatchData(result);
     });
     return () => {
@@ -23,15 +23,15 @@ export function StartScreen() {
     };
   }, []);
 
-  const onRefresh = () => {
-    fetchMatches().then(setMatchData);
+  const onRefresh = (): void => {
+    void fetchMatches().then(setMatchData);
   };
 
-  const onCreate = () => {
+  const onCreate = (): void => {
     setCreating(true);
     api.matches
       .create()
-      .then((match) => navigate(`/${match.id}`))
+      .then((match) => void navigate(`/${match.id}`))
       .catch((cause: unknown) => {
         setCreating(false);
         setMatchData({ matches, error: message(cause, 'could not create a match') });
