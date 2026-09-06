@@ -36,8 +36,8 @@ packages/
     src/  main.tsx · index.css
           App.tsx ✅ router shell — / and /:matchId
       routes/ ✅  StartScreen (list + create) · MatchRoute (connect by id)
-      net/ ✅     http.ts fetch + notFound/unreachable classification
-                  matchesApi.ts list / create
+      net/ ✅     api.ts fetch + notFound/unreachable classification, and
+                         api.matches list / create
                   gameServer.ts match-scoped polling GameServer
       game/       GameCanvas.tsx · interaction/ · render/
 ```
@@ -149,7 +149,7 @@ POST /api/matches/:id/commands        → { ok: true, seq, events, state }   200
 
 `MatchStore.submit` returns `CommandResult | null` — `null` for a missing match, as `snapshot` and `since` already did. That is what makes the mapping one line each: `ok: false` now means exactly one thing.
 
-🚧 **The client has not caught up.** `client/net/http.ts` throws on any non-2xx that is not 404, so a rejected move currently surfaces as *"server returned 422"* and falsely shows "reconnecting…". Fixed in phase 5 — see the ordered steps in 5a.
+🚧 **The client has not caught up.** `client/net/api.ts` throws on any non-2xx that is not 404, so a rejected move currently surfaces as *"server returned 422"* and falsely shows "reconnecting…". Fixed in phase 5 — see the ordered steps in 5a.
 
 **Every non-2xx body is an `ErrorResponse` — `{ error: string }`** — declared in `shared/protocol.ts` alongside the rest of the wire contract, with no exceptions: the client-serving path's "not built" 404 uses it too, so the rule needs no footnote. Deliberately *not* `CommandResult`'s `{ ok: false, reason }`, which the 400s and the 500 used to borrow: the two mean different things, and sharing a shape invites a client to conflate "your move was illegal" with "that was not a command". Success bodies go out through `Response.json`, which sets the content type itself.
 
@@ -236,13 +236,16 @@ The client has none, because same-origin means it never needs a base URL.
 
 ### Client-side layering ✅
 
-`GameServer` is scoped to **one** match — `connectGameServer(matchId)` returns a connection to that match, so listing and creating don't belong on it. Three modules under `client/src/net/`:
+`GameServer` is scoped to **one** match — `connectGameServer(matchId)` returns a connection to that match, so listing and creating don't belong on it. Two modules under `client/src/net/`:
 
 | | |
 |---|---|
-| `http.ts` | `/api` base, JSON, and the one place a response becomes `notFound` vs `unreachable` |
-| `matchesApi.ts` | `listMatches()` / `createMatch()` — plain functions, no interface |
+| `api.ts` | the `/api` base, JSON, and the one place a response becomes `notFound` vs `unreachable` — plus `api.matches.list()` / `.create()`, the endpoints that aren't match-scoped |
 | `gameServer.ts` | the polling `GameServer` for a single match |
+
+**The match endpoints live in `api.ts` rather than a module of their own.** They are two one-line wrappers over `getJson`/`postJson` with no state, no lifecycle, and no interface — a separate file was an import and a name for nothing. They stay off `GameServer` for the reason above, which is a different question from which file they sit in.
+
+`gameServer.ts` is the one that stays separate, because it is the opposite kind of thing: a live connection with a poll loop, a `seq` cursor, backoff, and a `dispose()`. The split in `net/` is **stateless calls versus a connection**, not one file per endpoint group.
 
 `net/` sits beside `game/` rather than inside it: the start screen consumes it and is not part of the game. `game/` is the Babylon canvas and the interaction on it.
 
@@ -823,7 +826,7 @@ renderer stays a `ref` and needs no state.
 **The client learns about 422.** The server now answers a rule-rejected command
 with 422 and an `ErrorResponse` body, and the client still throws on any non-2xx
 that is not 404 — so a refused move reads *"server returned 422"* and raises the
-reconnecting banner. `client/net/http.ts` gains a `rejected` failure kind and
+reconnecting banner. `client/net/api.ts` gains a `rejected` failure kind and
 reads the reason off the body; `gameServer.submit` stops treating a rejection as
 a transport failure. `GameCanvas` is untouched, since `submit()` still returns a
 `CommandResult`.

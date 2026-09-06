@@ -7,8 +7,8 @@ import type {
   StateResponse,
   UpdateListener,
 } from '@vod/shared';
-import { getJson, HttpError, postJson } from './http';
-import type { FailureKind } from './http';
+import { getJson, HttpError, postJson } from './api';
+import type { FailureKind } from './api';
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_BACKOFF_MS = 30_000;

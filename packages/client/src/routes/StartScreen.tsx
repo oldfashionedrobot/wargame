@@ -1,57 +1,40 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { MatchSummary } from '@vod/shared';
-import { createMatch, listMatches } from '../net/matchesApi';
+import api from '../net/api';
 
-interface Loaded {
+interface MatchData {
   matches: MatchSummary[] | null;
   error: string | null;
 }
 
-const message = (cause: unknown, fallback: string): string =>
-  cause instanceof Error ? cause.message : fallback;
-
-// Plain function rather than a hook: it does no state work, so the effect and
-// the Refresh button can share it and each decide whether the result still
-// matters by the time it arrives.
-async function fetchMatches(): Promise<Loaded> {
-  try {
-    return { matches: await listMatches(), error: null };
-  } catch (cause) {
-    return { matches: null, error: message(cause, 'could not load matches') };
-  }
-}
-
-function formatWhen(timestamp: number): string {
-  return new Date(timestamp).toLocaleString();
-}
-
 export function StartScreen() {
   const navigate = useNavigate();
-  const [{ matches, error }, setLoaded] = useState<Loaded>({ matches: null, error: null });
+  const [{ matches, error }, setMatchData] = useState<MatchData>({ matches: null, error: null });
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    void fetchMatches().then((result) => {
-      if (!cancelled) setLoaded(result);
+    fetchMatches().then((result) => {
+      if (!cancelled) setMatchData(result);
     });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const onRefresh = (): void => {
-    void fetchMatches().then(setLoaded);
+  const onRefresh = () => {
+    fetchMatches().then(setMatchData);
   };
 
-  const onCreate = (): void => {
+  const onCreate = () => {
     setCreating(true);
-    createMatch()
-      .then((match) => void navigate(`/${match.id}`))
+    api.matches
+      .create()
+      .then((match) => navigate(`/${match.id}`))
       .catch((cause: unknown) => {
         setCreating(false);
-        setLoaded({ matches, error: message(cause, 'could not create a match') });
+        setMatchData({ matches, error: message(cause, 'could not create a match') });
       });
   };
 
@@ -89,4 +72,23 @@ export function StartScreen() {
       )}
     </div>
   );
+}
+
+function message(cause: unknown, fallback: string): string {
+  return cause instanceof Error ? cause.message : fallback;
+}
+
+// Plain function rather than a hook: it does no state work, so the effect and
+// the Refresh button can share it and each decide whether the result still
+// matters by the time it arrives.
+async function fetchMatches(): Promise<MatchData> {
+  try {
+    return { matches: await api.matches.list(), error: null };
+  } catch (cause) {
+    return { matches: null, error: message(cause, 'could not load matches') };
+  }
+}
+
+function formatWhen(timestamp: number): string {
+  return new Date(timestamp).toLocaleString();
 }

@@ -182,13 +182,13 @@ a body that was never a command and 404 for a missing match.
 one thing and each status is a one-line mapping.
 
 **The client half is step 2 below, and it is owed rather than optional.** Until
-it lands the game is visibly worse than before: `client/net/http.ts:37` throws on
+it lands the game is visibly worse than before: `client/net/api.ts:39` throws on
 any non-2xx that is not 404, so a rejected move surfaces as *"rejected: server
 returned 422"* and falsely flips the UI to "reconnecting…". Two small edits, and
 `GameCanvas` does not change at all because `submit()` still returns
 `CommandResult`:
 
-- **`client/net/http.ts`** — add `'rejected'` to `FailureKind`, and on a 4xx read
+- **`client/net/api.ts`** — add `'rejected'` to `FailureKind`, and on a 4xx read
   the `ErrorResponse` body so `HttpError` carries the server's wording instead of
   "server returned 422".
 - **`gameServer.ts:127`** — when the kind is `rejected`, return

@@ -4,7 +4,7 @@ import type { GameServer } from '@vod/shared';
 import { GameCanvas } from '../game/GameCanvas';
 import { connectGameServer } from '../net/gameServer';
 import type { ConnectionStatus } from '../net/gameServer';
-import type { FailureKind } from '../net/http';
+import type { FailureKind } from '../net/api';
 
 interface Failure {
   kind: FailureKind;

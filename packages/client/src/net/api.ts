@@ -1,3 +1,5 @@
+import type { MatchSummary } from '@vod/shared';
+
 // Same-origin: in dev Vite proxies /api to the server, in production the
 // server serves this bundle itself. Either way there's no base URL to
 // configure and the session cookie rides along automatically.
@@ -51,3 +53,17 @@ export async function postJson<T>(path: string, body?: unknown): Promise<T> {
   });
   return response.json() as Promise<T>;
 }
+
+// Not on GameServer: that interface is scoped to a single match, and listing
+// or creating isn't. Plain functions rather than an interface -- there's only
+// ever going to be one implementation of "call this endpoint".
+export default {
+  matches: {
+    list(): Promise<MatchSummary[]> {
+      return getJson<MatchSummary[]>('/matches');
+    },
+    create(): Promise<MatchSummary> {
+      return postJson<MatchSummary>('/matches');
+    },
+  },
+};
