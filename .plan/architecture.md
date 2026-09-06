@@ -6,7 +6,7 @@ Hot-seat is the current mode — one client driving both players, against a real
 
 **This document describes the target.** Everything is marked: ✅ built · 🚧 partial · ⬜ not built. It's the single running spec — no decision history, no changelog.
 
-**Plays end-to-end right now**: select a unit, see its movement range, move it, end turn, repeat. Two players, two units each. Everything else below is target.
+**Plays end-to-end right now**: select a unit, see its movement range, move it, end turn, repeat. Two players, three units each. Everything else below is target.
 
 ## Structure ✅
 

@@ -45,6 +45,6 @@ Working on a single package? `bun run --filter '@vod/client' build` bundles *wit
 
 ## State of play
 
-Hot-seat: select a unit, see its movement range, move it, end turn. Two players, two units each.
+Hot-seat: select a unit, see its movement range, move it, end turn. Two players, three units each.
 
 Combat is designed but unbuilt, terrain is a single `land` placeholder, and the client still owns `GameState` directly — the `GameServer` boundary is the next piece of work. See the architecture doc for the roadmap.

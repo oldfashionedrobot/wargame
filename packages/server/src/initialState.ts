@@ -33,6 +33,14 @@ export function createInitialState(): GameState {
       hasActed: false,
     },
     {
+      id: 'blue-3',
+      position: { col: 2, row: 0 },
+      facing: 'south',
+      movementRange: 3,
+      owner: PLAYER_ONE_ID,
+      hasActed: false,
+    },
+    {
       id: 'red-1',
       position: { col: 7, row: 7 },
       facing: 'north',
@@ -43,6 +51,14 @@ export function createInitialState(): GameState {
     {
       id: 'red-2',
       position: { col: 6, row: 7 },
+      facing: 'north',
+      movementRange: 3,
+      owner: PLAYER_TWO_ID,
+      hasActed: false,
+    },
+    {
+      id: 'red-3',
+      position: { col: 5, row: 7 },
       facing: 'north',
       movementRange: 3,
       owner: PLAYER_TWO_ID,

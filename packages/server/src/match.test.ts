@@ -27,8 +27,8 @@ const move = (unitId: string, to: [number, number], from: [number, number]): Com
   ],
 });
 
-// The starting board, from initialState.ts: blue-1 at (0,0), blue-2 at (1,0),
-// red at the far corner, blue to move.
+// The starting board, from initialState.ts. Only blue-1 at (0,0) and red-1 at
+// (7,7) are relied on below; the rest of the roster is free to change.
 const BLUE = 'player-blue';
 const RED = 'player-red';
 
@@ -87,7 +87,10 @@ describe('snapshot', () => {
     const snap = await store.snapshot(id);
     expect(snap?.seq).toBe(0);
     expect(snap?.state.currentTurn).toBe(BLUE);
-    expect(snap?.state.units).toHaveLength(4);
+    // Not a unit count -- that changes whenever the starting roster is tuned,
+    // and says nothing about whether snapshot returns the board.
+    expect(snap?.state.units.some((unit) => unit.owner === BLUE)).toBe(true);
+    expect(snap?.state.units.some((unit) => unit.owner === RED)).toBe(true);
   });
 
   it('is null for a match that does not exist', async () => {

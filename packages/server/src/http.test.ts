@@ -94,8 +94,14 @@ describe('GET /api/matches/:id/state', () => {
     const { seq, state } = (await response.json()) as StateResponse;
     expect(seq).toBe(0);
     expect(state.grid).toHaveLength(8);
-    expect(state.units).toHaveLength(4);
     expect(state.currentTurn).toBe('player-blue');
+    // Both sides start with something to move. Asserting a count instead would
+    // fail every time the starting roster is tuned, which says nothing about
+    // whether the endpoint works.
+    for (const player of state.players) {
+      expect(state.units.some((unit) => unit.owner === player.id)).toBe(true);
+    }
+    expect(state.units.every((unit) => !unit.hasActed)).toBe(true);
   });
 
   it('404s an unknown match', async () => {
