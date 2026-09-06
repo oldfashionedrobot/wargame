@@ -696,8 +696,8 @@ Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DE
 ## Open questions
 
 - **Counter-attack for `min > 1` units.** "No counter given or received" was settled when indirect fire and immobility were the same thing. Now that `canMoveAndAttack` is independent of range category, it's worth re-checking whether the rule should still key off `min > 1` alone. Probably still correct — nothing has challenged it — but never explicitly revisited.
-- ✅ ~~**`net/gameServer.ts` is untested**~~ — 17 tests as of 5a step 1: seq deduplication (a poll in flight during a submit no longer goes unchecked), exponential backoff and its cap, the status transitions, and `dispose` including a poll resolving after teardown. `fetch` and timers faked, no DOM. The hidden-tab interval and `visibilitychange` wait on step 5's harness.
-- ✅ ~~**No automated tests.**~~ 118 of them now — 50 in `shared/`, 40 in `server/`, 28 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, `getReachableTiles`, the event fold and its two design rules, `MatchStore` against `:memory:`, the HTTP surface end to end, `handleTileClick`, and the polling `GameServer`. What is *not* covered: the renderer (needs WebGL, so a real browser), and `gameServer.ts`'s visibility handling — see above.
+- ✅ ~~**`net/gameServer.ts` is untested**~~ — 22 tests as of 5a: seq deduplication (a poll in flight during a submit no longer goes unchecked), exponential backoff and its cap, the status transitions, `dispose` including a poll resolving after teardown, and — once step 5's harness landed — the hidden-tab interval and the `visibilitychange` reset. `fetch` and timers faked, happy-dom for the document.
+- ✅ ~~**No automated tests.**~~ 123 of them now — 50 in `shared/`, 40 in `server/`, 33 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, `getReachableTiles`, the event fold and its two design rules, `MatchStore` against `:memory:`, the HTTP surface end to end, `handleTileClick`, and the polling `GameServer`. What is *not* covered: the renderer — WebGL, so a real browser remains the check for it.
 
 The item below does not belong to a phase, which is how things stay recorded forever:
 
@@ -869,17 +869,18 @@ poll:    applyUpdate(response)
 submit:  if (result.ok) applyUpdate(result)
 ```
 
-**The DOM harness moves up from 5b** — `happy-dom` plus
-`@testing-library/react` — because 5a's riskiest change is otherwise the one
-thing 5a cannot test. The extraction's failure mode is the `onEvents` wipe (a
+✅ **The DOM harness moved up from 5b** — `happy-dom` plus
+`@testing-library/react` — because 5a's riskiest change was otherwise the one
+thing 5a could not test. The extraction's failure mode is the `onEvents` wipe (a
 subscription effect re-running on every render clears a rejection before it is
-seen — reasoning in the decisions doc), and every client test today is
-`handleTileClick`: the refactor could break the rejection UI with the gate
+seen — reasoning in the decisions doc), and every client test had been
+`handleTileClick`: the refactor could have broken the rejection UI with the gate
 green, and "a 5a regression is necessarily the refactor" has teeth only if the
-regression is detectable. Two dev dependencies one increment early buy
+regression is detectable. Two dev dependencies one increment early bought
 `useGameSession` landing with tests, `gameServer.ts`'s `visibilitychange`
 coverage no longer waiting on 5b, and 5b starting with a harness instead of
-building one while also changing behaviour.
+building one while also changing behaviour. The `typeof document` guards in
+`gameServer.ts` went with it — their only beneficiary was a DOM-less test run.
 
 ✅ **`strict` went on here, and it was a one-line flag flip.** It was parked for
 years as its own increment on the grounds that the fallout is unpredictable.

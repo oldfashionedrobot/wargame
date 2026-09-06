@@ -3,9 +3,7 @@
 Scratch doc. Everything here belongs in `architecture.md` once 5a lands; absorb
 it and delete this file, the way `server-sidequest.md` went.
 
-Steps 0 (`strict`), 1 (`gameServer` tests), 2 (the client reads 422), 3 (the
-`SelectionState` union) and 4 (`MatchRoute`'s stale server) are done; the
-harness and the extraction remain.
+Steps 0–5 are done; only step 6, the extraction, remains.
 
 ## The three decisions the doc asked for
 
@@ -231,18 +229,19 @@ Seven separately verifiable steps:
    what paints "Connecting…" in the click's own render, where the effect
    re-run fires only after a frame of stale failure UI. Redundant-looking,
    not redundant.
-5. **Pull the DOM harness forward from 5b** — `happy-dom` and
+5. ✅ ~~**Pull the DOM harness forward from 5b**~~ — `happy-dom` and
    `@testing-library/react`, plus the `visibilitychange` tests that finish
    `net/gameServer.ts`'s coverage. Here rather than 5b because step 6 carries
    5a's riskiest hazard — the `onEvents` wipe above — and nothing DOM-less can
-   see it: all eleven client tests are `handleTileClick`, so the extraction
-   could break the rejection UI with the gate green, and "a 5a regression is
-   necessarily the refactor" only helps if the regression is detectable. Two
-   dev dependencies one increment early; 5b then starts with a harness instead
-   of building one while also changing behaviour. Once it is in, the three
-   `typeof document !== 'undefined'` guards in `gameServer.ts` (`:87`, `:112`,
-   `:146`) lose their only beneficiary — a DOM-less test run — and come out
-   here rather than surviving as fossils.
+   see it: every client test was `handleTileClick`, so the extraction could
+   have broken the rejection UI with the gate green, and "a 5a regression is
+   necessarily the refactor" only helps if the regression is detectable. The
+   environment is `happy-dom` in `vite.config.ts`, whose `defineConfig` now
+   comes from `vitest/config` so the `test` key is typed. The three
+   `typeof document !== 'undefined'` guards in `gameServer.ts` came out with
+   it — their only beneficiary was a DOM-less test run, which no longer
+   exists. `document.hidden` is shadowed per-test with `defineProperty` and
+   the shadow deleted in `afterEach`.
 6. **Extract `useGameSession`** — render replica, rejection state, in-flight
    guard, `submitCommand`, the tile-click handler, subscription, and the one
    `applySelection` write path (decision 1). The canvas keeps the renderer

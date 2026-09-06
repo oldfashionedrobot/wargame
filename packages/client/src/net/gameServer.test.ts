@@ -9,9 +9,9 @@ import type {
 } from '@vod/shared';
 import { connectGameServer } from './gameServer';
 
-// The most intricate code in the client, tested without a DOM: fetch and timers
-// are both fakeable, and the `typeof document` guards keep the visibilitychange
-// wiring inert until the harness arrives (step 5).
+// The most intricate code in the client. fetch and timers are faked; the DOM
+// is happy-dom's, which is what makes the visibility behaviour testable --
+// `document.hidden` is shadowed per-test and restored in afterEach.
 //
 // Every timer advance is the *async* form. The poll loop reschedules from an
 // async callback, so the sync form would fire the timer, never let the awaits
@@ -74,9 +74,16 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const server of servers.splice(0)) server.dispose();
+  Reflect.deleteProperty(document, 'hidden'); // drop any per-test shadow
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
+
+// happy-dom's document.hidden is a prototype getter; an own property shadows
+// it for one test and afterEach deletes the shadow.
+function setTabHidden(hidden: boolean): void {
+  Object.defineProperty(document, 'hidden', { configurable: true, value: hidden });
+}
 
 async function connect(options?: Parameters<typeof connectGameServer>[1]): Promise<GameServer> {
   const result = await connectGameServer('m1', options);
@@ -302,6 +309,38 @@ describe('backoff', () => {
     onEvents = nothingNew;
     await vi.advanceTimersByTimeAsync(2 * POLL);
     expect(onConnectionChange).toHaveBeenLastCalledWith('connected');
+  });
+});
+
+describe('hidden tab', () => {
+  it('polls at the slowest interval while the tab is hidden', async () => {
+    setTabHidden(true);
+    await connect();
+    await vi.advanceTimersByTimeAsync(MAX_BACKOFF - 1);
+    expect(polls()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(polls()).toBe(1);
+  });
+
+  // Without the reset, restoring a tab could leave it up to thirty seconds
+  // stale while looking live.
+  it('resets the backoff and polls immediately on return', async () => {
+    setTabHidden(true);
+    await connect();
+    setTabHidden(false);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(polls()).toBe(1); // immediately, not thirty seconds out
+    await vi.advanceTimersByTimeAsync(POLL);
+    expect(polls()).toBe(2); // and back on the normal interval
+  });
+
+  it('ignores visibility changes after dispose', async () => {
+    const server = await connect();
+    server.dispose();
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(MAX_BACKOFF);
+    expect(polls()).toBe(0);
   });
 });
 

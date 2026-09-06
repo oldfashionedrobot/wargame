@@ -1,4 +1,6 @@
-import { defineConfig } from 'vite';
+// vitest/config is vite's defineConfig plus the typed `test` key -- one config
+// for both tools, which is the reason the client runs Vitest at all.
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 // The client calls /api/* relative in every environment. In dev this proxy
@@ -11,5 +13,8 @@ export default defineConfig({
     proxy: {
       '/api': { target: 'http://localhost:3001', changeOrigin: true },
     },
+  },
+  test: {
+    environment: 'happy-dom',
   },
 });

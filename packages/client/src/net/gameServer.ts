@@ -83,8 +83,7 @@ export async function connectGameServer(
     if (timer !== null) clearTimeout(timer);
     // Nothing changes while the tab is hidden that can't be caught up on
     // return, and a hidden tab polling forever is pure waste.
-    const hidden = typeof document !== 'undefined' && document.hidden;
-    timer = setTimeout(() => void poll(), hidden ? MAX_BACKOFF_MS : delay);
+    timer = setTimeout(() => void poll(), document.hidden ? MAX_BACKOFF_MS : delay);
   };
 
   const poll = async (): Promise<void> => {
@@ -108,9 +107,7 @@ export async function connectGameServer(
     backoff = POLL_INTERVAL_MS;
     schedule(0);
   };
-  if (typeof document !== 'undefined') {
-    document.addEventListener('visibilitychange', onVisibilityChange);
-  }
+  document.addEventListener('visibilitychange', onVisibilityChange);
 
   schedule();
 
@@ -145,9 +142,7 @@ export async function connectGameServer(
       if (timer !== null) clearTimeout(timer);
       timer = null;
       listeners.clear();
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', onVisibilityChange);
-      }
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     },
   };
 
