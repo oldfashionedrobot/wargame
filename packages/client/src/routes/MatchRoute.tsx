@@ -11,22 +11,39 @@ interface Failure {
   reason: string;
 }
 
+// react-router reuses the component when only the param changes, so without
+// the key a /a -> /b navigation would render GameCanvas against A's server --
+// which the effect cleanup has already disposed -- until B resolves. Keying by
+// matchId remounts the connection instead: every piece of its state resets and
+// a mounted canvas can never see its server prop change, by construction.
+export function MatchRoute() {
+  const { matchId } = useParams<{ matchId: string }>();
+
+  if (!matchId)
+    return (
+      <p>
+        No match specified. <Link to="/">Back</Link>
+      </p>
+    );
+
+  return <MatchConnection key={matchId} matchId={matchId} />;
+}
+
 /**
- * Owns the connection for one match.
+ * Owns the connection for one match -- exactly one, which the key above
+ * enforces.
  *
  * A remote server has no state until a round trip finishes, so something has
  * to hold the not-ready case -- and a component shouldn't construct the thing
  * it talks to. GameCanvas receives a live server and nothing else.
  */
-export function MatchRoute() {
-  const { matchId } = useParams<{ matchId: string }>();
+function MatchConnection({ matchId }: { matchId: string }) {
   const [server, setServer] = useState<GameServer | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [connection, setConnection] = useState<ConnectionStatus>('connected');
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!matchId) return;
     let cancelled = false;
     let connected: GameServer | null = null;
 
@@ -49,13 +66,6 @@ export function MatchRoute() {
     };
   }, [matchId, attempt]);
 
-  if (!matchId)
-    return (
-      <p>
-        No match specified. <Link to="/">Back</Link>
-      </p>
-    );
-
   if (failure) {
     // A missing match will never resolve, so offering Retry would be a lie.
     return failure.kind === 'notFound' ? (
@@ -68,6 +78,9 @@ export function MatchRoute() {
         <button
           type="button"
           onClick={() => {
+            // Not redundant with the effect re-run: batched with setAttempt,
+            // this paints "Connecting…" in the click's own render, where the
+            // effect fires only after a frame of stale failure UI.
             setFailure(null);
             setAttempt((n) => n + 1);
           }}

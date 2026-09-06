@@ -3,8 +3,9 @@
 Scratch doc. Everything here belongs in `architecture.md` once 5a lands; absorb
 it and delete this file, the way `server-sidequest.md` went.
 
-Steps 0 (`strict`), 1 (`gameServer` tests), 2 (the client reads 422) and 3
-(the `SelectionState` union) are done; nothing else below is built.
+Steps 0 (`strict`), 1 (`gameServer` tests), 2 (the client reads 422), 3 (the
+`SelectionState` union) and 4 (`MatchRoute`'s stale server) are done; the
+harness and the extraction remain.
 
 ## The three decisions the doc asked for
 
@@ -99,7 +100,7 @@ Worth keeping the finding that settled it either way: `onTileClick`
 (`renderer.ts:133`) *sets* `clickHandler` rather than adding to a list, so
 re-registering would have been safe. Verified by reading it.
 
-### ⚠️ Resolved: `server` *can* change under a mounted `GameCanvas`, and that is a bug
+### ✅ Resolved and fixed (step 4): `server` *could* change under a mounted `GameCanvas`
 
 The open question was whether renderer-as-state solved anything real. It does
 not — but only because the underlying problem should be fixed where it lives.
@@ -119,16 +120,18 @@ navigating `/a` → `/b`:
 Between 2 and 4 the canvas shows match A's frozen board while the URL says B,
 against a disposed connection.
 
-**Fix it in `MatchRoute`, not in the canvas.** Two lines at the top of the
-connect effect:
-
-```ts
-setServer(null);
-setFailure(null);
-```
+**Fix it in `MatchRoute`, not in the canvas.** The plan here was two lines at
+the top of the connect effect (`setServer(null); setFailure(null)`), and the
+implementation deviated for cause: the repo's own `react-hooks` lint forbids
+synchronous setState in an effect body, and React's guidance for "reset state
+when a prop changes" is a key. So `MatchRoute` splits into a param-reading
+shell and a `MatchConnection key={matchId}` — a param change remounts the
+connection, resetting *all* of its state, where the two lines would have
+missed `connection` and left a stale "reconnecting…" crossing matches.
 
 A match change then shows "Connecting…", which is correct, and `server` can no
-longer change under a mounted canvas — so **the renderer stays a `ref`**.
+longer change under a mounted canvas — now by construction rather than by
+reset ordering — so **the renderer stays a `ref`**.
 
 Hard to reach today: you need browser back/forward between two adjacent match
 URLs, since nothing in the app links match → match. Phase 9's lobby makes that
@@ -220,13 +223,14 @@ Seven separately verifiable steps:
    the "switch or deselect" branch — the tail of `handleTileClick` is now one
    call. The four record-shape assertions were updated as counted; the other
    seven tests survived untouched.
-4. **Fix `MatchRoute`'s stale server** — two lines, its own commit, and a real
-   bug fix rather than refactor. See the resolved ⚠️ above. Before the
+4. ✅ ~~**Fix `MatchRoute`'s stale server**~~ — its own commit, and a real bug
+   fix rather than refactor. Landed as a `key={matchId}` remount rather than
+   the planned two-line reset — see the resolved ⚠️ above for why. Before the
    extraction, because it is what lets the renderer stay a `ref`. The Retry
    handler's own `setFailure(null)` stays: batched with `setAttempt`, it is
-   what paints "Connecting…" in the click's own render, where the effect-top
-   reset fires only after a frame of stale failure UI. Redundant-looking, not
-   redundant.
+   what paints "Connecting…" in the click's own render, where the effect
+   re-run fires only after a frame of stale failure UI. Redundant-looking,
+   not redundant.
 5. **Pull the DOM harness forward from 5b** — `happy-dom` and
    `@testing-library/react`, plus the `visibilitychange` tests that finish
    `net/gameServer.ts`'s coverage. Here rather than 5b because step 6 carries

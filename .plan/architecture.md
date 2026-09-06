@@ -830,14 +830,17 @@ before: `selection.movement.some(…)` describes something the field isn't yet.)
   the hook has no renderer. The `pendingRef` half survives; the push guards a
   null renderer itself.
 
-⚠️ **One `MatchRoute` bug falls out of this and should be fixed first.** It never
-resets `server` when `matchId` changes, and react-router reuses the component for
-a param change — so navigating between two matches renders `GameCanvas` against
-the *previous* match's server, which the effect cleanup has already disposed,
-until the new connection resolves. Two lines (`setServer(null)`,
-`setFailure(null)`) at the top of the connect effect. It matters to 5a because it
-is the only way `server` can change under a mounted canvas; with it fixed, the
-renderer stays a `ref` and needs no state.
+✅ **One `MatchRoute` bug fell out of this and was fixed first.** It never
+reset `server` when `matchId` changed, and react-router reuses the component for
+a param change — so navigating between two matches rendered `GameCanvas` against
+the *previous* match's server, which the effect cleanup had already disposed,
+until the new connection resolved. Fixed by keying the connection component on
+`matchId` — a param change remounts it, resetting *all* of its state (the
+planned two-line reset would have missed `connection`, and the repo's own
+`react-hooks` lint forbids synchronous setState in an effect body, which is
+React's position too). It mattered to 5a because it was the only way `server`
+could change under a mounted canvas; with the remount, it cannot by
+construction, and the renderer stays a `ref`.
 
 ✅ **The client learned about 422.** The server answers a rule-rejected command
 with 422 and an `ErrorResponse` body; the client used to throw on any non-2xx
