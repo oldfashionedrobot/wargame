@@ -430,7 +430,7 @@ Each row of `resolutions` holds one **action** and the **events** it produced, k
 
 `GET /events?since=N` is the log's other job, and the reason push could be dropped: the log *is* the subscription mechanism, so polling cost nothing to build.
 
-⬜ Still to come: **the client folds too** — step 5b. `applyEvents` is exported and the client can already import it; wiring it in is what lets a client show a sequence of changes as it animates them rather than jumping to the end state, and it retires the ordering problem 7c would otherwise inherit.
+**The client deliberately does not fold.** An earlier plan had it mirroring the server with `applyEvents`; 5b settled against — the renderer animates from event payloads, and nothing else consumes intermediate states (see 5b, *Why the client does not fold*). `applyEvents` stays exported, so a replay or debug tool can fold the log any time without the live client doing so.
 
 **Rejections are not logged.** `submit` returns before the write, so the log records what happened, never what was attempted. "Who tried what" needs failed actions stored too.
 
@@ -701,7 +701,7 @@ Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DE
 
 The item below does not belong to a phase, which is how things stay recorded forever:
 
-- ✅ ~~**The server refactor.**~~ Drizzle and real migrations, `log_entries` became `resolutions`, events made authoritative and independently applicable, `Action` became a branded validated type, and the repo got its first tests. Client-side event folding is the one piece left — step 5b.
+- ✅ ~~**The server refactor.**~~ Drizzle and real migrations, `log_entries` became `resolutions`, events made authoritative and independently applicable, `Action` became a branded validated type, and the repo got its first tests. The client-side event folding once listed as its last piece was rescoped away in 5b — see *Why the client does not fold*.
 
 ## Known compromises
 
@@ -743,7 +743,7 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 
 Three client issues stopped being latent the moment a command became a round trip, and were fixed in phase 3: requests can fail (backoff plus a visible `retrying` state), selection rolls back on rejection, and an in-flight guard stops two clicks submitting against the same stale state.
 
-One is still latent: **state commits before animation finishes.** `subscribe` sets state and then starts the tween — harmless while Babylon owns the units, but `syncUnits` will snap meshes to their destination mid-tween. **Step 5b owns the fix** now that `applyEvents` exists; 7c is where it stops being harmless.
+One is still latent: **state commits before animation finishes.** `subscribe` sets state and then starts the tween — harmless while Babylon owns the units, but `syncUnits` will snap meshes to their destination mid-tween. **Step 5b owns the fix** — it gates the commit on the animation; 7c is where it stops being harmless.
 
 ### 5 — Client refactor
 
@@ -824,9 +824,11 @@ before: `selection.movement.some(…)` describes something the field isn't yet.)
 - **One subscription or two?** → **one, in the hook, with an `onEvents`
   callback.** The single callback sets state, clears rejection, *and* animates;
   the first two belong to the hook and the third to the canvas, so two
-  listeners looks natural. Rejected because 5b interleaves the fold with
-  animation — two listeners would be split here and merged there. It also makes
-  both hook inputs one shape rather than two mechanisms.
+  listeners looks natural. Rejected because 5b sequences the commit *after* the
+  animation — an ordering only expressible where one listener owns both. Two
+  listeners, state in the hook and animation in the canvas, have no order
+  between them at all. It also makes both hook inputs one shape rather than
+  two mechanisms.
 
   The load-bearing line inside: the hook holds both callbacks in a
   **latest-ref**, so the subscription depends on `server` alone. `subscribe`
@@ -928,34 +930,114 @@ playing the game"* — is retired. `handleTileClick` has 11 Vitest tests, of whi
 `initialSelectionState` or the emitted command and survive the conversion
 untouched. Playing it in a browser is still the check for the renderer half.
 
-#### 5b — the client folds events. A behaviour change.
+#### 5b — animation gates the state commit. A behaviour change.
 
-`applyEvents` is exported from `shared/` and unused by the client. Wiring it in is
-what makes the client able to show a sequence of changes *as* it animates them,
-rather than jumping to the end state and tweening afterwards.
+The one problem this phase solves is the ordering bug latent since phase 3:
+**state commits before animation finishes.** The listener sets the replica to
+the final state and *then* starts the tween. Harmless today for exactly one
+reason — Babylon owns the unit meshes and nothing reconciles them against
+state — and fatal in 7c, where `syncUnits(state)` would snap a mid-tween unit
+to its destination, or delete a dying unit's mesh before the hit lands.
 
-- **`useGameSession` applies each event as the renderer animates it**, instead of
-  snapping to the state snapshot. The snapshot keeps coming over the wire and
-  stays the correction: folding makes replay right, the snapshot makes a *missed*
-  event self-healing.
-- **This retires the ordering problem parked at 7c** — *state commits before
-  animation finishes*. Harmless today because Babylon owns the meshes, and fatal
-  once `syncUnits` reconciles them against state mid-tween. The fix lives in
-  exactly the code 5a restructures, which is why it belongs here.
-- **A late-joining client can replay** rather than depend on a snapshot. Not the
-  motivation — `GET /state` is one request — but it falls out.
-- **The DOM harness is already in** — 5a pulled `happy-dom` and
-  `@testing-library/react` forward so the extraction landed with tests. 5b
-  extends them to what only exists here: the per-event fold and its
-  interleaving with animation.
+That is an *ordering* problem, not a state-derivation problem, and the fix is
+one constraint, not a new state model: **a state is committed only after the
+events that produced it have finished animating.**
 
-**The client's model stays simpler than the server's.** It folds events to
-animate them and snaps to the snapshot as a correction. It needs no checkpoint,
-because the server hands it one on every update — so none of the server's
-checkpoint-and-rebuild machinery belongs here.
+##### The pipeline
 
-Folding facts is not resolving anything, so invariant 8 is untouched: the line
-stays *deterministic preview yes, random resolution no*.
+`useGameSession`'s listener becomes a short serial pipeline:
+
+```
+on update (events, state):
+  clear the rejection                 -- on arrival: newer authority supersedes it
+  enqueue:
+    if worthAnimating(events):  await onEvents(events)   -- the canvas's playEvents
+    onSnap(state)                                        -- idempotent correction
+    commit state                                         -- setGameState, always last
+```
+
+- **The queue is a promise chain inside the hook.** Batches run in arrival
+  order; a batch cannot start until the previous one committed. It exists
+  because a poll can deliver batch two while batch one is still animating.
+  `GameServer` and `UpdateListener` do not change — backpressure from animation
+  is a UI concern and never belongs in the transport.
+- **`onEvents` becomes awaitable** — `(events: GameEvent[]) => Promise<void>`.
+  The canvas already holds the promise (`playEvents` returns it; today it is
+  discarded). Events stay an array; there is no per-event callback.
+- **`onSnap(state)` always runs, inside the queue, before the commit.** Today
+  it is `renderer.snapUnits(state)` — position the existing meshes from state,
+  no tween, ~10 lines — and 7c grows it into `syncUnits` (add/remove). After an
+  animated batch it is a visual no-op; after a skipped or *failed* animation it
+  is the correction. This is "the snapshot is self-healing" made concrete, and
+  because it runs inside the queue it can never race another batch's animation
+  — which an effect driven by the committed state could, so it deliberately is
+  not one.
+- **A failed animation is caught, snapped over, and committed.** The queue must
+  never wedge on a rendering error.
+- `submitCommand` gets a `try`/`finally` on its in-flight flag while this file
+  is open — the hook is written against the `GameServer` *interface*, and an
+  implementation that rejects would otherwise soft-lock the UI forever.
+
+##### `worthAnimating` — snap, don't replay
+
+**Animate small live batches; snap everything else.** Two conditions, either
+one skips straight to `onSnap` + commit:
+
+- **The batch is large** (more than ~10 events — the constant just has to
+  separate "a dropped poll" from "gone a while"). Catch-up replay is for a
+  spotty connection missing one poll, not for returning after lunch: these are
+  chess-length games, and replaying an absence at tween speed is worse than
+  useless.
+- **The tab is hidden.** Browsers throttle rAF in hidden tabs, so an awaited
+  animation would stall the queue — snap-on-hidden is wedge-prevention, not
+  just taste. (The `visibilitychange` handler already polls immediately on
+  return, so the return path animates normally.)
+
+##### Why the client does not fold
+
+An earlier version of this phase had `useGameSession` folding each event with
+`applyEvents`, mirroring the server's model. Dropped, for the same kind of
+reason push was dropped: enumerate the consumers and nobody needs it.
+
+- **The renderer animates from event payloads, not from state.** That is the
+  granularity principle events were designed around — `unitMoved` carries the
+  path, `unitAttacked` will carry resulting HP, `unitDied` carries the id.
+  `playEvents` never reads `GameState` at all.
+- **The only React consumer of the replica is the turn label.** Per-event
+  folding buys the label flipping mid-batch instead of at batch end —
+  imperceptible at one-to-three events, and arguably worse (today it flips
+  before the unit finishes walking).
+- **Replay stays buildable without being wired in.** `applyEvents` remains
+  exported from `shared/`; a replay or debug tool can fold the log any time.
+  Late-join needs no replay — `GET /state` is one request.
+
+The escape hatch is recorded at 7d, where it could first be needed: if a
+combat animation ever needs the state *between* events of one batch (damage
+numbers are `before − after`, and a catch-up batch can hit the same unit
+twice), the answer is a **local** fold threaded through the animation walk —
+`applyEvents` as a plain helper inside the queue task, never a per-event React
+commit, never a signature change.
+
+##### What stays true
+
+- **The replica lags deliberately during animation.** `getState()` is already
+  authoritative and ahead (invariant 1); `clickTile` reads it and does not
+  change. The lag is the point — the *displayed* world stays consistent with
+  what has been shown.
+- The client still keeps no checkpoint and runs none of the server's
+  event-sourcing machinery — it is now further from it, not closer.
+- Folding was never resolution, and neither is snapping — invariant 8 is
+  untouched: *deterministic preview yes, random resolution no*.
+
+##### Order and verification
+
+Two commits: the `try`/`finally` fix (independent, lands first), then
+`snapUnits` + the pipeline + its tests together. The harness is already in
+place from 5a; the tests drive a deferred animate callback and assert the
+commit is gated on it, batches serialize, the threshold and hidden cases skip
+to snap-and-commit, and a rejecting animation still commits. The browser check
+(`/run-app`) is the visual half: a move should animate before the turn label
+flips.
 
 #### 5c — the client moves onto bun's bundler ⬜
 
@@ -1042,10 +1124,12 @@ Terrain and pathing already exist by this point, so the numbers mean something. 
 
 - **7a** `UnitType` catalog — migrate `Unit.movementRange` onto it. *(`unitTypes.ts` has existed unreferenced since early on.)*
 - **7b** `Unit` gains `health`/`maxHealth` and `unitTypeId`; update the starting units. **No migration** — `Unit` lives inside `GameState`, which is a JSON blob, so the shape changes without the schema moving. That is the JSON-blob decision paying off, and it is why `map_id` in phase 6 is the first migration rather than this.
-- **7c** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. Assumes 5b landed: without per-event folding, this is where the animation/state-commit ordering bug stops being harmless.
+- **7c** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. It grows out of 5b's `snapUnits` and runs where that runs: inside the hook's queue, after the batch's animation, before the commit. Assumes 5b landed — without the gated commit, reconciling meshes against a state whose events are still animating is exactly the ordering bug 5b retired.
 - **7d** `UnitActionCommand` replaces `MoveCommand` — path plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events. Touches three places, all separate now: `parseCommand` for the wire shape, `validateMove`'s successor for legality, and `resolveMove`'s for the events — plus rolls, which arrive as an argument to resolution so `shared/` stays pure.
 
-  ⚠️ **Invariant 9 constrains the events.** `unitAttacked` must carry the target's *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client already knows because it holds the preceding state. And a successful charge emits `unitDied` **plus** `unitMoved`, two independently-applicable events, not one compound event carrying both effects.
+  ⚠️ **Invariant 9 constrains the events.** `unitAttacked` must carry the target's *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client can compute from the state preceding the event. And a successful charge emits `unitDied` **plus** `unitMoved`, two independently-applicable events, not one compound event carrying both effects.
+
+  ⚠️ One nuance the client will hit here, parked by 5b with its answer attached: in a multi-resolution catch-up batch, "the state preceding event *k*" is the pre-batch replica folded through events 1..k−1 — a second hit on the same unit computes its damage number from the intermediate HP, not the pre-batch one. If the animation needs that, thread a **locally** folded state through the animation walk (`applyEvents` as a plain helper inside the queue task) — never per-event React commits, never a callback-signature change. Large batches snap without animating anyway (5b's threshold), so this only matters for small ones.
 - **7e** Attack in `handleTileClick` — clicking an enemy while selected becomes a real action, plus an attack-range overlay.
 - **7f** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop.
 
