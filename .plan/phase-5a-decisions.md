@@ -3,7 +3,8 @@
 Scratch doc. Everything here belongs in `architecture.md` once 5a lands; absorb
 it and delete this file, the way `server-sidequest.md` went.
 
-Step 0 (`strict`) is done; nothing else below is built.
+Steps 0 (`strict`) and 1 (`gameServer` tests) are done; nothing else below is
+built.
 
 ## The three decisions the doc asked for
 
@@ -178,11 +179,13 @@ Seven separately verifiable steps:
    it was a flag flip rather than the risky increment it was parked as — see 5a
    in `architecture.md`. First, so the code the later steps write is written
    under it rather than retrofitted.
-1. **`net/gameServer.ts` tests + the `applyUpdate` simplification.** Independent
-   of the refactor, so they are a net the refactor cannot invalidate. Note the
-   poll loop reschedules from an async callback, so the tests need
-   `vi.advanceTimersByTimeAsync`, not the sync form. `visibilitychange` stays
-   out of reach until step 5 adds the DOM harness.
+1. ✅ ~~**`net/gameServer.ts` tests + the `applyUpdate` simplification.**~~
+   Independent of the refactor, so they are a net the refactor cannot
+   invalidate. The poll loop reschedules from an async callback, so the tests
+   use `vi.advanceTimersByTimeAsync`, not the sync form. `visibilitychange`
+   stays out of reach until step 5 adds the DOM harness. One test pins today's
+   422-as-transport-failure behaviour on purpose; step 2 flips that assertion
+   in the same commit that fixes it.
 
    ⚠️ **Do not assert on the text of a transport failure.** `HttpError`'s
    message is built from the status code today (`server returned 400`), and the

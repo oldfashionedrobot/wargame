@@ -67,8 +67,7 @@ export async function connectGameServer(
     options.onConnectionChange?.(next);
   };
 
-  const applyUpdate = (update: EventsResponse | CommandResult): void => {
-    if ('ok' in update && !update.ok) return;
+  const applyUpdate = (update: EventsResponse): void => {
     if (update.seq <= lastSeq) return;
 
     lastSeq = update.seq;
@@ -128,7 +127,7 @@ export async function connectGameServer(
       }
 
       setStatus('connected');
-      applyUpdate(result);
+      if (result.ok) applyUpdate(result);
       return result;
     },
 
