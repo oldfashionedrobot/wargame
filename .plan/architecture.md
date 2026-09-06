@@ -789,21 +789,36 @@ phase 7 adds `choosingTarget` the same way.
 and becomes the `exploreMovement` result with `.reachable` and `.pathTo`. Not
 before: `selection.movement.some(…)` describes something the field isn't yet.)*
 
-**Three decisions 5a has to make, which the extraction forces:**
+**Three decisions the extraction forces, all settled** — reasoning in
+`.plan/phase-5a-decisions.md`:
 
-- **How does the canvas learn the selection?** The hook owns it (it owns
-  `submitCommand`, whose whole job is optimistic set plus rollback), but must not
-  know about Babylon. Either the hook returns it as state and the canvas pushes
-  it in an effect, or the hook takes an `onSelectionChange` callback. The first is
-  idiomatic; the second is the zero-delta option, since today's three
-  `showSelection` calls are imperative and synchronous.
-- **One subscription or two?** Today's single callback sets state, clears
-  rejection, *and* animates. The first two belong to the hook and the third to
-  the canvas. `gameServer` already fans out to a `Set`, so two listeners is
-  natural — but it should be a decision, not a side effect.
-- **`submitCommand`'s `!renderer` guard disappears** — it exists partly to bind
-  `renderer` for the `showSelection` calls below it, and the hook has no renderer.
-  Accept, or have the canvas disable the button until the renderer exists.
+- **How does the canvas learn the selection?** → **an `onSelectionChange`
+  callback**, not returned state. The hook owns the selection (it owns
+  `submitCommand`, whose whole job is optimistic set plus rollback) and must not
+  know about Babylon. Returning it as state is the idiomatic option, but it costs
+  two new effects, forces the click handler to be re-registered as its identity
+  changes, and pulls the renderer into state to make those effects wake. The
+  callback keeps the handler stable and registered once, and keeps the push
+  reading `server.getState()` as it does today.
+- **One subscription or two?** → **one, in the hook, with an `onEvents`
+  callback.** Today's single callback sets state, clears rejection, *and*
+  animates; the first two belong to the hook and the third to the canvas, so two
+  listeners looks natural. Rejected because 5b interleaves the fold with
+  animation — two listeners would be split here and merged there. It also makes
+  both hook inputs one shape rather than two mechanisms.
+- **`submitCommand`'s `!renderer` guard** → **accept that it disappears.** It
+  exists partly to bind `renderer` for the `showSelection` calls below it, and
+  the hook has no renderer. The `pendingRef` half survives; the push guards a
+  null renderer itself.
+
+⚠️ **One `MatchRoute` bug falls out of this and should be fixed first.** It never
+resets `server` when `matchId` changes, and react-router reuses the component for
+a param change — so navigating between two matches renders `GameCanvas` against
+the *previous* match's server, which the effect cleanup has already disposed,
+until the new connection resolves. Two lines (`setServer(null)`,
+`setFailure(null)`) at the top of the connect effect. It matters to 5a because it
+is the only way `server` can change under a mounted canvas; with it fixed, the
+renderer stays a `ref` and needs no state.
 
 **The client learns about 422.** The server now answers a rule-rejected command
 with 422 and an `ErrorResponse` body, and the client still throws on any non-2xx

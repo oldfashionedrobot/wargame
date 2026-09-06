@@ -7,20 +7,31 @@ Nothing below is built. The repo is at the state 5a starts from.
 
 ## The three decisions the doc asked for
 
-### 1. How does the canvas learn the selection? → **the hook returns it as state**
+### 1. How does the canvas learn the selection? → **an `onSelectionChange` callback**
 
-`useGameSession` owns the selection and returns it; `GameCanvas` pushes it to
-the renderer in an effect. The rejected alternative was an `onSelectionChange`
-callback, which is the zero-delta option because today's three `showSelection`
-calls are already imperative and synchronous.
+`useGameSession` owns the selection and hands it out through a callback the
+canvas supplies; the canvas pushes it to the renderer imperatively, as the three
+`showSelection` calls already do.
 
-Chosen because it is idiomatic, and because it makes the hook assertable from a
-test without a renderer — which is what 5b needs when hook tests arrive.
+**This reverses an earlier choice of returning it as state.** That option is the
+more idiomatic React, and it makes the hook assertable without a renderer — but
+the second argument was weak (a spy `onSelectionChange` is just as assertable),
+and the first costs more than it looked:
 
-Costs, both accepted: a re-render per selection change (cheap — the canvas
-element is untouched, only the turn and rejection spans re-render), and the
-highlight push is deferred by one commit, which Babylon's own render loop makes
-invisible.
+- two new effects in the canvas, one to push the selection and one to
+  re-register the click handler
+- the click handler's identity changes with the selection, which is the *only*
+  reason the fourth decision below exists
+- it pulls the renderer into state, or leaves three effects resting on
+  declaration order
+
+The callback keeps the handler stable and registered once, keeps the push
+reading `server.getState()` rather than the render replica, and leaves the
+renderer a `ref`. Fewer moving parts for the same separation.
+
+Cost, accepted: mirroring an imperative API through a callback is less idiomatic
+than state → render → effect. But the renderer *is* an imperative API, and the
+hook still never learns what Babylon is.
 
 ### 2. One subscription or two? → **one, in the hook, with an `onEvents` callback**
 
@@ -49,36 +60,52 @@ an increment that is supposed to have none.
 
 ## What those choices force, which `architecture.md` does not cover
 
-### A fourth decision: the click handler has to be re-registered
+### ~~A fourth decision: the click handler has to be re-registered~~ — moot
 
-Decision 1 makes the selection React state, so `clickTile` closes over it and
-changes identity on every selection change. But the renderer captures the click
-handler **once**, in the effect — which is exactly why the selection is a `ref`
-today (`GameCanvas.tsx:31`, read synchronously at `:90`).
+This existed only under returned-state: `clickTile` would close over the
+selection, change identity on every selection change, and need re-registering
+because the renderer captures the handler once. Under the callback the handler
+is stable and registered once inside the renderer effect, exactly as today.
 
-So either the canvas re-registers the handler in an effect, or the hook keeps a
-`selectionRef` and we are back to two copies of one thing.
+Worth keeping the finding that settled it either way: `onTileClick`
+(`renderer.ts:133`) *sets* `clickHandler` rather than adding to a list, so
+re-registering would have been safe. Verified by reading it.
 
-**Re-register.** It is safe: `onTileClick` in `renderer.ts:133` *sets*
-`clickHandler` rather than adding to a list, so re-running the effect replaces
-the handler instead of accumulating listeners. Verified by reading it, not
-assumed.
+### ⚠️ Resolved: `server` *can* change under a mounted `GameCanvas`, and that is a bug
 
-### The renderer moves from a ref to state
+The open question was whether renderer-as-state solved anything real. It does
+not — but only because the underlying problem should be fixed where it lives.
 
-`rendererRef.current` is not reactive, so neither the re-registration effect nor
-the selection-push effect has any way to wake when the renderer appears.
-Declaration order happens to make it work today — the renderer effect is
-declared before them — but that is a fragile invariant to rest three effects on.
+`MatchRoute` never resets `server` when `matchId` changes, and react-router
+reuses the component instance for a param change on the same route. So
+navigating `/a` → `/b`:
 
-`useState<GameRenderer | null>` makes all three honestly dependent and removes
-the ordering subtlety entirely.
+1. renders with `matchId = 'b'` but `server` still A's and `failure` still null,
+   so **`GameCanvas` renders against A's server**
+2. the effect cleanup runs — `cancelled = true`, `connected?.dispose()` — so **A
+   is now disposed**
+3. the new effect connects to B
+4. B resolves, `setServer(B)`, and the canvas takes a **new server prop without
+   unmounting**
 
-⚠️ **Worth confirming before committing to this.** `server` appears never to
-change while `GameCanvas` is mounted: `MatchRoute` renders the failure UI or
-`Connecting…` rather than the canvas whenever it is between servers, so a new
-server implies a remount. If that holds, renderer-as-state is solving a
-hypothetical. It is still the better shape, but it should be chosen knowingly.
+Between 2 and 4 the canvas shows match A's frozen board while the URL says B,
+against a disposed connection.
+
+**Fix it in `MatchRoute`, not in the canvas.** Two lines at the top of the
+connect effect:
+
+```ts
+setServer(null);
+setFailure(null);
+```
+
+A match change then shows "Connecting…", which is correct, and `server` can no
+longer change under a mounted canvas — so **the renderer stays a `ref`**.
+
+Hard to reach today: you need browser back/forward between two adjacent match
+URLs, since nothing in the app links match → match. Phase 9's lobby makes that
+navigation ordinary, which is the other reason to fix it now rather than record
+it.
 
 ### `onEvents` stability is load-bearing, and silently so
 
@@ -95,27 +122,25 @@ Fix: hold `onEvents` in a latest-ref so the subscription depends only on
 `server`. Cheap, but it is the difference between 5a being a no-op and quietly
 breaking the rejection UI.
 
-### Two honest behaviour deltas
+### ~~Two honest behaviour deltas~~ — both were consequences of returned state
 
-5a is billed as no behaviour change. It is *nearly* that, and the two exceptions
-should be named rather than discovered:
+Under returned state the highlight would have re-pushed on every authoritative
+update (because `showSelection` derives the selected unit's *position* from
+state, so `state` had to be in the effect's deps), and the push would have read
+the render replica rather than `server.getState()`.
 
-- **The highlight re-pushes on every authoritative update**, not only on
-  selection changes, because `showSelection` derives the selected unit's
-  *position* from state — so `state` has to be in the effect's deps. Arguably
-  more correct (the highlight follows the unit), but it is a delta.
-- **The push reads the render replica**, not `server.getState()` as the three
-  imperative call sites do today. They agree now. 5b deliberately makes the
-  replica lag during animation, and at that point the replica is the right
-  source for a highlight — so this is settled here rather than rediscovered.
+The callback has neither. The push stays at the same three call sites, reading
+the same source, on the same occasions. **So the refactor steps of 5a are
+genuinely zero-behaviour-change** — only step 2, teaching the client about 422,
+changes anything a user sees.
 
-⚠️ `clickTile` must keep reading `server.getState()` (invariant 1). Tempting to
-use `state` since the hook has it in scope; that would be a real regression —
-acting on a board a beat old.
+⚠️ Still true, and the easiest mistake to make: **`clickTile` must read
+`server.getState()`**, not the hook's replica (invariant 1). The replica is in
+scope and it is tempting; using it means acting on a board a beat old.
 
 ## Proposed order
 
-Five separately verifiable steps:
+Six separately verifiable steps:
 
 0. **Turn on `strict`.** Measured at zero errors across every package, so this
    is a flag flip rather than the risky increment it was parked as — see 5a in
@@ -141,7 +166,10 @@ Five separately verifiable steps:
 3. **`SelectionState` becomes a union**, plus the four assertions in
    `selection.test.ts` that touch the record shape (lines 29, 30, 82, 94 —
    the doc's count is exact; the other seven tests survive untouched).
-4. **Extract `useGameSession`.**
+4. **Fix `MatchRoute`'s stale server** — two lines, its own commit, and a real
+   bug fix rather than refactor. See the resolved ⚠️ above. Before the
+   extraction, because it is what lets the renderer stay a `ref`.
+5. **Extract `useGameSession`.**
 
 ## Parked questions, unrelated to the three above
 
