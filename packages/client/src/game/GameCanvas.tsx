@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { getCurrentPlayer } from '@vod/shared';
-import type { Command, GameServer, GameState } from '@vod/shared';
-import { handleTileClick, initialSelectionState } from './interaction/selection';
+import type { GameEvent, GameServer } from '@vod/shared';
+import { useGameSession } from './useGameSession';
 import type { SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
 import { createGameRenderer } from './render/renderer';
@@ -21,50 +21,30 @@ export interface GameCanvasProps {
   connection: ConnectionStatus;
 }
 
+// The canvas half: a canvas ref, the renderer lifecycle, and how to draw a
+// selection. Everything else about playing a match lives in useGameSession.
 export function GameCanvas({ server, connection }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  // The server owns game state; this is a render replica, fed by subscribe().
-  // Anything needing the authoritative value reads server.getState() directly
-  // rather than this -- a second copy would only be a second thing to desync.
-  const [gameState, setGameState] = useState<GameState>(() => server.getState());
-  const [rejection, setRejection] = useState<string | null>(null);
-  const selectionRef = useRef<SelectionState>(initialSelectionState);
   const rendererRef = useRef<GameRenderer | null>(null);
-  // A command is a round trip now, so a second click can land before the first
-  // resolves. Both would read the same state and submit against it; the server
-  // rejects the loser, but the UI would already have moved on.
-  const pendingRef = useRef(false);
 
-  /**
-   * Submits a command and moves the selection optimistically, rolling the
-   * selection back if the authority refuses.
-   *
-   * Optimistic here means the *UI affordance* only -- game state still comes
-   * exclusively from the server. Clearing the selection instantly is what
-   * keeps a click feeling immediate over a network; restoring it on rejection
-   * is what stops a refused action from looking like it happened.
-   */
-  const submitCommand = useCallback(
-    async (command: Command, nextSelection: SelectionState): Promise<void> => {
-      const renderer = rendererRef.current;
-      if (!renderer || pendingRef.current) return;
+  // Both callbacks read the ref at call time, never capture the renderer: a
+  // submit can resolve after this canvas unmounted, and its rollback push must
+  // find null rather than a disposed renderer.
+  const onSelectionChange = useCallback((selection: SelectionState): void => {
+    const renderer = rendererRef.current;
+    if (renderer) showSelection(renderer, selection);
+  }, []);
 
-      const previousSelection = selectionRef.current;
-      pendingRef.current = true;
-      selectionRef.current = nextSelection;
-      showSelection(renderer, nextSelection);
+  const onEvents = useCallback((events: GameEvent[]): void => {
+    rendererRef.current?.playEvents(events).catch((error: unknown) => {
+      console.error('animation failed:', error);
+    });
+  }, []);
 
-      const response = await server.submit(command);
-      pendingRef.current = false;
-      if (response.ok) return;
-
-      setRejection(response.reason);
-      selectionRef.current = previousSelection;
-      showSelection(renderer, previousSelection);
-    },
-    [server],
-  );
+  const { gameState, rejection, clickTile, endTurn } = useGameSession(server, {
+    onSelectionChange,
+    onEvents,
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -72,44 +52,13 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
 
     const renderer = createGameRenderer(canvas, server.getState());
     rendererRef.current = renderer;
-
-    // Single path for state changes: everything the authority decides arrives
-    // here, whoever caused it. The implementation deduplicates by seq, so this
-    // fires once per change whether it came from our own submit or a poll.
-    const unsubscribe = server.subscribe((events, state) => {
-      setGameState(state);
-      setRejection(null);
-      renderer.playEvents(events).catch((error: unknown) => {
-        console.error('animation failed:', error);
-      });
-    });
-
-    renderer.onTileClick((coordinate) => {
-      if (pendingRef.current) return;
-
-      const result = handleTileClick(server.getState(), selectionRef.current, coordinate);
-
-      // Selection-only clicks are pure UI and commit immediately; anything
-      // carrying a command goes through submitCommand so it can be undone.
-      if (!result.command) {
-        selectionRef.current = result.selection;
-        showSelection(renderer, result.selection);
-        return;
-      }
-
-      void submitCommand(result.command, result.selection);
-    });
+    renderer.onTileClick(clickTile);
 
     return () => {
-      unsubscribe();
       renderer.dispose();
       rendererRef.current = null;
     };
-  }, [server, submitCommand]);
-
-  const handleEndTurn = (): void => {
-    void submitCommand({ type: 'endTurn' }, initialSelectionState);
-  };
+  }, [server, clickTile]);
 
   return (
     <div>
@@ -119,7 +68,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
       />
       <div>
         <span>{getCurrentPlayer(gameState).name}&apos;s turn</span>{' '}
-        <button type="button" onClick={handleEndTurn}>
+        <button type="button" onClick={endTurn}>
           End Turn
         </button>{' '}
         {import.meta.env.DEV && (

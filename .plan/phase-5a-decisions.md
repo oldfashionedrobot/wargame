@@ -3,7 +3,8 @@
 Scratch doc. Everything here belongs in `architecture.md` once 5a lands; absorb
 it and delete this file, the way `server-sidequest.md` went.
 
-Steps 0–5 are done; only step 6, the extraction, remains.
+All seven steps are done. 5a is complete; what remains is absorbing this file
+into `architecture.md` and deleting it.
 
 ## The three decisions the doc asked for
 
@@ -242,13 +243,17 @@ Seven separately verifiable steps:
    it — their only beneficiary was a DOM-less test run, which no longer
    exists. `document.hidden` is shadowed per-test with `defineProperty` and
    the shadow deleted in `afterEach`.
-6. **Extract `useGameSession`** — render replica, rejection state, in-flight
-   guard, `submitCommand`, the tile-click handler, subscription, and the one
-   `applySelection` write path (decision 1). The canvas keeps the renderer
-   effect and the JSX, stops importing `handleTileClick` and
-   `initialSelectionState` entirely, and knows three things: a canvas ref, the
-   renderer lifecycle, and how to draw a selection. Lands with hook tests,
-   which step 5 exists to make possible.
+6. ✅ ~~**Extract `useGameSession`**~~ — render replica, rejection state,
+   in-flight guard, `submitCommand`, the tile-click handler, subscription, and
+   the one `applySelection` write path (decision 1). The canvas keeps the
+   renderer effect and the JSX, imports neither `handleTileClick` nor
+   `initialSelectionState`, and knows three things: a canvas ref, the renderer
+   lifecycle, and how to draw a selection. Landed with 8 hook tests against a
+   fake in-memory `GameServer`, including one that re-renders with fresh
+   callback identities and asserts the rejection survives — verified to fail
+   against a subscription that depends on the callbacks, which is the exact
+   regression it guards. The hook exposes `endTurn` rather than a raw
+   `submitCommand`, so `Command` construction never leaves the session.
 
 ## Parked questions, unrelated to the three above
 

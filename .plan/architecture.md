@@ -762,17 +762,20 @@ for mesh lifecycle and diffing and have `renderer.ts` call it, exactly as it
 already calls `terrain.ts` and `highlight.ts`. An extraction driven by real
 content, not a preemptive split.
 
-#### 5a — the refactor. No behaviour change.
+#### 5a ✅ — the refactor. One behaviour change, its own commit.
 
-**`GameCanvas.tsx` owns the session and the canvas at once**, which is what makes
-it 135 lines. Extract `useGameSession(server)` — render replica, rejection state,
-in-flight guard, `submitCommand`, the tile-click handler, subscription, and one
-`applySelection` funnel every selection write passes through, so the
+**`GameCanvas.tsx` owned the session and the canvas at once**, which is what
+made it 135 lines. `useGameSession(server, { onSelectionChange, onEvents })`
+now owns the session — render replica, rejection state, in-flight guard,
+`submitCommand`, the tile-click handler, subscription, and one `applySelection`
+funnel every selection write passes through, so the
 set-the-ref-then-push-the-renderer pairing lives once instead of at three call
 sites. `GameCanvas` keeps the renderer effect (it needs the canvas ref) and the
-JSX, stops importing `handleTileClick` at all, and knows three things: a canvas
-ref, the renderer lifecycle, and how to draw a selection. One hook, not two; the
-split is *the session* versus *the canvas*.
+JSX, imports neither `handleTileClick` nor `initialSelectionState`, and knows
+three things: a canvas ref, the renderer lifecycle, and how to draw a
+selection. It gets `endTurn` rather than a raw `submitCommand`, so `Command`
+construction never leaves the session. One hook, not two; the split is *the
+session* versus *the canvas*.
 
 **`selection.ts` stays pure.** State and a coordinate in, new state and a command
 out, no React and no server. Moving `submitCommand` into it would destroy that.
