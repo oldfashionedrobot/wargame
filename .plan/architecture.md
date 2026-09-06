@@ -718,7 +718,6 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 | **Migrations run at boot** | `migrate()` on startup, fine for one instance and ~0.4 ms once nothing is pending. Drizzle lists runtime migration as a first-class flow for monoliths, so this is a choice rather than a shortcut | `bun run db:migrate` as a deploy step, once there is more than one instance, a rolling deploy, or a reason to deny the runtime DDL rights |
 | **Two reads per command** | `resolveActor` needs state to stamp `actor = currentTurn`, but `submit` owns the read | Phase 9 — `resolveActor` becomes a session lookup and the extra read disappears |
 | **`typecheck` can pass stale** | `tsc -b` skips work its `.tsbuildinfo` believes current — observed reporting 0 while `tsc -p packages/server` flagged two `TS6133`s | Run `tsc -b --force` in the gate, or drop the incremental cache |
-| **`strict` is off** | Inherited from the Vite template — `noUnusedLocals` etc. are on, but `strictNullChecks` and friends are not. Measured as **zero errors** to turn on, so this is a stale compromise rather than a real one | Step 5a, first commit — a flag flip, done before 5a writes new code so that code is written strict from the start |
 
 ## Out of scope for v1
 
@@ -879,15 +878,16 @@ regression is detectable. Two dev dependencies one increment early buy
 coverage no longer waiting on 5b, and 5b starting with a harness instead of
 building one while also changing behaviour.
 
-**`strict` goes on here, and it is a one-line flag flip.** It was parked for
+✅ **`strict` went on here, and it was a one-line flag flip.** It was parked for
 years as its own increment on the grounds that the fallout is unpredictable.
 Measured: adding `"strict": true` to `packages/server/tsconfig.json` and
 `packages/client/tsconfig.app.json` produces **zero errors** across every
 package. Verified the measurement rather than trusting it — a deliberate
 `string | null` assignment in client code is caught, so `strict` genuinely
-reaches the source being checked.
+reaches the source being checked — and re-measured with `tsc -b --force` on the
+day it landed.
 
-So there is no fallout to absorb, and turning it on cannot change behaviour —
+So there was no fallout to absorb, and turning it on cannot change behaviour —
 this step is as shape-only as the refactor around it.
 
 ⚠️ 5a does carry one behaviour-changing step, but it is not this one: teaching
@@ -896,7 +896,7 @@ as its own commit, after the `gameServer` tests exist to cover it. Everything
 else in 5a is shape-only, which is what "a 5a regression is necessarily the
 refactor" depends on.
 
-It still goes **first**, but for a different reason than absorbing risk: 5a
+It went **first**, but for a different reason than absorbing risk: 5a
 writes new code — the `SelectionState` union, `useGameSession`, the `gameServer`
 tests — and writing that under `strict` from the start is cheaper than
 retrofitting it. The union is the clearest case: `{ selectedUnitId: string |
@@ -1086,7 +1086,7 @@ Both are defaults in Better Auth, which is a further point in its favour above.
 
 `build` is `tsc -b && bun run --filter '@vod/client' bundle`: one typecheck pass across every package, then bundle. `bun run typecheck` is the `tsc -b` half alone.
 
-`noUnusedLocals` / `noUnusedParameters` are on, and `verbatimModuleSyntax` requires explicit `import type`. Note `strict` is **not** on — see Known compromises.
+`noUnusedLocals` / `noUnusedParameters` are on, `strict` is on (5a's first commit), and `verbatimModuleSyntax` requires explicit `import type`.
 
 **Tests: `bun test` for `shared/` and `server/`, Vitest for `client/`.** Two runners because `bun test` needs no dependency or config and covers the pure packages, while Vitest reuses the client's `vite.config.ts` and is the only route to React component and hook tests. Test files are portable between them — the same suite ran under both, differing only in the import line. The root `test` script runs both. Server tests use `:memory:`, one database per test, migrated in `beforeEach`.
 

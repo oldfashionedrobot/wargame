@@ -3,7 +3,7 @@
 Scratch doc. Everything here belongs in `architecture.md` once 5a lands; absorb
 it and delete this file, the way `server-sidequest.md` went.
 
-Nothing below is built. The repo is at the state 5a starts from.
+Step 0 (`strict`) is done; nothing else below is built.
 
 ## The three decisions the doc asked for
 
@@ -174,9 +174,9 @@ to choose between. Only `handleTileClick` keeps reading the authority.
 
 Seven separately verifiable steps:
 
-0. **Turn on `strict`.** Measured at zero errors across every package, so this
-   is a flag flip rather than the risky increment it was parked as — see 5a in
-   `architecture.md`. First, so the code the later steps write is written
+0. ✅ ~~**Turn on `strict`.**~~ Measured at zero errors across every package, so
+   it was a flag flip rather than the risky increment it was parked as — see 5a
+   in `architecture.md`. First, so the code the later steps write is written
    under it rather than retrofitted.
 1. **`net/gameServer.ts` tests + the `applyUpdate` simplification.** Independent
    of the refactor, so they are a net the refactor cannot invalidate. Note the
