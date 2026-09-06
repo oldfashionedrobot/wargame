@@ -33,6 +33,27 @@ Cost, accepted: mirroring an imperative API through a callback is less idiomatic
 than state → render → effect. But the renderer *is* an imperative API, and the
 hook still never learns what Babylon is.
 
+**The callback alone relocates rather than removes.** The pair
+`selectionRef.current = next; showSelection(…)` appears at three sites today —
+the optimistic set and the rollback in `submitCommand` (`GameCanvas.tsx:54`,
+`:62`), and the click commit (`:95`) — and forgetting the push at any of them
+desyncs the highlight silently. So every selection write funnels through one
+`applySelection(next)` inside the hook: set the ref, fire the callback. The
+pairing then exists in one place instead of being a rule to remember at three.
+That helper, not the callback by itself, is what makes the extraction simpler
+rather than merely rearranged.
+
+**The canvas's callback must read `rendererRef.current` at call time**, never
+close over a renderer captured earlier. Not style: `submitCommand` today
+captures the renderer before its await (`GameCanvas.tsx:49`), so a rejection
+that lands after the canvas unmounted pushes the rollback into a *disposed*
+renderer — and `setMovementRangeTiles` rebuilds vertex buffers against a
+released engine. Reachable now by leaving the match while a submit is in
+flight; step 4 adds match→match navigation to the ways there. (Read from the
+code, not reproduced in a browser.) An at-call-time read turns the same window
+into a guarded no-op, which is what the architecture doc's "the push guards a
+null renderer itself" is quietly relying on.
+
 ### 2. One subscription or two? → **one, in the hook, with an `onEvents` callback**
 
 Today's single callback sets state, clears rejection, *and* animates. The first
@@ -52,8 +73,14 @@ per-event-and-awaitable. That is churn this avoids only partly, not entirely.
 The guard exists mostly to bind `renderer` for the `showSelection` calls below
 it, and the `pendingRef` half of the condition survives untouched. Its only real
 effect is refusing End Turn in the window before the renderer effect runs.
-Nothing is lost: under decision 1 the selection-push effect fires whenever the
-renderer appears.
+
+Stated as the delta it is, rather than "nothing is lost": a click in that
+window changes from *silently refused* to *submitted normally*. The window is
+sub-frame — the button and the canvas paint in the same commit and the effect
+runs right after — and the submit path works without a renderer: the push
+guards null, the animation is skipped, the state still lands. Unobservable in
+practice, but 5a's zero-delta claim is load-bearing, so the exception gets
+named instead of rounded to zero.
 
 Disabling the button until the renderer exists was rejected as new behaviour in
 an increment that is supposed to have none.
@@ -138,9 +165,14 @@ changes anything a user sees.
 `server.getState()`**, not the hook's replica (invariant 1). The replica is in
 scope and it is tempting; using it means acting on a board a beat old.
 
+Step 3 then dissolves the read-source question for the *push* entirely: with
+the selected unit's `position` captured on the union member, `showSelection`
+becomes a projection of the selection alone — no `state` parameter, no source
+to choose between. Only `handleTileClick` keeps reading the authority.
+
 ## Proposed order
 
-Six separately verifiable steps:
+Seven separately verifiable steps:
 
 0. **Turn on `strict`.** Measured at zero errors across every package, so this
    is a flag flip rather than the risky increment it was parked as — see 5a in
@@ -150,7 +182,7 @@ Six separately verifiable steps:
    of the refactor, so they are a net the refactor cannot invalidate. Note the
    poll loop reschedules from an async callback, so the tests need
    `vi.advanceTimersByTimeAsync`, not the sync form. `visibilitychange` stays
-   out of reach until 5b adds a DOM.
+   out of reach until step 5 adds the DOM harness.
 
    ⚠️ **Do not assert on the text of a transport failure.** `HttpError`'s
    message is built from the status code today (`server returned 400`), and the
@@ -163,13 +195,56 @@ Six separately verifiable steps:
    because ⚠️ **this is the one step of 5a that changes behaviour**: error text
    the user sees, and whether the reconnecting banner appears. Everything else
    here is shape-only.
-3. **`SelectionState` becomes a union**, plus the four assertions in
-   `selection.test.ts` that touch the record shape (lines 29, 30, 82, 94 —
-   the doc's count is exact; the other seven tests survive untouched).
+
+   ⚠️ **Keep `rejected` out of the vocabulary the connect path consumes.**
+   `ConnectResult` and `MatchRoute`'s failure UI are a two-case union —
+   `notFound` gets a way back, `unreachable` gets Retry — and
+   `connectGameServer` maps `HttpError.kind` straight into it
+   (`gameServer.ts:45`). Widening `FailureKind` itself would flow `rejected`
+   into a component with no UI for it, silently rendering the retry branch for
+   a case that cannot happen unless the server is broken. Give the rejection
+   its own discriminant instead — a separate kind on `HttpError` that the
+   connect path never maps into `FailureKind`, or a separate error type — so
+   the connect union stays exactly the two cases it renders.
+3. **`SelectionState` becomes a union, and the member carries `position`** —
+   captured at selection time exactly as `reachableTiles` already is, so the
+   type stops being half snapshot, half lookup, and the highlight push becomes
+   a projection of the selection with no `state` parameter (see above). On
+   invariant 6: selection is ephemeral UI state (invariant 7), not
+   `GameState`, so snapshotting what it previews takes nothing from "derive
+   the rest" — and the parked `selection.ts:47` note already committed the
+   type to snapshot semantics, which phase 6's confirmation step needs anyway.
+   The same edit collapses `handleTileClick`'s two identical selection
+   literals (`selection.ts:35`, `:57`) into one helper rather than writing the
+   new shape twice. Four assertions in `selection.test.ts` touch the record
+   shape (lines 29, 30, 82, 94 — the count is exact; the other seven tests
+   survive untouched).
 4. **Fix `MatchRoute`'s stale server** — two lines, its own commit, and a real
    bug fix rather than refactor. See the resolved ⚠️ above. Before the
-   extraction, because it is what lets the renderer stay a `ref`.
-5. **Extract `useGameSession`.**
+   extraction, because it is what lets the renderer stay a `ref`. The Retry
+   handler's own `setFailure(null)` stays: batched with `setAttempt`, it is
+   what paints "Connecting…" in the click's own render, where the effect-top
+   reset fires only after a frame of stale failure UI. Redundant-looking, not
+   redundant.
+5. **Pull the DOM harness forward from 5b** — `happy-dom` and
+   `@testing-library/react`, plus the `visibilitychange` tests that finish
+   `net/gameServer.ts`'s coverage. Here rather than 5b because step 6 carries
+   5a's riskiest hazard — the `onEvents` wipe above — and nothing DOM-less can
+   see it: all eleven client tests are `handleTileClick`, so the extraction
+   could break the rejection UI with the gate green, and "a 5a regression is
+   necessarily the refactor" only helps if the regression is detectable. Two
+   dev dependencies one increment early; 5b then starts with a harness instead
+   of building one while also changing behaviour. Once it is in, the three
+   `typeof document !== 'undefined'` guards in `gameServer.ts` (`:87`, `:112`,
+   `:146`) lose their only beneficiary — a DOM-less test run — and come out
+   here rather than surviving as fossils.
+6. **Extract `useGameSession`** — render replica, rejection state, in-flight
+   guard, `submitCommand`, the tile-click handler, subscription, and the one
+   `applySelection` write path (decision 1). The canvas keeps the renderer
+   effect and the JSX, stops importing `handleTileClick` and
+   `initialSelectionState` entirely, and knows three things: a canvas ref, the
+   renderer lifecycle, and how to draw a selection. Lands with hook tests,
+   which step 5 exists to make possible.
 
 ## Parked questions, unrelated to the three above
 
@@ -188,9 +263,11 @@ returned 422"* and falsely flips the UI to "reconnecting…". Two small edits, a
 `GameCanvas` does not change at all because `submit()` still returns
 `CommandResult`:
 
-- **`client/net/api.ts`** — add `'rejected'` to `FailureKind`, and on a 4xx read
-  the `ErrorResponse` body so `HttpError` carries the server's wording instead of
-  "server returned 422".
+- **`client/net/api.ts`** — classify a 422 as its own `rejected` discriminant,
+  *not* a widening of `FailureKind` (see step 2's ⚠️ — `ConnectResult` and
+  `MatchRoute` consume that type and stay the two cases they render), and on a
+  4xx read the `ErrorResponse` body so the error carries the server's wording
+  instead of "server returned 422".
 - **`gameServer.ts:127`** — when the kind is `rejected`, return
   `{ ok: false, reason }` *without* `setStatus('retrying')`. That also retires the
   conflation this section used to describe: a transport failure and a rule

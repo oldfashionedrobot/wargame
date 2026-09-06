@@ -767,9 +767,13 @@ content, not a preemptive split.
 
 **`GameCanvas.tsx` owns the session and the canvas at once**, which is what makes
 it 135 lines. Extract `useGameSession(server)` — render replica, rejection state,
-in-flight guard, `submitCommand`, subscription. `GameCanvas` keeps the renderer
-effect (it needs the canvas ref) and the JSX. One hook, not two; the split is
-*the session* versus *the canvas*.
+in-flight guard, `submitCommand`, the tile-click handler, subscription, and one
+`applySelection` funnel every selection write passes through, so the
+set-the-ref-then-push-the-renderer pairing lives once instead of at three call
+sites. `GameCanvas` keeps the renderer effect (it needs the canvas ref) and the
+JSX, stops importing `handleTileClick` at all, and knows three things: a canvas
+ref, the renderer lifecycle, and how to draw a selection. One hook, not two; the
+split is *the session* versus *the canvas*.
 
 **`selection.ts` stays pure.** State and a coordinate in, new state and a command
 out, no React and no server. Moving `submitCommand` into it would destroy that.
@@ -779,14 +783,23 @@ phases:
 
 ```ts
 | { phase: 'idle' }
-| { phase: 'unitSelected';      unitId; reachableTiles }
-| { phase: 'destinationChosen'; unitId; reachableTiles; path }   // phase 6 adds this
+| { phase: 'unitSelected';      unitId; position; reachableTiles }
+| { phase: 'destinationChosen'; unitId; position; reachableTiles; path }   // phase 6 adds this
 ```
 
 Today it's `{ selectedUnitId: string | null; reachableTiles: Coordinate[] }` — two
 independently-settable fields, so "tiles with no selected unit" is representable
 and meaningless. Phase 6 then adds a member rather than converting a type, and
 phase 7 adds `choosingTarget` the same way.
+
+`position` is captured at selection time, exactly as `reachableTiles` already
+is — the type becomes coherently a snapshot instead of half snapshot, half
+lookup. That is what lets the selection push become a projection of the
+selection alone: no `state` parameter, no choice between the render replica and
+`server.getState()` to reason about. Selection is ephemeral UI state (invariant
+7), not `GameState`, so snapshotting what it previews takes nothing from
+invariant 6 — and phase 6's confirmation step needs snapshot semantics
+regardless.
 
 *(Phase 6 renames `reachableTiles` to `movement` when it stops being a bare array
 and becomes the `exploreMovement` result with `.reachable` and `.pathTo`. Not
@@ -801,8 +814,12 @@ before: `selection.movement.some(…)` describes something the field isn't yet.)
   know about Babylon. Returning it as state is the idiomatic option, but it costs
   two new effects, forces the click handler to be re-registered as its identity
   changes, and pulls the renderer into state to make those effects wake. The
-  callback keeps the handler stable and registered once, and keeps the push
-  reading `server.getState()` as it does today.
+  callback keeps the handler stable and registered once. Two riders make it a
+  simplification rather than a relocation: every selection write funnels
+  through one `applySelection` in the hook, and the canvas's callback reads its
+  renderer ref **at call time** — which also closes a
+  rollback-into-a-disposed-renderer hazard `submitCommand` carries today, since
+  it captures the renderer before its await.
 - **One subscription or two?** → **one, in the hook, with an `onEvents`
   callback.** Today's single callback sets state, clears rejection, *and*
   animates; the first two belong to the hook and the third to the canvas, so two
@@ -826,18 +843,19 @@ renderer stays a `ref` and needs no state.
 **The client learns about 422.** The server now answers a rule-rejected command
 with 422 and an `ErrorResponse` body, and the client still throws on any non-2xx
 that is not 404 — so a refused move reads *"server returned 422"* and raises the
-reconnecting banner. `client/net/api.ts` gains a `rejected` failure kind and
-reads the reason off the body; `gameServer.submit` stops treating a rejection as
-a transport failure. `GameCanvas` is untouched, since `submit()` still returns a
-`CommandResult`.
+reconnecting banner. `client/net/api.ts` gains a `rejected` discriminant — kept
+*out* of `FailureKind`, whose two cases are exactly what `MatchRoute` has UI
+for — and reads the reason off the body; `gameServer.submit` stops treating a
+rejection as a transport failure. `GameCanvas` is untouched, since `submit()`
+still returns a `CommandResult`.
 
 **`net/gameServer.ts` gets tests, and one simplification.** It is the most
 intricate untested code in the client: seq deduplication, exponential backoff,
 the hidden-tab interval, and `dispose`. The dedup is load-bearing — without it a
 poll in flight during a submit animates the same move twice — and nothing checks
 it. `fetch` and timers are both things Vitest can fake, so the core is testable
-without a DOM; only the `visibilitychange` behaviour needs one, and that arrives
-with 5b.
+without a DOM; the `visibilitychange` behaviour needs one, which the harness
+below supplies before the extraction.
 
 The simplification: `applyUpdate` takes `EventsResponse | CommandResult` and
 opens with `if ('ok' in update && !update.ok) return`, a union that exists only
@@ -848,6 +866,18 @@ take a single shape.
 poll:    applyUpdate(response)
 submit:  if (result.ok) applyUpdate(result)
 ```
+
+**The DOM harness moves up from 5b** — `happy-dom` plus
+`@testing-library/react` — because 5a's riskiest change is otherwise the one
+thing 5a cannot test. The extraction's failure mode is the `onEvents` wipe (a
+subscription effect re-running on every render clears a rejection before it is
+seen — reasoning in the decisions doc), and every client test today is
+`handleTileClick`: the refactor could break the rejection UI with the gate
+green, and "a 5a regression is necessarily the refactor" has teeth only if the
+regression is detectable. Two dev dependencies one increment early buy
+`useGameSession` landing with tests, `gameServer.ts`'s `visibilitychange`
+coverage no longer waiting on 5b, and 5b starting with a harness instead of
+building one while also changing behaviour.
 
 **`strict` goes on here, and it is a one-line flag flip.** It was parked for
 years as its own increment on the grounds that the fallout is unpredictable.
@@ -898,10 +928,10 @@ rather than jumping to the end state and tweening afterwards.
   exactly the code 5a restructures, which is why it belongs here.
 - **A late-joining client can replay** rather than depend on a snapshot. Not the
   motivation — `GET /state` is one request — but it falls out.
-- **Hook tests need a DOM.** Vitest is configured with no environment; this adds
-  `happy-dom` and `@testing-library/react` to the client, which is what makes
-  `useGameSession` testable at all — and finishes `gameServer.ts`'s coverage,
-  whose `visibilitychange` handling 5a cannot reach.
+- **The DOM harness is already in** — 5a pulled `happy-dom` and
+  `@testing-library/react` forward so the extraction landed with tests. 5b
+  extends them to what only exists here: the per-event fold and its
+  interleaving with animation.
 
 **The client's model stays simpler than the server's.** It folds events to
 animate them and snaps to the snapshot as a correction. It needs no checkpoint,
