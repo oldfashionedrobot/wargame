@@ -38,3 +38,6 @@ coverage
 *.njsproj
 *.sln
 *.sw?
+
+# claude code — machine-local permission grants; settings.json is the shared one
+.claude/settings.local.json
