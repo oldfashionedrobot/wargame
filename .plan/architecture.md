@@ -698,7 +698,7 @@ Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DE
 
 - **Counter-attack for `min > 1` units.** "No counter given or received" was settled when indirect fire and immobility were the same thing. Now that `canMoveAndAttack` is independent of range category, it's worth re-checking whether the rule should still key off `min > 1` alone. Probably still correct — nothing has challenged it — but never explicitly revisited.
 - ✅ ~~**`net/gameServer.ts` is untested**~~ — 22 tests as of 5a: seq deduplication (a poll in flight during a submit no longer goes unchecked), exponential backoff and its cap, the status transitions, `dispose` including a poll resolving after teardown, and — once step 5's harness landed — the hidden-tab interval and the `visibilitychange` reset. `fetch` and timers faked, happy-dom for the document.
-- ✅ ~~**No automated tests.**~~ 123 of them now — 50 in `shared/`, 40 in `server/`, 33 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, `getReachableTiles`, the event fold and its two design rules, `MatchStore` against `:memory:`, the HTTP surface end to end, `handleTileClick`, and the polling `GameServer`. What is *not* covered: the renderer — WebGL, so a real browser remains the check for it.
+- ✅ ~~**No automated tests.**~~ 143 of them now — 50 in `shared/`, 45 in `server/`, 48 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, `getReachableTiles`, the event fold and its two design rules, `MatchStore` against `:memory:`, the HTTP surface end to end including the compressed client-build serving, `handleTileClick`, the polling `GameServer`, and `useGameSession` with its animation gate. What is *not* covered: the renderer — WebGL, so a real browser remains the check for it.
 
 The item below does not belong to a phase, which is how things stay recorded forever:
 
@@ -1079,8 +1079,9 @@ that shrinks the bundle at its source.
 Until 5c the server sent `index-*.js` exactly as Vite wrote it: 6.7 MB,
 uncompressed, no cache headers, re-downloaded on every visit. After all
 three steps a first load transfers **255 KB** of brotli for the main bundle
-(26× less), and a repeat visit revalidates one HTML file. That, not the
-bundler, is where the load time was.
+(26× less), and a repeat visit re-downloads one sub-kilobyte HTML file —
+`no-cache` with no validator, since an ETag that saves 876 bytes is
+machinery nobody misses. That, not the bundler, is where the load time was.
 
 ##### Why not bun's bundler — measured, not assumed
 
