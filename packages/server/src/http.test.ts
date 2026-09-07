@@ -1,4 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { brotliCompressSync, gzipSync } from 'node:zlib';
 import type {
   Command,
   ErrorResponse,
@@ -228,6 +232,77 @@ describe('routing', () => {
   it('does not serve files outside the client build', async () => {
     const response = await get('/%2e%2e/%2e%2e/%2e%2e/etc/passwd');
     expect(await response.text()).not.toContain('root:');
+  });
+});
+
+// A fixture dist rather than the real build: these tests must not depend on
+// whether `bun run build` has run, and distinct plaintext inside each variant
+// is what proves *which* file was served -- bun's fetch decodes Content-
+// Encoding transparently (keeping the header), so body text distinguishes
+// the variants where byte counts could not.
+describe('the client build', () => {
+  let fixtureServer: Awaited<ReturnType<typeof createServer>>;
+  let fixtureBase: string;
+
+  beforeAll(async () => {
+    const dist = mkdtempSync(join(tmpdir(), 'vod-dist-'));
+    mkdirSync(join(dist, 'assets'));
+    writeFileSync(join(dist, 'index.html'), '<!doctype html><h1>fixture index</h1>');
+    writeFileSync(join(dist, 'assets', 'app-abc123.js'), 'const artifact = "raw";');
+    writeFileSync(
+      join(dist, 'assets', 'app-abc123.js.br'),
+      brotliCompressSync('const artifact = "br";'),
+    );
+    writeFileSync(join(dist, 'assets', 'app-abc123.js.gz'), gzipSync('const artifact = "gz";'));
+    writeFileSync(join(dist, 'assets', 'plain-def456.js'), 'const artifact = "plain";');
+
+    fixtureServer = await createServer({ port: 0, databaseUrl: ':memory:', clientDist: dist });
+    fixtureBase = fixtureServer.url.origin;
+  });
+
+  afterAll(async () => {
+    await fixtureServer.stop(true);
+  });
+
+  const getAsset = (path: string, accept: string): Promise<Response> =>
+    fetch(`${fixtureBase}${path}`, { headers: { 'accept-encoding': accept } });
+
+  it('serves the brotli variant to a client that accepts it', async () => {
+    const response = await getAsset('/assets/app-abc123.js', 'gzip, br');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-encoding')).toBe('br');
+    expect(response.headers.get('content-type')).toContain('javascript');
+    expect(await response.text()).toBe('const artifact = "br";');
+  });
+
+  it('serves gzip when brotli is not accepted', async () => {
+    const response = await getAsset('/assets/app-abc123.js', 'gzip');
+    expect(response.headers.get('content-encoding')).toBe('gzip');
+    expect(await response.text()).toBe('const artifact = "gz";');
+  });
+
+  it('serves the original when neither is accepted', async () => {
+    const response = await getAsset('/assets/app-abc123.js', 'identity');
+    expect(response.headers.get('content-encoding')).toBeNull();
+    expect(await response.text()).toBe('const artifact = "raw";');
+  });
+
+  it('falls through to the original when no variant exists', async () => {
+    const response = await getAsset('/assets/plain-def456.js', 'gzip, br');
+    expect(response.headers.get('content-encoding')).toBeNull();
+    expect(await response.text()).toBe('const artifact = "plain";');
+  });
+
+  it('marks hashed assets immutable and everything else no-cache', async () => {
+    const asset = await getAsset('/assets/app-abc123.js', 'br');
+    expect(asset.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(asset.headers.get('vary')).toBe('Accept-Encoding');
+
+    // A client route falls back to index.html -- the one file whose name
+    // never changes, so it must revalidate.
+    const route = await getAsset('/some/client/route', 'br');
+    expect(route.headers.get('cache-control')).toBe('no-cache');
+    expect(await route.text()).toContain('fixture index');
   });
 });
 

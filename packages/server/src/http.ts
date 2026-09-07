@@ -27,9 +27,14 @@ export interface ServerOptions {
   port?: number;
   /** Defaults to $DATABASE_URL, then the local file. `:memory:` for tests. */
   databaseUrl?: string;
+  /** Defaults to the checked-in client build. A fixture directory in tests. */
+  clientDist?: string;
 }
 
-export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
+export async function createServer({ port, databaseUrl, clientDist }: ServerOptions = {}) {
+  // Re-resolved so the traversal guard's `dist + sep` prefix check below works
+  // whatever shape the caller passed (trailing separator, relative path).
+  const dist = resolve(clientDist ?? CLIENT_DIST);
   const db = await createDb(databaseUrl);
   await migrate(db);
   const matches = createMatchStore(db);
@@ -104,7 +109,7 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
       // The client build. A route rather than a `fetch` fallback so that every
       // path is in this table and every handler gets a BunRequest -- which is
       // what carries `cookies`. Least specific, so '/api/*' out-matches it.
-      '/*': withSession(async (request) => serveClient(new URL(request.url))),
+      '/*': withSession(async (request) => serveClient(dist, request)),
     },
 
     error(cause) {
@@ -121,27 +126,72 @@ export async function createServer({ port, databaseUrl }: ServerOptions = {}) {
   return server;
 }
 
-async function serveClient(url: URL): Promise<Response> {
+// Cache policy by path shape: Vite content-hashes every /assets/* filename,
+// so those bytes can never change under their name -- cache forever. Anything
+// else (index.html above all, whose content decides which hashes get fetched)
+// revalidates on every load.
+const IMMUTABLE = 'public, max-age=31536000, immutable';
+const NO_CACHE = 'no-cache';
+
+async function serveClient(dist: string, request: BunRequest): Promise<Response> {
   // Production only: in dev the client is served by Vite, which proxies
   // /api here. Falls back to index.html so client routing works.
-  const index = Bun.file(join(CLIENT_DIST, 'index.html'));
+  const url = new URL(request.url);
+  const accept = request.headers.get('accept-encoding') ?? '';
+
   const serveIndex = async (): Promise<Response> =>
-    (await index.exists())
-      ? new Response(index)
-      : errorResponse('client not built -- run `bun run build`', 404);
+    (await serveFile(join(dist, 'index.html'), NO_CACHE, accept)) ??
+    errorResponse('client not built -- run `bun run build`', 404);
 
   if (url.pathname === '/') return serveIndex();
 
   // Belt-and-braces: URL parsing already collapses `..`, but filesystem access
   // should not rest on how the parser happens to behave. `+ sep` is load-
   // bearing -- a bare startsWith would accept a sibling like dist-types.
-  const resolved = resolve(CLIENT_DIST, '.' + url.pathname);
-  if (!resolved.startsWith(CLIENT_DIST + sep)) return serveIndex();
+  const resolved = resolve(dist, '.' + url.pathname);
+  if (!resolved.startsWith(dist + sep)) return serveIndex();
 
-  const requested = Bun.file(resolved);
-  if (await requested.exists()) return new Response(requested);
+  const cacheControl = url.pathname.startsWith('/assets/') ? IMMUTABLE : NO_CACHE;
+  return (await serveFile(resolved, cacheControl, accept)) ?? serveIndex();
+}
 
-  return serveIndex();
+/**
+ * Serves one file from the build, preferring a precompressed sibling the
+ * client accepts -- the build writes .br and .gz beside every compressible
+ * asset. Null when the file does not exist, so the caller owns the fallback.
+ *
+ * Content-Type comes from the *original* file either way: Bun.file would
+ * guess application/octet-stream from a .br extension. Vary rides every
+ * response, compressed or not -- a cache that stored the plain body for a
+ * br-accepting client would otherwise serve it to everyone. The encoding
+ * check is a substring match, which is enough for machine-generated token
+ * lists; a client contorted enough to send `q=0` gets bytes it can decode.
+ */
+async function serveFile(
+  path: string,
+  cacheControl: string,
+  accept: string,
+): Promise<Response | null> {
+  const original = Bun.file(path);
+  if (!(await original.exists())) return null;
+
+  const headers: Record<string, string> = {
+    'Content-Type': original.type,
+    'Cache-Control': cacheControl,
+    Vary: 'Accept-Encoding',
+  };
+
+  for (const [encoding, extension] of [
+    ['br', '.br'],
+    ['gzip', '.gz'],
+  ] as const) {
+    if (!accept.includes(encoding)) continue;
+    const variant = Bun.file(path + extension);
+    if (!(await variant.exists())) continue;
+    return new Response(variant, { headers: { ...headers, 'Content-Encoding': encoding } });
+  }
+
+  return new Response(original, { headers });
 }
 
 /**

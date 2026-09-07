@@ -1125,21 +1125,26 @@ variant cannot survive a rebuild. Landed at max brotli quality, ~4s on the
 6.7 MB bundle: 76 assets, `index-*.js` 6.67 MB → 1.05 MB br / 1.46 MB gz —
 the measured numbers above, reproduced by the real script.
 
-##### 5c-2 — serveClient serves it well ⬜
+##### 5c-2 ✅ — serveClient serves it well
 
 - **Content negotiation.** When `Accept-Encoding` admits it, serve the `.br`
   (then `.gz`) sibling if it exists, with `Content-Encoding`, the *original*
-  file's `Content-Type`, and `Vary: Accept-Encoding`. Falls through to the
+  file's `Content-Type` (`Bun.file` would guess octet-stream from `.br`),
+  and `Vary: Accept-Encoding` on every response. Falls through to the
   uncompressed file, so a missing variant is never an error.
-- **Cache headers.** `/assets/*` names are content-hashed:
-  `Cache-Control: public, max-age=31536000, immutable`. `index.html` gets
-  `no-cache` — the one file whose name never changes and whose content
-  decides everything else.
-- **`clientDist` becomes a `createServer` option**, defaulting to today's
-  constant — the same inputs-are-arguments move that made `port` and
+- **Cache headers, by path shape.** `/assets/*` names are content-hashed:
+  `Cache-Control: public, max-age=31536000, immutable`. Everything else is
+  `no-cache` — index.html above all, the one file whose name never changes
+  and whose content decides which hashes get fetched; the unhashed favicon
+  rides the same rule rather than earning its own case.
+- **`clientDist` is a `createServer` option**, defaulting to the checked-in
+  build — the same inputs-are-arguments move that made `port` and
   `databaseUrl` testable, and what lets `http.test.ts` drive the whole path
-  black-box against a fixture dist. Today's two client-path tests are
-  deliberately agnostic to whether the build exists, and stay so.
+  black-box against a fixture dist whose variants hold *distinct plaintext*,
+  so the body proves which file was served (bun's fetch decodes
+  `Content-Encoding` transparently while keeping the header). The two
+  pre-existing client-path tests stay deliberately agnostic to whether the
+  build exists, untouched.
 
 ##### 5c-3 — Babylon per-file imports ⬜ *(optional; if done, before phase 6)*
 
