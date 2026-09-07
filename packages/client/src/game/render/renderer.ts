@@ -10,6 +10,7 @@ import {
   Vector3,
 } from '@babylonjs/core';
 import type { Coordinate, GameEvent, GameState } from '@vod/shared';
+import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
 import { createTileHighlight, setHighlightTile } from './highlight';
 import { createMovementRangeOverlay, setMovementRangeTiles } from './movementRange';
@@ -33,6 +34,12 @@ export interface GameRenderer {
   setMovementRange(coordinates: Coordinate[]): void;
   /** Animates what the authority says happened. Resolves when done. */
   playEvents(events: GameEvent[]): Promise<void>;
+  /**
+   * Positions unit meshes from state, no tween -- a no-op after a played
+   * animation, the correction after a skipped or failed one. Grows into
+   * syncUnits (mesh add/remove) in 7c.
+   */
+  snapUnits(state: GameState): void;
   toggleInspector(): void;
   dispose(): void;
 }
@@ -145,6 +152,16 @@ export function createGameRenderer(
         const mesh = unitMeshes.get(event.unitId);
         if (!mesh) continue;
         await animateUnitAlongPath(mesh, event.path, gridWidth, gridHeight, scene);
+      }
+    },
+    snapUnits(state) {
+      for (const unit of state.units) {
+        const mesh = unitMeshes.get(unit.id);
+        if (!mesh) continue;
+        // Stop first: a snap must win over any tween still writing positions.
+        scene.stopAnimation(mesh);
+        const target = tileToWorld(unit.position, gridWidth, gridHeight);
+        mesh.position.set(target.x, mesh.position.y, target.z);
       }
     },
     toggleInspector() {

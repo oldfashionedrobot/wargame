@@ -687,6 +687,7 @@ Fire and charge are **different resolutions, dispatched once** on an `attackKind
 - Terrain is one merged mesh, vertex-colored per tile. Grid lines are a `LineSystem` overlay. Highlights are parameterized single-tile meshes.
 - ✅ **Animation is driven by the authority's events**, not by the command the client sent — `GameRenderer.playEvents(events)` walks the list the server returned and animates each in order.
 - ⬜ **`GameRenderer.syncUnits(state)`** — reconciles meshes against current state. It currently builds every unit mesh once at startup with no add/remove, so the first kill would leave a mesh on the board forever.
+- ✅ **`GameRenderer.snapUnits(state)`** *(5b)* — positions existing meshes from state, no tween; runs inside the hook's queue on every batch, before the commit, and is what `syncUnits` grows out of.
 - **`renderer.ts` is the accumulation point** — every feature so far has added wiring there. Deliberately not split: when `syncUnits` lands, `unitMeshes.ts` comes out of it, following the pattern the other render modules already set.
 
 ## Dev tooling ✅
@@ -743,7 +744,7 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 
 Three client issues stopped being latent the moment a command became a round trip, and were fixed in phase 3: requests can fail (backoff plus a visible `retrying` state), selection rolls back on rejection, and an in-flight guard stops two clicks submitting against the same stale state.
 
-One is still latent: **state commits before animation finishes.** `subscribe` sets state and then starts the tween — harmless while Babylon owns the units, but `syncUnits` will snap meshes to their destination mid-tween. **Step 5b owns the fix** — it gates the commit on the animation; 7c is where it stops being harmless.
+The last one landed with 5b: **state now commits only after its events finish animating.** The hook's queue gates the commit, and `snapUnits` corrects whatever a skipped or failed animation left behind — so 7c's `syncUnits` will reconcile against a state whose events have already been shown.
 
 ### 5 — Client refactor
 
@@ -930,7 +931,7 @@ playing the game"* — is retired. `handleTileClick` has 11 Vitest tests, of whi
 `initialSelectionState` or the emitted command and survive the conversion
 untouched. Playing it in a browser is still the check for the renderer half.
 
-#### 5b — animation gates the state commit. A behaviour change.
+#### 5b ✅ — animation gates the state commit. A behaviour change.
 
 The one problem this phase solves is the ordering bug latent since phase 3:
 **state commits before animation finishes.** The listener sets the replica to

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { makeState } from '@vod/shared/testing';
 import type {
@@ -21,6 +21,19 @@ const at = (col: number, row: number): Coordinate => ({ col, row });
 
 // b1 can act; its position and movementRange 2 make (1,3) a legal move target.
 const board = makeState(7, [{ id: 'b1', col: 1, row: 1, movementRange: 2 }]);
+
+const moved = (): GameEvent => ({ type: 'unitMoved', unitId: 'b1', path: [at(1, 1), at(1, 3)] });
+
+// happy-dom's document.hidden is a prototype getter; an own property shadows
+// it for the hidden-tab case below.
+function setTabHidden(hidden: boolean): void {
+  Object.defineProperty(document, 'hidden', { configurable: true, value: hidden });
+}
+
+afterEach(() => {
+  Reflect.deleteProperty(document, 'hidden'); // drop any per-test shadow
+  vi.restoreAllMocks();
+});
 
 interface FakeServer {
   server: GameServer;
@@ -64,7 +77,11 @@ function fakeServer(initial: GameState): FakeServer {
 }
 
 function callbacks(): GameSessionCallbacks {
-  return { onSelectionChange: vi.fn(), onEvents: vi.fn() };
+  return {
+    onSelectionChange: vi.fn(),
+    onEvents: vi.fn(() => Promise.resolve()),
+    onSnap: vi.fn(),
+  };
 }
 
 function renderSession(fake: FakeServer, initial = callbacks()) {
@@ -74,23 +91,144 @@ function renderSession(fake: FakeServer, initial = callbacks()) {
 }
 
 describe('useGameSession', () => {
-  it('serves the render replica and follows server updates', () => {
+  it('serves the render replica and follows server updates', async () => {
     const fake = fakeServer(board);
     const { result } = renderSession(fake);
     expect(result.current.gameState).toEqual(board);
 
     const next = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
-    act(() => fake.push([], next));
+    // The commit runs through the queue, a microtask behind the push -- a
+    // synchronous act would still see the old state.
+    await act(async () => fake.push([], next));
     expect(result.current.gameState).toEqual(next);
   });
 
-  it('forwards events to onEvents', () => {
+  it('forwards events to onEvents', async () => {
     const fake = fakeServer(board);
     const cb = callbacks();
     renderSession(fake, cb);
-    const moved: GameEvent[] = [{ type: 'unitMoved', unitId: 'b1', path: [at(1, 1), at(1, 3)] }];
-    act(() => fake.push(moved, board));
-    expect(cb.onEvents).toHaveBeenLastCalledWith(moved);
+    await act(async () => fake.push([moved()], board));
+    expect(cb.onEvents).toHaveBeenLastCalledWith([moved()]);
+  });
+
+  // 5b: a state is committed only after the events that produced it have
+  // finished animating. Every batch snaps before it commits; animation is
+  // skipped entirely for large catch-up batches and hidden tabs.
+  describe('the animation gate', () => {
+    it('commits state only after the batch finishes animating', async () => {
+      const fake = fakeServer(board);
+      const cb = callbacks();
+      let finish!: () => void;
+      vi.mocked(cb.onEvents).mockImplementation(() => new Promise((res) => (finish = res)));
+      const { result } = renderSession(fake, cb);
+      await act(async () => {}); // settle the initial (empty, unanimated) batch
+
+      const next = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+      await act(async () => fake.push([moved()], next));
+
+      // Arrived and animating -- not yet snapped over, not yet committed.
+      expect(cb.onEvents).toHaveBeenCalledWith([moved()]);
+      expect(cb.onSnap).toHaveBeenCalledTimes(1); // the initial batch only
+      expect(result.current.gameState).toEqual(board);
+
+      await act(async () => finish());
+      expect(cb.onSnap).toHaveBeenLastCalledWith(next);
+      expect(result.current.gameState).toEqual(next);
+    });
+
+    it('runs batches serially, in arrival order', async () => {
+      const fake = fakeServer(board);
+      const cb = callbacks();
+      const pending: Array<() => void> = [];
+      vi.mocked(cb.onEvents).mockImplementation(() => new Promise((res) => pending.push(res)));
+      const { result } = renderSession(fake, cb);
+      await act(async () => {});
+
+      const mid = makeState(7, [{ id: 'b1', col: 1, row: 2, movementRange: 2 }]);
+      const end = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+      await act(async () => fake.push([moved()], mid));
+      await act(async () => fake.push([moved()], end));
+
+      // Batch two waits on batch one: its animation has not even started.
+      expect(pending).toHaveLength(1);
+      expect(result.current.gameState).toEqual(board);
+
+      await act(async () => pending[0]?.());
+      // One committed; only now does two animate.
+      expect(result.current.gameState).toEqual(mid);
+      expect(pending).toHaveLength(2);
+
+      await act(async () => pending[1]?.());
+      expect(result.current.gameState).toEqual(end);
+    });
+
+    it('snaps instead of animating a large catch-up batch', async () => {
+      const fake = fakeServer(board);
+      const cb = callbacks();
+      const { result } = renderSession(fake, cb);
+      await act(async () => {});
+
+      const next = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+      await act(async () => fake.push(Array.from({ length: 11 }, moved), next));
+
+      expect(cb.onEvents).not.toHaveBeenCalled();
+      expect(cb.onSnap).toHaveBeenLastCalledWith(next);
+      expect(result.current.gameState).toEqual(next);
+    });
+
+    it('snaps instead of animating while the tab is hidden', async () => {
+      const fake = fakeServer(board);
+      const cb = callbacks();
+      const { result } = renderSession(fake, cb);
+      await act(async () => {});
+
+      setTabHidden(true);
+      const next = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+      await act(async () => fake.push([moved()], next));
+
+      expect(cb.onEvents).not.toHaveBeenCalled();
+      expect(cb.onSnap).toHaveBeenLastCalledWith(next);
+      expect(result.current.gameState).toEqual(next);
+    });
+
+    it('snaps over a failed animation and still commits', async () => {
+      const fake = fakeServer(board);
+      const cb = callbacks();
+      vi.mocked(cb.onEvents).mockRejectedValue(new Error('webgl died'));
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { result } = renderSession(fake, cb);
+      await act(async () => {});
+
+      const next = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+      await act(async () => fake.push([moved()], next));
+
+      expect(cb.onSnap).toHaveBeenLastCalledWith(next);
+      expect(result.current.gameState).toEqual(next);
+      expect(errorLog).toHaveBeenCalled();
+    });
+
+    it('clears a rejection on arrival, before the batch finishes animating', async () => {
+      const fake = fakeServer(board);
+      const cb = callbacks();
+      let finish!: () => void;
+      vi.mocked(cb.onEvents).mockImplementation(() => new Promise((res) => (finish = res)));
+      const { result } = renderSession(fake, cb);
+      await act(async () => {});
+
+      fake.respond({ ok: false, reason: 'illegal move' });
+      await act(async () => result.current.endTurn());
+      expect(result.current.rejection).toBe('illegal move');
+
+      // Newer authority supersedes the rejection the moment it arrives; only
+      // the state commit waits on the animation.
+      const next = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+      await act(async () => fake.push([moved()], next));
+      expect(result.current.rejection).toBeNull();
+      expect(result.current.gameState).toEqual(board);
+
+      await act(async () => finish());
+      expect(result.current.gameState).toEqual(next);
+    });
   });
 
   it('selects on click and submits a move for a reachable tile, clearing optimistically', async () => {

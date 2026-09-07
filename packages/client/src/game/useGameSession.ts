@@ -19,8 +19,28 @@ import type { SelectionState } from './interaction/selection';
 export interface GameSessionCallbacks {
   /** The selection changed -- push it to whatever displays it. */
   onSelectionChange: (selection: SelectionState) => void;
-  /** The authority decided these happened -- animate them, in order. */
-  onEvents: (events: GameEvent[]) => void;
+  /**
+   * The authority decided these happened -- animate them, in order. The
+   * state they produced commits only once the returned promise settles.
+   */
+  onEvents: (events: GameEvent[]) => Promise<void>;
+  /**
+   * Position the display from state, no tween. Runs on every batch before
+   * its commit: a visual no-op after a played animation, the correction
+   * after a skipped or failed one.
+   */
+  onSnap: (state: GameState) => void;
+}
+
+// Animate small live batches; snap everything else. The cap separates "a
+// dropped poll" from "gone a while" -- these are chess-length games, and
+// catch-up replay at tween speed is worse than useless. Hidden tabs skip
+// too: browsers throttle rAF there, so an awaited animation would stall the
+// queue rather than play.
+const MAX_ANIMATED_EVENTS = 10;
+
+function worthAnimating(events: GameEvent[]): boolean {
+  return events.length > 0 && events.length <= MAX_ANIMATED_EVENTS && !document.hidden;
 }
 
 export interface GameSession {
@@ -28,6 +48,8 @@ export interface GameSession {
    * Render replica of the server's state, fed by subscribe(). Display only --
    * anything needing the authoritative value reads server.getState() instead
    * (invariant 1); a second copy would only be a second thing to desync.
+   * Lags deliberately while a batch animates: it commits only after the
+   * events that produced it have been shown.
    */
   gameState: GameState;
   /** Why the last command was refused; cleared by the next server update. */
@@ -103,14 +125,41 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     [server, applySelection],
   );
 
+  // Batches run in arrival order, one at a time: a poll can deliver batch
+  // two while batch one is still animating. Tasks never reject (both render
+  // callbacks are caught below), so a plain then keeps the chain alive --
+  // one broken render must not wedge every batch after it.
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
+
   // Single path for state changes: everything the authority decides arrives
   // here, whoever caused it. The implementation deduplicates by seq, so this
   // fires once per change whether it came from our own submit or a poll.
+  //
+  // The rejection clears on arrival -- newer authority supersedes it -- but
+  // everything else queues: a state commits only after the events that
+  // produced it have finished animating (or been snapped over). Backpressure
+  // from animation is a UI concern, so the queue lives here and the
+  // transport never learns it exists.
   useEffect(() => {
     return server.subscribe((events, state) => {
-      setGameState(state);
       setRejection(null);
-      callbacksRef.current.onEvents(events);
+      queueRef.current = queueRef.current.then(async () => {
+        if (worthAnimating(events)) {
+          try {
+            await callbacksRef.current.onEvents(events);
+          } catch (error) {
+            // Snapped over and committed below -- a failed animation must
+            // never wedge the queue.
+            console.error('animation failed:', error);
+          }
+        }
+        try {
+          callbacksRef.current.onSnap(state);
+        } catch (error) {
+          console.error('snap failed:', error);
+        }
+        setGameState(state);
+      });
     });
   }, [server]);
 

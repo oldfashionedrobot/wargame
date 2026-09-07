@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { getCurrentPlayer } from '@vod/shared';
-import type { GameEvent, GameServer } from '@vod/shared';
+import type { GameEvent, GameServer, GameState } from '@vod/shared';
 import { useGameSession } from './useGameSession';
 import type { SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
@@ -35,15 +35,20 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
     if (renderer) showSelection(renderer, selection);
   }, []);
 
-  const onEvents = useCallback((events: GameEvent[]): void => {
-    rendererRef.current?.playEvents(events).catch((error: unknown) => {
-      console.error('animation failed:', error);
-    });
+  const onEvents = useCallback(
+    (events: GameEvent[]): Promise<void> =>
+      rendererRef.current?.playEvents(events) ?? Promise.resolve(),
+    [],
+  );
+
+  const onSnap = useCallback((state: GameState): void => {
+    rendererRef.current?.snapUnits(state);
   }, []);
 
   const { gameState, rejection, clickTile, endTurn } = useGameSession(server, {
     onSelectionChange,
     onEvents,
+    onSnap,
   });
 
   useEffect(() => {
