@@ -502,7 +502,7 @@ Static content, not runtime state: what damage cavalry deals to infantry never c
 
 ## Units
 
-Three unit types, three movement types, one-to-one for now. Artillery is wheeled/horse-drawn — historically right for the era and a clean spread: infantry goes anywhere slowly, cavalry is fast but road-bound, artillery is slow *and* road-bound.
+Three unit types, three movement types, one-to-one for now. Artillery is wheeled/horse-drawn — historically right for the era and a clean spread: infantry goes anywhere slowly, cavalry is fast in the open but stopped by rough ground, artillery is slow *and* road-preferring. (An earlier draft called cavalry "road-bound"; the table below gives `horse` the same plains cost as `foot`, so what actually distinguishes it is speed plus impassable forest/mountain/river. Only `wheels` genuinely prefers roads.)
 
 | Unit | Movement type | Ranged ⬜ | Charge ⬜ |
 |---|---|---|---|
@@ -514,11 +514,13 @@ Movement range, `ranged`, and `charge` are all fields on the same `UnitType` rec
 
 ## Terrain ⬜
 
-`plains · road · bridge · forest · mountain · river · sea · beach`
+`plains · road · bridge · forest · mountain · river`
 
 **Bridge is its own type**, mechanically identical to road. The renderer has to *know* it's a bridge to draw a road crossing water, and inferring that from "road adjacent to river" is fragile — a road running alongside a river isn't a bridge. Terrain types are already a mechanics-and-presentation pair, so a presentational distinction is a legitimate reason for one.
 
-Rivers stay meaningful: fordable on foot at a cost, impassable to wheels. `sea` and `beach` are in the list for map shape, not because naval units exist — the v1 roster is entirely land.
+Rivers stay meaningful: fordable on foot at a cost, impassable to wheels.
+
+**`sea` and `beach` are cut from the v1 roster.** They were in an earlier draft "for map shape, not because naval units exist" — but with an all-land roster `sea` is impassable to every movement type, which makes it a wall with a different colour, plus a table row, a renderer colour, and a thing to tune around. Six types do the work; add the coastline when a map wants one. `bridge` survives the same test because it is mechanically identical to road *and* visually distinct, which is the case the paragraph above argues.
 
 ### One table, both axes
 
@@ -548,6 +550,8 @@ movement.pathTo(destination)  // walked back through predecessors, no second sea
 
 `pathTo` returns the **cheapest** route. Manual routing — deliberately taking the long way — remains possible later because the protocol carries a path and the server validates rather than derives it; it's a UI feature, not a protocol change.
 
+**The route preview is what earns 6e's destination step**, and it should be argued for on those terms rather than as a confirmation dialog. With variable cost the cheapest route is genuinely non-obvious, so seeing it before committing is real information. The *confirm click itself* is scaffolding for 7's move-then-attack menu — in phase 6 it offers exactly one choice — and is worth landing anyway, because 7e otherwise rebuilds the interaction it replaces. Three gestures the plan owes it, none of which were written down: a second click on the chosen tile **confirms**, a click on another reachable tile **re-targets**, and a click on the unit or outside the range **cancels**. `SelectionState` grows `destinationChosen` as a member, exactly as 5a designed for, and `reachableTiles` becomes `movement` when it stops being a bare array.
+
 ### ⚠️ Invariant: one cost model
 
 **Client and server read the same terrain table from `shared/`.** Pathfinding needs no cross-machine determinism, because the server validates rather than re-derives — but the *cost model* must agree, or the reachable overlay offers moves the server rejects. Any movement modifier added later belongs in `shared/`, never on one side.
@@ -556,20 +560,24 @@ movement.pathTo(destination)  // walked back through predecessors, no second sea
 
 It is a movement rule that happens to be needed before attacking, and it fixes an **existing** hole: `path` is currently accepted unvalidated, so a client can submit a straight line through anything. That only becomes exploitable once terrain makes such a line meaningfully different from a legal route — so terrain and validation land together.
 
+⚠️ **It is also a breaking change to the client**, which today sends exactly the straight line the check will start refusing — see phase 6's hard dependencies. `validatePath` and the client's switch to `pathTo` are one commit (6c).
+
+**One carve-out the walk needs:** the occupancy check must exclude the moving unit itself. `path[0]` is the unit's own tile, and a single-element path — legal at cost 0, the "attack without moving" shape — ends where it starts. Without the exclusion a unit standing still fails its own occupancy test. In phase 6 that shape is simply "wait in place", worth allowing since it costs nothing and 7d needs it.
+
 ### Maps
 
 A character grid, because then the source file looks like the map:
 
 ```ts
 const MAP = [
-  '..^^^..b',
-  '..~~~..b',
-  '--===--b',
-  '..~~~..b',
-  '..fff..b',
+  '..^^^...',
+  '..~~~...',
+  '--===---',
+  '..~~~...',
+  '..fff...',
 ]
-// . plains   - road   = bridge   ~ river
-// ^ mountain f forest  b beach   s sea
+// . plains   - road   = bridge
+// ~ river    ^ mountain   f forest
 ```
 
 Readable in an editor, in a diff, and in review. AW and AWBW store maps as terrain-id grids; FFT isn't a useful reference, since its 3D tiles with height solve a different problem.
@@ -1175,23 +1183,31 @@ bundle is core's own lazy property shim on `Scene.prototype`, not UI code.
 
 Terrain and pathfinding are one system: the Dijkstra **is** the pathing, `validatePath` is meaningless without a cost table, and route preview is the same search reading its predecessors. Full spec in Terrain.
 
-- Terrain types incl. `bridge`; one table carrying cost-per-movement-type and a single defence value
-- `exploreMovement` — Dijkstra returning the reachable set and `pathTo(destination)`
-- `validatePath` inside `validateMove` — closes the existing unvalidated-`path` hole. It lands there rather than anywhere else because validation and resolution are already separate: `validateMove` decides legality, `resolveMove` only emits the event
-- Character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`, and `matches` gains `map_id`. **That column is the first real schema migration** — the thing the migration tooling exists for, and worth doing deliberately rather than as an afterthought
-- Terrain rendering, and a route highlight on the chosen destination
-- Confirmation step: pick destination → see route → confirm, rather than committing on click
-
 Terrain leads because **terrain defence is not a minor modifier** — four stars at full health halves incoming damage. Tuning a matchup table with it stubbed to zero produces numbers to throw away.
 
 Verifiable with no combat: does the overlay stop at mountains, does cavalry outrange artillery on roads, does the server reject a path through impassable terrain.
+
+**Two hard dependencies, both found by reviewing this section against the code rather than by building it.** They are what the sub-steps below are ordered around:
+
+- ⚠️ **The cost table is keyed by `MovementType`, and no `Unit` can answer to one.** `Unit` today carries a bare `movementRange: number`; `shared/data/unitTypes.ts` holds `movementType` and has sat unreferenced since early on. Wiring the two together was 7a, *after* this phase — so phase 6 as originally written could not be built. 7a moves here as **6a**, which costs nothing: `Unit` lives inside `GameState`, a JSON blob, so there is no migration (the same reasoning 7b already gives).
+- ⚠️ **`validatePath` and the client's `pathTo` are one commit, not two.** The client sends `path: [position, destination]` — a two-element straight line the server accepts only because `validateMove` reads the last element and ignores the rest. `validatePath` requires each step to be orthogonally adjacent, so the day it lands *every non-adjacent move is rejected* unless the client is already sending a real route.
+
+#### The sub-steps
+
+- **6a** — `Unit` gains `unitTypeId` and drops `movementRange`, which moves onto `UnitType` (7a, pulled forward). Pure `shared/` plus `initialState`; no migration.
+- **6b** — the terrain table and `exploreMovement`, returning `reachable` and `pathTo`. Pure and fully unit-testable. `getReachableTiles` becomes `exploreMovement` through the barrel, which ripples through its tests and `selection.ts`.
+- **6c** — `validatePath` inside `validateMove`, **and** the client sending `pathTo`'s result, together. It lands in `validateMove` rather than anywhere else because validation and resolution are already separate: `validateMove` decides legality, `resolveMove` only emits the event. `canMoveUnit`'s `getReachableTiles` call leaves the server path entirely — an O(path) walk replaces an O(board) search per command.
+- **6d** — character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`; `matches` gains `map_id`. **That column is the first real schema migration** — the thing the tooling exists for, worth doing deliberately. Two mechanics the plan owes it: maps are *code modules*, so `map_id` is a text column with **no foreign key**, and a `NOT NULL` column on a non-empty table needs a default or nullability.
+- **6e** — terrain rendering, route preview, and the confirm gesture. New Babylon code follows 5c-3's convention: per-file imports, side-effect modules named where the augmented method is called.
+
+⚠️ **6b orphans every existing match, and the dev database must be wiped at 6d.** `TileType` stops including `'land'`, `current_state` is read on every submit, and `$type<GameState>()` is a compile-time assertion rather than validation — so an old row keeps `'land'` tiles, `TERRAIN['land']` is `undefined`, and the cost lookup throws. The start screen still lists those matches, so opening one breaks the client. Dev-only data, so wiping is the answer; it is written here so it is a step rather than a surprise. (`initial_state` has the same staleness and never gets read, so it does not bite.)
 
 ### 7 — Combat: the smallest thing you can win
 
 Terrain and pathing already exist by this point, so the numbers mean something. The integration risk here is the chain — command → resolve → events → animate → death → mesh removal → victory — not the damage formula.
 
-- **7a** `UnitType` catalog — migrate `Unit.movementRange` onto it. *(`unitTypes.ts` has existed unreferenced since early on.)*
-- **7b** `Unit` gains `health`/`maxHealth` and `unitTypeId`; update the starting units. **No migration** — `Unit` lives inside `GameState`, which is a JSON blob, so the shape changes without the schema moving. That is the JSON-blob decision paying off, and it is why `map_id` in phase 6 is the first migration rather than this.
+- **7a** — *moved to 6a.* The `UnitType` catalog wiring is a prerequisite of the terrain cost table, not a consequence of combat; see phase 6's hard dependencies.
+- **7b** `Unit` gains `health`/`maxHealth`; update the starting units. (`unitTypeId` arrived in 6a.) **No migration** — `Unit` lives inside `GameState`, which is a JSON blob, so the shape changes without the schema moving. That is the JSON-blob decision paying off, and it is why `map_id` in phase 6 is the first migration rather than this.
 - **7c** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. It grows out of 5b's `snapUnits` and runs where that runs: inside the hook's queue, after the batch's animation, before the commit. Assumes 5b landed — without the gated commit, reconciling meshes against a state whose events are still animating is exactly the ordering bug 5b retired.
 - **7d** `UnitActionCommand` replaces `MoveCommand` — path plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events. Touches three places, all separate now: `parseCommand` for the wire shape, `validateMove`'s successor for legality, and `resolveMove`'s for the events — plus rolls, which arrive as an argument to resolution so `shared/` stays pure.
 
