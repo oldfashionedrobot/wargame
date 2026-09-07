@@ -923,7 +923,7 @@ null }` becoming a discriminated union is the same nullability work
 `strictNullChecks` would force anyway.
 
 *(`packages/client/tsconfig.node.json` covers only `vite.config.ts` and was not
-included in the measurement; 5c deletes it.)*
+included in the measurement.)*
 
 **Verifiable now.** The earlier warning here — *"nothing verifies this beyond
 playing the game"* — is retired. `handleTileClick` has 11 Vitest tests, of which
@@ -1068,69 +1068,89 @@ state and needs `await act(async …)`. That is the behaviour change being
 visible, not the queue breaking. The rejection-clear stays synchronous on
 arrival, and its existing test stays untouched as proof.
 
-#### 5c — the client moves onto bun's bundler ⬜
+#### 5c — ship the build properly ⬜
 
-Vite and Vitest come out; `bun build` and `bun test` go in. Sequenced last
-because nothing depends on it — and because doing it earlier would mean writing
-the repo's trickiest tests while changing the runner underneath them.
+Vite stays the bundler, Vitest stays the client runner, and the workspaces
+stay separated. What 5c ships instead is the serving path for the bundle Vite
+already produces: compression, caching, and — the optional third step — the
+Babylon import rewrite that shrinks the bundle at its source.
 
-What it deletes:
+The server currently sends `index-*.js` exactly as Vite wrote it: 6.7 MB,
+uncompressed, no cache headers, re-downloaded on every visit. The same bytes
+brotli to 1.04 MB (gzip 1.46 MB — both measured), and the filenames are
+content-hashed, so repeat visits could cost one HTML request. That, not the
+bundler, is where the load time is.
 
-- **`serveClient` in `http.ts`** — an HTML import becomes a route value and bun
-  serves the hashed assets itself. Fifteen lines of production-only code that
-  never runs during development.
-- **The Vite proxy**, and with it the two-process dev setup. One `bun --hot`
-  serves the API and the client together.
-- **One of two test runners**, so the root `test` script stops being two
-  commands.
+##### Why not bun's bundler — measured, not assumed
 
-What it changes:
+An earlier 5c replaced Vite and Vitest with `bun build` and `bun test`, gated
+on one open unknown: whether bun produces a comparable Babylon build. Spiked
+(2026-09), it does not — the numbers, not taste, made the decision:
 
-- `import.meta.env` is not supported — bun replaces literal `process.env.FOO`
-  only, via `define`. Two call sites, both gating the Inspector: `renderer.ts`
-  and `GameCanvas.tsx`.
-- **The Inspector guarantee has to be re-earned, not assumed.** It is documented
-  to survive — *"if the only reference to a module exists within unreachable
-  code, the chunk isn't generated"* — but the ✅ under Dev tooling was earned by
-  checking `dist/`, and it should be re-earned the same way.
+| | eager payload | gzipped | requests on load | disk |
+|---|---|---|---|---|
+| Vite 8 (today) | 6.7 MB, 1 file | 1.46 MB | 1 | 6.9 MB |
+| bun 1.3.14 `--splitting` | 7.8 MB, ~650 files | — | ~650 | 25 MB |
+| bun 1.4.2 `--splitting --min-chunk-size` | 8.1 MB, 1 file | 1.95 MB | 1 | 23 MB |
 
-Verified up front rather than assumed, because each was a candidate blocker:
+Bun 1.4 fixed the chunk explosion within a release of it being measured
+(`--min-chunk-size`, tree-shaking through dynamic `import()`), so the
+trajectory is right — but a third more wire bytes, and ~10 MB of never-fetched
+`@babylonjs/inspector` editor chunks still emitted to disk (the documented
+unreachable-chunk elimination does not hold yet), is strictly worse than what
+Vite produces today for an app whose bundle is almost entirely Babylon.
+Re-spike when bun's `sideEffects` shaking closes the gap; nothing below blocks
+the swap later.
 
-- `jest.advanceTimersByTime` exists in `bun test` and drives a self-rescheduling
-  async poll loop with exponential backoff — `gameServer.ts`'s exact shape —
-  with no real waiting. Only the *async* variants are missing, which costs a
-  three-line helper flushing microtasks between firings.
-- React component tests work: `@happy-dom/global-registrator` preloaded through
-  `bunfig.toml`, plus `@testing-library/react`.
-- The existing client tests port by changing one import line — which
-  Verification already records as true of this repo's suites.
+Two consequences of keeping Vite, stated so they stop being implied. Vitest
+stays, because its config *is* `vite.config.ts` — one config for both tools
+remains the reason the client runs it. And **the workspaces stay separated**:
+the collapse was only ever justified by removing the client's tooling, and
+with the manifests still earning their keep — `server`'s isolated
+`node_modules` makes a stray `import 'react'` a resolution error, `shared/`'s
+empty dependency list enforces purity — folding them into one `package.json`
+would trade a resolution-enforced boundary for a lint rule and touch every
+repo-root-relative db path, for no payoff.
 
-**The workspaces collapse here too.** `packages/{shared,server,client}` become
-`src/{shared,server,client}` under a single `package.json`, and `@vod/*` imports
-become relative. It belongs in 5c rather than standing alone because 5c already
-removes Vite and Vitest — the main tooling reason the client held its own
-manifest — so doing them together is one restructure instead of two.
+##### 5c-1 — precompress at build ⬜
 
-**This trades a resolution-enforced boundary for a lint-enforced one, knowingly.** Today `packages/server/node_modules/` contains no React and no Babylon, so a stray import is `TS2307` rather than something caught in review — verified by trying it. One `node_modules` ends that, and the barrel rule (`@vod/shared`'s `exports` map, and `./testing` as a deliberate second surface) goes with it.
+The client's `bundle` script gains a post-build step writing `.br` and `.gz`
+beside every compressible asset (js/css/html/svg). Hand-rolled, ~20 lines:
+`node:zlib` has `brotliCompressSync` and `gzipSync` and bun implements both
+(verified on 1.3.14) — a compression plugin would be a build dependency for
+something two functions provide. Vite empties `dist/` per build, so a stale
+variant cannot survive a rebuild.
 
-The replacement is the core `no-restricted-imports` rule scoped by flat config, which needs no new dependency. Verified against fixtures — server importing React, Babylon, or client code all fail; `shared` importing anything bare fails while relative imports inside it pass:
+##### 5c-2 — serveClient serves it well ⬜
 
-```js
-{ files: ['src/server/**/*.ts', 'src/client/**/*.ts'],
-  rules: { 'no-restricted-imports': ['error', { patterns: [
-    { group: ['react', 'react-dom', '@babylonjs/*'] },
-    { group: ['**/client/**'] } ] }] } },
-// shared is pure: anything not starting with "." is external
-{ files: ['src/shared/**/*.ts'],
-  rules: { 'no-restricted-imports': ['error', {
-    patterns: [{ regex: '^[^.]' }] }] } },
-```
+- **Content negotiation.** When `Accept-Encoding` admits it, serve the `.br`
+  (then `.gz`) sibling if it exists, with `Content-Encoding`, the *original*
+  file's `Content-Type`, and `Vary: Accept-Encoding`. Falls through to the
+  uncompressed file, so a missing variant is never an error.
+- **Cache headers.** `/assets/*` names are content-hashed:
+  `Cache-Control: public, max-age=31536000, immutable`. `index.html` gets
+  `no-cache` — the one file whose name never changes and whose content
+  decides everything else.
+- **`clientDist` becomes a `createServer` option**, defaulting to today's
+  constant — the same inputs-are-arguments move that made `port` and
+  `databaseUrl` testable, and what lets `http.test.ts` drive the whole path
+  black-box against a fixture dist. Today's two client-path tests are
+  deliberately agnostic to whether the build exists, and stay so.
 
-Note this is *stronger* than today in one respect: the direction rules — `shared/` importing only from `shared/data/`, and `server`/`client` not importing each other — are currently convention checked by review, and become enforced. Structure and Dependency rule above get rewritten when this lands.
+##### 5c-3 — Babylon per-file imports ⬜ *(optional; if done, before phase 6)*
 
-⬜ **The one open unknown**: whether bun's bundler produces a comparable Babylon
-build. Today's is 6.9 MB across 73 chunks and rolldown already warns about chunk
-size. Spike that before starting; everything else is settled.
+Every `render/` file imports from the `@babylonjs/core` barrel — eight files
+— which Babylon documents as defeating deep tree-shaking. The rewrite targets
+individual files and adds the explicit side-effect imports that style
+requires — both are prototype augmentations the barrel currently smuggles in:
+`scene.beginAnimation` needs `Animations/animatable`, `scene.createPickingRay`
+needs `Culling/ray`. Reported reductions run 2–3×, and compound with 5c-1.
+
+Before phase 6 if done at all, because 6 and 7 write the terrain renderer and
+combat animation against whichever import convention exists. The renderer has
+no test coverage, so `/run-app` is the check — and the Inspector's absence
+from `dist/` gets re-verified after, since the dynamic `import()` under the
+DEV guard is the one place this rewrite could regress it.
 
 ### 6 — Terrain and movement
 
@@ -1196,7 +1216,7 @@ Until all three land, two tabs share control of both players rather than being t
 - **`GET /api/matches` becomes an information leak.** It currently lists every match from every visitor. Harmless while matches are unowned; the moment they're owned, listing must be scoped to the player — which is the same change already recorded under Known compromises, arriving for a second reason.
 - **`404` on a missing match stops being neutral.** Once matches are owned, "no such match" and "not yours" should be the same response, or the endpoint becomes an existence oracle.
 
-⚠️ **5c widens this.** The race below is survivable today partly by accident: in dev, Vite serves `index.html`, so the browser's first contact with *our* server is already an API call, and in production the HTML response sets the cookie before any API call can race. Once 5c makes one process serve both, that accidental ordering is the only thing between us and concurrent cookie-less requests on a cold load — so it stops being a production-only concern.
+⚠️ The race below is survivable today partly by accident: in dev, Vite serves `index.html`, so the browser's first contact with *our* server is already an API call, and in production the HTML response sets the cookie before any API call can race. If dev ever collapses to one process serving both, that accidental ordering becomes the only thing between us and concurrent cookie-less requests on a cold load — the constraints below would stop being a production-only concern.
 
 **Two constraints on the sessions table, from how the cookie behaves today.** `withSession` mints an id for any request arriving without one, so concurrent requests from a browser with no cookie yet each mint a *different* id and each set it — last write wins. That is not a defect: nothing reads the id (`resolveActor` ignores it) and nothing persists it, so there is no state to corrupt. It becomes one the moment a session store assumes otherwise, which is why the requirements are recorded here rather than worked around in the wrapper:
 
