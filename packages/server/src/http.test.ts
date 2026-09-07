@@ -122,6 +122,9 @@ describe('GET /api/matches/:id/events', () => {
     const body = (await response.json()) as EventsResponse;
     expect(body.seq).toBe(0);
     expect(body.events).toEqual([]);
+    // No board on a caught-up poll: the client has this state already and
+    // discards a second copy, so sending one is pure waste on every poll.
+    expect(body.state).toBeUndefined();
   });
 
   it('returns everything after the given seq', async () => {
@@ -131,12 +134,16 @@ describe('GET /api/matches/:id/events', () => {
     const body = (await (await get(`/api/matches/${id}/events?since=0`)).json()) as EventsResponse;
     expect(body.seq).toBe(1);
     expect(body.events).toHaveLength(1);
+    // Events never travel without the state they produced.
+    expect(body.state?.currentTurn).toBe('player-blue');
 
-    // Asking from the current seq is the steady-state poll: nothing new.
+    // Asking from the current seq is the steady-state poll: nothing new, and
+    // therefore no board either.
     const caughtUp = (await (
       await get(`/api/matches/${id}/events?since=1`)
     ).json()) as EventsResponse;
     expect(caughtUp.events).toEqual([]);
+    expect(caughtUp.state).toBeUndefined();
   });
 
   it('400s a negative or non-integer since', async () => {

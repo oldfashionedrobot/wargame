@@ -70,7 +70,20 @@ export interface StateResponse {
 export interface EventsResponse {
   seq: number;
   events: GameEvent[];
-  state: GameState;
+  /**
+   * The state those events produced -- present exactly when `seq` is greater
+   * than the `since` that was asked for.
+   *
+   * A caught-up poll is the common case at a two-second interval, and it has
+   * nothing to apply: the client drops any update whose `seq` it already has,
+   * so a board sent with one is parsed and discarded. Omitting it is why the
+   * steady-state poll costs a few dozen bytes instead of the whole grid.
+   *
+   * Events still never travel without the state they produced -- that is what
+   * keeps the client self-correcting, and it is unchanged for every response
+   * that carries any.
+   */
+  state?: GameState;
 }
 
 /**

@@ -182,7 +182,7 @@ A hidden tab polls at the slowest interval, and a `visibilitychange` listener re
 
 Static file serving resolves against the build directory and confirms the result stays inside it. URL parsing already collapses `..`, so this is belt-and-braces — but "safe because of how the parser happens to behave" is not a property to rest filesystem access on.
 
-- Both events *and* resulting state come back together. Events drive animation; state is the truth to snap to afterward. Under a kilobyte, and it makes the client self-correcting — a missed event is fixed by the next poll rather than desyncing silently.
+- Both events *and* resulting state come back together — **when there are any**. Events drive animation; state is the truth to snap to afterward, and pairing them is what makes the client self-correcting, so a missed event is fixed by the next poll rather than desyncing silently. ✅ A *caught-up* poll answers `{ seq, events: [] }` with no board at all: the client drops any update whose `seq` it already holds, so a state sent with one was parsed and discarded. Measured at 1414 → **21 bytes** for the ordinary case, and it skips the log query outright. The rule is keyed on `seq` moving, not on the event array being empty, so a resolution that somehow produced no events could never strand a client without the state it implies.
 - **`seq` makes the double-apply problem disappear.** The acting client applies its own POST response, then records that `seq`; the next poll returns nothing new because it asks for everything *after* it. No dedup logic, and no need for the subscribe-only rule that push required.
 - Bun serves this with no dependencies. HTTP/2 comes free from any reverse proxy at deploy time; the app server doesn't need it.
 

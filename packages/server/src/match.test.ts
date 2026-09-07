@@ -107,7 +107,7 @@ describe('since', () => {
     const all = await store.since(id, 0);
     expect(all?.seq).toBe(2);
     expect(all?.events.map((e) => e.type)).toEqual(['unitMoved', 'turnEnded']);
-    expect(all?.state.currentTurn).toBe(RED);
+    expect(all?.state?.currentTurn).toBe(RED);
   });
 
   it('returns nothing new when the caller is already current', async () => {
@@ -116,6 +116,9 @@ describe('since', () => {
     const caught = await store.since(id, 1);
     expect(caught?.seq).toBe(1);
     expect(caught?.events).toEqual([]);
+    // And no board: the caller already holds this state, so sending it again
+    // is a full grid parsed and thrown away on every idle poll.
+    expect(caught?.state).toBeUndefined();
   });
 
   it('is null for a match that does not exist', async () => {

@@ -99,6 +99,13 @@ export function createMatchStore({ db }: Database): MatchStore {
       const match = await loadMatch(matchId);
       if (!match) return null;
 
+      // Caught up: no events to send, and no board either -- the client
+      // already has this state and would discard a copy of it. Keyed on seq
+      // rather than an empty row set, so a resolution that produced no events
+      // could never strand a client without the state it implies. Saves the
+      // log query outright, which is the common case at poll interval.
+      if (match.seq <= from) return { seq: match.seq, events: [] };
+
       const rows = await db
         .select({ events: Resolutions.events })
         .from(Resolutions)

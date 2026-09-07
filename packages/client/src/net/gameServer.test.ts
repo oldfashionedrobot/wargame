@@ -45,8 +45,11 @@ let requested: string[];
 
 const polls = (): number => requested.filter((url) => url.includes('/events')).length;
 
+// What a caught-up poll actually answers: a cursor and nothing else. The
+// server omits the board when seq has not moved, so a fixture that sent one
+// would be testing against a server that does not exist.
 const nothingNew = (since: number): Promise<Response> =>
-  Promise.resolve(json({ seq: since, events: [], state: state0 } satisfies EventsResponse));
+  Promise.resolve(json({ seq: since, events: [] } satisfies EventsResponse));
 
 const servers: GameServer[] = [];
 
@@ -166,6 +169,19 @@ describe('polling', () => {
     expect(listener).toHaveBeenCalledTimes(2);
     expect(listener).toHaveBeenLastCalledWith(moved, state1);
     expect(server.getState()).toEqual(state1);
+  });
+
+  // A caught-up poll carries no board. Nothing to deliver, nothing to adopt,
+  // and the held state must survive -- the guard reads the missing state, so
+  // an implementation that took `undefined` as the new state would blank the
+  // board on the first idle poll.
+  it('holds its state when a poll answers with no board', async () => {
+    const server = await connect();
+    const listener = vi.fn();
+    server.subscribe(listener);
+    await vi.advanceTimersByTimeAsync(POLL);
+    expect(listener).toHaveBeenCalledTimes(1); // the synchronous initial fire only
+    expect(server.getState()).toEqual(state0);
   });
 
   it('delivers nothing when the poll brings nothing new', async () => {

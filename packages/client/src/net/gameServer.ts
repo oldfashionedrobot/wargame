@@ -68,7 +68,11 @@ export async function connectGameServer(
   };
 
   const applyUpdate = (update: EventsResponse): void => {
-    if (update.seq <= lastSeq) return;
+    // Two ways to have nothing to do, and the second is the ordinary one: a
+    // caught-up poll answers without a board (see EventsResponse), so there
+    // is no state to adopt and no batch to deliver. Not advancing lastSeq
+    // costs nothing -- it is already equal.
+    if (update.seq <= lastSeq || !update.state) return;
 
     lastSeq = update.seq;
     state = update.state;
