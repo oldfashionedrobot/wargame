@@ -971,12 +971,20 @@ on update (events, state):
   is the correction. This is "the snapshot is self-healing" made concrete, and
   because it runs inside the queue it can never race another batch's animation
   — which an effect driven by the committed state could, so it deliberately is
-  not one.
+  not one. `snapUnits` calls `scene.stopAnimation` per mesh before
+  positioning: no live path overlaps a tween with a snap today (the queue
+  forbids it), but stopping first makes "snapped over" hold even if a future
+  animation dies mid-flight. The canvas's `onSnap` callback reads the renderer
+  ref at call time with a null guard, exactly as `onSelectionChange` does.
 - **A failed animation is caught, snapped over, and committed.** The queue must
   never wedge on a rendering error.
-- `submitCommand` gets a `try`/`finally` on its in-flight flag while this file
-  is open — the hook is written against the `GameServer` *interface*, and an
-  implementation that rejects would otherwise soft-lock the UI forever.
+- `submitCommand` gets a `try`/`catch`/`finally` while this file is open — the
+  hook is written against the `GameServer` *interface*, and an implementation
+  that rejects would otherwise soft-lock the UI forever. The catch turns the
+  thrown error into `{ ok: false, reason }`, which is exactly how the real
+  implementation already reports a transport failure — the impossible case
+  reads as a rejection through the existing UI instead of an unhandled
+  promise, and the finally releases the in-flight flag either way.
 
 ##### `worthAnimating` — snap, don't replay
 
@@ -992,6 +1000,13 @@ one skips straight to `onSnap` + commit:
   animation would stall the queue — snap-on-hidden is wedge-prevention, not
   just taste. (The `visibilitychange` handler already polls immediately on
   return, so the return path animates normally.)
+
+One edge is accepted rather than handled: `worthAnimating` reads
+`document.hidden` at batch start, so a batch that began animating *visible*
+freezes when the tab hides mid-tween — rAF throttles, the queue stalls, and
+commits wait until the tab returns. Nobody is looking at a hidden tab, the
+`visibilitychange` reset polls immediately on return, and the queue then
+drains in order — the cost is a stale turn label nobody can see.
 
 ##### Why the client does not fold
 
@@ -1024,6 +1039,13 @@ commit, never a signature change.
   authoritative and ahead (invariant 1); `clickTile` reads it and does not
   change. The lag is the point — the *displayed* world stays consistent with
   what has been shown.
+- **The in-flight guard still releases when the response arrives**, not when
+  the animation ends — correct, because `clickTile` reads `getState()`, so a
+  second command is always built against the state the first one produced.
+  The one artifact is cosmetic: clicking mid-tween can select a unit at its
+  authoritative (destination) tile while its mesh is still walking, so the
+  highlight briefly leads the unit. Accepted — the alternative couples input
+  latency to animation length.
 - The client still keeps no checkpoint and runs none of the server's
   event-sourcing machinery — it is now further from it, not closer.
 - Folding was never resolution, and neither is snapping — invariant 8 is
@@ -1031,13 +1053,19 @@ commit, never a signature change.
 
 ##### Order and verification
 
-Two commits: the `try`/`finally` fix (independent, lands first), then
+Two commits: the `try`/`catch`/`finally` fix (independent, lands first), then
 `snapUnits` + the pipeline + its tests together. The harness is already in
 place from 5a; the tests drive a deferred animate callback and assert the
 commit is gated on it, batches serialize, the threshold and hidden cases skip
 to snap-and-commit, and a rejecting animation still commits. The browser check
 (`/run-app`) is the visual half: a move should animate before the turn label
 flips.
+
+Expect churn in 5a's hook tests, and read it correctly: the commit moves into
+a microtask, so a synchronous assertion right after a push sees the *old*
+state and needs `await act(async …)`. That is the behaviour change being
+visible, not the queue breaking. The rejection-clear stays synchronous on
+arrival, and its existing test stays untouched as proof.
 
 #### 5c — the client moves onto bun's bundler ⬜
 
