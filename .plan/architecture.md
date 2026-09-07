@@ -922,8 +922,9 @@ retrofitting it. The union is the clearest case: `{ selectedUnitId: string |
 null }` becoming a discriminated union is the same nullability work
 `strictNullChecks` would force anyway.
 
-*(`packages/client/tsconfig.node.json` covers only `vite.config.ts` and was not
-included in the measurement.)*
+*(`packages/client/tsconfig.node.json` covers `vite.config.ts` and the build
+scripts and was not included in the measurement; 5c-1 turned `strict` on there
+too, measured at zero errors, so the flag is now on in every program.)*
 
 **Verifiable now.** The earlier warning here — *"nothing verifies this beyond
 playing the game"* — is retired. `handleTileClick` has 11 Vitest tests, of which
@@ -1112,14 +1113,17 @@ empty dependency list enforces purity — folding them into one `package.json`
 would trade a resolution-enforced boundary for a lint rule and touch every
 repo-root-relative db path, for no payoff.
 
-##### 5c-1 — precompress at build ⬜
+##### 5c-1 ✅ — precompress at build
 
-The client's `bundle` script gains a post-build step writing `.br` and `.gz`
-beside every compressible asset (js/css/html/svg). Hand-rolled, ~20 lines:
-`node:zlib` has `brotliCompressSync` and `gzipSync` and bun implements both
-(verified on 1.3.14) — a compression plugin would be a build dependency for
+The client's `bundle` script gains a post-build step
+(`scripts/compressDist.ts`, covered by `tsconfig.node.json`) writing `.br`
+and `.gz` beside every compressible asset (js/css/html/svg). Hand-rolled,
+~20 lines: `node:zlib` has `brotliCompressSync` and `gzipSync` and bun
+implements both — a compression plugin would be a build dependency for
 something two functions provide. Vite empties `dist/` per build, so a stale
-variant cannot survive a rebuild.
+variant cannot survive a rebuild. Landed at max brotli quality, ~4s on the
+6.7 MB bundle: 76 assets, `index-*.js` 6.67 MB → 1.05 MB br / 1.46 MB gz —
+the measured numbers above, reproduced by the real script.
 
 ##### 5c-2 — serveClient serves it well ⬜
 

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "bundle": "vite build",
+    "bundle": "vite build && bun scripts/compressDist.ts",
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "preview": "vite preview"
