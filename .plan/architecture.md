@@ -692,7 +692,7 @@ Fire and charge are **different resolutions, dispatched once** on an `attackKind
 
 ## Dev tooling ✅
 
-Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DEV` and load the package via a dynamic `import()` *inside* that guard, never a static top-level import — that combination lets the bundler prove the branch is dead and strip it. Verified: no Inspector UI code in `dist/`, bundle size unchanged.
+Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DEV` and load the package via a dynamic `import()` *inside* that guard, never a static top-level import — that combination lets the bundler prove the branch is dead and strip it. Verified: no Inspector UI code in `dist/`, bundle size unchanged. 5c-3 added `@babylonjs/core/Debug/debugLayer` to the same guarded load — `scene.debugLayer` is itself a prototype augmentation, so it rides the guard with the Inspector rather than shipping in every bundle — and re-verified the `dist/` check still holds.
 
 ## Open questions
 
@@ -1069,18 +1069,18 @@ state and needs `await act(async …)`. That is the behaviour change being
 visible, not the queue breaking. The rejection-clear stays synchronous on
 arrival, and its existing test stays untouched as proof.
 
-#### 5c — ship the build properly ⬜
+#### 5c ✅ — ship the build properly
 
 Vite stays the bundler, Vitest stays the client runner, and the workspaces
-stay separated. What 5c ships instead is the serving path for the bundle Vite
-already produces: compression, caching, and — the optional third step — the
-Babylon import rewrite that shrinks the bundle at its source.
+stay separated. What 5c shipped instead is the serving path for the bundle
+Vite already produces: compression, caching, and the Babylon import rewrite
+that shrinks the bundle at its source.
 
-The server currently sends `index-*.js` exactly as Vite wrote it: 6.7 MB,
-uncompressed, no cache headers, re-downloaded on every visit. The same bytes
-brotli to 1.04 MB (gzip 1.46 MB — both measured), and the filenames are
-content-hashed, so repeat visits could cost one HTML request. That, not the
-bundler, is where the load time is.
+Until 5c the server sent `index-*.js` exactly as Vite wrote it: 6.7 MB,
+uncompressed, no cache headers, re-downloaded on every visit. After all
+three steps a first load transfers **255 KB** of brotli for the main bundle
+(26× less), and a repeat visit revalidates one HTML file. That, not the
+bundler, is where the load time was.
 
 ##### Why not bun's bundler — measured, not assumed
 
@@ -1146,20 +1146,29 @@ the measured numbers above, reproduced by the real script.
   pre-existing client-path tests stay deliberately agnostic to whether the
   build exists, untouched.
 
-##### 5c-3 — Babylon per-file imports ⬜ *(optional; if done, before phase 6)*
+##### 5c-3 ✅ — Babylon per-file imports
 
-Every `render/` file imports from the `@babylonjs/core` barrel — eight files
-— which Babylon documents as defeating deep tree-shaking. The rewrite targets
-individual files and adds the explicit side-effect imports that style
-requires — both are prototype augmentations the barrel currently smuggles in:
-`scene.beginAnimation` needs `Animations/animatable`, `scene.createPickingRay`
-needs `Culling/ray`. Reported reductions run 2–3×, and compound with 5c-1.
+Every `render/` file imported from the `@babylonjs/core` barrel — eight
+files — which Babylon documents as defeating deep tree-shaking. The rewrite
+targets individual files and adds the explicit side-effect imports that
+style requires, all prototype augmentations the barrel used to smuggle in.
+Three, not the two predicted: `scene.beginAnimation`/`stopAnimation` need
+`Animations/animatable`, `scene.createPickingRay` needs `Culling/ray`, and
+`scene.debugLayer` is an augmentation too — loaded via dynamic `import()`
+inside the DEV guard alongside the Inspector, so neither ships in a
+production bundle. The compiler enforces all of this: without the
+augmentation module in the program, the method does not typecheck. **Any new
+Babylon usage in phases 6–7 follows this convention** — per-file imports,
+side-effect modules named where the augmented method is called.
 
-Before phase 6 if done at all, because 6 and 7 write the terrain renderer and
-combat animation against whichever import convention exists. The renderer has
-no test coverage, so `/run-app` is the check — and the Inspector's absence
-from `dist/` gets re-verified after, since the dynamic `import()` under the
-DEV guard is the one place this rewrite could regress it.
+Measured: `index-*.js` went 6.67 MB → **1.28 MB** raw (5.2×, better than the
+2–3× reported elsewhere) and 1.05 MB → **255 KB** brotli; the whole `dist/`,
+compressed variants included, is 2.8 MB — smaller than the old bundle alone.
+Verified by the gate, by `/run-app` driving selection, movement, animation
+and End Turn with zero console errors (each augmentation exercised at
+runtime), and by re-checking `dist/` for the Inspector: no inspector,
+editor, or debugLayer chunk exists; the one `debugLayer` string in the
+bundle is core's own lazy property shim on `Scene.prototype`, not UI code.
 
 ### 6 — Terrain and movement
 

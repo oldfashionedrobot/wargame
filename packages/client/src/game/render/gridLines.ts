@@ -1,4 +1,8 @@
-import { Color4, LinesMesh, MeshBuilder, Scene, Vector3 } from '@babylonjs/core';
+import { Color4 } from '@babylonjs/core/Maths/math.color';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { CreateLineSystem } from '@babylonjs/core/Meshes/Builders/linesBuilder';
+import type { LinesMesh } from '@babylonjs/core/Meshes/linesMesh';
+import type { Scene } from '@babylonjs/core/scene';
 import { gridBounds, TILE_SIZE } from './coordinates';
 
 const LINE_HEIGHT = 0.01; // just above the terrain surface to avoid z-fighting
@@ -19,7 +23,7 @@ export function createGridLines(scene: Scene, gridWidth: number, gridHeight: num
   }
 
   const colors = lines.map((line) => line.map(() => LINE_COLOR));
-  const gridLines = MeshBuilder.CreateLineSystem('grid-lines', { lines, colors }, scene);
+  const gridLines = CreateLineSystem('grid-lines', { lines, colors }, scene);
   gridLines.alpha = LINE_ALPHA;
   return gridLines;
 }

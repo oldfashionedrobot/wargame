@@ -1,4 +1,8 @@
-import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial } from '@babylonjs/core';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder';
+import type { Color3 } from '@babylonjs/core/Maths/math.color';
+import type { Mesh } from '@babylonjs/core/Meshes/mesh';
+import type { Scene } from '@babylonjs/core/scene';
 import type { Coordinate } from '@vod/shared';
 import { TILE_SIZE, tileToWorld } from './coordinates';
 
@@ -8,11 +12,7 @@ export function createTileHighlight(
   color: Color3,
   alpha: number,
 ): Mesh {
-  const mesh = MeshBuilder.CreateGround(
-    name,
-    { width: TILE_SIZE * 0.96, height: TILE_SIZE * 0.96 },
-    scene,
-  );
+  const mesh = CreateGround(name, { width: TILE_SIZE * 0.96, height: TILE_SIZE * 0.96 }, scene);
   const material = new StandardMaterial(`${name}-material`, scene);
   material.diffuseColor = color;
   material.emissiveColor = color;

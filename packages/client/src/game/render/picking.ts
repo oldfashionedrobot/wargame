@@ -1,5 +1,9 @@
-import { Matrix } from '@babylonjs/core';
-import type { Camera, Scene } from '@babylonjs/core';
+// Side effect: installs scene.createPickingRay (and scene.pick, which the
+// pointer observable's PICK events use) -- undefined at runtime without it.
+import '@babylonjs/core/Culling/ray';
+import { Matrix } from '@babylonjs/core/Maths/math.vector';
+import type { Camera } from '@babylonjs/core/Cameras/camera';
+import type { Scene } from '@babylonjs/core/scene';
 import { isWithinGrid } from '@vod/shared';
 import type { Coordinate } from '@vod/shared';
 

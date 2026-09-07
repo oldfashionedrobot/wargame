@@ -1,12 +1,12 @@
-import {
-  Animation,
-  Color3,
-  Mesh,
-  MeshBuilder,
-  Scene,
-  StandardMaterial,
-  Vector3,
-} from '@babylonjs/core';
+// Side effect: installs scene.beginAnimation -- undefined at runtime without it.
+import '@babylonjs/core/Animations/animatable';
+import { Animation } from '@babylonjs/core/Animations/animation';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
+import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import type { Mesh } from '@babylonjs/core/Meshes/mesh';
+import type { Scene } from '@babylonjs/core/scene';
 import type { Coordinate, Facing, PlayerColor, Unit } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 
@@ -38,7 +38,7 @@ export function createUnitMesh(
   gridWidth: number,
   gridHeight: number,
 ): Mesh {
-  const mesh = MeshBuilder.CreateCylinder(
+  const mesh = CreateCylinder(
     `unit-${unit.id}`,
     { height: UNIT_HEIGHT, diameter: UNIT_DIAMETER },
     scene,

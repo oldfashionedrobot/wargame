@@ -1,14 +1,15 @@
-import {
-  ArcRotateCamera,
-  Camera,
-  Color3,
-  Engine,
-  HemisphericLight,
-  Mesh,
-  PointerEventTypes,
-  Scene,
-  Vector3,
-} from '@babylonjs/core';
+// Side effect: installs scene.stopAnimation, which snapUnits leans on --
+// undefined at runtime without it.
+import '@babylonjs/core/Animations/animatable';
+import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera';
+import { Camera } from '@babylonjs/core/Cameras/camera';
+import { Engine } from '@babylonjs/core/Engines/engine';
+import { PointerEventTypes } from '@babylonjs/core/Events/pointerEvents';
+import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Scene } from '@babylonjs/core/scene';
+import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { Coordinate, GameEvent, GameState } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
@@ -49,6 +50,9 @@ export interface GameRenderer {
 async function toggleInspector(scene: Scene): Promise<void> {
   if (!import.meta.env.DEV) return;
 
+  // scene.debugLayer is itself an augmentation. Loaded inside the guard like
+  // the Inspector, so neither ships in a production bundle.
+  await import('@babylonjs/core/Debug/debugLayer');
   if (scene.debugLayer.isVisible()) {
     scene.debugLayer.hide();
     return;

@@ -1,4 +1,8 @@
-import { Color3, Color4, Mesh, Scene, StandardMaterial, VertexData } from '@babylonjs/core';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
+import type { Scene } from '@babylonjs/core/scene';
 import type { TileType } from '@vod/shared';
 import { TILE_SIZE, tileToWorld } from './coordinates';
 

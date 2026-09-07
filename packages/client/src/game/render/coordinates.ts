@@ -1,4 +1,4 @@
-import { Vector3 } from '@babylonjs/core';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { Coordinate } from '@vod/shared';
 
 export const TILE_SIZE = 1;
