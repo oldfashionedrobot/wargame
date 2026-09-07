@@ -361,6 +361,19 @@ Events remain authoritative (invariant 9), and a test folds the log from `initia
 
 State goes in as **JSON blobs** — nothing ever queries inside them, and invariant 4 already guarantees they survive the round trip. A rule written for the wire pays off again here.
 
+**`GameState` deliberately keeps `grid` and `players`, and the row deliberately keeps `initial_state`.** Both look like waste: neither the grid nor the player list changes during a match, yet they are serialised into `current_state` on every command, beside a blob that is never read. The reasoning that looks obvious — split the immutable half out — was measured before being believed, and it does not pay:
+
+| 40×40 board, per move | WAL written |
+|---|---|
+| `initial_state` in the same row | 4.3 KB |
+| `initial_state` in its own table | 4.2 KB |
+
+Two percent. SQLite writes at **page** granularity, so the pages holding a column an `UPDATE` did not touch never enter the WAL at all — the intuition that a row rewrite costs its unchanged neighbours is simply wrong here. What that leaves is the price of splitting, which is real: `GameState` stops being one value a pure function takes and returns, every rulebook signature grows a second parameter, and `applyEvents(initial, log) === current` stops covering the whole thing. Rejected on evidence, not taste.
+
+Two neighbouring ideas fail for their own reasons, recorded so they are not re-derived. **Referencing the map by `map_id` instead of embedding the grid** would make a stored state no longer self-contained — old matches would silently depend on map modules never changing, which is the ruleset-versioning problem under Known compromises arriving early — and the client, which is sent an instantiated grid precisely so it never needs map definitions, would have to gain them. **Compressing the blob** works and buys a lot on repetitive grid JSON, but it makes every row opaque to `sqlite3` and adds a codec to the read path, for a game whose moves are tens of seconds apart.
+
+The instinct is sound; it was pointing at the wrong medium. Immutable data *was* being retransmitted at cost — on the wire, where a caught-up poll shipped a whole board the client discarded. That one was worth fixing and is fixed; see Transport.
+
 The schema is close to identical on Postgres, but not free: `created_at` holds `Date.now()`, which overflows Postgres `INTEGER` (int4) and would need `BIGINT` or `TIMESTAMPTZ`. It works in SQLite only because SQLite integers are 64-bit.
 
 ### Access ✅ *(Drizzle)*
