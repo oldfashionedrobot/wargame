@@ -154,6 +154,27 @@ describe('useGameSession', () => {
     expect(result.current.rejection).toBe('illegal move');
   });
 
+  // The hook is written against the interface: the real implementation never
+  // rejects, but one that does must read as a rejection and release the
+  // in-flight guard, not soft-lock the UI forever.
+  it('treats a rejecting submit as a rejection and releases the guard', async () => {
+    const fake = fakeServer(board);
+    const { result } = renderSession(fake);
+
+    const failure = Promise.reject(new Error('implementation broke'));
+    // Pre-handle so the runner never sees an unhandled rejection; the await
+    // inside the hook still receives the rejection.
+    failure.catch(() => {});
+    fake.respond(failure);
+    await act(async () => result.current.endTurn());
+    expect(result.current.rejection).toBe('implementation broke');
+
+    // The guard released: the next submit goes through.
+    fake.respond({ ok: true, seq: 1, events: [], state: board });
+    await act(async () => result.current.endTurn());
+    expect(fake.submissions).toHaveLength(2);
+  });
+
   it('ignores clicks while a submit is in flight', async () => {
     const fake = fakeServer(board);
     const cb = callbacks();

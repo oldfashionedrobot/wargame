@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Command, Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
+import type {
+  Command,
+  CommandResult,
+  Coordinate,
+  GameEvent,
+  GameServer,
+  GameState,
+} from '@vod/shared';
 import { handleTileClick, initialSelectionState } from './interaction/selection';
 import type { SelectionState } from './interaction/selection';
 
@@ -72,8 +79,22 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       pendingRef.current = true;
       applySelection(nextSelection);
 
-      const response = await server.submit(command);
-      pendingRef.current = false;
+      // Written against the interface, not the implementation: the real
+      // GameServer never rejects (it maps transport failures to ok: false),
+      // but one that did would otherwise leave the in-flight flag stuck and
+      // soft-lock the UI. A thrown error reads as a rejection -- the same
+      // shape the real implementation already gives a transport failure.
+      let response: CommandResult;
+      try {
+        response = await server.submit(command);
+      } catch (cause) {
+        response = {
+          ok: false,
+          reason: cause instanceof Error ? cause.message : 'submit failed',
+        };
+      } finally {
+        pendingRef.current = false;
+      }
       if (response.ok) return;
 
       setRejection(response.reason);
