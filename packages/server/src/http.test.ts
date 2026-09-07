@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { brotliCompressSync, gzipSync } from 'node:zlib';
@@ -243,9 +243,10 @@ describe('routing', () => {
 describe('the client build', () => {
   let fixtureServer: Awaited<ReturnType<typeof createServer>>;
   let fixtureBase: string;
+  let dist: string;
 
   beforeAll(async () => {
-    const dist = mkdtempSync(join(tmpdir(), 'vod-dist-'));
+    dist = mkdtempSync(join(tmpdir(), 'vod-dist-'));
     mkdirSync(join(dist, 'assets'));
     writeFileSync(join(dist, 'index.html'), '<!doctype html><h1>fixture index</h1>');
     writeFileSync(join(dist, 'assets', 'app-abc123.js'), 'const artifact = "raw";');
@@ -262,6 +263,7 @@ describe('the client build', () => {
 
   afterAll(async () => {
     await fixtureServer.stop(true);
+    rmSync(dist, { recursive: true, force: true });
   });
 
   const getAsset = (path: string, accept: string): Promise<Response> =>
