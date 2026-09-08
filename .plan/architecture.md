@@ -108,11 +108,13 @@ Events, not actions, are what clients receive: a client that renders facts needs
 One command per unit action, matching AW's move-then-choose flow. Move and attack are a **single atomic command**, not two:
 
 ```ts
-{ type: 'unitAction', unitId, path,
+{ type: 'unitAction', unitId, path, facing,
   then: { kind: 'attack', targetId } | { kind: 'wait' } }
 ```
 
 Atomicity is the point: with separate commands, a move could succeed and its follow-up attack be rejected, leaving the unit stranded in the open having spent its turn. One command, one validation, one outcome.
+
+**`facing` sits beside `path`, not inside `then`** — a unit that waits still ends up facing somewhere, so it is a property of where you finished rather than of what you did there. Validation is one of four values and nothing else; any facing is legal from any tile. See Facing and directional defence.
 
 **The client sends the path; the server validates it rather than deriving it.**
 
@@ -482,7 +484,8 @@ applyEvents(state, events)             → GameState
 ```ts
 Coordinate  { col, row }                                        ✅
 TileType    'land'                                              🚧 placeholder, see Terrain
-Facing      'north' | 'east' | 'south' | 'west'                 ✅
+Facing      'north' | 'east' | 'south' | 'west'                 ✅ decorative
+            — derived from the path in 6f, mechanical in 7d       🚧
 PlayerId    string                                              ✅ never a union of colors
 Player      { id, name, color }                                 ✅ color is display-only, never keyed on
 GameState   { grid, units, players, currentTurn }               ✅
@@ -664,6 +667,42 @@ Each star is 10% reduction *at full defender HP*. **The values live in the terra
 
 For reference while reading the formula above: our six terrains run 0 stars (road, bridge, river) through 1 (plains), 2 (forest), to 4 (mountain).
 
+### Facing and directional defence ⬜ — where we diverge ⚠️
+
+**AW has no facing. This is ours**, and the second original mechanic in the game after charge. It earns its place on theme as much as on mechanics: the period's tactics *are* line, flank and rear, and it gives cavalry's speed a purpose beyond arriving sooner — getting behind something.
+
+A unit takes full defence from the **front**, less from a **flank**, least from the **rear**. Only the *defender's* facing matters; the attacker's is irrelevant, exactly as in FFT.
+
+**The classification is arithmetic on a four-cycle** — one pure function in `shared/`, trivially testable:
+
+```
+(directionOfAttack − defenderFacing) mod 4   →   0 front · 1,3 flank · 2 rear
+```
+
+Adjacent attacks give an orthogonal direction. Ranged ones need not — a cannon three tiles away can sit diagonally — so the direction resolves by **dominant axis, with a perfect diagonal counting as a flank**.
+
+**It enters combat as a factor, never a branch.** A `directionalMultiplier` inside `computeDamage` alongside terrain, which means counter-attacks inherit it for free with the roles swapped: a unit that moved in to attack is facing its target, so its counter arrives at the target's front and takes full defence. No special case, exactly as counter-attacks are already specified to be a second call rather than a branch.
+
+For **charge**, the natural knob is the *threshold* rather than the roll: a rear charge lowers `matchupThreshold`, so `margin = targetHP − threshold` shrinks and the existing formula carries it unchanged.
+
+#### An override with a default, not a step
+
+**Facing is chosen, but never demanded.** The destination step already reads *pick destination → see route → confirm*; facing inserts as *→ rotate →* between the last two, defaulting to the direction of travel, which is right most of the time. Confirm accepts the default; a rotate gesture changes it.
+
+That default is what makes this affordable. Three units a turn over a forty-turn game is a hundred-plus facing decisions, and most of them do not matter — a required step would tax every move in the game to price the few that do. FFT gets away with demanding it because it is slow and menu-driven by design; this is meant to feel closer to AW.
+
+⚠️ **Sequencing, and the reason it is split across two phases: facing selection is pure friction until combat reads it.** So:
+
+- **6f derives it** from the last step of the path, with no UI at all. Free, deterministic, and it stops units moonwalking.
+- **7d makes it mechanical** — the command carries it, `computeDamage` reads it — while the client still sends nothing but the derived default.
+- **7e lets the player override it**, at which point the choice already has consequences.
+
+At no point does the game ask for a decision that does nothing.
+
+⚠️ **Tune charge head-on before layering direction onto it.** Charge is already the one mechanic with no reference behaviour, an untuned threshold table and an untuned failure-damage function; rear-charge bonuses put a *second* untuned original mechanic in the same expression. Get charge behaving sensibly front-on first, then add the directional term — otherwise every observation is adjusting two unknowns at once.
+
+**One quiet payoff:** the single-element path — legal at cost 0, so far justified only as "wait in place" — becomes **turn in place**, a real defensive action. A mechanic we had already decided to allow for other reasons acquires a purpose.
+
 ### Counter-attacks
 
 **Only when both units are direct combat.** If either side is indirect, no counter in either direction. The defender counters using its post-damage HP.
@@ -709,7 +748,9 @@ Fire and charge are **different resolutions, dispatched once** on an `attackKind
 
 ### Tuning
 
-**Untuned**: `luckMax`, every charge threshold, the failure-damage scaling function, and the whole damage matchup table.
+**Untuned**: `luckMax`, every charge threshold, the failure-damage scaling function, the flank and rear multipliers, and the whole damage matchup table.
+
+**Two of those have no reference behaviour at all** — charge and directional defence are both ours, and they meet in the rear-charge threshold. Tune them **in sequence, never together**: the matchup table against AW's numbers first, then charge front-on, then the directional term. Each stage leaves exactly one unknown to move against an observation.
 
 **Build the harness before tuning.** `shared/` is pure and rolls are inputs, so a script that runs the matchup grid and prints **hits-to-kill** — attacker × defender at full health on plains, then shifted by terrain — is roughly thirty lines and needs no browser. Hits-to-kill is the artefact worth tuning against; a raw damage number isn't. Without it, tuning means editing a table, restarting, creating a match, manoeuvring two units together, and reading one number.
 
@@ -719,7 +760,8 @@ Fire and charge are **different resolutions, dispatched once** on an `attackKind
 
 - `client/render/` is a presentation of state and never a source of truth for it.
 - **Camera**: `ArcRotateCamera` in `ORTHOGRAPHIC_CAMERA` mode, fixed isometric 3/4 angle (alpha ≈ -π/2, beta ≈ π/3.5). Orthographic so tiles read as clean squares. Orbit/zoom stay attached for dev convenience.
-- **Tile lookup is math, not mesh-picking** — `screenToTile` intersects a camera ray with the `y=0` plane. Babylon's `scene.pick()` on pointer-move is gated behind `constantlyUpdateMeshUnderPointer`; the math version has no such gate and doesn't care what's rendered.
+- **Tile lookup is math, not mesh-picking** — `screenToTile` intersects a camera ray with the `y=0` plane. Babylon's `scene.pick()` on pointer-move is gated behind `constantlyUpdateMeshUnderPointer`; the math version has no such gate and doesn't care what's rendered. ⚠️ **The flip side is that terrain has to stay flat**: the day a mountain has real height, clicking its peak selects the tile behind it, because the ray still meets `y=0` somewhere else entirely. Terrain reads by colour for now, and elevation is a later visual pass that owes an answer to picking before it starts.
+- ⬜ **Rotation follows facing** *(6f)* — `createUnitMesh` sets `rotation.y` from `Facing` once and nothing has updated it since. `snapUnits` starts writing it alongside position, so a snapped-over or skipped animation cannot leave a unit facing a direction the state disagrees with.
 - Terrain is one merged mesh, vertex-colored per tile. Grid lines are a `LineSystem` overlay. Highlights are parameterized single-tile meshes.
 - ✅ **Animation is driven by the authority's events**, not by the command the client sent — `GameRenderer.playEvents(events)` walks the list the server returned and animates each in order.
 - ⬜ **`GameRenderer.syncUnits(state)`** — reconciles meshes against current state. It currently builds every unit mesh once at startup with no add/remove, so the first kill would leave a mesh on the board forever.
@@ -1228,6 +1270,11 @@ Verifiable with no combat: does the overlay stop at mountains, does cavalry outr
 - **6d** — character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`; `matches` gains `map_id`. **That column is the first real schema migration** — the thing the tooling exists for, worth doing deliberately. Two mechanics the plan owes it: maps are *code modules*, so `map_id` is a text column with **no foreign key**, and a `NOT NULL` column on a non-empty table needs a default or nullability.
 - **6e** — terrain rendering, route preview, and the confirm gesture. New Babylon code follows 5c-3's convention: per-file imports, side-effect modules named where the augmented method is called.
 
+  Two notes the rendering half needs. **The route preview is computed in the renderer, not in React**: hover already lives entirely inside the renderer (`POINTERMOVE` → `screenToTile` → move the highlight, with React never hearing about it), and the selection push already hands over the `movement` object, so calling `pathTo(hovered)` there is presentation using data it was given — where routing it through the hook would mean a React state update per mouse move. And ⚠️ **terrain stays flat**: `screenToTile` intersects the `y = 0` plane rather than mesh-picking, which is what makes tile lookup independent of what is drawn — the day terrain gains real height, clicking a peak selects the tile behind it. Elevation is a later visual pass that has to answer the picking question first.
+- **6f** — **facing follows the path.** `applyEvents` already derives the final position from a `unitMoved` path; it derives `facing` from the last step the same way — deterministic, idempotent, no new event field, no UI. `snapUnits` starts setting rotation as well as position, or a snapped-over animation leaves a unit facing wrongly with nothing to correct it. Lands after 6c because deriving a facing from today's two-element straight line would produce a diagonal, which is not one. See Facing and directional defence for where this goes next.
+
+  Animation itself needs **no structural change** — `animateUnitAlongPath` already walks `path.slice(1)` one tween per segment and has only ever been handed two-element paths, so today a unit slides diagonally across open ground. Real routes make it walk, for free. What does want revisiting is the pace: one constant for every unit (`FRAMES_PER_TILE`), and with a single speed, **5b's `worthAnimating` threshold should count tiles rather than events** — one `unitMoved` can now be a six-tile walk, so nine of them sit under a ten-*event* cap and animate for twenty seconds.
+
 ⚠️ **6b orphans every existing match, and the dev database must be wiped at 6d.** `TileType` stops including `'land'`, `current_state` is read on every submit, and `$type<GameState>()` is a compile-time assertion rather than validation — so an old row keeps `'land'` tiles, `TERRAIN['land']` is `undefined`, and the cost lookup throws. The start screen still lists those matches, so opening one breaks the client. Dev-only data, so wiping is the answer; it is written here so it is a step rather than a surprise. (`initial_state` has the same staleness and never gets read, so it does not bite.)
 
 ### 7 — Combat: the smallest thing you can win
@@ -1237,12 +1284,12 @@ Terrain and pathing already exist by this point, so the numbers mean something. 
 - **7a** — *moved to 6a.* The `UnitType` catalog wiring is a prerequisite of the terrain cost table, not a consequence of combat; see phase 6's hard dependencies.
 - **7b** `Unit` gains `health`; update the starting units. (`unitTypeId` arrived in 6a.) **`maxHealth` does not go on `Unit`** — it is static per unit type, which is the exact distinction 6a exists to draw, and putting it on every instance would re-introduce the duplication that moving `movementRange` onto `UnitType` just removed. If every unit tops out at 100 it is a constant in `shared/`; the day one doesn't, it is a `UnitType` field. **No migration** — `Unit` lives inside `GameState`, which is a JSON blob, so the shape changes without the schema moving. That is the JSON-blob decision paying off, and it is why `map_id` in phase 6 is the first migration rather than this.
 - **7c** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. It grows out of 5b's `snapUnits` and runs where that runs: inside the hook's queue, after the batch's animation, before the commit. Assumes 5b landed — without the gated commit, reconciling meshes against a state whose events are still animating is exactly the ordering bug 5b retired.
-- **7d** `UnitActionCommand` replaces `MoveCommand` — path plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events. Touches three places, all separate now: `parseCommand` for the wire shape, `validateMove`'s successor for legality, and `resolveMove`'s for the events — plus rolls, which arrive as an argument to resolution so `shared/` stays pure.
+- **7d** `UnitActionCommand` replaces `MoveCommand` — path, facing, plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events. **Facing becomes mechanical here** — the command carries it and `computeDamage` reads it as a directional factor beside terrain — while the client still sends only the default 6f derives. The player does not get to choose until 7e, by which point choosing already matters. Touches three places, all separate now: `parseCommand` for the wire shape, `validateMove`'s successor for legality, and `resolveMove`'s for the events — plus rolls, which arrive as an argument to resolution so `shared/` stays pure.
 
   ⚠️ **Invariant 9 constrains the events.** `unitAttacked` must carry the target's *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client can compute from the state preceding the event. And a successful charge emits `unitDied` **plus** `unitMoved`, two independently-applicable events, not one compound event carrying both effects.
 
   ⚠️ One nuance the client will hit here, parked by 5b with its answer attached: in a multi-resolution catch-up batch, "the state preceding event *k*" is the pre-batch replica folded through events 1..k−1 — a second hit on the same unit computes its damage number from the intermediate HP, not the pre-batch one. If the animation needs that, thread a **locally** folded state through the animation walk (`applyEvents` as a plain helper inside the queue task) — never per-event React commits, never a callback-signature change. Large batches snap without animating anyway (5b's threshold), so this only matters for small ones.
-- **7e** Attack in `handleTileClick` — clicking an enemy while selected becomes a real action, plus an attack-range overlay. Reuses 6e's destination step rather than replacing it: the `then:` branch is the choice that step was scaffolding for, and `SelectionState` gains `choosingTarget` as a member.
+- **7e** Attack in `handleTileClick` — clicking an enemy while selected becomes a real action, plus an attack-range overlay. Reuses 6e's destination step rather than replacing it: the `then:` branch is the choice that step was scaffolding for, and `SelectionState` gains `choosingTarget` as a member. **The facing override lands here too** — a rotate gesture between route and confirm, defaulting to the travel direction 6f already derives. It arrives now rather than in 6e because 7d is what makes the choice mean anything; that step now gives 6e's confirm click its second reason to exist.
 - **7f** ⬜ **Health has to be visible**, and was missing from this phase entirely. 7b puts `health` in the model and 7d makes it change, but nothing draws it — a unit at 40 reads identically to one at 100, which makes combat unplayable by eye and unverifiable in the browser, the only check the renderer has. Smallest thing that works: a billboarded bar or a scaled emissive band on the unit mesh, driven from `syncUnits` since that already runs per commit with the state in hand. It belongs before 7g, because tuning a matchup table you cannot see the results of is guesswork.
 - **7g** ⬜ **The damage preview** — specified under Combat as "the sharp edge of invariant 8" and, until now, scheduled nowhere. The client computes the same formula with the luck term omitted and shows it on the target before the click commits. This is the step where *deterministic preview, yes; random resolution, no* stops being a slogan and becomes code, so it is worth its own commit rather than riding inside 7e.
 - **7h** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
@@ -1266,6 +1313,8 @@ Four mechanics layered onto the pipeline **phase 7** proved. (This said "phase 6
 - **8a** `ranged: { range: { min, max }, canMoveAndAttack }` on `UnitType`. 7d hardcodes adjacency, so this is where the field is actually introduced and where "the category falls out of the numbers" gets tested: `min === 1` is direct, `min > 1` is indirect, no separate flag. `canMoveAndAttack: false` is where 6c's single-element path stops being a curiosity and becomes the only legal shape for a static unit.
 - **8b** Counter-attacks. Fires iff both units are direct, the defender survives, and the attacker is in its range — `computeDamage` called a second time in the other direction, on the defender's post-damage HP. **If it becomes a branch inside the attack resolver rather than a second call, that is the smell** the Combat section warns about.
 - **8c** Charge, its threshold table, and its own tuning pass. It gets its own step because it is the riskiest mechanic in the game: **the one part of combat with no reference behaviour to check against**, an untuned threshold per matchup, an untuned failure-damage function, and a success case that emits two events and displaces a unit. Everything else in phases 7–8 can be checked against AW; this can only be played.
+
+  ⚠️ **Tune it head-on first, then add the rear-charge threshold reduction.** Facing is the other mechanic with no AW precedent, and a rear charge puts both unknowns inside one expression — every observation would be adjusting two dials at once. Front-on charge until it feels right, directional term second.
 
 The **Open questions** entry on counter-attacks for `min > 1` units belongs to 8b and should be settled there rather than carried further — it was decided when indirect fire and immobility were the same thing, and 8a separates them.
 
