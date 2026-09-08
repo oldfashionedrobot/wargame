@@ -483,7 +483,8 @@ applyEvents(state, events)             → GameState
 
 ```ts
 Coordinate  { col, row }                                        ✅
-TileType    'land'                                              🚧 placeholder, see Terrain
+TileType    'land'                                              🚧 placeholder; six terrains
+            — moves to data/terrain.ts in 6b, see Terrain           and a `char` each
 Facing      'north' | 'east' | 'south' | 'west'                 ✅ decorative
             — derived from the path in 6f, mechanical in 7d       🚧
 PlayerId    string                                              ✅ never a union of colors
@@ -567,19 +568,29 @@ Flying units, if they ever exist, take the AW model: **no terrain defence at all
 
 One file rather than separate `movementCost` and defence tables: adding a terrain type is then one edit, and `Record` exhaustiveness covers both axes at once. Combat reads `defense` without terrain needing to know why.
 
-### Movement is a Dijkstra, and it is the pathfinding
+### Movement is one search, and it is the pathfinding
 
-Cost varies per tile crossed and by who's crossing, so the terrain-blind BFS in `getReachableTiles` stops being correct. One search yields both outputs:
+Cost varies per tile crossed and by who's crossing. One search yields both outputs:
 
 ```ts
-const movement = exploreMovement(state, unit)
-movement.reachable            // the overlay
+const movement = exploreMovement(state, unit, movementRange, movementType)
+movement.reachable            // the overlay -- where this unit may legally stop
 movement.pathTo(destination)  // walked back through predecessors, no second search
 ```
 
-`pathTo` returns the **cheapest** route. Manual routing — deliberately taking the long way — remains possible later because the protocol carries a path and the server validates rather than derives it; it's a UI feature, not a protocol change.
+`pathTo` returns the **cheapest** route, `null` for a destination the search never settled, and `[position]` for the unit's own tile — the single-element path that costs 0. Manual routing — deliberately taking the long way — remains possible later because the protocol carries a path and the server validates rather than derives it; it's a UI feature, not a protocol change.
 
-**The route preview is what earns 6e's destination step**, and it should be argued for on those terms rather than as a confirmation dialog. With variable cost the cheapest route is genuinely non-obvious, so seeing it before committing is real information. The *confirm click itself* is scaffolding for 7's move-then-attack menu — in phase 6 it offers exactly one choice — and is worth landing anyway, because 7e otherwise rebuilds the interaction it replaces. Three gestures the plan owes it, none of which were written down: a second click on the chosen tile **confirms**, a click on another reachable tile **re-targets**, and a click on the unit or outside the range **cancels**. `SelectionState` grows `destinationChosen` as a member, exactly as 5a designed for, and `reachableTiles` becomes `movement` when it stops being a bare array.
+**The existing loop stays; it does not become a priority queue.** An earlier draft said the terrain-blind BFS "stops being correct" once costs vary, and that is wrong — the loop already relaxes (`if (known.cost <= nextCost) continue;` *else* lower it and re-push), and relaxation over a FIFO queue is SPFA, which is correct for any non-negative costs. Uniform cost 1 is simply the case where nothing is ever improved after its first visit, which is why it has been indistinguishable from BFS until now.
+
+What a priority queue would buy is *settles-once* — a node's cost final the first time it is popped — which is easier to reason about but not more correct, since SPFA's costs and predecessors are both consistent at termination. And it buys no speed worth having: the explored region is bounded by the **budget**, not the board, so a range-6 unit touches a few dozen tiles whatever the map size. If settles-once is ever wanted for clarity, the right shape is a **bucket queue** indexed `0..budget` rather than a heap — the costs are small bounded integers, so that is a true Dijkstra with O(1) pops in about fifteen lines.
+
+⚠️ **`reachable` and *settled* are different sets, and `pathTo` needs the larger one.** Friendly-occupied tiles are pass-through but not stopping points, so the search settles them and the *output* filters them out — filter the map itself and a route through a friendly unit to a tile beyond it becomes unfindable. Two names, one map: `settled` holds cost and predecessor for everything the search touched and is what `pathTo` walks; `reachable` is derived from it once, at the return. The unit's own tile **stays in `settled`** — it is where every path chain terminates — and is excluded when building `reachable`, which is a change from today's code, where it is deleted from the map outright.
+
+**`exploreMovement` takes the budget and movement type as arguments; it does not look them up.** Resolving them is the caller's job, and there are two. A search that looked them up would make every test here name a real unit type to get a budget, coupling tests about the *search* to catalog values — tuning cavalry's range would break tests that have nothing to do with cavalry. Passing the whole `UnitType` instead would be one parameter fewer and worse: the search would be handed an object it uses two fields of, and phase 7's `ranged` and `charge` would start implying it cares about them.
+
+**The route preview is what earns 6e's destination step**, and it should be argued for on those terms rather than as a confirmation dialog. With variable cost the cheapest route is genuinely non-obvious, so seeing it before committing is real information. The *confirm click itself* is scaffolding for 7's move-then-attack menu — in phase 6 it offers exactly one choice — and is worth landing anyway, because 7e otherwise rebuilds the interaction it replaces. Three gestures the plan owes it, none of which were written down: a second click on the chosen tile **confirms**, a click on another reachable tile **re-targets**, and a click on the unit or outside the range **cancels**. `SelectionState` grows `destinationChosen` as a member, exactly as 5a designed for, and `reachableTiles` becomes `movement` here — 6e, not 6b, because this is where `pathTo` first has a consumer.
+
+**On `SelectionState` growing:** it needs no splitting into slices. It is one union, one populated member, three fields today, and the union is already what makes "tiles with no selected unit" unrepresentable — the coordination problem a split would reintroduce. What to watch instead is that each new phase genuinely needs everything the previous one carried *plus* more, so the members start repeating fields. When they do, factor the shared part into a base and intersect it per phase (`{ phase: 'destinationChosen'; path; facing } & Selected`) rather than piling optional fields onto one member. Accumulating optionals is the failure mode; member count is not.
 
 ### ⚠️ Invariant: one cost model
 
@@ -620,6 +631,8 @@ units: [{ at: { col: 1, row: 4 }, type: 'infantry', owner: 0 }, …]
 ```
 
 **Map definitions live in `server/maps/`. The parser does not.** The client never needs map definitions — it receives an instantiated `grid` in `GameState` — so the *data* belongs to the server. But `parseTerrainGrid(rows: string[]): TileType[][]` is a pure function over shared vocabulary, and **`shared/`'s own tests need terrain grids** while `shared/` cannot import from `server/`. So it lives in `shared/` and is exported from the barrel, `server/` being its other consumer. It inverts the `char` column of the terrain table above rather than keeping a second legend, and throws on an unknown character or a ragged row — the same reasoning as `applyEvents` refusing an unknown event, since a silently mistyped tile is a map that plays wrong.
+
+⚠️ **Every grid in the repo comes from parsing a character map. There is no second construction path.** Today two places build one by hand — `createInitialState` and the `makeState` fixture, both filling an array with `'land'` — and both go through the parser instead, so the shape production plays on is the shape tests exercise. A `DEFAULT_MAP` constant (8×8 plains) is the fallback that keeps `createMatchState` honest before real maps exist in 6d, and `makeState`'s numeric shorthand becomes sugar that *generates* a plains character grid and parses it rather than a way to skip the parser.
 
 Consequence: `createInitialState()` becomes `createMatchState(map)`, and a match records which map it was built from.
 
@@ -1269,9 +1282,13 @@ Verifiable with no combat: does the overlay stop at mountains, does cavalry outr
 - **6a** ✅ — `Unit` gains `unitTypeId` and drops `movementRange`, which moves onto `UnitType` (7a, pulled forward). Pure `shared/` plus `initialState`; no migration. The barrel gained `UnitType`, `UnitTypeId`, `MovementType` and `getUnitType`, which had never been exported — `unitTypes.ts` was dead code from the first commit, so this is the first thing that ever imported it. `getUnitType` now throws on an unknown id rather than returning `undefined`, which is what turns a stale row into a legible error instead of NaN movement somewhere else; the catalog got its first tests, written against the contract rather than the numbers so tuning does not break them. Behaviour is unchanged end to end, verified in the browser against a fresh database.
 - **6b** — the terrain table and `exploreMovement`, returning `reachable` and `pathTo`. Pure and fully unit-testable. `getReachableTiles` becomes `exploreMovement` through the barrel, which ripples through its tests and `selection.ts`.
 
-  ⚠️ **`exploreMovement` takes the budget and movement type as arguments; it does not look them up.** The lookup belongs to its two or three callers. Otherwise every search test has to name a real unit type to get a budget, which couples tests about *Dijkstra* to catalog values — and tuning cavalry's range would break tests that have nothing to do with cavalry. The current `getReachableTiles(state, unit)` already reads a plain number off the unit; this keeps that property once the number moves.
+  Three commits, each green on its own: **the terrain table** (`TileType` moves to `data/terrain.ts`, `getTileAt` joins `getUnitAt` in `queries.ts`, `'plains'` replaces `'land'`); **`parseTerrainGrid`** with its tests, both grid constructors moving onto it, and the `route()` fixture helper pulled forward from 6c so path fixtures are routes *before* the validator starts refusing endpoints; then **`exploreMovement`** itself. `reachableTiles.ts` becomes `movement.ts`, which is what the module is once it owns a search and a result type rather than one query.
 
-  `makeState` also grows a terrain parameter here — it hardcodes `'land'` today, and "does the overlay stop at a mountain" is not askable without one.
+  ⚠️ **Expanding `TileType` breaks the client build in this step, not 6e.** `render/terrain.ts` keys `TILE_COLORS` on `Record<TileType, Color4>` with one entry today, so six placeholder colours land here to keep the gate green; 6e does the real visual pass. That is the `Record` exhaustiveness working exactly as intended — it will not let the renderer forget a terrain.
+
+  **`SelectionState` does not change here.** It stores `movement.reachable` and keeps its field name; 6e switches it to hold the whole `movement` when `pathTo` gains a consumer. Carrying an unused closure through React state for two steps only invites someone to delete it.
+
+  ⚠️ **Wipe the dev database again**: `'land'` leaves `TileType`, so any match created since the 6a wipe stops loading.
 - **6c** — `validatePath` inside `validateMove`, **and** the client sending `pathTo`'s result, together. It lands in `validateMove` rather than anywhere else because validation and resolution are already separate: `validateMove` decides legality, `resolveMove` only emits the event. `canMoveUnit`'s `getReachableTiles` call leaves the server path entirely — an O(path) walk replaces an O(board) search per command.
 
   ⚠️ **Named scope: about ten hand-built path fixtures across nine files stop being legal here**, because every one of them is a two-element endpoint pair that only passes today since `validateMove` reads the last element and ignores the rest. Some are not even orthogonal — the replay test that proves `initial_state + log = current_state` walks `(0,0) → (1,2)` diagonally. The fix is a `route(...waypoints)` helper in `testing.ts` that expands endpoints into step-by-step orthogonal routes, **not** a fixture library: `testing.ts` lives inside `shared/`, whose zero-dependency property is what makes purity a resolution error rather than a review catch, and factories generate plausible varied data where the problem here is a domain constraint. Tests that assert on *illegal* paths keep writing the array by hand, so the illegality stays visible where it is asserted.
