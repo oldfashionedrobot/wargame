@@ -30,7 +30,27 @@ describe('handleTileClick, nothing selected', () => {
     if (selection.phase !== 'unitSelected') return;
     expect(selection.unitId).toBe('b1');
     expect(selection.position).toEqual(at(1, 1));
-    expect(selection.movement.reachable.length).toBeGreaterThan(0);
+    // Infantry's 3 movement points on plains: the tiles within three
+    // orthogonal steps of (1,1) that fit on a 7x7 board, minus its own. Being
+    // near two edges clips the diamond, which is why this is 16 and not 24.
+    expect(selection.movement.reachable).toHaveLength(16);
+  });
+
+  // Nothing else in the client pins that movement stats come from the catalog
+  // per unit type -- every other fixture is infantry, so a hardcoded budget of
+  // 3 would pass the whole suite. Cavalry reaches twice as far.
+  it("reads each unit type's own movement range from the catalog", () => {
+    const state = makeState(9, [
+      { id: 'foot', col: 4, row: 4 },
+      { id: 'horse', col: 4, row: 0, unitTypeId: 'cavalry' },
+    ]);
+    const infantry = handleTileClick(state, initialSelectionState, at(4, 4)).selection;
+    const cavalry = handleTileClick(state, initialSelectionState, at(4, 0)).selection;
+    if (infantry.phase !== 'unitSelected' || cavalry.phase !== 'unitSelected') throw new Error();
+
+    // Four steps from either unit: beyond infantry's 3, inside cavalry's 6.
+    expect(infantry.movement.pathTo(at(4, 8))).toBeNull();
+    expect(cavalry.movement.pathTo(at(4, 4))).not.toBeNull();
   });
 
   it('ignores an empty tile', () => {

@@ -379,9 +379,27 @@ describe('hidden tab', () => {
 describe('dispose', () => {
   it('stops the poll loop', async () => {
     const server = await connect();
+    // Poll once first: without this, zero-polls-after-dispose is also what an
+    // implementation that never scheduled anything would produce.
+    await vi.advanceTimersByTimeAsync(POLL);
+    expect(polls()).toBe(1);
+
     server.dispose();
     await vi.advanceTimersByTimeAsync(10 * MAX_BACKOFF);
-    expect(polls()).toBe(0);
+    expect(polls()).toBe(1);
+  });
+
+  // A listener left on `document` outlives the connection and keeps its whole
+  // closure alive -- one leak per match navigated to, for the life of the tab.
+  // It has no *behavioural* symptom, because `disposed` already stops the
+  // loop the handler would restart, so the registration itself is the only
+  // thing that can be observed.
+  it('removes its visibilitychange listener', async () => {
+    const removed = vi.spyOn(document, 'removeEventListener');
+    const server = await connect();
+    server.dispose();
+    expect(removed).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+    removed.mockRestore();
   });
 
   // StrictMode produces exactly this: a poll in flight when the route tears

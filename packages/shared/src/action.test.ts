@@ -168,4 +168,14 @@ describe('resolveAction', () => {
     resolveAction(state, accept(state, to(2, 0)));
     expect(JSON.stringify(state)).toBe(before);
   });
+
+  // The mirror of validateCommand's exhaustive default. Types make it
+  // unreachable in-process, and an Action read back out of the database is
+  // JSON, where they guarantee nothing.
+  it('refuses an unknown action type rather than returning nothing', () => {
+    const bogus = { type: 'teleport', actor: 'blue' } as unknown as Parameters<
+      typeof resolveAction
+    >[1];
+    expect(() => resolveAction(state, bogus)).toThrow('unknown action type: teleport');
+  });
 });

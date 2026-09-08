@@ -162,6 +162,19 @@ describe('useGameSession', () => {
       expect(result.current.gameState).toEqual(end);
     });
 
+    // The threshold is `<=`, so ten animates and eleven does not. Both sides
+    // of the boundary, because only one of them tells you which comparison it
+    // is.
+    it('still animates a batch of exactly the threshold size', async () => {
+      const fake = fakeServer(board);
+      const cb = callbacks();
+      renderSession(fake, cb);
+      await act(async () => {});
+
+      await act(async () => fake.push(Array.from({ length: 10 }, moved), board));
+      expect(cb.onEvents).toHaveBeenCalled();
+    });
+
     it('snaps instead of animating a large catch-up batch', async () => {
       const fake = fakeServer(board);
       const cb = callbacks();
@@ -189,6 +202,25 @@ describe('useGameSession', () => {
       expect(cb.onEvents).not.toHaveBeenCalled();
       expect(cb.onSnap).toHaveBeenLastCalledWith(next);
       expect(result.current.gameState).toEqual(next);
+    });
+
+    // The snap is the correction for a skipped or failed animation, so it
+    // must not be able to wedge the queue either.
+    it('commits even when the snap itself throws', async () => {
+      const fake = fakeServer(board);
+      const cb = callbacks();
+      vi.mocked(cb.onSnap).mockImplementation(() => {
+        throw new Error('renderer disposed');
+      });
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { result } = renderSession(fake, cb);
+      await act(async () => {});
+
+      const next = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
+      await act(async () => fake.push([moved()], next));
+
+      expect(result.current.gameState).toEqual(next);
+      expect(errorLog).toHaveBeenCalled();
     });
 
     it('snaps over a failed animation and still commits', async () => {

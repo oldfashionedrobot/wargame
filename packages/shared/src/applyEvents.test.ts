@@ -87,14 +87,20 @@ describe('order still matters', () => {
 });
 
 /**
- * The claim the architecture doc has always made and nothing has ever checked:
- * a match is its initial state plus an ordered log, and folding that log
- * reproduces the current state.
+ * A multi-turn script driven exactly as the server drives it: validate,
+ * resolve, fold.
  *
- * It holds by construction now -- applyEvents is the only mutator, so live play
- * and replay run the same code. This test is what stops that becoming untrue.
+ * ⚠️ It does **not** prove `initial + log === current`. `live` is built by
+ * folding the same events in the same order, so that comparison holds for any
+ * reducer, including one that ignores its events entirely. The real property
+ * -- the *persisted* checkpoint equalling a fold of the *persisted* log, two
+ * independently-written things -- is `match.test.ts`'s, because only the
+ * server has two paths to compare.
+ *
+ * What this does catch is a script that stops validating or resolving part
+ * way through, which is why every step asserts acceptance.
  */
-describe('the fold: initial state + events reproduces current state', () => {
+describe('a full turn cycle validates, resolves and folds', () => {
   it('over a multi-turn script', () => {
     const initial = makeState(8, [
       { id: 'b1', col: 0, row: 0 },
@@ -131,7 +137,10 @@ describe('the fold: initial state + events reproduces current state', () => {
     expect(applyEvents(initial, log)).toEqual(live);
   });
 
-  it('and reproduces the state at any point along the way, not just the end', () => {
+  // Replaying a prefix of the log lands on the state that prefix describes.
+  // Asserting against a stepwise fold would be circular -- both are the same
+  // reduce -- so the expectations are written out independently.
+  it('replays to any point along the way, not just the end', () => {
     const initial = makeState(8, [{ id: 'b1', col: 0, row: 0 }]);
     const log: GameEvent[] = [
       moved('b1', [0, 0], [1, 0]),
@@ -140,10 +149,18 @@ describe('the fold: initial state + events reproduces current state', () => {
       moved('b1', [1, 0], [3, 0]),
     ];
 
-    let stepwise: GameState = initial;
-    for (let i = 0; i < log.length; i++) {
-      stepwise = applyEvents(stepwise, [log[i]]);
-      expect(applyEvents(initial, log.slice(0, i + 1))).toEqual(stepwise);
+    const expected = [
+      { col: 1, row: 0, turn: 'blue', spent: true },
+      { col: 1, row: 0, turn: 'red', spent: true },
+      { col: 1, row: 0, turn: 'blue', spent: false }, // blue's units refreshed
+      { col: 3, row: 0, turn: 'blue', spent: true },
+    ];
+
+    for (const [i, want] of expected.entries()) {
+      const at = applyEvents(initial, log.slice(0, i + 1));
+      expect(unitAt(at, 'b1').position).toEqual({ col: want.col, row: want.row });
+      expect(at.currentTurn).toBe(want.turn);
+      expect(unitAt(at, 'b1').hasActed).toBe(want.spent);
     }
   });
 });

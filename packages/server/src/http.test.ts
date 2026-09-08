@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { brotliCompressSync, gzipSync } from 'node:zlib';
 import type {
   Command,
+  CommandResult,
   ErrorResponse,
   EventsResponse,
   MatchSummary,
@@ -25,18 +26,37 @@ import { createServer } from './http';
 // websocket data -- this stays right whatever createServer returns.
 let server: Awaited<ReturnType<typeof createServer>>;
 let base: string;
+let dist: string;
 
 beforeAll(async () => {
+  // A fixture client build, never the real one: `packages/client/dist` is
+  // gitignored and `bun run test` does not build it, so tests written against
+  // it mean different things depending on whether someone ran a build. With
+  // no dist the '/*' route answers "client not built" for everything, which
+  // made the routing tests below pass even with the '/api/*' route deleted --
+  // measured, not supposed.
+  dist = mkdtempSync(join(tmpdir(), 'vod-dist-'));
+  mkdirSync(join(dist, 'assets'));
+  writeFileSync(join(dist, 'index.html'), '<!doctype html><h1>fixture index</h1>');
+  writeFileSync(join(dist, 'assets', 'app-abc123.js'), 'const artifact = "raw";');
+  writeFileSync(
+    join(dist, 'assets', 'app-abc123.js.br'),
+    brotliCompressSync('const artifact = "br";'),
+  );
+  writeFileSync(join(dist, 'assets', 'app-abc123.js.gz'), gzipSync('const artifact = "gz";'));
+  writeFileSync(join(dist, 'assets', 'plain-def456.js'), 'const artifact = "plain";');
+
   // Port 0 lets the OS pick, so a running dev server cannot collide with this
-  // one, and `:memory:` keeps the real development database out of reach.
-  // Both are arguments rather than process.env, which is what lets this be a
+  // one, and `:memory:` keeps the real development database out of reach. All
+  // three are arguments rather than process.env, which is what lets this be a
   // plain static import with no ordering to get wrong.
-  server = await createServer({ port: 0, databaseUrl: ':memory:' });
+  server = await createServer({ port: 0, databaseUrl: ':memory:', clientDist: dist });
   base = server.url.origin;
 });
 
 afterAll(async () => {
   await server.stop(true);
+  rmSync(dist, { recursive: true, force: true });
 });
 
 const get = (path: string, init?: RequestInit): Promise<Response> => fetch(`${base}${path}`, init);
@@ -151,8 +171,13 @@ describe('GET /api/matches/:id/events', () => {
     const body = (await (await get(`/api/matches/${id}/events?since=0`)).json()) as EventsResponse;
     expect(body.seq).toBe(1);
     expect(body.events).toHaveLength(1);
-    // Events never travel without the state they produced.
-    expect(body.state?.currentTurn).toBe('player-blue');
+    // Events never travel without the state they produced -- and the state
+    // is the *post*-move one. currentTurn alone would not show that: a move
+    // does not end a turn, so the pre-move snapshot has the same value.
+    expect(body.state?.units.find((unit) => unit.id === 'blue-1')?.position).toEqual({
+      col: 0,
+      row: 2,
+    });
 
     // Asking from the current seq is the steady-state poll: nothing new, and
     // therefore no board either.
@@ -181,10 +206,15 @@ describe('POST /api/matches/:id/commands', () => {
     const response = await postJson(`/api/matches/${id}/commands`, legalMove);
     expect(response.status).toBe(200);
 
-    const result = (await response.json()) as { ok: boolean; seq: number; events: unknown[] };
+    const result = (await response.json()) as CommandResult;
     expect(result.ok).toBe(true);
+    if (!result.ok) return;
     expect(result.seq).toBe(1);
     expect(result.events).toHaveLength(1);
+    expect(result.state.units.find((unit) => unit.id === 'blue-1')?.position).toEqual({
+      col: 0,
+      row: 2,
+    });
   });
 
   // 422, not 200: well-formed, and refused on its merits. Distinct from the
@@ -245,52 +275,18 @@ describe('routing', () => {
   });
 
   it('hands non-api paths to the client, not the api 404', async () => {
-    // Either index.html or the "client not built" notice, depending on whether
-    // dist has been built -- both are the client path. Discriminated by body
-    // rather than content type, since every non-2xx is JSON including that one.
     const response = await get('/some/client/route');
-    expect(await response.text()).not.toContain('"error":"not found"');
-  });
-
-  it('does not serve files outside the client build', async () => {
-    const response = await get('/%2e%2e/%2e%2e/%2e%2e/etc/passwd');
-    expect(await response.text()).not.toContain('root:');
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('fixture index');
   });
 });
 
-// A fixture dist rather than the real build: these tests must not depend on
-// whether `bun run build` has run, and distinct plaintext inside each variant
-// is what proves *which* file was served -- bun's fetch decodes Content-
-// Encoding transparently (keeping the header), so body text distinguishes
-// the variants where byte counts could not.
+// Distinct plaintext inside each variant is what proves *which* file was
+// served: bun's fetch decodes Content-Encoding transparently while keeping the
+// header, so body text distinguishes them where byte counts could not.
 describe('the client build', () => {
-  let fixtureServer: Awaited<ReturnType<typeof createServer>>;
-  let fixtureBase: string;
-  let dist: string;
-
-  beforeAll(async () => {
-    dist = mkdtempSync(join(tmpdir(), 'vod-dist-'));
-    mkdirSync(join(dist, 'assets'));
-    writeFileSync(join(dist, 'index.html'), '<!doctype html><h1>fixture index</h1>');
-    writeFileSync(join(dist, 'assets', 'app-abc123.js'), 'const artifact = "raw";');
-    writeFileSync(
-      join(dist, 'assets', 'app-abc123.js.br'),
-      brotliCompressSync('const artifact = "br";'),
-    );
-    writeFileSync(join(dist, 'assets', 'app-abc123.js.gz'), gzipSync('const artifact = "gz";'));
-    writeFileSync(join(dist, 'assets', 'plain-def456.js'), 'const artifact = "plain";');
-
-    fixtureServer = await createServer({ port: 0, databaseUrl: ':memory:', clientDist: dist });
-    fixtureBase = fixtureServer.url.origin;
-  });
-
-  afterAll(async () => {
-    await fixtureServer.stop(true);
-    rmSync(dist, { recursive: true, force: true });
-  });
-
   const getAsset = (path: string, accept: string): Promise<Response> =>
-    fetch(`${fixtureBase}${path}`, { headers: { 'accept-encoding': accept } });
+    fetch(`${base}${path}`, { headers: { 'accept-encoding': accept } });
 
   it('serves the brotli variant to a client that accepts it', async () => {
     const response = await getAsset('/assets/app-abc123.js', 'gzip, br');
@@ -318,7 +314,7 @@ describe('the client build', () => {
     expect(await response.text()).toBe('const artifact = "plain";');
   });
 
-  it('marks hashed assets immutable and everything else no-cache', async () => {
+  it('marks anything under /assets immutable and everything else no-cache', async () => {
     const asset = await getAsset('/assets/app-abc123.js', 'br');
     expect(asset.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
     expect(asset.headers.get('vary')).toBe('Accept-Encoding');

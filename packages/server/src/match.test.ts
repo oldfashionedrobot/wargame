@@ -63,12 +63,16 @@ describe('list', () => {
 
   it('returns newest first', async () => {
     const a = await store.create();
+    // Two creates land in the same millisecond, and `created_at` is the only
+    // thing the order is defined on -- so without this the timestamps are
+    // equal, ties break arbitrarily, and asserting an order asserts nothing.
+    // Ordering among matches created in the same millisecond is unspecified
+    // and does not matter; ordering between different ones does.
+    await new Promise((resolve) => setTimeout(resolve, 2));
     const b = await store.create();
-    const ids = (await store.list()).map((m) => m.id);
-    expect(ids).toContain(a.id);
-    expect(ids).toContain(b.id);
-    const times = (await store.list()).map((m) => m.createdAt);
-    expect([...times].sort((x, y) => y - x)).toEqual(times);
+
+    expect(b.createdAt).toBeGreaterThan(a.createdAt);
+    expect((await store.list()).map((match) => match.id)).toEqual([b.id, a.id]);
   });
 
   // current_turn is denormalised precisely so this does not parse a board.
@@ -160,7 +164,7 @@ describe('submit', () => {
     // Deliberately malformed: a client cannot construct this, which is the
     // point -- `actor` exists only on Action. Cast through unknown to build it.
     const smuggled = { ...move('blue-1', [1, 2], [0, 0]), actor: RED } as unknown as Command;
-    await store.submit(id, smuggled, BLUE);
+    expect((await store.submit(id, smuggled, BLUE))?.ok).toBe(true);
     const { rows } = await sql.execute({
       sql: 'SELECT actor, action FROM resolutions WHERE match_id = ?',
       args: [id],
