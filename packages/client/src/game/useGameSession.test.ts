@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { makeState } from '@vod/shared/testing';
+import { makeState, route } from '@vod/shared/testing';
 import type {
   Command,
   CommandResult,
@@ -243,7 +243,9 @@ describe('useGameSession', () => {
 
     fake.respond({ ok: true, seq: 1, events: [], state: board });
     await act(async () => result.current.clickTile(at(1, 3)));
-    expect(fake.submissions).toEqual([{ type: 'move', unitId: 'b1', path: [at(1, 1), at(1, 3)] }]);
+    expect(fake.submissions).toEqual([
+      { type: 'move', unitId: 'b1', path: route(at(1, 1), at(1, 3)) },
+    ]);
     // Cleared the moment the command left, not when the server answered.
     expect(cb.onSelectionChange).toHaveBeenLastCalledWith({ phase: 'idle' });
     expect(result.current.rejection).toBeNull();

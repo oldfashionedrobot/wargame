@@ -510,7 +510,7 @@ GameEvent     UnitMovedEvent | TurnEndedEvent                   ✅
 
 - `PlayerId` is a plain string so player count isn't baked into the type system. Turn order is array rotation over `GameState.players`, wrapping via modulo — works for 2 or 4 players, and is where a "skip eliminated players" rule goes.
 - **One `hasActed` flag**, not separate move/attack flags — one command per unit action sets it exactly once. Reset by the `turnEnded` event, for the incoming player only.
-- ⚠️ **`MoveAction.path` is currently an unvalidated field** — the reducer reads only the last element and never checks the intermediate steps. Fixed by `validatePath`.
+- ✅ ~~**`MoveAction.path` is an unvalidated field**~~ — the reducer read only the last element and never checked the intermediate steps. Closed by `validatePath` in 6c, which walks every one.
 
 ## Content — `shared/data/`
 
@@ -1314,7 +1314,7 @@ Verifiable with no combat: does the overlay stop at mountains, does cavalry outr
   **`SelectionState` does not change here.** It stores `movement.reachable` and keeps its field name; **6c** switches it to hold the whole `movement`, because that is where `handleTileClick` first needs `pathTo` to build a command. (An earlier draft said 6e — wrong: 6e's hover preview is the second consumer, not the first.)
 
   ⚠️ **Wipe the dev database again**: `'land'` leaves `TileType`, so any match created since the 6a wipe stops loading.
-- **6c** — `validatePath` inside `validateMove`, **and** the client sending `pathTo`'s result, together. It lands in `validateMove` rather than anywhere else because validation and resolution are already separate: `validateMove` decides legality, `resolveMove` only emits the event. `canMoveUnit`'s `getReachableTiles` call leaves the server path entirely — an O(path) walk replaces an O(board) search per command.
+- **6c** ✅ — `validatePath` inside `validateMove`, **and** the client sending `pathTo`'s result, together. It lands in `validateMove` rather than anywhere else because validation and resolution are already separate: `validateMove` decides legality, `resolveMove` only emits the event. `canMoveUnit`'s `getReachableTiles` call leaves the server path entirely — an O(path) walk replaces an O(board) search per command.
 
   ✅ The fixture half of this landed in 6b: `route(...waypoints)` in `testing.ts` expands endpoints into step-by-step orthogonal routes, and every path fixture that feeds `validateCommand` already uses it, so 6c turns the walk on against fixtures that satisfy it rather than changing the checker and ten fixtures at once. It is a helper rather than a fixture library because `testing.ts` lives inside `shared/`, whose zero-dependency property is what makes purity a resolution error rather than a review catch — and factories generate plausible varied data where this problem is a domain constraint. Tests asserting on *illegal* paths keep hand-written arrays, so the illegality stays visible where it is asserted.
 

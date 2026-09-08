@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeState } from '@vod/shared/testing';
+import { makeState, route } from '@vod/shared/testing';
 import type { Coordinate, GameState } from '@vod/shared';
 import { handleTileClick, initialSelectionState } from './selection';
 import type { SelectionState } from './selection';
@@ -30,7 +30,7 @@ describe('handleTileClick, nothing selected', () => {
     if (selection.phase !== 'unitSelected') return;
     expect(selection.unitId).toBe('b1');
     expect(selection.position).toEqual(at(1, 1));
-    expect(selection.reachableTiles.length).toBeGreaterThan(0);
+    expect(selection.movement.reachable.length).toBeGreaterThan(0);
   });
 
   it('ignores an empty tile', () => {
@@ -58,7 +58,7 @@ describe('handleTileClick, a unit selected', () => {
     expect(command).toEqual({
       type: 'move',
       unitId: 'b1',
-      path: [at(1, 1), at(1, 3)],
+      path: route(at(1, 1), at(1, 3)),
     });
     expect(selection).toEqual(initialSelectionState);
   });

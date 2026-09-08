@@ -140,7 +140,10 @@ describe('submit', () => {
   it('refuses a command the rulebook rejects, and writes nothing', async () => {
     const { id } = await store.create();
     const result = await store.submit(id, move('blue-1', [7, 7], [0, 0]), BLUE);
-    expect(result).toEqual({ ok: false, reason: 'illegal move' });
+    // The refusal, not its wording: the reason belongs to shared/'s rulebook
+    // and changes when the rules get more specific, which says nothing about
+    // whether the store wrote anything.
+    expect(result?.ok).toBe(false);
     // seq did not move, and no row was logged
     expect((await store.snapshot(id))?.seq).toBe(0);
     expect((await store.since(id, 0))?.events).toEqual([]);

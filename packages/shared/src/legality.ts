@@ -1,16 +1,12 @@
-import { coordinatesEqual } from './coordinate';
-import { getUnitType } from './data/unitTypes';
-import { exploreMovement } from './movement';
-import type { Coordinate, GameState, Unit } from './types';
+import type { GameState, Unit } from './types';
 
+/**
+ * May this unit act at all right now -- ownership and whether it is spent.
+ *
+ * Deliberately *not* "may it move there": that is `validatePath`'s question,
+ * and keeping the two apart is what lets the client preview selection with
+ * this same predicate while the server walks the route with the other.
+ */
 export function canSelectUnit(state: GameState, unit: Unit): boolean {
   return unit.owner === state.currentTurn && !unit.hasActed;
-}
-
-export function canMoveUnit(state: GameState, unit: Unit, destination: Coordinate): boolean {
-  if (!canSelectUnit(state, unit)) return false;
-  const { movementRange, movementType } = getUnitType(unit.unitTypeId);
-  return exploreMovement(state, unit, movementRange, movementType).reachable.some((tile) =>
-    coordinatesEqual(tile, destination),
-  );
 }

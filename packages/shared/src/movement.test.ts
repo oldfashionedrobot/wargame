@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { exploreMovement } from './movement';
-import { makeState, unitAt } from './testing';
+import { exploreMovement, validatePath } from './movement';
+import { makeState, route, unitAt } from './testing';
 import type { UnitSpec } from './testing';
 import type { Coordinate, GameState } from './types';
 
@@ -164,6 +164,106 @@ describe('exploreMovement: pathTo', () => {
     for (const tile of movement.reachable) {
       // On plains, foot pays 1 a tile, so steps and cost coincide here.
       expect(movement.pathTo(tile)!.length - 1).toBeLessThanOrEqual(2);
+    }
+  });
+});
+
+// The server checks the route it was told rather than deriving one, so this
+// is the enforcement half of movement. Its reasons are diagnostics -- a
+// client picking destinations from `reachable` and paths from `pathTo`
+// cannot trip them.
+describe('validatePath', () => {
+  const board = (map: string[] | number, units: UnitSpec[]) => {
+    const state = makeState(map, units);
+    return (path: Coordinate[], range = 3, type = 'foot' as const) =>
+      validatePath(state, unitAt(state, 'b1'), path, range, type);
+  };
+
+  it('accepts a walkable route within budget', () => {
+    const walk = board(5, [{ id: 'b1', col: 0, row: 0 }]);
+    expect(walk(route(at(0, 0), at(2, 0)))).toBeNull();
+  });
+
+  it('accepts standing still -- one tile, no cost', () => {
+    const walk = board(5, [{ id: 'b1', col: 2, row: 2 }]);
+    expect(walk([at(2, 2)])).toBeNull();
+  });
+
+  it('refuses an empty path', () => {
+    const walk = board(5, [{ id: 'b1', col: 0, row: 0 }]);
+    expect(walk([])).toBe('path is empty');
+  });
+
+  it('refuses a path that starts somewhere else', () => {
+    const walk = board(5, [{ id: 'b1', col: 0, row: 0 }]);
+    expect(walk(route(at(1, 1), at(1, 2)))).toBe('path does not start at the unit');
+  });
+
+  it('refuses a jump between non-adjacent tiles', () => {
+    const walk = board(5, [{ id: 'b1', col: 0, row: 0 }]);
+    expect(walk([at(0, 0), at(0, 2)])).toMatch(/jumps from \(0,0\) to \(0,2\)/);
+  });
+
+  it('refuses a diagonal step, which is a jump by another name', () => {
+    const walk = board(5, [{ id: 'b1', col: 0, row: 0 }]);
+    expect(walk([at(0, 0), at(1, 1)])).toMatch(/jumps/);
+  });
+
+  it('refuses a path that doubles back over itself', () => {
+    const walk = board(5, [{ id: 'b1', col: 0, row: 0 }]);
+    expect(walk([at(0, 0), at(1, 0), at(0, 0)])).toMatch(/revisits \(0,0\)/);
+  });
+
+  it('refuses a route that costs more than the budget', () => {
+    const walk = board(9, [{ id: 'b1', col: 0, row: 0 }]);
+    expect(walk(route(at(0, 0), at(4, 0)))).toBe('move exceeds movement range');
+  });
+
+  // The same terrain table the search spends -- entryCost decides both.
+  it('refuses terrain this movement type cannot cross', () => {
+    const walk = board(['.^.', '...'], [{ id: 'b1', col: 1, row: 1 }]);
+    expect(walk([at(1, 1), at(1, 0)], 4, 'wheels')).toBe('wheels cannot cross mountain');
+    expect(walk([at(1, 1), at(1, 0)], 4, 'foot')).toBeNull();
+  });
+
+  it('charges terrain rather than one point per tile', () => {
+    // Three forest tiles cost a horse 6, well over a budget of 4.
+    const walk = board(['ffff'], [{ id: 'b1', col: 0, row: 0 }]);
+    expect(walk(route(at(0, 0), at(3, 0)), 4, 'horse')).toBe('move exceeds movement range');
+    expect(walk(route(at(0, 0), at(2, 0)), 4, 'horse')).toBeNull();
+  });
+
+  it('refuses walking into an enemy', () => {
+    const walk = board(5, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'r1', col: 1, row: 0, owner: 'red' },
+    ]);
+    expect(walk(route(at(0, 0), at(1, 0)))).toMatch(/\(1,0\) is held by an enemy/);
+  });
+
+  it('walks through a friend but refuses to stop on one', () => {
+    const walk = board({ cols: 1, rows: 3 }, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'b2', col: 0, row: 1 },
+    ]);
+    expect(walk(route(at(0, 0), at(0, 2)))).toBeNull(); // through
+    expect(walk(route(at(0, 0), at(0, 1)))).toMatch(/\(0,1\) is occupied/); // onto
+  });
+
+  it('refuses a path that leaves the board', () => {
+    const walk = board(3, [{ id: 'b1', col: 0, row: 0 }]);
+    expect(walk([at(0, 0), at(-1, 0)])).toMatch(/\(-1,0\) is off the board/);
+  });
+
+  // The two halves have to agree, or the overlay offers moves the server
+  // refuses. They share entryCost precisely so this cannot drift.
+  it('accepts every route pathTo builds to a reachable tile', () => {
+    const state = makeState(['..f.', '.^..', '....'], [{ id: 'b1', col: 0, row: 0 }]);
+    const unit = unitAt(state, 'b1');
+    const movement = exploreMovement(state, unit, 4, 'foot');
+    expect(movement.reachable.length).toBeGreaterThan(0);
+    for (const tile of movement.reachable) {
+      expect(validatePath(state, unit, movement.pathTo(tile)!, 4, 'foot')).toBeNull();
     }
   });
 });

@@ -3,6 +3,8 @@ import { resolveAction, validateCommand } from './action';
 import { makeState, route } from './testing';
 import type { Command } from './types';
 
+const at = (col: number, row: number) => ({ col, row });
+
 // b1 starts at (0,0). A real route, not an endpoint pair -- validatePath
 // walks every step in 6c, so a fixture describing a straight jump would be
 // describing a move no client can make.
@@ -39,17 +41,17 @@ describe('validateCommand', () => {
     });
   });
 
-  it('refuses a path with no destination', () => {
+  it('refuses an empty path', () => {
     expect(validateCommand(state, { type: 'move', unitId: 'b1', path: [] }, 'blue')).toEqual({
       ok: false,
-      reason: 'move has no destination',
+      reason: 'path is empty',
     });
   });
 
   it('refuses a destination out of range', () => {
     expect(validateCommand(state, to(5, 5), 'blue')).toEqual({
       ok: false,
-      reason: 'illegal move',
+      reason: 'move exceeds movement range',
     });
   });
 
@@ -57,7 +59,39 @@ describe('validateCommand', () => {
     const acted = makeState(6, [{ id: 'b1', col: 0, row: 0, hasActed: true }]);
     expect(validateCommand(acted, to(1, 0), 'blue')).toEqual({
       ok: false,
-      reason: 'illegal move',
+      reason: 'that unit has already acted',
+    });
+  });
+
+  // Distinct from "already acted": the actor is allowed to be giving orders,
+  // it is this particular unit they may not order.
+  it("refuses one of the opponent's units", () => {
+    const mixed = makeState(6, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'r1', col: 5, row: 5, owner: 'red' },
+    ]);
+    const command: Command = { type: 'move', unitId: 'r1', path: route(at(5, 5), at(5, 4)) };
+    expect(validateCommand(mixed, command, 'blue')).toEqual({
+      ok: false,
+      reason: 'that unit is not yours',
+    });
+  });
+
+  // A client that picks destinations from `reachable` and paths from `pathTo`
+  // cannot produce these; anything that does is broken, hostile, or stale.
+  it('refuses a path that jumps rather than walks', () => {
+    const jump: Command = { type: 'move', unitId: 'b1', path: [at(0, 0), at(0, 2)] };
+    expect(validateCommand(state, jump, 'blue')).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('jumps'),
+    });
+  });
+
+  it('refuses a path that does not start where the unit is', () => {
+    const elsewhere: Command = { type: 'move', unitId: 'b1', path: route(at(2, 2), at(2, 3)) };
+    expect(validateCommand(state, elsewhere, 'blue')).toEqual({
+      ok: false,
+      reason: 'path does not start at the unit',
     });
   });
 

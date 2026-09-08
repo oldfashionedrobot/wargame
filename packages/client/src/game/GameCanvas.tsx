@@ -13,7 +13,7 @@ import type { GameRenderer } from './render/renderer';
 // so there is no game state to fetch and no question of which copy to read.
 function showSelection(renderer: GameRenderer, selection: SelectionState): void {
   renderer.setSelectedTile(selection.phase === 'unitSelected' ? selection.position : null);
-  renderer.setMovementRange(selection.phase === 'unitSelected' ? selection.reachableTiles : []);
+  renderer.setMovementRange(selection.phase === 'unitSelected' ? selection.movement.reachable : []);
 }
 
 export interface GameCanvasProps {

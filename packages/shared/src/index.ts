@@ -31,7 +31,7 @@ export type { MovementType, UnitType, UnitTypeId } from './data/unitTypes';
 export { getUnitType } from './data/unitTypes';
 
 export { coordinatesEqual, isWithinGrid } from './coordinate';
-export { getCurrentPlayer, getUnitAt } from './queries';
+export { getCurrentPlayer, getTileAt, getUnit, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';
 export { exploreMovement } from './movement';
 export type { Movement } from './movement';

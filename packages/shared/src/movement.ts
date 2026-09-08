@@ -1,8 +1,49 @@
-import { coordinateKey, isWithinGrid } from './coordinate';
+import { coordinatesEqual, coordinateKey } from './coordinate';
 import { getTerrain } from './data/terrain';
 import type { MovementType } from './data/unitTypes';
 import { getTileAt, getUnitAt } from './queries';
 import type { Coordinate, GameState, Unit } from './types';
+
+type Entry = { ok: true; cost: number } | { ok: false; reason: string };
+
+const nameOf = (coordinate: Coordinate) => `(${coordinate.col},${coordinate.row})`;
+
+/**
+ * May this unit step onto this tile, and what does it cost?
+ *
+ * **The one place that question is answered**, called by both consumers: the
+ * search below explores with it, and `validatePath` walks with it. That is
+ * what makes "client and server share a cost model" structural rather than a
+ * rule two implementations have to keep. See the invariant in Terrain.
+ *
+ * It deliberately does not decide whether a unit may *stop* here. Entering
+ * and stopping are different questions -- a friendly unit's tile is
+ * enterable and not stoppable -- which is the same line `settled` and
+ * `reachable` draw, so the destination check belongs to `validatePath`.
+ *
+ * Off the board is a refusal rather than a separate bounds check: `getTileAt`
+ * already answers `undefined` there, so asking for the terrain and asking
+ * whether the tile exists are one question.
+ */
+function entryCost(
+  state: GameState,
+  unit: Unit,
+  coordinate: Coordinate,
+  movementType: MovementType,
+): Entry {
+  const tile = getTileAt(state, coordinate);
+  if (!tile) return { ok: false, reason: `${nameOf(coordinate)} is off the board` };
+
+  const occupant = getUnitAt(state, coordinate);
+  if (occupant && occupant.owner !== unit.owner) {
+    return { ok: false, reason: `${nameOf(coordinate)} is held by an enemy` };
+  }
+
+  const cost = getTerrain(tile).cost[movementType];
+  if (cost === null) return { ok: false, reason: `${movementType} cannot cross ${tile}` };
+
+  return { ok: true, cost };
+}
 
 export interface Movement {
   /**
@@ -69,9 +110,6 @@ export function exploreMovement(
   movementRange: number,
   movementType: MovementType,
 ): Movement {
-  const gridHeight = state.grid.length;
-  const gridWidth = state.grid[0]?.length ?? 0;
-
   // Everything the search touched, keyed by coordinate -- Coordinate has no
   // value equality in JS. This is the map `pathTo` walks; `reachable` is
   // derived from it once, at the end. Filtering the map itself instead would
@@ -88,19 +126,14 @@ export function exploreMovement(
     if (currentCost >= movementRange) continue; // nothing left to spend
 
     for (const next of neighborsOf(current)) {
-      if (!isWithinGrid(next, gridWidth, gridHeight)) continue;
-
-      const occupant = getUnitAt(state, next);
-      if (occupant && occupant.owner !== unit.owner) continue;
-
-      const tile = getTileAt(state, next);
-      if (!tile) continue;
-      const cost = getTerrain(tile).cost[movementType];
-      if (cost === null) continue; // impassable to this unit, not merely dear
+      // Off the board, impassable, or held by an enemy -- one question, and
+      // the same answer validatePath walks with.
+      const entry = entryCost(state, unit, next, movementType);
+      if (!entry.ok) continue;
 
       // Checked per step, not once at the top: with costs above 1, having
       // budget left over does not mean the next tile fits inside it.
-      const nextCost = currentCost + cost;
+      const nextCost = currentCost + entry.cost;
       if (nextCost > movementRange) continue;
 
       const key = coordinateKey(next);
@@ -138,4 +171,66 @@ export function exploreMovement(
       return path;
     },
   };
+}
+
+/**
+ * Is this path one this unit could actually walk, right now?
+ *
+ * Returns the reason it is refused, or `null` if it is legal -- the same
+ * shape the other reducers answer with.
+ *
+ * **The server checks the route it was given; it never derives one.** That is
+ * an O(path) walk rather than an O(board) search per command, it leaves the
+ * client free to change how it picks routes (manual routing becomes a pure UI
+ * feature later, with no protocol change), and it costs only that both sides
+ * agree on the *cost model* -- which `entryCost` now guarantees by being the
+ * one place that decides.
+ *
+ * The reasons are **diagnostics**. A client that picks destinations from
+ * `movement.reachable` and paths from `pathTo` cannot trip them; anything
+ * that does is broken, hostile, or acting on a stale snapshot.
+ */
+export function validatePath(
+  state: GameState,
+  unit: Unit,
+  path: Coordinate[],
+  movementRange: number,
+  movementType: MovementType,
+): string | null {
+  const start = path[0];
+  if (!start) return 'path is empty';
+  if (!coordinatesEqual(start, unit.position)) return 'path does not start at the unit';
+
+  // A path that visits a tile twice is nonsense no client produces, and
+  // refusing it is cheap. It is not what bounds the path's length, though --
+  // every terrain costs at least 1 to enter, so the budget below already
+  // caps the number of steps.
+  const seen = new Set([coordinateKey(start)]);
+  let spent = 0;
+
+  for (let i = 1; i < path.length; i++) {
+    const step = path[i];
+    const previous = path[i - 1];
+    const distance = Math.abs(step.col - previous.col) + Math.abs(step.row - previous.row);
+    if (distance !== 1) return `path jumps from ${nameOf(previous)} to ${nameOf(step)}`;
+
+    const key = coordinateKey(step);
+    if (seen.has(key)) return `path revisits ${nameOf(step)}`;
+    seen.add(key);
+
+    const entry = entryCost(state, unit, step, movementType);
+    if (!entry.ok) return entry.reason;
+
+    spent += entry.cost;
+    if (spent > movementRange) return 'move exceeds movement range';
+  }
+
+  // Entering and stopping are different questions. A friendly unit is walked
+  // through above and refused here; the moving unit is excluded, so a
+  // single-element path -- standing still -- does not fail its own test.
+  const destination = path[path.length - 1];
+  const occupant = getUnitAt(state, destination);
+  if (occupant && occupant.id !== unit.id) return `${nameOf(destination)} is occupied`;
+
+  return null;
 }

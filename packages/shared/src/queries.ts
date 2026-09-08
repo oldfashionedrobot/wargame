@@ -2,6 +2,10 @@ import { coordinatesEqual } from './coordinate';
 import type { TileType } from './data/terrain';
 import type { Coordinate, GameState, Player, Unit } from './types';
 
+export function getUnit(state: GameState, unitId: string): Unit | undefined {
+  return state.units.find((unit) => unit.id === unitId);
+}
+
 export function getUnitAt(state: GameState, coordinate: Coordinate): Unit | undefined {
   return state.units.find((unit) => coordinatesEqual(unit.position, coordinate));
 }

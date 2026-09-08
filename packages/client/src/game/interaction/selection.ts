@@ -2,10 +2,11 @@ import {
   canSelectUnit,
   coordinatesEqual,
   exploreMovement,
+  getUnit,
   getUnitAt,
   getUnitType,
 } from '@vod/shared';
-import type { Command, Coordinate, GameState } from '@vod/shared';
+import type { Command, Coordinate, GameState, Movement } from '@vod/shared';
 
 // A discriminated union rather than nullable fields: "reachable tiles with no
 // selected unit" was representable and meaningless. Phase 6 adds a
@@ -18,7 +19,7 @@ import type { Command, Coordinate, GameState } from '@vod/shared';
 // hand and no choice about which state to read.
 export type SelectionState =
   | { phase: 'idle' }
-  | { phase: 'unitSelected'; unitId: string; position: Coordinate; reachableTiles: Coordinate[] };
+  | { phase: 'unitSelected'; unitId: string; position: Coordinate; movement: Movement };
 
 export const initialSelectionState: SelectionState = { phase: 'idle' };
 
@@ -41,9 +42,9 @@ function trySelect(state: GameState, coordinate: Coordinate): SelectionState {
     phase: 'unitSelected',
     unitId: unit.id,
     position: unit.position,
-    // Only `.reachable` is kept: 6e stores the whole Movement when the route
-    // preview gives `pathTo` a consumer.
-    reachableTiles: exploreMovement(state, unit, movementRange, movementType).reachable,
+    // The whole search, not just its tiles: `pathTo` builds the path a move
+    // command carries, and 6e's route preview reads it again on hover.
+    movement: exploreMovement(state, unit, movementRange, movementType),
   };
 }
 
@@ -53,9 +54,7 @@ export function handleTileClick(
   coordinate: Coordinate,
 ): TileClickResult {
   const selectedUnit =
-    selection.phase === 'unitSelected'
-      ? state.units.find((unit) => unit.id === selection.unitId)
-      : undefined;
+    selection.phase === 'unitSelected' ? getUnit(state, selection.unitId) : undefined;
 
   // Nothing usefully selected -- idle, or the selected unit has vanished from
   // state under us. Either way the click means "try to select".
@@ -67,11 +66,17 @@ export function handleTileClick(
     return { selection: initialSelectionState, command: null };
   }
 
-  const isInRange = selection.reachableTiles.some((tile) => coordinatesEqual(tile, coordinate));
-  if (isInRange) {
+  // `reachable` decides whether this is a destination -- not `pathTo`, which
+  // answers for any tile the search settled, friendly-occupied ones included,
+  // and those are exactly the tiles nobody may stop on. Only once it *is* a
+  // destination does `pathTo` build the route the command carries; the server
+  // walks that route rather than deriving one, so it has to be a real one.
+  const isInRange = selection.movement.reachable.some((tile) => coordinatesEqual(tile, coordinate));
+  const path = isInRange ? selection.movement.pathTo(coordinate) : null;
+  if (path) {
     return {
       selection: initialSelectionState,
-      command: { type: 'move', unitId: selectedUnit.id, path: [selectedUnit.position, coordinate] },
+      command: { type: 'move', unitId: selectedUnit.id, path },
     };
   }
 
