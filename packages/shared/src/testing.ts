@@ -35,7 +35,7 @@ export function makeState(
   const { cols, rows } = typeof size === 'number' ? { cols: size, rows: size } : size;
   return {
     // grid is indexed [row][col]
-    grid: Array.from({ length: rows }, () => Array.from({ length: cols }, () => 'land' as const)),
+    grid: Array.from({ length: rows }, () => Array.from({ length: cols }, () => 'plains' as const)),
     players: [
       { id: 'blue', name: 'Blue Army', color: 'blue' },
       { id: 'red', name: 'Red Army', color: 'red' },

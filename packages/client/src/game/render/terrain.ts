@@ -6,8 +6,21 @@ import type { Scene } from '@babylonjs/core/scene';
 import type { TileType } from '@vod/shared';
 import { TILE_SIZE, tileToWorld } from './coordinates';
 
+// Placeholder palette: flat colour is enough to read a board and to check
+// that pathfinding stops where terrain says it should. 6e does the real
+// visual pass. Being a Record over TileType is what stops a new terrain from
+// rendering as undefined -- the compiler asks for its colour here.
+//
+// Terrain stays flat, and not only for now: screenToTile intersects the y=0
+// plane rather than picking meshes, so a mountain with real height would have
+// you click its peak and select the tile behind it.
 const TILE_COLORS: Record<TileType, Color4> = {
-  land: new Color4(0.55, 0.73, 0.4, 1),
+  plains: new Color4(0.55, 0.73, 0.4, 1),
+  road: new Color4(0.76, 0.71, 0.55, 1),
+  bridge: new Color4(0.6, 0.47, 0.33, 1),
+  forest: new Color4(0.24, 0.45, 0.24, 1),
+  mountain: new Color4(0.52, 0.48, 0.45, 1),
+  river: new Color4(0.32, 0.55, 0.82, 1),
 };
 
 export function createTerrainMesh(scene: Scene, grid: TileType[][]): Mesh {

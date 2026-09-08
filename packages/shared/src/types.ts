@@ -1,11 +1,10 @@
+import type { TileType } from './data/terrain';
 import type { UnitTypeId } from './data/unitTypes';
 
 export interface Coordinate {
   col: number;
   row: number;
 }
-
-export type TileType = 'land';
 
 export type Facing = 'north' | 'east' | 'south' | 'west';
 

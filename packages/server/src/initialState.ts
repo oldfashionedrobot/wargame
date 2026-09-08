@@ -7,7 +7,7 @@ const PLAYER_TWO_ID = 'player-red';
 
 export function createInitialState(): GameState {
   const grid: TileType[][] = Array.from({ length: GRID_HEIGHT }, () =>
-    Array.from({ length: GRID_WIDTH }, () => 'land'),
+    Array.from({ length: GRID_WIDTH }, () => 'plains'),
   );
 
   const players: Player[] = [

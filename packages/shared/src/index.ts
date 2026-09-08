@@ -12,9 +12,14 @@ export type {
   Player,
   PlayerColor,
   PlayerId,
-  TileType,
   Unit,
 } from './types';
+
+// Terrain vocabulary and the table that gives it meaning. Both sides read the
+// same one -- the cost model has to agree or the client's reachable overlay
+// offers moves the server refuses.
+export type { Terrain, TileType } from './data/terrain';
+export { getTerrain, TERRAIN } from './data/terrain';
 
 // The unit catalog. Both sides read it: the client to preview what a unit can
 // do, the server to resolve the same thing authoritatively.
