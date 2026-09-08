@@ -175,15 +175,111 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 
 ### 6 — Terrain and movement
 
-Steps 6a–6c are built; see `architecture.md`. What remains:
+Steps 6a–6c are built, and so is the hover route preview; see `architecture.md`.
+What remains:
 
-- **6d** — character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`; `matches` gains `map_id`, the first schema migration. Maps are code modules, so `map_id` is a text column with no foreign key, and a `NOT NULL` column on a non-empty table needs a default or nullability.
-- **6e** — the destination step: pick a tile, see the route, confirm. A second click on the chosen tile confirms, a click on another reachable tile re-targets, a click on the unit or outside the range cancels. `SelectionState` gains a `destinationChosen` member. (The route preview itself is built — see Rendering in `architecture.md`. Terrain already renders, in placeholder colours; a real visual pass is separate.)
+#### 6d — maps
 
-  ⚠️ Terrain must stay flat. `screenToTile` intersects the `y = 0` plane rather than mesh-picking, so the day terrain gains real height, clicking a peak selects the tile behind it. Elevation is a later pass that has to answer the picking question first.
-- **6f** — **facing follows the path.** `applyEvents` derives `facing` from the last step of a `unitMoved` path, the same way it already derives position: deterministic, idempotent, no new event field, no UI. `snapUnits` starts setting rotation as well as position; `FACING_ROTATION` is module-local in `units.ts`, so this wants a `setUnitFacing(mesh, facing)` beside `createUnitMesh` rather than exporting the table. A single-element path has no direction, so facing is left unchanged.
+Character-grid maps in `server/maps/`, `createInitialState()` becoming
+`createMatchState(map)`, and `matches` gaining `map_id`.
 
-  Animation needs no structural change — `animateUnitAlongPath` already walks one tween per segment. What wants revisiting is the pace: one constant for every unit, and with a single speed, `worthAnimating` should count **tiles** rather than events, since one `unitMoved` can now be a six-tile walk.
+```ts
+interface GameMap {
+  id: string;
+  rows: string[];                                        // parsed by parseTerrainGrid
+  units: { at: Coordinate; type: UnitTypeId; owner: number }[];
+}
+```
+
+**`owner` is an index into the match's players, not a `PlayerId`.** Players stay
+hardcoded on the server: there is no lobby, no accounts, and nothing to choose
+between yet. The index is what lets a four-player map exist later without the
+format changing, and it keeps maps from naming players they cannot know about.
+Placing units per player is a **battlefield setup step**, which is a phase 9
+concern — the map is the placeholder for it.
+
+**Unit ids are generated deterministically**, `${colour}-${n}` counting per
+owner in map order. Deterministic because `initial_state` plus the log has to
+replay identically, and a random id breaks that. This format reproduces
+today's `blue-1` … `red-3` exactly for the default map, so no fixture that
+names a unit has to change.
+
+Both of these replace hardcoded data with slightly differently shaped hardcoded
+data. Neither is a design commitment beyond phase 6.
+
+**The migration is measured, not assumed** — trial-run and reverted:
+
+```sql
+ALTER TABLE `matches` ADD `map_id` text DEFAULT 'classic' NOT NULL;
+```
+
+`db:generate` produces exactly that, refreshes `schema.sql`, and `migrate()`
+applies it to a **populated** database with the existing row defaulted and its
+resolution log intact. `map_id` is a text column with no foreign key, because
+maps are code modules rather than rows.
+
+The barrel gains `UnitTypeId`, which 6a deliberately left out until something
+consumed it.
+
+#### 6e — the destination step
+
+Pick a tile, see the route, confirm. A second click on the chosen tile
+**confirms**, a click on another reachable tile **re-targets**, a click on the
+unit or outside the range **cancels**. `SelectionState` gains a
+`destinationChosen` member.
+
+**The renderer gains `setRoute(path | null)`**: `null` means follow the pointer,
+an array means show this route and ignore hover. Without it a pinned route
+flickers as the mouse moves over other tiles.
+
+`handleTileClick` needs no new signature — it already returns
+`{ selection, command }`, so pinning is a selection change carrying
+`command: null`, and confirming is the same call that submits today.
+
+⬜ **Not in scope: walking the unit to the destination before confirming.** AW
+does this, and it is worth having eventually, but it animates an *unsubmitted*
+move and so needs a ghost position and a snap-back on cancel. The route
+highlight already shows the intent. Revisit as polish once 7e's menu exists.
+
+⚠️ **Worth deciding before building it: is the confirm step worth having before
+there is a menu?** Its purpose is to host 7e's Attack/Wait choice, and until
+that exists it adds a click that offers exactly one option — click-to-move is
+strictly better UX in the meantime. The counter-argument is misclick
+protection, which the hover route preview already mostly provides. Folding this
+step into 7e is a live option.
+
+⚠️ Terrain must stay flat. `screenToTile` intersects the `y = 0` plane rather
+than mesh-picking, so the day terrain gains real height, clicking a peak
+selects the tile behind it. Elevation is a later pass that has to answer the
+picking question first. Placeholder terrain colours are deliberate for now —
+gameplay before looks.
+
+#### 6f — facing follows the path
+
+`applyEvents` derives `facing` from the last step of a `unitMoved` path, the
+same way it already derives position: deterministic, idempotent, no new event
+field, no UI. A single-element path has no direction, so facing is left
+unchanged.
+
+- `directionBetween(from, to): Facing | null` goes in `coordinate.ts`, beside
+  `coordinatesEqual`. It returns `null` for a zero-length step, which is
+  exactly the stay-put case.
+- `snapUnits` starts writing rotation as well as position. `FACING_ROTATION` is
+  module-local in `units.ts`, so this wants a `setUnitFacing(mesh, facing)`
+  beside `createUnitMesh` rather than exporting the table.
+
+Rider, and sharper since animation went to 0.3s a tile: **`worthAnimating`
+should count tiles rather than events.** One `unitMoved` can be a six-tile walk,
+so nine of them sit under the ten-*event* threshold and animate for about
+sixteen seconds. With one speed for every unit, tiles are the honest measure.
+
+#### Suggested order
+
+**6d, then 6f, then 6e.** Everything 6b and 6c built is invisible today — the
+board is all plains, so no route ever bends around anything. 6d makes it
+visible, and it carries the migration, which is best done while the database is
+still disposable. 6f is small and independent. 6e is the interaction change and
+the one with an open question above it.
 
 ### 7 — Combat: the smallest thing you can win
 
