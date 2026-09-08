@@ -28,10 +28,15 @@ describe('getReachableTiles', () => {
   });
 
   it('does not leave the grid', () => {
-    const state = makeState(3, [{ id: 'b1', col: 0, row: 0 }]);
-    const tiles = reachable(state, 'b1', 5);
-    expect(tiles).toHaveLength(3 * 3 - 1); // the whole board except its own tile
-    expect(tiles.every((t) => t.col >= 0 && t.col < 3 && t.row >= 0 && t.row < 3)).toBe(true);
+    // The board size is named once and every expectation derives from it, so
+    // this says "the whole board, whatever size that is" rather than
+    // repeating a literal the fixture already decided.
+    const SIZE = 3;
+    const state = makeState(SIZE, [{ id: 'b1', col: 0, row: 0 }]);
+    const tiles = reachable(state, 'b1', SIZE * SIZE); // more budget than board
+    expect(tiles).toHaveLength(SIZE * SIZE - 1); // everything except its own tile
+    const inside = (t: Coordinate) => t.col >= 0 && t.col < SIZE && t.row >= 0 && t.row < SIZE;
+    expect(tiles.every(inside)).toBe(true);
   });
 
   // Advance Wars' collision model, and the half people get wrong: an enemy

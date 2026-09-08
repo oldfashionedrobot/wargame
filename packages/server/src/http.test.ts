@@ -97,8 +97,25 @@ describe('GET /api/matches/:id/state', () => {
 
     const { seq, state } = (await response.json()) as StateResponse;
     expect(seq).toBe(0);
-    expect(state.grid).toHaveLength(8);
     expect(state.currentTurn).toBe('player-blue');
+
+    // The board's size belongs to whatever map the server built this from, so
+    // assert that the board is *coherent* rather than that it is 8 wide --
+    // which would fail the day the default map changes while telling us
+    // nothing about the endpoint. Rectangular and fully occupied-in-bounds
+    // catches more than a dimension ever did.
+    const height = state.grid.length;
+    const width = state.grid[0]?.length ?? 0;
+    expect(height).toBeGreaterThan(0);
+    expect(width).toBeGreaterThan(0);
+    expect(state.grid.every((row) => row.length === width)).toBe(true);
+    for (const unit of state.units) {
+      expect(unit.position.row).toBeGreaterThanOrEqual(0);
+      expect(unit.position.row).toBeLessThan(height);
+      expect(unit.position.col).toBeGreaterThanOrEqual(0);
+      expect(unit.position.col).toBeLessThan(width);
+    }
+
     // Both sides start with something to move. Asserting a count instead would
     // fail every time the starting roster is tuned, which says nothing about
     // whether the endpoint works.
