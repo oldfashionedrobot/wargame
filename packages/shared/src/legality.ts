@@ -1,6 +1,6 @@
 import { coordinatesEqual } from './coordinate';
 import { getUnitType } from './data/unitTypes';
-import { getReachableTiles } from './reachableTiles';
+import { exploreMovement } from './movement';
 import type { Coordinate, GameState, Unit } from './types';
 
 export function canSelectUnit(state: GameState, unit: Unit): boolean {
@@ -9,8 +9,8 @@ export function canSelectUnit(state: GameState, unit: Unit): boolean {
 
 export function canMoveUnit(state: GameState, unit: Unit, destination: Coordinate): boolean {
   if (!canSelectUnit(state, unit)) return false;
-  const { movementRange } = getUnitType(unit.unitTypeId);
-  return getReachableTiles(state, unit, movementRange).some((tile) =>
+  const { movementRange, movementType } = getUnitType(unit.unitTypeId);
+  return exploreMovement(state, unit, movementRange, movementType).reachable.some((tile) =>
     coordinatesEqual(tile, destination),
   );
 }

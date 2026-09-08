@@ -1,7 +1,7 @@
 import {
   canSelectUnit,
   coordinatesEqual,
-  getReachableTiles,
+  exploreMovement,
   getUnitAt,
   getUnitType,
 } from '@vod/shared';
@@ -36,11 +36,14 @@ export interface TileClickResult {
 function trySelect(state: GameState, coordinate: Coordinate): SelectionState {
   const unit = getUnitAt(state, coordinate);
   if (!unit || !canSelectUnit(state, unit)) return initialSelectionState;
+  const { movementRange, movementType } = getUnitType(unit.unitTypeId);
   return {
     phase: 'unitSelected',
     unitId: unit.id,
     position: unit.position,
-    reachableTiles: getReachableTiles(state, unit, getUnitType(unit.unitTypeId).movementRange),
+    // Only `.reachable` is kept: 6e stores the whole Movement when the route
+    // preview gives `pathTo` a consumer.
+    reachableTiles: exploreMovement(state, unit, movementRange, movementType).reachable,
   };
 }
 
