@@ -361,18 +361,26 @@ Events remain authoritative (invariant 9), and a test folds the log from `initia
 
 State goes in as **JSON blobs** — nothing ever queries inside them, and invariant 4 already guarantees they survive the round trip. A rule written for the wire pays off again here.
 
-**`GameState` deliberately keeps `grid` and `players`, and the row deliberately keeps `initial_state`.** Both look like waste: neither the grid nor the player list changes during a match, yet they are serialised into `current_state` on every command, beside a blob that is never read. The reasoning that looks obvious — split the immutable half out — was measured before being believed, and it does not pay:
+**`GameState` deliberately keeps `grid` and `players`.** Neither changes during a match, yet both are serialised into `current_state` on every command, beside an `initial_state` that is never read. That looks like waste, and it raises two separate questions with different answers.
 
-| 40×40 board, per move | WAL written |
-|---|---|
-| `initial_state` in the same row | 4.3 KB |
-| `initial_state` in its own table | 4.2 KB |
+**Splitting `GameState` in code is rejected on cost.** It stops being one value a pure function takes and returns, every rulebook signature grows a second parameter, and `applyEvents(initial, log) === current` stops covering the whole thing — for a saving the table below shows is zero at today's board size.
 
-Two percent. SQLite writes at **page** granularity, so the pages holding a column an `UPDATE` did not touch never enter the WAL at all — the intuition that a row rewrite costs its unchanged neighbours is simply wrong here. What that leaves is the price of splitting, which is real: `GameState` stops being one value a pure function takes and returns, every rulebook signature grows a second parameter, and `applyEvents(initial, log) === current` stops covering the whole thing. Rejected on evidence, not taste.
+**Moving `initial_state` out of the hot row is a size question**, and the honest answer is *not yet*. Measured with real states from the real reducer, `wal_autocheckpoint` disabled, counting WAL frames rather than file growth:
+
+| per move | same row | own table |
+|---|---|---|
+| 8×8 (today) | 0.97 pages · 3.9 KB | 0.97 pages · 3.9 KB |
+| 40×40 | 9.8 pages · 39 KB | 5.9 pages · 24 KB |
+
+The mechanism is worth stating precisely, because it is easy to get backwards in both directions. SQLite writes whole **pages** to the WAL, and an `UPDATE` that leaves the record's layout alone dirties only the pages it actually changed — updating a small column beside a 14.5 KB blob costs 1.1 pages against 1.0 with the blob moved away, so an untouched neighbour really is free *in that case*. But when the updated column's **length** changes, the record shifts and the chain is rewritten, untouched neighbours included. `current_state` changes length on essentially every move (measured 1337–1339 bytes across a real 8×8 game), so a large-map row does pay for `initial_state` on every command.
+
+Today that costs nothing, because the whole row fits inside one 4 KB page and there is nothing to separate. At 40×40 the split cuts WAL per move by 40%, so **revisit it when maps grow** — it is a one-table change with no read path, not a redesign.
+
+⚠️ **The methodology matters, because the first attempt at this measurement was confidently wrong.** Leaving `wal_autocheckpoint` at its default lets a checkpoint reuse frames in place, so WAL *file growth* undercounts what was written; and writing the same blob every iteration keeps the record layout stable, hiding the exact effect under test. Those two mistakes together produced a clean, plausible "2% — splitting never helps", which is false.
 
 Two neighbouring ideas fail for their own reasons, recorded so they are not re-derived. **Referencing the map by `map_id` instead of embedding the grid** would make a stored state no longer self-contained — old matches would silently depend on map modules never changing, which is the ruleset-versioning problem under Known compromises arriving early — and the client, which is sent an instantiated grid precisely so it never needs map definitions, would have to gain them. **Compressing the blob** works and buys a lot on repetitive grid JSON, but it makes every row opaque to `sqlite3` and adds a codec to the read path, for a game whose moves are tens of seconds apart.
 
-The instinct is sound; it was pointing at the wrong medium. Immutable data *was* being retransmitted at cost — on the wire, where a caught-up poll shipped a whole board the client discarded. That one was worth fixing and is fixed; see Transport.
+The instinct is sound, and on the wire it was already collecting: a caught-up poll used to ship a whole board the client discarded. That one was worth fixing and is fixed; see Transport. On disk it is a real but *deferred* cost, gated on map size rather than dismissed.
 
 The schema is close to identical on Postgres, but not free: `created_at` holds `Date.now()`, which overflows Postgres `INTEGER` (int4) and would need `BIGINT` or `TIMESTAMPTZ`. It works in SQLite only because SQLite integers are 64-bit.
 
