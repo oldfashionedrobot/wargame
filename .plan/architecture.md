@@ -588,13 +588,26 @@ What a priority queue would buy is *settles-once* — a node's cost final the fi
 
 **`exploreMovement` takes the budget and movement type as arguments; it does not look them up.** Resolving them is the caller's job, and there are two. A search that looked them up would make every test here name a real unit type to get a budget, coupling tests about the *search* to catalog values — tuning cavalry's range would break tests that have nothing to do with cavalry. Passing the whole `UnitType` instead would be one parameter fewer and worse: the search would be handed an object it uses two fields of, and phase 7's `ranged` and `charge` would start implying it cares about them.
 
-**The route preview is what earns 6e's destination step**, and it should be argued for on those terms rather than as a confirmation dialog. With variable cost the cheapest route is genuinely non-obvious, so seeing it before committing is real information. The *confirm click itself* is scaffolding for 7's move-then-attack menu — in phase 6 it offers exactly one choice — and is worth landing anyway, because 7e otherwise rebuilds the interaction it replaces. Three gestures the plan owes it, none of which were written down: a second click on the chosen tile **confirms**, a click on another reachable tile **re-targets**, and a click on the unit or outside the range **cancels**. `SelectionState` grows `destinationChosen` as a member, exactly as 5a designed for, and `reachableTiles` becomes `movement` here — 6e, not 6b, because this is where `pathTo` first has a consumer.
+**The route preview is what earns 6e's destination step**, and it should be argued for on those terms rather than as a confirmation dialog. With variable cost the cheapest route is genuinely non-obvious, so seeing it before committing is real information. The *confirm click itself* is scaffolding for 7's move-then-attack menu — in phase 6 it offers exactly one choice — and is worth landing anyway, because 7e otherwise rebuilds the interaction it replaces. Three gestures the plan owes it, none of which were written down: a second click on the chosen tile **confirms**, a click on another reachable tile **re-targets**, and a click on the unit or outside the range **cancels**. `SelectionState` grows `destinationChosen` as a member, exactly as 5a designed for. (`reachableTiles` became `movement` back in 6c, where `handleTileClick` first needed `pathTo`; the hover preview is its second consumer.)
+
+⚠️ **The selection is a snapshot, and a snapshot can go stale.** `handleTileClick` reads fresh state from `getState()` but a `movement` captured at selection time, so an opponent's poll landing mid-selection can leave it offering a route through a tile that is now occupied. The server refuses, the rejection surfaces, the selection rolls back — the correction that already exists and is already tested. Unreachable in hot-seat, where one player acts at a time; real from phase 9. Recorded as a known property rather than found later as a bug.
 
 **On `SelectionState` growing:** it needs no splitting into slices. It is one union, one populated member, three fields today, and the union is already what makes "tiles with no selected unit" unrepresentable — the coordination problem a split would reintroduce. What to watch instead is that each new phase genuinely needs everything the previous one carried *plus* more, so the members start repeating fields. When they do, factor the shared part into a base and intersect it per phase (`{ phase: 'destinationChosen'; path; facing } & Selected`) rather than piling optional fields onto one member. Accumulating optionals is the failure mode; member count is not.
 
 ### ⚠️ Invariant: one cost model
 
 **Client and server read the same terrain table from `shared/`.** Pathfinding needs no cross-machine determinism, because the server validates rather than re-derives — but the *cost model* must agree, or the reachable overlay offers moves the server rejects. Any movement modifier added later belongs in `shared/`, never on one side.
+
+**Enforced by construction from 6c, not by discipline.** The search and the walk are two consumers of the same question — *may this unit step onto this tile, and what does it cost* — so they call one function rather than each implementing it:
+
+```ts
+type Entry = { ok: true; cost: number } | { ok: false; reason: string }
+entryCost(state, unit, coordinate, movementType): Entry
+```
+
+It answers for all four ways a step can fail: off the grid, impassable to this movement type, blocked by an enemy, or otherwise the terrain cost. `exploreMovement` does `if (!entry.ok) continue`; `validatePath` does `if (!entry.ok) return entry.reason`. The result/reason shape is the one `ValidationResult` and `CommandResult` already use.
+
+Note what it deliberately does **not** decide: whether a unit may *stop* there. Entering and stopping are different questions — a friendly unit's tile is enterable and not stoppable — which is the same distinction `settled` and `reachable` draw, so the destination check stays with `validatePath`.
 
 ### `validatePath` belongs here, not to combat
 
@@ -603,6 +616,14 @@ It is a movement rule that happens to be needed before attacking, and it fixes a
 ⚠️ **It is also a breaking change to the client**, which today sends exactly the straight line the check will start refusing — see phase 6's hard dependencies. `validatePath` and the client's switch to `pathTo` are one commit (6c).
 
 **One carve-out the walk needs:** the occupancy check must exclude the moving unit itself. `path[0]` is the unit's own tile, and a single-element path — legal at cost 0, the "attack without moving" shape — ends where it starts. Without the exclusion a unit standing still fails its own occupancy test. In phase 6 that shape is simply "wait in place", worth allowing since it costs nothing and 7d needs it.
+
+**It lives in `movement.ts`**, beside `exploreMovement` and sharing `entryCost` with it — `move.ts` stays the command reducer. It needs no barrel export: `validateMove` is its only caller.
+
+**The reasons it returns are specific, and they are diagnostics.** "Move exceeds movement range" and "destination is occupied" replace today's blanket `illegal move`, which costs nothing given there is no hidden information to leak. But be clear about who reads them: once the client picks destinations from `movement.reachable` and paths from `pathTo`, **a well-behaved client can only trip these through a stale snapshot** — every other failure means the client is broken or hostile. So they are written for whoever is debugging, not as prose for a player.
+
+**What actually bounds a path's length is the budget, not the no-revisit rule.** Every terrain costs at least 1 to enter, so a total within budget already caps the number of steps. The no-revisit check stays because a path that visits a tile twice is nonsense no legitimate client produces and refusing nonsense is two lines — but it should not be justified as a bound, and `MAX_PATH_STEPS` remains what it says it is: an allocation limit applied before parsing, far above any real path.
+
+**`canMoveUnit` is deleted here.** `validateMove` was its only caller and it was never in the barrel; its two jobs come apart cleanly into `canSelectUnit` (ownership and `hasActed`) and `validatePath` (is this route walkable), which is the separation this section already asks for. `validateMove` becomes a unit lookup, that check, and the walk — and `'move has no destination'` disappears, since an empty path is just one of the things the walk refuses.
 
 ### Maps
 
@@ -1286,12 +1307,18 @@ Verifiable with no combat: does the overlay stop at mountains, does cavalry outr
 
   ⚠️ **Expanding `TileType` breaks the client build in this step, not 6e.** `render/terrain.ts` keys `TILE_COLORS` on `Record<TileType, Color4>` with one entry today, so six placeholder colours land here to keep the gate green; 6e does the real visual pass. That is the `Record` exhaustiveness working exactly as intended — it will not let the renderer forget a terrain.
 
-  **`SelectionState` does not change here.** It stores `movement.reachable` and keeps its field name; 6e switches it to hold the whole `movement` when `pathTo` gains a consumer. Carrying an unused closure through React state for two steps only invites someone to delete it.
+  **`SelectionState` does not change here.** It stores `movement.reachable` and keeps its field name; **6c** switches it to hold the whole `movement`, because that is where `handleTileClick` first needs `pathTo` to build a command. (An earlier draft said 6e — wrong: 6e's hover preview is the second consumer, not the first.)
 
   ⚠️ **Wipe the dev database again**: `'land'` leaves `TileType`, so any match created since the 6a wipe stops loading.
 - **6c** — `validatePath` inside `validateMove`, **and** the client sending `pathTo`'s result, together. It lands in `validateMove` rather than anywhere else because validation and resolution are already separate: `validateMove` decides legality, `resolveMove` only emits the event. `canMoveUnit`'s `getReachableTiles` call leaves the server path entirely — an O(path) walk replaces an O(board) search per command.
 
-  ⚠️ **Named scope: about ten hand-built path fixtures across nine files stop being legal here**, because every one of them is a two-element endpoint pair that only passes today since `validateMove` reads the last element and ignores the rest. Some are not even orthogonal — the replay test that proves `initial_state + log = current_state` walks `(0,0) → (1,2)` diagonally. The fix is a `route(...waypoints)` helper in `testing.ts` that expands endpoints into step-by-step orthogonal routes, **not** a fixture library: `testing.ts` lives inside `shared/`, whose zero-dependency property is what makes purity a resolution error rather than a review catch, and factories generate plausible varied data where the problem here is a domain constraint. Tests that assert on *illegal* paths keep writing the array by hand, so the illegality stays visible where it is asserted.
+  ✅ The fixture half of this landed in 6b: `route(...waypoints)` in `testing.ts` expands endpoints into step-by-step orthogonal routes, and every path fixture that feeds `validateCommand` already uses it, so 6c turns the walk on against fixtures that satisfy it rather than changing the checker and ten fixtures at once. It is a helper rather than a fixture library because `testing.ts` lives inside `shared/`, whose zero-dependency property is what makes purity a resolution error rather than a review catch — and factories generate plausible varied data where this problem is a domain constraint. Tests asserting on *illegal* paths keep hand-written arrays, so the illegality stays visible where it is asserted.
+
+  **`SelectionState` renames `reachableTiles` to `movement` here, not at 6e.** `handleTileClick` needs `pathTo` to build the command it emits, which is the first real consumer — 6e's hover preview is the second. ⚠️ **The range check must stay `movement.reachable.some(...)` and must not become `pathTo(…) !== null`**: `pathTo` answers for any *settled* tile, friendly-occupied ones included, and those are exactly the tiles nobody may stop on.
+
+  Remaining client churn is four sites: `selection.ts` twice, `GameCanvas.tsx`'s `showSelection`, and two fixtures that still assert two-element paths (`selection.test.ts`, `useGameSession.test.ts`).
+
+  **A `getUnit(state, id)` joins `getUnitAt` in `queries.ts`** — finding a unit by id is currently written out in both `move.ts` and `selection.ts`, which are the two files this step edits anyway.
 - **6d** — character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`; `matches` gains `map_id`. **That column is the first real schema migration** — the thing the tooling exists for, worth doing deliberately. Two mechanics the plan owes it: maps are *code modules*, so `map_id` is a text column with **no foreign key**, and a `NOT NULL` column on a non-empty table needs a default or nullability.
 - **6e** — terrain rendering, route preview, and the confirm gesture. New Babylon code follows 5c-3's convention: per-file imports, side-effect modules named where the augmented method is called.
 
