@@ -1,6 +1,7 @@
 // Test fixtures. Kept in src/ so tests can import it, and out of index.ts so it
 // is not part of the package's public surface -- server/ and client/ have no
 // reason to build game states by hand.
+import type { UnitTypeId } from './data/unitTypes';
 import type { GameState, Unit } from './types';
 
 export interface UnitSpec {
@@ -8,7 +9,10 @@ export interface UnitSpec {
   col: number;
   row: number;
   owner?: string;
-  movementRange?: number;
+  /** Defaults to infantry. What it buys -- movement range today -- is read
+   *  from the catalog, so a search test wanting a particular budget passes
+   *  one to the search rather than picking a type that happens to have it. */
+  unitTypeId?: UnitTypeId;
   hasActed?: boolean;
 }
 
@@ -40,7 +44,7 @@ export function makeState(
       id: u.id,
       position: { col: u.col, row: u.row },
       facing: 'south',
-      movementRange: u.movementRange ?? 3,
+      unitTypeId: u.unitTypeId ?? 'infantry',
       owner: u.owner ?? 'blue',
       hasActed: u.hasActed ?? false,
     })),

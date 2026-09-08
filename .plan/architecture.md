@@ -492,9 +492,9 @@ GameState   { grid, units, players, currentTurn }               ✅
 
 Unit {
   id, position, facing, owner, hasActed                         ✅
-  movementRange                                                 🚧 moves onto UnitType
-  unitTypeId, health, maxHealth                                 ⬜
-}
+  unitTypeId                                                    ✅ 6a
+  health                                                        ⬜ 7b
+}                     movementRange lives on UnitType; maxHealth will too
 
 Command       MoveCommand | EndTurnCommand                      ✅
               UnitActionCommand (move + optional attack)        ⬜ replaces MoveCommand
@@ -517,7 +517,7 @@ Static content, not runtime state: what damage cavalry deals to infantry never c
 
 | File | Contents | |
 |---|---|---|
-| `unitTypes.ts` | `UnitType` catalog keyed by `UnitTypeId`, referenced by `Unit.unitTypeId` | 🚧 |
+| `unitTypes.ts` | `UnitType` catalog keyed by `UnitTypeId`, referenced by `Unit.unitTypeId` | ✅ identity + movement; combat fields ⬜ |
 | `terrain.ts` | Per terrain: a single `defense` value plus `cost` per movement type, `null` = impassable. See Terrain | ⬜ |
 | `chargeThresholds.ts` | `Record<AttackerUnitTypeId, Record<DefenderUnitTypeId, number>>` | ⬜ |
 | `damageTable.ts` | attacker-vs-defender base damage % | ⬜ |
@@ -1266,7 +1266,7 @@ Verifiable with no combat: does the overlay stop at mountains, does cavalry outr
 
 #### The sub-steps
 
-- **6a** — `Unit` gains `unitTypeId` and drops `movementRange`, which moves onto `UnitType` (7a, pulled forward). Pure `shared/` plus `initialState`; no migration. The barrel gains `UnitType`, `UnitTypeId`, `MovementType` and `getUnitType`, which have never been exported — `unitTypes.ts` has been dead code since the first commit, so 6a is the first time anything imports it.
+- **6a** ✅ — `Unit` gains `unitTypeId` and drops `movementRange`, which moves onto `UnitType` (7a, pulled forward). Pure `shared/` plus `initialState`; no migration. The barrel gained `UnitType`, `UnitTypeId`, `MovementType` and `getUnitType`, which had never been exported — `unitTypes.ts` was dead code from the first commit, so this is the first thing that ever imported it. `getUnitType` now throws on an unknown id rather than returning `undefined`, which is what turns a stale row into a legible error instead of NaN movement somewhere else; the catalog got its first tests, written against the contract rather than the numbers so tuning does not break them. Behaviour is unchanged end to end, verified in the browser against a fresh database.
 - **6b** — the terrain table and `exploreMovement`, returning `reachable` and `pathTo`. Pure and fully unit-testable. `getReachableTiles` becomes `exploreMovement` through the barrel, which ripples through its tests and `selection.ts`.
 
   ⚠️ **`exploreMovement` takes the budget and movement type as arguments; it does not look them up.** The lookup belongs to its two or three callers. Otherwise every search test has to name a real unit type to get a budget, which couples tests about *Dijkstra* to catalog values — and tuning cavalry's range would break tests that have nothing to do with cavalry. The current `getReachableTiles(state, unit)` already reads a plain number off the unit; this keeps that property once the number moves.

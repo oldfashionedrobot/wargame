@@ -1,4 +1,10 @@
-import { canSelectUnit, coordinatesEqual, getReachableTiles, getUnitAt } from '@vod/shared';
+import {
+  canSelectUnit,
+  coordinatesEqual,
+  getReachableTiles,
+  getUnitAt,
+  getUnitType,
+} from '@vod/shared';
 import type { Command, Coordinate, GameState } from '@vod/shared';
 
 // A discriminated union rather than nullable fields: "reachable tiles with no
@@ -34,7 +40,7 @@ function trySelect(state: GameState, coordinate: Coordinate): SelectionState {
     phase: 'unitSelected',
     unitId: unit.id,
     position: unit.position,
-    reachableTiles: getReachableTiles(state, unit),
+    reachableTiles: getReachableTiles(state, unit, getUnitType(unit.unitTypeId).movementRange),
   };
 }
 

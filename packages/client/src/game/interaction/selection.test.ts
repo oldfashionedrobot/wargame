@@ -11,7 +11,7 @@ import type { SelectionState } from './selection';
 // Blue to move. b1 is free, b2 has already acted, r1 belongs to the opponent.
 const board = (): GameState =>
   makeState(7, [
-    { id: 'b1', col: 1, row: 1, movementRange: 2 },
+    { id: 'b1', col: 1, row: 1 },
     { id: 'b2', col: 5, row: 5, hasActed: true },
     { id: 'r1', col: 6, row: 6, owner: 'red' },
   ]);
@@ -77,7 +77,7 @@ describe('handleTileClick, a unit selected', () => {
 
   it('switches to another of your units rather than trying to move onto it', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, movementRange: 2 },
+      { id: 'b1', col: 1, row: 1 },
       { id: 'b3', col: 6, row: 1 },
     ]);
     const { selection, command } = handleTileClick(state, withB1Selected(state), at(6, 1));
@@ -89,7 +89,7 @@ describe('handleTileClick, a unit selected', () => {
   // never in reachableTiles -- clicking it must reselect, never move.
   it('reselects rather than moving when a friendly unit stands in range', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, movementRange: 3 },
+      { id: 'b1', col: 1, row: 1 },
       { id: 'b3', col: 1, row: 2 },
     ]);
     const { selection, command } = handleTileClick(state, withB1Selected(state), at(1, 2));
@@ -99,7 +99,7 @@ describe('handleTileClick, a unit selected', () => {
 
   it('does not offer a move onto an enemy', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, movementRange: 3 },
+      { id: 'b1', col: 1, row: 1 },
       { id: 'r1', col: 1, row: 2, owner: 'red' },
     ]);
     const result = handleTileClick(state, withB1Selected(state), at(1, 2));

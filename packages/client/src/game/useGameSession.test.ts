@@ -19,8 +19,8 @@ import type { GameSessionCallbacks } from './useGameSession';
 
 const at = (col: number, row: number): Coordinate => ({ col, row });
 
-// b1 can act; its position and movementRange 2 make (1,3) a legal move target.
-const board = makeState(7, [{ id: 'b1', col: 1, row: 1, movementRange: 2 }]);
+// b1 can act; its position and infantry's range of 3 make (1,3) a legal move target.
+const board = makeState(7, [{ id: 'b1', col: 1, row: 1 }]);
 
 const moved = (): GameEvent => ({ type: 'unitMoved', unitId: 'b1', path: [at(1, 1), at(1, 3)] });
 
@@ -96,7 +96,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake);
     expect(result.current.gameState).toEqual(board);
 
-    const next = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+    const next = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
     // The commit runs through the queue, a microtask behind the push -- a
     // synchronous act would still see the old state.
     await act(async () => fake.push([], next));
@@ -123,7 +123,7 @@ describe('useGameSession', () => {
       const { result } = renderSession(fake, cb);
       await act(async () => {}); // settle the initial (empty, unanimated) batch
 
-      const next = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+      const next = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
       await act(async () => fake.push([moved()], next));
 
       // Arrived and animating -- not yet snapped over, not yet committed.
@@ -144,8 +144,8 @@ describe('useGameSession', () => {
       const { result } = renderSession(fake, cb);
       await act(async () => {});
 
-      const mid = makeState(7, [{ id: 'b1', col: 1, row: 2, movementRange: 2 }]);
-      const end = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+      const mid = makeState(7, [{ id: 'b1', col: 1, row: 2 }]);
+      const end = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
       await act(async () => fake.push([moved()], mid));
       await act(async () => fake.push([moved()], end));
 
@@ -168,7 +168,7 @@ describe('useGameSession', () => {
       const { result } = renderSession(fake, cb);
       await act(async () => {});
 
-      const next = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+      const next = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
       await act(async () => fake.push(Array.from({ length: 11 }, moved), next));
 
       expect(cb.onEvents).not.toHaveBeenCalled();
@@ -183,7 +183,7 @@ describe('useGameSession', () => {
       await act(async () => {});
 
       setTabHidden(true);
-      const next = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+      const next = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
       await act(async () => fake.push([moved()], next));
 
       expect(cb.onEvents).not.toHaveBeenCalled();
@@ -199,7 +199,7 @@ describe('useGameSession', () => {
       const { result } = renderSession(fake, cb);
       await act(async () => {});
 
-      const next = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+      const next = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
       await act(async () => fake.push([moved()], next));
 
       expect(cb.onSnap).toHaveBeenLastCalledWith(next);
@@ -221,7 +221,7 @@ describe('useGameSession', () => {
 
       // Newer authority supersedes the rejection the moment it arrives; only
       // the state commit waits on the animation.
-      const next = makeState(7, [{ id: 'b1', col: 1, row: 3, movementRange: 2 }]);
+      const next = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
       await act(async () => fake.push([moved()], next));
       expect(result.current.rejection).toBeNull();
       expect(result.current.gameState).toEqual(board);

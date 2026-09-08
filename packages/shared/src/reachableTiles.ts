@@ -14,13 +14,23 @@ function neighborsOf(coordinate: Coordinate): Coordinate[] {
 // Placeholder movement model: every tile costs 1 to enter, terrain is
 // ignored entirely. A plain BFS is correct here specifically because every
 // edge has the same cost -- once terrain-aware cost enters the picture this
-// has to become a Dijkstra/uniform-cost search instead, but the signature
-// (a unit in, a set of reachable coordinates out) stays the same.
+// has to become a Dijkstra/uniform-cost search instead.
+//
+// The budget arrives as an argument rather than being read off the unit,
+// which is deliberate: it lives on the unit's UnitType now, and a search that
+// looked it up would make every test here name a real unit type to get one --
+// coupling tests about the *search* to catalog values, so tuning cavalry's
+// range would break tests that have nothing to do with cavalry. Resolving it
+// is the caller's job; there are two.
 //
 // Enemy-occupied tiles are fully impassable (can't enter or pass through).
 // Friendly-occupied tiles can be passed through but aren't valid stopping
 // points -- matches how Advance Wars handles unit collision.
-export function getReachableTiles(state: GameState, unit: Unit): Coordinate[] {
+export function getReachableTiles(
+  state: GameState,
+  unit: Unit,
+  movementRange: number,
+): Coordinate[] {
   const gridHeight = state.grid.length;
   const gridWidth = state.grid[0]?.length ?? 0;
 
@@ -35,7 +45,7 @@ export function getReachableTiles(state: GameState, unit: Unit): Coordinate[] {
     const current = queue.shift();
     if (!current) break;
     const currentCost = visited.get(coordinateKey(current))?.cost ?? 0;
-    if (currentCost >= unit.movementRange) continue;
+    if (currentCost >= movementRange) continue;
 
     for (const next of neighborsOf(current)) {
       if (!isWithinGrid(next, gridWidth, gridHeight)) continue;

@@ -52,7 +52,7 @@ async function newMatch(): Promise<MatchSummary> {
   return (await postJson('/api/matches')).json() as Promise<MatchSummary>;
 }
 
-// blue-1 starts at (0,0) with movementRange 3, and blue moves first.
+// blue-1 starts at (0,0) as infantry, range 3, and blue moves first.
 const legalMove: Command = {
   type: 'move',
   unitId: 'blue-1',

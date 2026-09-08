@@ -16,6 +16,11 @@ export type {
   Unit,
 } from './types';
 
+// The unit catalog. Both sides read it: the client to preview what a unit can
+// do, the server to resolve the same thing authoritatively.
+export type { MovementType, UnitType, UnitTypeId } from './data/unitTypes';
+export { getUnitType } from './data/unitTypes';
+
 export { coordinatesEqual, isWithinGrid } from './coordinate';
 export { getCurrentPlayer, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';

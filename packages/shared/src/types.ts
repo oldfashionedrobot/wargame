@@ -1,3 +1,5 @@
+import type { UnitTypeId } from './data/unitTypes';
+
 export interface Coordinate {
   col: number;
   row: number;
@@ -21,7 +23,12 @@ export interface Unit {
   id: string;
   position: Coordinate;
   facing: Facing;
-  movementRange: number;
+  /**
+   * What this unit *is*. Everything that never changes during a match --
+   * movement range today, health and combat stats later -- lives on the
+   * catalog entry this names, not on the instance. See data/unitTypes.
+   */
+  unitTypeId: UnitTypeId;
   owner: PlayerId;
   hasActed: boolean;
 }

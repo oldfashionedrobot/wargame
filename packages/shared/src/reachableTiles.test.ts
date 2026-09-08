@@ -7,7 +7,11 @@ import type { Coordinate, GameState } from './types';
 const has = (tiles: Coordinate[], col: number, row: number) =>
   tiles.some((t) => t.col === col && t.row === row);
 
-const reachable = (state: GameState, id: string) => getReachableTiles(state, unitAt(state, id));
+// The budget is an argument to the search, not a property of the fixture --
+// so these tests state the number they are about, and stay unaffected by
+// tuning any unit type's range in the catalog.
+const reachable = (state: GameState, id: string, movementRange = 3) =>
+  getReachableTiles(state, unitAt(state, id), movementRange);
 
 describe('getReachableTiles', () => {
   it('excludes the unit its own tile -- which is what makes clicking it a deselect', () => {
@@ -16,16 +20,16 @@ describe('getReachableTiles', () => {
   });
 
   it('reaches exactly the tiles within the movement budget', () => {
-    const state = makeState(9, [{ id: 'b1', col: 4, row: 4, movementRange: 2 }]);
-    const tiles = reachable(state, 'b1');
+    const state = makeState(9, [{ id: 'b1', col: 4, row: 4 }]);
+    const tiles = reachable(state, 'b1', 2);
     expect(has(tiles, 4, 2)).toBe(true); // 2 away
     expect(has(tiles, 5, 5)).toBe(true); // 2 away, diagonal by two orthogonal steps
     expect(has(tiles, 4, 1)).toBe(false); // 3 away
   });
 
   it('does not leave the grid', () => {
-    const state = makeState(3, [{ id: 'b1', col: 0, row: 0, movementRange: 5 }]);
-    const tiles = reachable(state, 'b1');
+    const state = makeState(3, [{ id: 'b1', col: 0, row: 0 }]);
+    const tiles = reachable(state, 'b1', 5);
     expect(tiles).toHaveLength(3 * 3 - 1); // the whole board except its own tile
     expect(tiles.every((t) => t.col >= 0 && t.col < 3 && t.row >= 0 && t.row < 3)).toBe(true);
   });
@@ -43,7 +47,7 @@ describe('getReachableTiles', () => {
 
     // A one-wide corridor, so the only route to (0,2) runs through (0,1).
     const corridor = (blocker: UnitSpec) =>
-      makeState({ cols: 1, rows: 3 }, [{ id: 'b1', col: 0, row: 0, movementRange: 3 }, blocker]);
+      makeState({ cols: 1, rows: 3 }, [{ id: 'b1', col: 0, row: 0 }, blocker]);
 
     it('cannot pass through an enemy either -- it blocks the route', () => {
       const tiles = reachable(corridor({ id: 'r1', col: 0, row: 1, owner: 'red' }), 'b1');

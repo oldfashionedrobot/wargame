@@ -41,6 +41,17 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
   },
 };
 
+/**
+ * Throws on an id the catalog does not hold, rather than returning undefined.
+ *
+ * The types make that unreachable in-process, and guarantee nothing about a
+ * `GameState` parsed back out of the database -- where a row written before a
+ * unit type existed is exactly the case this catches. Same reasoning as
+ * applyEvents refusing an unknown event: a silent undefined here surfaces as
+ * NaN movement somewhere far away.
+ */
 export function getUnitType(id: UnitTypeId): UnitType {
-  return UNIT_TYPES[id];
+  const unitType = UNIT_TYPES[id];
+  if (!unitType) throw new Error(`unknown unit type: ${String(id)}`);
+  return unitType;
 }
