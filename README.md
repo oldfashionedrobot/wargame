@@ -24,8 +24,10 @@ Configuration is one optional `.env` at the repo root (`PORT`,
 ## What plays
 
 Hot-seat against a real server. Select a unit, see the tiles it can reach across
-terrain, move it along a route, end turn. Two players, three infantry each, on
-an 8×8 all-plains map.
+terrain, hover to preview the route it would take, click to move it there, end
+turn. Two players with an infantry, a cavalry and an artillery each, on a map
+split by a river with a single bridge — infantry can ford it, the other two
+must take the bridge.
 
 Terrain, pathfinding and path validation are built; combat is not.
 

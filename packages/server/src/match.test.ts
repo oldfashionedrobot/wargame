@@ -27,8 +27,8 @@ const move = (unitId: string, to: [number, number], from: [number, number]): Com
   path: route({ col: from[0], row: from[1] }, { col: to[0], row: to[1] }),
 });
 
-// The starting board, from initialState.ts. Only blue-1 at (0,0) and red-1 at
-// (7,7) are relied on below; the rest of the roster is free to change.
+// The starting board, from the `classic` map. Only blue-1 at (0,0) and red-1
+// at (7,7) are relied on below; the rest of the roster is free to change.
 const BLUE = 'player-blue';
 const RED = 'player-red';
 

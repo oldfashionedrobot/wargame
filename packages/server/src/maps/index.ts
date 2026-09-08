@@ -1,7 +1,7 @@
 import { classic } from './classic';
 import type { GameMap } from './types';
 
-export type { GameMap, MapUnit } from './types';
+export type { GameMap } from './types';
 
 // Every map, by id. Maps are code rather than rows because there is one of
 // them and it is reviewed as a diff; see *Maps in a table* in the roadmap for

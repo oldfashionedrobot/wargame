@@ -7,8 +7,9 @@ Turn-based strategy game, American Revolutionary War theme. React + TypeScript
 is planned but unbuilt lives in [`roadmap.md`](roadmap.md).
 
 **What plays today:** hot-seat against a real server process. Select a unit,
-see its movement range over terrain, move it along a route, end turn. Two
-players, three infantry each, on an 8×8 all-plains map. No combat.
+see the tiles it can reach across terrain, hover to preview the route, click to
+move it there, end turn. Two players, one infantry, cavalry and artillery each,
+on an 8×8 map split by a river with a single bridge. No combat.
 
 ## Packages
 
