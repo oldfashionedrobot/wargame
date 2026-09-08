@@ -385,9 +385,11 @@ on update (events, state):
     commit state
 ```
 
-`worthAnimating` is false for an empty batch, for more than 10 events, and while
-the tab is hidden. A failing animation or snap is caught and logged; the commit
-always happens.
+`worthAnimating` is false for an empty batch, while the tab is hidden, and for
+a batch covering more than 14 tiles of walking. The budget counts **tiles, not
+events**, because one `unitMoved` can be a six-tile walk and every unit moves at
+the same pace — so tiles are what the wait is made of. A failing animation or
+snap is caught and logged; the commit always happens.
 
 **`game/interaction/selection.ts`** — `handleTileClick(state, selection,
 coordinate)` returns a new selection and an optional command. Pure: no React, no

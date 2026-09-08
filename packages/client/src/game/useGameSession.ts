@@ -37,10 +37,26 @@ export interface GameSessionCallbacks {
 // catch-up replay at tween speed is worse than useless. Hidden tabs skip
 // too: browsers throttle rAF there, so an awaited animation would stall the
 // queue rather than play.
-const MAX_ANIMATED_EVENTS = 10;
+//
+// Counted in tiles rather than events, because that is what costs time: a
+// move animates per step, so ten long moves is far more waiting than ten
+// short ones. At 0.3s a tile this is a bit over four seconds.
+const MAX_ANIMATED_TILES = 14;
+
+function animatedTiles(events: GameEvent[]): number {
+  return events.reduce(
+    (total, event) => total + (event.type === 'unitMoved' ? event.path.length - 1 : 0),
+    0,
+  );
+}
 
 function worthAnimating(events: GameEvent[]): boolean {
-  return events.length > 0 && events.length <= MAX_ANIMATED_EVENTS && !document.hidden;
+  if (events.length === 0 || document.hidden) return false;
+  const tiles = animatedTiles(events);
+  // Nothing to watch (an end-turn on its own) still counts as worth playing:
+  // the queue is what orders the state commit, and skipping it there would
+  // commit early rather than save time.
+  return tiles <= MAX_ANIMATED_TILES;
 }
 
 export interface GameSession {

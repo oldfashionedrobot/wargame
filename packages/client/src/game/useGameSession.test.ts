@@ -24,6 +24,13 @@ const board = makeState(7, [{ id: 'b1', col: 1, row: 1 }]);
 
 const moved = (): GameEvent => ({ type: 'unitMoved', unitId: 'b1', path: [at(1, 1), at(1, 3)] });
 
+/** One move event covering `tiles` steps -- what the animation gate budgets in. */
+const walk = (tiles: number): GameEvent => ({
+  type: 'unitMoved',
+  unitId: 'b1',
+  path: Array.from({ length: tiles + 1 }, (_, step) => at(1, step)),
+});
+
 // happy-dom's document.hidden is a prototype getter; an own property shadows
 // it for the hidden-tab case below.
 function setTabHidden(hidden: boolean): void {
@@ -162,16 +169,16 @@ describe('useGameSession', () => {
       expect(result.current.gameState).toEqual(end);
     });
 
-    // The threshold is `<=`, so ten animates and eleven does not. Both sides
-    // of the boundary, because only one of them tells you which comparison it
-    // is.
+    // The threshold is `<=`, so fourteen tiles animate and fifteen do not.
+    // Both sides of the boundary, because only one of them tells you which
+    // comparison it is.
     it('still animates a batch of exactly the threshold size', async () => {
       const fake = fakeServer(board);
       const cb = callbacks();
       renderSession(fake, cb);
       await act(async () => {});
 
-      await act(async () => fake.push(Array.from({ length: 10 }, moved), board));
+      await act(async () => fake.push([walk(14)], board));
       expect(cb.onEvents).toHaveBeenCalled();
     });
 
@@ -182,11 +189,35 @@ describe('useGameSession', () => {
       await act(async () => {});
 
       const next = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
-      await act(async () => fake.push(Array.from({ length: 11 }, moved), next));
+      await act(async () => fake.push([walk(15)], next));
 
       expect(cb.onEvents).not.toHaveBeenCalled();
       expect(cb.onSnap).toHaveBeenLastCalledWith(next);
       expect(result.current.gameState).toEqual(next);
+    });
+
+    // The budget is tiles, not events, because tiles are what take time: three
+    // long moves outlast a dozen one-step ones. An event-counting gate passes
+    // the two tests above and still sits through this.
+    it('snaps a few long moves and animates many short ones', async () => {
+      const fake = fakeServer(board);
+
+      const long = callbacks();
+      renderSession(fake, long);
+      await act(async () => {});
+      await act(async () => fake.push([walk(6), walk(6), walk(6)], board));
+      expect(long.onEvents).not.toHaveBeenCalled();
+
+      const short = callbacks();
+      renderSession(fake, short);
+      await act(async () => {});
+      await act(async () =>
+        fake.push(
+          Array.from({ length: 12 }, () => walk(1)),
+          board,
+        ),
+      );
+      expect(short.onEvents).toHaveBeenCalled();
     });
 
     it('snaps instead of animating while the tab is hidden', async () => {
