@@ -732,7 +732,7 @@ Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DE
 
 ## Open questions
 
-- **Counter-attack for `min > 1` units.** "No counter given or received" was settled when indirect fire and immobility were the same thing. Now that `canMoveAndAttack` is independent of range category, it's worth re-checking whether the rule should still key off `min > 1` alone. Probably still correct — nothing has challenged it — but never explicitly revisited.
+- **Counter-attack for `min > 1` units.** "No counter given or received" was settled when indirect fire and immobility were the same thing. Now that `canMoveAndAttack` is independent of range category, it's worth re-checking whether the rule should still key off `min > 1` alone. Probably still correct — nothing has challenged it — but never explicitly revisited. **Owned by 8b**, which is where it stops being answerable in the abstract.
 - ✅ ~~**`net/gameServer.ts` is untested**~~ — 22 tests as of 5a: seq deduplication (a poll in flight during a submit no longer goes unchecked), exponential backoff and its cap, the status transitions, `dispose` including a poll resolving after teardown, and — once step 5's harness landed — the hidden-tab interval and the `visibilitychange` reset. `fetch` and timers faked, happy-dom for the document.
 - ✅ ~~**No automated tests.**~~ 143 of them now — 50 in `shared/`, 45 in `server/`, 48 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, `getReachableTiles`, the event fold and its two design rules, `MatchStore` against `:memory:`, the HTTP surface end to end including the compressed client-build serving, `handleTileClick`, the polling `GameServer`, and `useGameSession` with its animation gate. What is *not* covered: the renderer — WebGL, so a real browser remains the check for it.
 
@@ -760,7 +760,7 @@ Things we've decided to live with, recorded so they don't get forgotten rather t
 
 - **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
 - **Buildings / capture points.** A terrain type with attached `{ owner, captureProgress }`, not a separate object layered on a tile.
-- **Graying out acted units.** The mechanical restriction is in scope; the visual is a later UI pass.
+- **Graying out acted units.** The mechanical restriction is in scope; the visual is a later UI pass — but note phase 7 asks for a "units that can still act" indicator, which is the same thing under another name. Whichever phase draws it, it should be one treatment, not two.
 - **Manual routing.** Dragging out a deliberately non-optimal path. Unblocked by the protocol carrying a path and the server validating it — purely a matter of building the UI for it.
 
 ## Roadmap
@@ -1242,10 +1242,14 @@ Terrain and pathing already exist by this point, so the numbers mean something. 
   ⚠️ **Invariant 9 constrains the events.** `unitAttacked` must carry the target's *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client can compute from the state preceding the event. And a successful charge emits `unitDied` **plus** `unitMoved`, two independently-applicable events, not one compound event carrying both effects.
 
   ⚠️ One nuance the client will hit here, parked by 5b with its answer attached: in a multi-resolution catch-up batch, "the state preceding event *k*" is the pre-batch replica folded through events 1..k−1 — a second hit on the same unit computes its damage number from the intermediate HP, not the pre-batch one. If the animation needs that, thread a **locally** folded state through the animation walk (`applyEvents` as a plain helper inside the queue task) — never per-event React commits, never a callback-signature change. Large batches snap without animating anyway (5b's threshold), so this only matters for small ones.
-- **7e** Attack in `handleTileClick` — clicking an enemy while selected becomes a real action, plus an attack-range overlay.
-- **7f** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop.
+- **7e** Attack in `handleTileClick` — clicking an enemy while selected becomes a real action, plus an attack-range overlay. Reuses 6e's destination step rather than replacing it: the `then:` branch is the choice that step was scaffolding for, and `SelectionState` gains `choosingTarget` as a member.
+- **7f** ⬜ **Health has to be visible**, and was missing from this phase entirely. 7b puts `health` in the model and 7d makes it change, but nothing draws it — a unit at 40 reads identically to one at 100, which makes combat unplayable by eye and unverifiable in the browser, the only check the renderer has. Smallest thing that works: a billboarded bar or a scaled emissive band on the unit mesh, driven from `syncUnits` since that already runs per commit with the state in hand. It belongs before 7g, because tuning a matchup table you cannot see the results of is guesswork.
+- **7g** ⬜ **The damage preview** — specified under Combat as "the sharp edge of invariant 8" and, until now, scheduled nowhere. The client computes the same formula with the luck term omitted and shows it on the target before the click commits. This is the step where *deterministic preview, yes; random resolution, no* stops being a slogan and becomes code, so it is worth its own commit rather than riding inside 7e.
+- **7h** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
 
-Without 7f the board reaches a state where one side has nothing left and End Turn keeps working forever.
+Without 7h the board reaches a state where one side has nothing left and End Turn keeps working forever.
+
+**Does 7d roll?** Yes. The step reads "damage from a table" and also "plus rolls", which is a contradiction worth settling in favour of rolling: the rolls plumbing — the server generating them, `Action` carrying them, resolution taking them as an argument so `shared/` stays pure — is the only *structurally* new thing in 7d, and it is what makes 7g's preview mean anything. A deterministic first cut would defer exactly the part worth proving.
 
 **Keep game outcome separate from lobby status.** An outcome is a fact about the board — produced by a reducer, replayable from the log — so it belongs in `GameState`. "Waiting for an opponent to join" is about *users*, belongs on the `matches` row, and no reducer should know about it. A single `status` field spanning both is the muddle to avoid.
 
@@ -1257,13 +1261,25 @@ Selection doesn't need it: `canSelectUnit` is a game fact ("may this unit act"),
 
 ### 8 — Combat depth
 
-Counter-attacks, ranged bands (`min`/`max`), `canMoveAndAttack`, and charge with its threshold table. Layered onto a pipeline phase 6 already proved.
+Four mechanics layered onto the pipeline **phase 7** proved. (This said "phase 6" while phase 6 has no combat in it.) They were one sentence between them, which understated the last one badly — so, in order:
+
+- **8a** `ranged: { range: { min, max }, canMoveAndAttack }` on `UnitType`. 7d hardcodes adjacency, so this is where the field is actually introduced and where "the category falls out of the numbers" gets tested: `min === 1` is direct, `min > 1` is indirect, no separate flag. `canMoveAndAttack: false` is where 6c's single-element path stops being a curiosity and becomes the only legal shape for a static unit.
+- **8b** Counter-attacks. Fires iff both units are direct, the defender survives, and the attacker is in its range — `computeDamage` called a second time in the other direction, on the defender's post-damage HP. **If it becomes a branch inside the attack resolver rather than a second call, that is the smell** the Combat section warns about.
+- **8c** Charge, its threshold table, and its own tuning pass. It gets its own step because it is the riskiest mechanic in the game: **the one part of combat with no reference behaviour to check against**, an untuned threshold per matchup, an untuned failure-damage function, and a success case that emits two events and displaces a unit. Everything else in phases 7–8 can be checked against AW; this can only be played.
+
+The **Open questions** entry on counter-attacks for `min > 1` units belongs to 8b and should be settled there rather than carried further — it was decided when indirect fire and immobility were the same thing, and 8a separates them.
 
 ### 9 — Multiplayer and auth
 
-- **Match lifecycle** — a way for a second person to join, and matches bound to users rather than open to anyone.
+- **Match lifecycle** — a way for a second person to join, and matches bound to users rather than open to anyone. The largest of the three and still a single bullet: it wants a lobby state, a join mechanism, and the `status` column this section is careful to keep apart from game outcome. Phase 4 was split in two for less; this should be split before it starts.
 - **OAuth sign-in** with sessions in our own DB — see Identity.
 - **Session→player map** at join, so `actor` comes from *who you are* rather than *whose turn it is*.
+
+⬜ **Spike Better Auth before designing around it.** Identity names it the first candidate and names the real unknown in the same breath — "what it assumes about a framework, since `Bun.serve` is not one". That is structurally the same gating question 5c carried about bun's bundler, and 5c is the reason to mark it: a plan built around an unverified assumption had to be rewritten when the spike came back negative. Answer three things first — does it run without a framework adapter, does its cookie replace `vod_session` cleanly, does its Drizzle adapter fit the existing libSQL client — and if any answer is no, the fallback is the thing the section already describes anyway: a `sessions` table of our own plus a small OAuth library.
+
+⚠️ **`owner_id` lands on a table full of unowned rows**, exactly as `'land'` tiles meet phase 6. Nullable column, backfill to a sentinel, or wipe — dev-only data, so wiping is almost certainly right, but it is a step to write down rather than hit.
+
+⚠️ **Decide whether hot-seat survives.** Every match ever played here has been two players sharing one browser, and the moment `actor` comes from the session that stops working by construction. If hot-seat stays, `resolveActor` needs a per-match mode and the whole phase grows a second path through its most security-sensitive function; if it goes, the mode the game was built and tested in disappears with it. Either is fine. Not choosing means discovering the answer while writing the auth code, which is the worst time.
 
 Schema work: `owner_id` on `matches`, a lobby `status` column, and a `sessions` table — three migrations, generated from `schema.ts`. Also **removes a read**: `http.ts` currently loads the match twice per command because `resolveActor` needs state to stamp `actor = currentTurn` while `submit` owns the read. A session lookup needs no state, so the extra read goes with it.
 
