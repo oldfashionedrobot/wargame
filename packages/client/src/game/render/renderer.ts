@@ -17,7 +17,7 @@ import { createTileHighlight, setHighlightTile } from './highlight';
 import { createTileOverlay } from './tileOverlay';
 import { screenToTile } from './picking';
 import { createTerrainMesh } from './terrain';
-import { animateUnitAlongPath, createUnitMesh } from './units';
+import { animateUnitAlongPath, createUnitMesh, setUnitFacing } from './units';
 
 const ORTHO_ZOOM_PADDING = 0.7;
 
@@ -223,6 +223,7 @@ export function createGameRenderer(
         scene.stopAnimation(mesh);
         const target = tileToWorld(unit.position, gridWidth, gridHeight);
         mesh.position.set(target.x, mesh.position.y, target.z);
+        setUnitFacing(mesh, unit.facing);
       }
     },
     toggleInspector() {

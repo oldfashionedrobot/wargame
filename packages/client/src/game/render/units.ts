@@ -7,6 +7,7 @@ import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder'
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { Scene } from '@babylonjs/core/scene';
+import { directionBetween } from '@vod/shared';
 import type { Coordinate, Facing, PlayerColor, Unit } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 
@@ -52,8 +53,17 @@ export function createUnitMesh(
 
   const center = tileToWorld(unit.position, gridWidth, gridHeight);
   mesh.position.set(center.x, UNIT_HEIGHT / 2, center.z);
-  mesh.rotation.y = FACING_ROTATION[unit.facing];
+  setUnitFacing(mesh, unit.facing);
   return mesh;
+}
+
+/**
+ * Points a unit mesh a compass direction. The only writer of `rotation.y`, so
+ * that swapping the placeholder cylinder for a model means changing what
+ * `FACING_ROTATION` holds and nothing else.
+ */
+export function setUnitFacing(mesh: Mesh, facing: Facing): void {
+  mesh.rotation.y = FACING_ROTATION[facing];
 }
 
 function animateSegment(mesh: Mesh, scene: Scene, target: Vector3): Promise<void> {
@@ -81,7 +91,13 @@ export async function animateUnitAlongPath(
   gridHeight: number,
   scene: Scene,
 ): Promise<void> {
-  for (const coordinate of path.slice(1)) {
+  for (const [index, coordinate] of path.slice(1).entries()) {
+    // Turn before the step, so the unit walks the way it is looking rather
+    // than arriving and rotating. A snapped turn is deliberate: interpolating
+    // it costs a tween per corner for something read at a glance.
+    const heading = directionBetween(path[index], coordinate);
+    if (heading) setUnitFacing(mesh, heading);
+
     const target = tileToWorld(coordinate, gridWidth, gridHeight);
     target.y = mesh.position.y;
     await animateSegment(mesh, scene, target);

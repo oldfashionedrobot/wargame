@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { coordinateKey, coordinatesEqual, isWithinGrid } from './coordinate';
+import { coordinateKey, coordinatesEqual, directionBetween, isWithinGrid } from './coordinate';
 
 const at = (col: number, row: number) => ({ col, row });
 
@@ -32,5 +32,21 @@ describe('isWithinGrid', () => {
     expect(isWithinGrid(at(3, 3), 4, 3)).toBe(false); // one row too far
     expect(isWithinGrid(at(-1, 0), 4, 3)).toBe(false);
     expect(isWithinGrid(at(0, -1), 4, 3)).toBe(false);
+  });
+});
+
+describe('directionBetween', () => {
+  it('names each of the four orthogonal steps', () => {
+    expect(directionBetween(at(1, 1), at(2, 1))).toBe('east');
+    expect(directionBetween(at(1, 1), at(0, 1))).toBe('west');
+    expect(directionBetween(at(1, 1), at(1, 2))).toBe('north');
+    expect(directionBetween(at(1, 1), at(1, 0))).toBe('south');
+  });
+
+  // Both cases a caller has to treat the same way: nothing to derive.
+  it('is null for standing still and for a jump', () => {
+    expect(directionBetween(at(2, 2), at(2, 2))).toBeNull();
+    expect(directionBetween(at(0, 0), at(0, 2))).toBeNull(); // two tiles
+    expect(directionBetween(at(0, 0), at(1, 1))).toBeNull(); // diagonal
   });
 });

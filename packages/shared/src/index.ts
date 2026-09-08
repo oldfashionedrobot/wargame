@@ -30,7 +30,7 @@ export { parseTerrainGrid } from './terrainGrid';
 export type { UnitTypeId } from './data/unitTypes';
 export { getUnitType } from './data/unitTypes';
 
-export { coordinatesEqual, isWithinGrid } from './coordinate';
+export { coordinatesEqual, directionBetween, isWithinGrid } from './coordinate';
 export { getCurrentPlayer, getUnit, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';
 export { exploreMovement } from './movement';

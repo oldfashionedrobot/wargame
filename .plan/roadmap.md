@@ -79,7 +79,7 @@ That default is what makes this affordable. Three units a turn over a forty-turn
 
 ⚠️ **Sequencing, and the reason it is split across two phases: facing selection is pure friction until combat reads it.** So:
 
-- **6f derives it** from the last step of the path, with no UI at all. Free, deterministic, and it stops units moonwalking.
+- **6f derived it** from the last step of the path, with no UI at all — built. Free, deterministic, and it stops units moonwalking.
 - **7d makes it mechanical** — the command carries it, `computeDamage` reads it — while the client still sends nothing but the derived default.
 - **7e lets the player override it**, at which point the choice already has consequences.
 
@@ -159,6 +159,7 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 | **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | Phase 9 — match lifecycle and, eventually, notification. Not new mechanics |
 | **Ruleset versioning** | None | Stamp a ruleset id on the match so old logs replay under the rules they were played with |
 | **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Fine at one map | A `maps` table once there are enough to select among — see below |
+| **Terrain has to stay flat** | `screenToTile` intersects the `y = 0` plane rather than mesh-picking, so the day terrain gains real height, clicking a peak selects the tile behind it. Colours are placeholders too — gameplay before looks | Elevation is a later pass, and it has to answer the picking question before it draws anything |
 | **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
 | **`shared/`'s test files are not typechecked** | Nothing imports them, so they never enter a program `tsc -b` builds. Verified both ways: a deliberate type error in a `shared` test passes the typecheck, the same error in a source file fails it. They are verified by running instead | `bun:test` types in a `shared` program, which today means `@types/bun` as a dependency of the package whose defining property is having none — and that would also let `import … from 'bun'` typecheck inside the rulebook. Either a hand-written minimal declaration plus a lint rule closing the purity hole, or leave it |
 | **Migrations run at boot** | `migrate()` on startup, fine for one instance and ~0.4 ms once nothing is pending. Drizzle lists runtime migration as a first-class flow for monoliths, so this is a choice rather than a shortcut | `bun run db:migrate` as a deploy step, once there is more than one instance, a rolling deploy, or a reason to deny the runtime DDL rights |
@@ -203,71 +204,9 @@ option, and both cost a few lines against a table's seeding machinery.
 
 ## Remaining phases
 
-### 6 — Terrain and movement
-
-Steps 6a–6d are built, and so is the hover route preview; see
-`architecture.md`. What remains:
-
-#### 6e — the destination step
-
-Pick a tile, see the route, confirm. A second click on the chosen tile
-**confirms**, a click on another reachable tile **re-targets**, a click on the
-unit or outside the range **cancels**. `SelectionState` gains a
-`destinationChosen` member.
-
-**The renderer gains `setRoute(path | null)`**: `null` means follow the pointer,
-an array means show this route and ignore hover. Without it a pinned route
-flickers as the mouse moves over other tiles.
-
-`handleTileClick` needs no new signature — it already returns
-`{ selection, command }`, so pinning is a selection change carrying
-`command: null`, and confirming is the same call that submits today.
-
-⬜ **Not in scope: walking the unit to the destination before confirming.** AW
-does this, and it is worth having eventually, but it animates an *unsubmitted*
-move and so needs a ghost position and a snap-back on cancel. The route
-highlight already shows the intent. Revisit as polish once 7e's menu exists.
-
-⚠️ **Worth deciding before building it: is the confirm step worth having before
-there is a menu?** Its purpose is to host 7e's Attack/Wait choice, and until
-that exists it adds a click that offers exactly one option — click-to-move is
-strictly better UX in the meantime. The counter-argument is misclick
-protection, which the hover route preview already mostly provides. Folding this
-step into 7e is a live option.
-
-⚠️ Terrain must stay flat. `screenToTile` intersects the `y = 0` plane rather
-than mesh-picking, so the day terrain gains real height, clicking a peak
-selects the tile behind it. Elevation is a later pass that has to answer the
-picking question first. Placeholder terrain colours are deliberate for now —
-gameplay before looks.
-
-#### 6f — facing follows the path
-
-`applyEvents` derives `facing` from the last step of a `unitMoved` path, the
-same way it already derives position: deterministic, idempotent, no new event
-field, no UI. A single-element path has no direction, so facing is left
-unchanged.
-
-- `directionBetween(from, to): Facing | null` goes in `coordinate.ts`, beside
-  `coordinatesEqual`. It returns `null` for a zero-length step, which is
-  exactly the stay-put case.
-- `snapUnits` starts writing rotation as well as position. `FACING_ROTATION` is
-  module-local in `units.ts`, so this wants a `setUnitFacing(mesh, facing)`
-  beside `createUnitMesh` rather than exporting the table.
-
-Rider, and sharper since animation went to 0.3s a tile: **`worthAnimating`
-should count tiles rather than events.** One `unitMoved` can be a six-tile walk,
-so nine of them sit under the ten-*event* threshold and animate for about
-sixteen seconds. With one speed for every unit, tiles are the honest measure.
-
-#### Suggested order
-
-**6f, then 6e.** 6f is small and independent. 6e is the interaction change and
-the one with an open question above it.
-
 ### 7 — Combat: the smallest thing you can win
 
-Terrain and pathing already exist by this point, so the numbers mean something. The integration risk here is the chain — command → resolve → events → animate → death → mesh removal → victory — not the damage formula.
+Terrain and pathing already exist, so the numbers mean something. The integration risk here is the chain — command → resolve → events → animate → death → mesh removal → victory — not the damage formula.
 
 - **7a** — *moved to 6a.* The `UnitType` catalog wiring is a prerequisite of the terrain cost table, not a consequence of combat; see phase 6's hard dependencies.
 - **7b** `Unit` gains `health`; update the starting units. (`unitTypeId` arrived in 6a.) **`maxHealth` does not go on `Unit`** — it is static per unit type, which is the exact distinction 6a exists to draw, and putting it on every instance would re-introduce the duplication that moving `movementRange` onto `UnitType` just removed. If every unit tops out at 100 it is a constant in `shared/`; the day one doesn't, it is a `UnitType` field. **No migration** — `Unit` lives inside `GameState`, which is a JSON blob, so the shape changes without the schema moving. That is the JSON-blob decision paying off, and it is why `map_id` in phase 6 is the first migration rather than this.
@@ -277,7 +216,15 @@ Terrain and pathing already exist by this point, so the numbers mean something. 
   ⚠️ **Invariant 9 constrains the events.** `unitAttacked` must carry the target's *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client can compute from the state preceding the event. And a successful charge emits `unitDied` **plus** `unitMoved`, two independently-applicable events, not one compound event carrying both effects.
 
   ⚠️ One nuance the client will hit here, parked by 5b with its answer attached: in a multi-resolution catch-up batch, "the state preceding event *k*" is the pre-batch replica folded through events 1..k−1 — a second hit on the same unit computes its damage number from the intermediate HP, not the pre-batch one. If the animation needs that, thread a **locally** folded state through the animation walk (`applyEvents` as a plain helper inside the queue task) — never per-event React commits, never a callback-signature change. Large batches snap without animating anyway (5b's threshold), so this only matters for small ones.
-- **7e** Attack in `handleTileClick` — clicking an enemy while selected becomes a real action, plus an attack-range overlay. Reuses 6e's destination step rather than replacing it: the `then:` branch is the choice that step was scaffolding for, and `SelectionState` gains `choosingTarget` as a member. **The facing override lands here too** — a rotate gesture between route and confirm, defaulting to the travel direction 6f already derives. It arrives now rather than in 6e because 7d is what makes the choice mean anything; that step now gives 6e's confirm click its second reason to exist.
+- **7e** The whole destination-and-action interaction, which was 6e until it became clear it has nothing to offer before a menu exists. Click a reachable tile to **pin** it and see the route; a second click on it **confirms**; a click on another reachable tile **re-targets**; a click on the unit or outside the range **cancels**. On confirm, the choice appears: *Attack* (only when something is in range from there) or *Wait*. `SelectionState` gains `destinationChosen` and `choosingTarget` as members, plus an attack-range overlay.
+
+  It is one step rather than two because the pin-and-confirm flow is friction until it carries a choice: until 7d exists, the second click offers exactly one option, and click-to-move is strictly better. `handleTileClick` needs no new signature — it already returns `{ selection, command }`, so pinning is a selection change carrying `command: null` and confirming is the call that submits today.
+
+  **The renderer gains `setRoute(path | null)`**: `null` follows the pointer, an array shows that route and ignores hover. Without it a pinned route flickers as the mouse moves.
+
+  **The facing override lands here too** — a rotate gesture between route and confirm, defaulting to the travel direction 6f derives.
+
+  ⬜ **Not in scope: walking the unit to the destination before confirming.** AW does this and it is worth having, but it animates an *unsubmitted* move, so it needs a ghost position and a snap-back on cancel. The route highlight already shows the intent. Polish, once the menu exists.
 - **7f** ⬜ **Health has to be visible**, and was missing from this phase entirely. 7b puts `health` in the model and 7d makes it change, but nothing draws it — a unit at 40 reads identically to one at 100, which makes combat unplayable by eye and unverifiable in the browser, the only check the renderer has. Smallest thing that works: a billboarded bar or a scaled emissive band on the unit mesh, driven from `syncUnits` since that already runs per commit with the state in hand. It belongs before 7g, because tuning a matchup table you cannot see the results of is guesswork.
 - **7g** ⬜ **The damage preview** — specified under Combat as "the sharp edge of invariant 8" and, until now, scheduled nowhere. The client computes the same formula with the luck term omitted and shows it on the target before the click commits. This is the step where *deterministic preview, yes; random resolution, no* stops being a slogan and becomes code, so it is worth its own commit rather than riding inside 7e.
 - **7h** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.

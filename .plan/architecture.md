@@ -36,7 +36,7 @@ gets run. Nothing imports `server`.
 packages/
   shared/src/
     types.ts          Coordinate · Facing · Player · Unit · GameState · Command · GameEvent
-    coordinate.ts     coordinatesEqual · coordinateKey · isWithinGrid
+    coordinate.ts     coordinatesEqual · coordinateKey · isWithinGrid · directionBetween
     queries.ts        getUnit · getUnitAt · getTileAt · getCurrentPlayer
     legality.ts       canSelectUnit
     movement.ts       exploreMovement · validatePath · entryCost (private)
@@ -145,7 +145,7 @@ the per-command validator. `resolveAction` accepts nothing but an `Action`.
 ```ts
 Coordinate  { col, row }
 TileType    'plains' | 'road' | 'bridge' | 'forest' | 'mountain' | 'river'
-Facing      'north' | 'east' | 'south' | 'west'      // decorative; nothing updates it
+Facing      'north' | 'east' | 'south' | 'west'      // set by movement; no rule reads it yet
 PlayerId    string                                   // never a union of colours
 PlayerColor 'blue' | 'red' | 'green' | 'yellow'      // the renderer keys on it
 Player      { id, name, color }                      // colour is display-only
@@ -169,6 +169,12 @@ ErrorResponse     { error }                          // the body of every non-2x
 Turn order is array rotation over `GameState.players`, wrapping via modulo.
 `hasActed` is one flag per unit, set by `unitMoved` and reset by `turnEnded` for
 the incoming player only.
+
+`facing` is **derived, not carried**: `applyEvents` reads it off the last step of
+a `unitMoved` path via `directionBetween`, the same way it reads position off the
+last tile. A facing field on the event would be a second source for a fact the
+path already states. A single-tile path has no direction and leaves facing as it
+was — turning on the spot is an action, not a side effect of one.
 
 ## Content — `shared/src/data/`
 
@@ -440,9 +446,13 @@ snapUnits(state)          toggleInspector()          dispose()
 - Unit meshes are built once at startup; there is no add or remove.
 - `playEvents` walks `unitMoved` paths one tween per tile, 0.3s each
   (`FRAMES_PER_TILE` over `FRAME_RATE` in `units.ts` — one dial for every
-  unit's pace).
-- `snapUnits` positions meshes from state with no tween, stopping any running
-  animation first.
+  unit's pace). Each step turns the mesh before it moves, so a unit walks the
+  way it is looking; the turn is snapped rather than tweened.
+- `snapUnits` positions *and* orients meshes from state with no tween, stopping
+  any running animation first.
+- `setUnitFacing` is the only writer of `rotation.y`, so replacing the
+  placeholder cylinder with a model means changing `FACING_ROTATION` and
+  nothing else.
 - Babylon imports are **per-file**, not from the `@babylonjs/core` barrel. Side
   effect modules are imported where the augmented method is used:
   `Animations/animatable` for `beginAnimation`/`stopAnimation`, `Culling/ray`

@@ -1,4 +1,5 @@
-import type { GameEvent, GameState } from './types';
+import { directionBetween } from './coordinate';
+import type { GameEvent, GameState, Unit } from './types';
 
 /**
  * The only thing that mutates state.
@@ -32,15 +33,29 @@ export function applyEvents(state: GameState, events: GameEvent[]): GameState {
 
 function applyEvent(state: GameState, event: GameEvent): GameState {
   switch (event.type) {
-    case 'unitMoved':
+    case 'unitMoved': {
+      const path = event.path;
+      const destination = path[path.length - 1];
+      // Derived rather than carried: the path already says which way the unit
+      // walked, so a facing field on the event would be a second source for
+      // the same fact. A single-tile path has no direction, and leaves facing
+      // as it was -- turning in place is an action, not a side effect.
+      const turned = path.length > 1 ? directionBetween(path[path.length - 2], destination) : null;
+
       return {
         ...state,
-        units: state.units.map((unit) =>
+        units: state.units.map((unit): Unit =>
           unit.id === event.unitId
-            ? { ...unit, position: event.path[event.path.length - 1], hasActed: true }
+            ? {
+                ...unit,
+                position: destination,
+                facing: turned ?? unit.facing,
+                hasActed: true,
+              }
             : unit,
         ),
       };
+    }
 
     case 'turnEnded':
       // Only the incoming player's units refresh; the outgoing player's stay
