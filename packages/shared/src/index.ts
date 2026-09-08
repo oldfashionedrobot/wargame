@@ -15,23 +15,22 @@ export type {
   Unit,
 } from './types';
 
-// Terrain vocabulary and the table that gives it meaning. Both sides read the
-// same one -- the cost model has to agree or the client's reachable overlay
-// offers moves the server refuses.
-export type { Terrain, TileType } from './data/terrain';
-export { getTerrain, TERRAIN } from './data/terrain';
+// The terrain vocabulary a client needs to colour a board. The *table* stays
+// unexported: nothing outside shared/ reads a cost or a defence value yet.
+// `TERRAIN`, `getTerrain` and `MovementType` come out when something does --
+// 7g's damage preview is the likely first, since it needs `defense`.
+export type { TileType } from './data/terrain';
 // Maps are character grids, and this is the only thing that turns one into a
 // board -- the server parses its map definitions with it, and so does the
 // test fixture.
 export { parseTerrainGrid } from './terrainGrid';
 
-// The unit catalog. Both sides read it: the client to preview what a unit can
-// do, the server to resolve the same thing authoritatively.
-export type { MovementType, UnitType, UnitTypeId } from './data/unitTypes';
+// The unit catalog. Only the accessor is out: `UnitTypeId` follows in 6d,
+// when maps start naming the units they place.
 export { getUnitType } from './data/unitTypes';
 
 export { coordinatesEqual, isWithinGrid } from './coordinate';
-export { getCurrentPlayer, getTileAt, getUnit, getUnitAt } from './queries';
+export { getCurrentPlayer, getUnit, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';
 export { exploreMovement } from './movement';
 export type { Movement } from './movement';

@@ -146,11 +146,11 @@ export function exploreMovement(
   }
 
   return {
+    // Everything settled except what is stood on. That excludes the origin
+    // without a separate check, because a unit occupies its own tile -- an
+    // explicit `from !== null` filter used to sit here and no test could tell
+    // whether it was there, which is what redundant means.
     reachable: [...settled.values()]
-      // `from === null` is the origin, and only the origin: cost 0 is minimal,
-      // so nothing ever relaxes it into having a predecessor. It stays in the
-      // map because every path chain terminates there.
-      .filter((entry) => entry.from !== null)
       .map((entry) => entry.coordinate)
       .filter((coordinate) => !getUnitAt(state, coordinate)),
 
