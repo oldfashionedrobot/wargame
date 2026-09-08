@@ -16,12 +16,15 @@ Bun workspaces, three packages, no task runner on top — builds are seconds lon
 packages/
   shared/     zero dependencies — pure rulebook, no React, no Babylon, no I/O, no RNG
     src/index.ts    barrel — the package's public surface
-    src/  types · coordinate · queries · legality · reachableTiles
+    src/  types · coordinate · queries · legality
+          movement.ts ✅ exploreMovement · entryCost · validatePath
+          terrainGrid.ts ✅ parseTerrainGrid -- the only way a grid is built
+          testing.ts ✅ fixtures, a second export subpath (see below)
           action.ts ✅ validateCommand (the only Action constructor) · resolveAction
           move · endTurn  per-command validate + resolve
           applyEvents.ts ✅ the only mutator — folds events into state
           protocol.ts  ✅ GameServer · CommandResult · HTTP shapes · parseCommand
-      data/  unitTypes 🚧 · terrain ⬜ · damageTable ⬜ · chargeThresholds ⬜
+      data/  unitTypes ✅ · terrain ✅ · damageTable ⬜ · chargeThresholds ⬜
   server/     depends on shared only — an app, not a library: no barrel
     src/  http.ts ✅ createServer() — Bun.serve routes, /api/* plus the client build
           db.ts ✅ libSQL client + Drizzle, pragmas, migrations at boot
@@ -39,10 +42,11 @@ packages/
       net/ ✅     api.ts fetch + notFound/unreachable classification, and
                          api.matches list / create
                   gameServer.ts match-scoped polling GameServer
-      game/       GameCanvas.tsx · interaction/ · render/
+      game/       GameCanvas.tsx · useGameSession.ts · interaction/ · render/
+      scripts/    compressDist.ts ✅ (5c-1, covered by tsconfig.node.json)
 ```
 
-Cross-package imports go through `@vod/shared`'s barrel, never into individual files. The barrel holds only what `server/` and `client/` actually consume — commands go through `validateCommand` and `resolveAction`, union members are reached through their union, and anything used solely inside `shared/` stays out of it.
+Cross-package imports go through `@vod/shared`'s **exports map**, never into individual files. There are two entry points, both deliberate: `.` is the rulebook barrel, and `./testing` is fixtures -- consumed by server and client *tests* only, which is why it is a separate subpath rather than part of the public surface. The barrel holds only what `server/` and `client/` actually consume — commands go through `validateCommand` and `resolveAction`, union members are reached through their union, and anything used solely inside `shared/` stays out of it.
 
 **`@vod/server` is an application, not a library.** Nothing imports it, so it has no barrel and no `exports` field; `http.ts` is an entry point that gets run.
 
@@ -62,7 +66,7 @@ Separate `package.json` files are the point: `server/` doesn't list Babylon or R
 - `shared/` imports from `shared/data/` only
 - `server/` and `client/` both import from `shared/`; neither imports the other
 
-Bun installs these *isolated* rather than hoisted — `packages/server/node_modules/` contains only `@vod/shared`, so a stray `import 'react'` there is a hard resolution failure rather than something caught in review.
+Bun installs these *isolated* rather than hoisted — `packages/server/node_modules/` holds only what `server` itself declares, so a stray `import 'react'` there is a hard resolution failure rather than something caught in review.
 
 No exceptions: phase 3 removed the last one. `client` no longer lists `@vod/server` at all — it constructs an HTTP `GameServer` locally and takes the interface from `shared`.
 
@@ -79,7 +83,7 @@ No exceptions: phase 3 removed the last one. `client` no longer lists `@vod/serv
 7. ✅ **Ephemeral UI state stays out of `GameState`** — hover, selection, camera, animation progress.
 8. ✅ **The client never resolves game outcomes** — no rolls, no damage math, no combat resolution. It submits commands and renders the events it gets back. *(Structurally in place; genuinely exercised only once combat introduces an outcome worth resolving.)*
 
-   It *may* read any deterministic part of `shared/` to **preview** — what's selectable (`legality.ts`), where a unit can move (`reachableTiles.ts`, already driving the blue overlay), what it could attack from there. That's consulting the rulebook for UI affordance, not deciding anything, and the server re-checks all of it as the actual enforcement.
+   It *may* read any deterministic part of `shared/` to **preview** — what's selectable (`legality.ts`), where a unit can move (`movement.ts`'s `exploreMovement`, already driving the blue overlay), what it could attack from there. That's consulting the rulebook for UI affordance, not deciding anything, and the server re-checks all of it as the actual enforcement.
 
    The line is **deterministic preview, yes; random resolution, no.**
 
@@ -118,7 +122,7 @@ Atomicity is the point: with separate commands, a move could succeed and its fol
 
 **The client sends the path; the server validates it rather than deriving it.**
 
-`validatePath(state, unit, path)` walks the array — O(path length), no search. It checks: starts at the unit's current tile, every step orthogonally adjacent to the last, no tile visited twice, no step onto impassable terrain or an enemy-occupied tile, total cost within the unit's movement budget, and the final tile unoccupied (friendly tiles are pass-through, not stopping points).
+`validatePath(state, unit, path, movementRange, movementType)` walks the array — O(path length), no search. The budget and movement type are arguments for the same reason `exploreMovement` takes them; `validateMove` resolves them from the catalog. It checks: starts at the unit's current tile, every step orthogonally adjacent to the last, no tile visited twice, no step onto impassable terrain or an enemy-occupied tile, total cost within the unit's movement budget, and the final tile unoccupied (friendly tiles are pass-through, not stopping points).
 
 Cost accumulates over `path[1..n]` — you don't pay for the tile you're already on. So a **single-element path is legal and costs 0**: that's "attack without moving," and it's the only legal shape for a `canMoveAndAttack: false` unit.
 
@@ -163,9 +167,9 @@ The session cookie is the one thing this cost. `Bun.serve` has no middleware —
 
 It also leaves the door open to stateless handlers behind a data store, since nothing then needs to stay alive between requests.
 
-**Polling is `GET /api/events?since=N`.** The client keeps the last `seq` it saw and asks for everything after it — routine polling, catch-up after a laptop sleeps, and recovery from a missed response are all the same call. **The event log *is* the polling primitive**, which is why this costs nothing to build.
+**Polling is `GET /api/matches/:id/events?since=N`.** The client keeps the last `seq` it saw and asks for everything after it — routine polling, catch-up after a laptop sleeps, and recovery from a missed response are all the same call. **The event log *is* the polling primitive**, which is why this costs nothing to build.
 
-First load uses `GET /api/state`, which returns state plus its `seq` — there are no events to animate on arrival, only a board to draw. `/api/events?since=N` is for everything after that.
+First load uses `GET /api/matches/:id/state`, which returns state plus its `seq` — there are no events to animate on arrival, only a board to draw. the events endpoint is for everything after that.
 
 Interval: a couple of seconds normally, doubling on failure up to 30s so a dead server isn't hammered, and resetting on the next success. A failed poll costs nothing — the next one asks from the same `lastSeq`.
 
@@ -483,10 +487,9 @@ applyEvents(state, events)             → GameState
 
 ```ts
 Coordinate  { col, row }                                        ✅
-TileType    'land'                                              🚧 placeholder; six terrains
-            — moves to data/terrain.ts in 6b, see Terrain           and a `char` each
+TileType    six terrains, each with a `char`                     ✅ in data/terrain.ts
 Facing      'north' | 'east' | 'south' | 'west'                 ✅ decorative
-            — derived from the path in 6f, mechanical in 7d       🚧
+            — derived from the path in 6f, mechanical in 7d       ⬜
 PlayerId    string                                              ✅ never a union of colors
 Player      { id, name, color }                                 ✅ color is display-only, never keyed on
 GameState   { grid, units, players, currentTurn }               ✅
@@ -519,7 +522,7 @@ Static content, not runtime state: what damage cavalry deals to infantry never c
 | File | Contents | |
 |---|---|---|
 | `unitTypes.ts` | `UnitType` catalog keyed by `UnitTypeId`, referenced by `Unit.unitTypeId` | ✅ identity + movement; combat fields ⬜ |
-| `terrain.ts` | Per terrain: a single `defense` value plus `cost` per movement type, `null` = impassable. See Terrain | ⬜ |
+| `terrain.ts` | Per terrain: a map `char`, a single `defense` value, and `cost` per movement type, `null` = impassable. See Terrain | ✅ |
 | `chargeThresholds.ts` | `Record<AttackerUnitTypeId, Record<DefenderUnitTypeId, number>>` | ⬜ |
 | `damageTable.ts` | attacker-vs-defender base damage % | ⬜ |
 
@@ -527,7 +530,7 @@ Static content, not runtime state: what damage cavalry deals to infantry never c
 
 ## Units
 
-Three unit types, three movement types, one-to-one for now. Artillery is wheeled/horse-drawn — historically right for the era and a clean spread: infantry goes anywhere slowly, cavalry is fast in the open but stopped by rough ground, artillery is slow *and* road-preferring. (An earlier draft called cavalry "road-bound"; the table below gives `horse` the same plains cost as `foot`, so what actually distinguishes it is speed plus impassable forest/mountain/river. Only `wheels` genuinely prefers roads.)
+Three unit types, three movement types, one-to-one for now. Artillery is wheeled/horse-drawn — historically right for the era and a clean spread: infantry goes anywhere slowly, cavalry is fast in the open but stopped by rough ground, artillery is slow *and* road-preferring. (An earlier draft called cavalry "road-bound"; the table below gives `horse` the same plains cost as `foot`, so what actually distinguishes it is speed plus impassable mountain and river -- forest merely costs it double. Only `wheels` genuinely prefers roads.)
 
 | Unit | Movement type | Ranged ⬜ | Charge ⬜ |
 |---|---|---|---|
@@ -537,7 +540,7 @@ Three unit types, three movement types, one-to-one for now. Artillery is wheeled
 
 Movement range, `ranged`, and `charge` are all fields on the same `UnitType` record — movement and combat aren't separate systems. The catalog currently carries identity and movement only.
 
-## Terrain ⬜
+## Terrain ✅ *(6b/6c; rendering is 6e, maps are 6d)*
 
 `plains · road · bridge · forest · mountain · river`
 
@@ -609,15 +612,15 @@ type Entry = { ok: true; cost: number } | { ok: false; reason: string }
 entryCost(state, unit, coordinate, movementType): Entry
 ```
 
-It answers for all four ways a step can fail: off the grid, impassable to this movement type, blocked by an enemy, or otherwise the terrain cost. `exploreMovement` does `if (!entry.ok) continue`; `validatePath` does `if (!entry.ok) return entry.reason`. The result/reason shape is the one `ValidationResult` and `CommandResult` already use.
+It answers the three ways a step can fail -- off the grid, impassable to this movement type, blocked by an enemy -- and otherwise the terrain cost. `exploreMovement` does `if (!entry.ok) continue`; `validatePath` does `if (!entry.ok) return entry.reason`. The result/reason shape is the one `ValidationResult` and `CommandResult` already use.
 
 Note what it deliberately does **not** decide: whether a unit may *stop* there. Entering and stopping are different questions — a friendly unit's tile is enterable and not stoppable — which is the same distinction `settled` and `reachable` draw, so the destination check stays with `validatePath`.
 
 ### `validatePath` belongs here, not to combat
 
-It is a movement rule that happens to be needed before attacking, and it fixes an **existing** hole: `path` is currently accepted unvalidated, so a client can submit a straight line through anything. That only becomes exploitable once terrain makes such a line meaningfully different from a legal route — so terrain and validation land together.
+It is a movement rule that happens to be needed before attacking, and it closed an **existing** hole: `path` was accepted unvalidated, so a client could submit a straight line through anything. That only became exploitable once terrain made such a line meaningfully different from a legal route, which is why terrain and validation landed together in 6b/6c.
 
-⚠️ **It is also a breaking change to the client**, which today sends exactly the straight line the check will start refusing — see phase 6's hard dependencies. `validatePath` and the client's switch to `pathTo` are one commit (6c).
+It was also a breaking change to the client, which sent exactly the straight line the check refuses — so `validatePath` and the client's switch to `pathTo` landed as one commit (6c).
 
 **One carve-out the walk needs:** the occupancy check must exclude the moving unit itself. `path[0]` is the unit's own tile, and a single-element path — legal at cost 0, the "attack without moving" shape — ends where it starts. Without the exclusion a unit standing still fails its own occupancy test. In phase 6 that shape is simply "wait in place", worth allowing since it costs nothing and 7d needs it.
 
@@ -657,7 +660,7 @@ units: [{ at: { col: 1, row: 4 }, type: 'infantry', owner: 0 }, …]
 
 **Map definitions live in `server/maps/`. The parser does not.** The client never needs map definitions — it receives an instantiated `grid` in `GameState` — so the *data* belongs to the server. But `parseTerrainGrid(rows: string[]): TileType[][]` is a pure function over shared vocabulary, and **`shared/`'s own tests need terrain grids** while `shared/` cannot import from `server/`. So it lives in `shared/` and is exported from the barrel, `server/` being its other consumer. It inverts the `char` column of the terrain table above rather than keeping a second legend, and throws on an unknown character or a ragged row — the same reasoning as `applyEvents` refusing an unknown event, since a silently mistyped tile is a map that plays wrong.
 
-⚠️ **Every grid in the repo comes from parsing a character map. There is no second construction path.** Today two places build one by hand — `createInitialState` and the `makeState` fixture, both filling an array with `'land'` — and both go through the parser instead, so the shape production plays on is the shape tests exercise. A `DEFAULT_MAP` constant (8×8 plains) is the fallback that keeps `createMatchState` honest before real maps exist in 6d, and `makeState`'s numeric shorthand becomes sugar that *generates* a plains character grid and parses it rather than a way to skip the parser.
+⚠️ **Every grid in the repo comes from parsing a character map. There is no second construction path.** The two places that used to build one by hand — `createInitialState` and the `makeState` fixture, both filling an array with `'land'` — parse instead, so the shape production plays on is the shape tests exercise. A `DEFAULT_MAP` constant (8×8 plains) is the fallback that keeps `createMatchState` honest until real maps exist in 6d, and `makeState`'s numeric shorthand is sugar that *generates* a plains character grid and parses it rather than a way to skip the parser.
 
 Consequence: `createInitialState()` becomes `createMatchState(map)`, and a match records which map it was built from.
 
@@ -815,8 +818,8 @@ Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DE
 ## Open questions
 
 - **Counter-attack for `min > 1` units.** "No counter given or received" was settled when indirect fire and immobility were the same thing. Now that `canMoveAndAttack` is independent of range category, it's worth re-checking whether the rule should still key off `min > 1` alone. Probably still correct — nothing has challenged it — but never explicitly revisited. **Owned by 8b**, which is where it stops being answerable in the abstract.
-- ✅ ~~**`net/gameServer.ts` is untested**~~ — 22 tests as of 5a: seq deduplication (a poll in flight during a submit no longer goes unchecked), exponential backoff and its cap, the status transitions, `dispose` including a poll resolving after teardown, and — once step 5's harness landed — the hidden-tab interval and the `visibilitychange` reset. `fetch` and timers faked, happy-dom for the document.
-- ✅ ~~**No automated tests.**~~ 143 of them now — 50 in `shared/`, 45 in `server/`, 48 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, `getReachableTiles`, the event fold and its two design rules, `MatchStore` against `:memory:`, the HTTP surface end to end including the compressed client-build serving, `handleTileClick`, the polling `GameServer`, and `useGameSession` with its animation gate. What is *not* covered: the renderer — WebGL, so a real browser remains the check for it.
+- ✅ ~~**`net/gameServer.ts` is untested**~~ — 24 tests as of 5a: seq deduplication (a poll in flight during a submit no longer goes unchecked), exponential backoff and its cap, the status transitions, `dispose` including a poll resolving after teardown, and — once step 5's harness landed — the hidden-tab interval and the `visibilitychange` reset. `fetch` and timers faked, happy-dom for the document.
+- ✅ ~~**No automated tests.**~~ 201 of them now — 106 in `shared/`, 45 in `server/`, 50 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, the event fold and its two design rules, the terrain table and its parser, `exploreMovement` and `validatePath`, `MatchStore` against `:memory:`, the HTTP surface end to end including the compressed client-build serving, `handleTileClick`, the polling `GameServer`, and `useGameSession` with its animation gate. What is *not* covered: the renderer — WebGL, so a real browser remains the check for it.
 
 The item below does not belong to a phase, which is how things stay recorded forever:
 
@@ -904,14 +907,15 @@ phases:
 
 ```ts
 | { phase: 'idle' }
-| { phase: 'unitSelected';      unitId; position; reachableTiles }
-| { phase: 'destinationChosen'; unitId; position; reachableTiles; path }   // phase 6 adds this
+| { phase: 'unitSelected';      unitId; position; movement }
+| { phase: 'destinationChosen'; unitId; position; movement; path }   // 6e adds this
 ```
 
-Today it's `{ selectedUnitId: string | null; reachableTiles: Coordinate[] }` — two
-independently-settable fields, so "tiles with no selected unit" is representable
-and meaningless. Phase 6 then adds a member rather than converting a type, and
-phase 7 adds `choosingTarget` the same way.
+It replaced `{ selectedUnitId: string | null; reachableTiles: Coordinate[] }` — two
+independently-settable fields, so "tiles with no selected unit" was representable
+and meaningless. Phase 6 then added a member rather than converting a type, and
+phase 7 adds `choosingTarget` the same way. (`reachableTiles` became `movement`
+in 6c, when `handleTileClick` needed `pathTo` to build a command.)
 
 `position` is captured at selection time, exactly as `reachableTiles` already
 is — the type becomes coherently a snapshot instead of half snapshot, half
@@ -1305,11 +1309,11 @@ Verifiable with no combat: does the overlay stop at mountains, does cavalry outr
 #### The sub-steps
 
 - **6a** ✅ — `Unit` gains `unitTypeId` and drops `movementRange`, which moves onto `UnitType` (7a, pulled forward). Pure `shared/` plus `initialState`; no migration. The barrel gained `UnitType`, `UnitTypeId`, `MovementType` and `getUnitType`, which had never been exported — `unitTypes.ts` was dead code from the first commit, so this is the first thing that ever imported it. `getUnitType` now throws on an unknown id rather than returning `undefined`, which is what turns a stale row into a legible error instead of NaN movement somewhere else; the catalog got its first tests, written against the contract rather than the numbers so tuning does not break them. Behaviour is unchanged end to end, verified in the browser against a fresh database.
-- **6b** ✅ — the terrain table and `exploreMovement`, returning `reachable` and `pathTo`. Pure and fully unit-testable. `getReachableTiles` became `exploreMovement` through the barrel, and `reachableTiles.ts` became `movement.ts`. Landed as three commits, each green: the table and `TileType`'s move to `data/terrain.ts`; `parseTerrainGrid` with `route()` and the fixture conversion; then the search. `shared/` went from 50 tests to 92.
+- **6b** ✅ — the terrain table and `exploreMovement`, returning `reachable` and `pathTo`. Pure and fully unit-testable. `getReachableTiles` became `exploreMovement` through the barrel, and `reachableTiles.ts` became `movement.ts`. Landed as three commits, each green: the table and `TileType`'s move to `data/terrain.ts`; `parseTerrainGrid` with `route()` and the fixture conversion; then the search. `shared/` went from 50 tests to 92 (106 after 6c).
 
   Three commits, each green on its own: **the terrain table** (`TileType` moves to `data/terrain.ts`, `getTileAt` joins `getUnitAt` in `queries.ts`, `'plains'` replaces `'land'`); **`parseTerrainGrid`** with its tests, both grid constructors moving onto it, and the `route()` fixture helper pulled forward from 6c so path fixtures are routes *before* the validator starts refusing endpoints; then **`exploreMovement`** itself. `reachableTiles.ts` becomes `movement.ts`, which is what the module is once it owns a search and a result type rather than one query.
 
-  ⚠️ **Expanding `TileType` breaks the client build in this step, not 6e.** `render/terrain.ts` keys `TILE_COLORS` on `Record<TileType, Color4>` with one entry today, so six placeholder colours land here to keep the gate green; 6e does the real visual pass. That is the `Record` exhaustiveness working exactly as intended — it will not let the renderer forget a terrain.
+  ⚠️ **Expanding `TileType` breaks the client build in this step, not 6e.** `render/terrain.ts` keys `TILE_COLORS` on `Record<TileType, Color4>`, which had one entry, so six placeholder colours landed here to keep the gate green; 6e does the real visual pass. That is the `Record` exhaustiveness working exactly as intended — it will not let the renderer forget a terrain.
 
   **`SelectionState` does not change here.** It stores `movement.reachable` and keeps its field name; **6c** switches it to hold the whole `movement`, because that is where `handleTileClick` first needs `pathTo` to build a command. (An earlier draft said 6e — wrong: 6e's hover preview is the second consumer, not the first.)
 
@@ -1320,14 +1324,14 @@ Verifiable with no combat: does the overlay stop at mountains, does cavalry outr
 
   **`SelectionState` renames `reachableTiles` to `movement` here, not at 6e.** `handleTileClick` needs `pathTo` to build the command it emits, which is the first real consumer — 6e's hover preview is the second. ⚠️ **The range check must stay `movement.reachable.some(...)` and must not become `pathTo(…) !== null`**: `pathTo` answers for any *settled* tile, friendly-occupied ones included, and those are exactly the tiles nobody may stop on.
 
-  Remaining client churn is four sites: `selection.ts` twice, `GameCanvas.tsx`'s `showSelection`, and two fixtures that still assert two-element paths (`selection.test.ts`, `useGameSession.test.ts`).
+  Remaining client churn is five sites: `selection.ts` three times, `GameCanvas.tsx`'s `showSelection`, and two fixtures that still assert two-element paths (`selection.test.ts`, `useGameSession.test.ts`).
 
   **A `getUnit(state, id)` joins `getUnitAt` in `queries.ts`** — finding a unit by id is currently written out in both `move.ts` and `selection.ts`, which are the two files this step edits anyway.
-- **6d** — character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`; `matches` gains `map_id`. **That column is the first real schema migration** — the thing the tooling exists for, worth doing deliberately. Two mechanics the plan owes it: maps are *code modules*, so `map_id` is a text column with **no foreign key**, and a `NOT NULL` column on a non-empty table needs a default or nullability.
-- **6e** — terrain rendering, route preview, and the confirm gesture. New Babylon code follows 5c-3's convention: per-file imports, side-effect modules named where the augmented method is called.
+- **6d** ⬜ — character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`; `matches` gains `map_id`. **That column is the first real schema migration** — the thing the tooling exists for, worth doing deliberately. Two mechanics the plan owes it: maps are *code modules*, so `map_id` is a text column with **no foreign key**, and a `NOT NULL` column on a non-empty table needs a default or nullability.
+- **6e** ⬜ — terrain rendering, route preview, and the confirm gesture. New Babylon code follows 5c-3's convention: per-file imports, side-effect modules named where the augmented method is called.
 
   Two notes the rendering half needs. **The route preview is computed in the renderer, not in React**: hover already lives entirely inside the renderer (`POINTERMOVE` → `screenToTile` → move the highlight, with React never hearing about it), and the selection push already hands over the `movement` object, so calling `pathTo(hovered)` there is presentation using data it was given — where routing it through the hook would mean a React state update per mouse move. And ⚠️ **terrain stays flat**: `screenToTile` intersects the `y = 0` plane rather than mesh-picking, which is what makes tile lookup independent of what is drawn — the day terrain gains real height, clicking a peak selects the tile behind it. Elevation is a later visual pass that has to answer the picking question first.
-- **6f** — **facing follows the path.** `applyEvents` already derives the final position from a `unitMoved` path; it derives `facing` from the last step the same way — deterministic, idempotent, no new event field, no UI. `snapUnits` starts setting rotation as well as position, or a snapped-over animation leaves a unit facing wrongly with nothing to correct it; `FACING_ROTATION` is module-local in `units.ts` today, so this wants a `setUnitFacing(mesh, facing)` beside `createUnitMesh` rather than exporting the table. **A single-element path has no direction, so facing is left unchanged** — turning in place is a phase 7 action, not something a zero-length move should invent. Lands after 6c because deriving a facing from today's two-element straight line would produce a diagonal, which is not one. See Facing and directional defence for where this goes next.
+- **6f** ⬜ — **facing follows the path.** `applyEvents` already derives the final position from a `unitMoved` path; it derives `facing` from the last step the same way — deterministic, idempotent, no new event field, no UI. `snapUnits` starts setting rotation as well as position, or a snapped-over animation leaves a unit facing wrongly with nothing to correct it; `FACING_ROTATION` is module-local in `units.ts` today, so this wants a `setUnitFacing(mesh, facing)` beside `createUnitMesh` rather than exporting the table. **A single-element path has no direction, so facing is left unchanged** — turning in place is a phase 7 action, not something a zero-length move should invent. Lands after 6c because deriving a facing from today's two-element straight line would produce a diagonal, which is not one. See Facing and directional defence for where this goes next.
 
   Animation itself needs **no structural change** — `animateUnitAlongPath` already walks `path.slice(1)` one tween per segment and has only ever been handed two-element paths, so today a unit slides diagonally across open ground. Real routes make it walk, for free. What does want revisiting is the pace: one constant for every unit (`FRAMES_PER_TILE`), and with a single speed, **5b's `worthAnimating` threshold should count tiles rather than events** — one `unitMoved` can now be a six-tile walk, so nine of them sit under a ten-*event* cap and animate for twenty seconds.
 
@@ -1426,6 +1430,10 @@ Both are defaults in Better Auth, which is a further point in its favour above.
 **`http.test.ts` is a black box over real requests**, not a call into a handler: it calls `createServer({ port: 0, databaseUrl: ':memory:' })`, reads `server.url`, and drives it with `fetch`. Nothing in it knows how a URL is dispatched, which is why swapping hand-rolled parsing for `routes` did not touch a line of it — the property worth keeping the next time routing changes.
 
 Both inputs are **arguments rather than environment**, which is what makes the setup three lines and a plain static import. Port 0 lets the OS pick, so a running dev server cannot collide with the suite; `:memory:` keeps the real database out of reach. `http.ts` starts a server only under `import.meta.main`, so importing it for the factory listens on nothing — verified in both directions, since a module that opened a port on import would have made all of this ordering-dependent.
+
+⚠️ **`shared/`'s own test files are not typechecked, and that is a consequence of its zero dependencies.** Verified rather than assumed: a blatant `const x: number = "string"` in `movement.test.ts` passes `tsc -b --force` (exit 0), while the same line in `movement.ts` fails it (exit 2). The reason is the chain below — `server` and `client` pull in only the `shared` files they *import*, and nothing imports a test file, so they never enter a program. Fixing it needs `bun:test` types in a `shared` program, which needs `@types/bun` as a dependency of the package whose defining property is having none — and that would also make `import { … } from 'bun'` typecheck in the rulebook, which is exactly the leak the zero-dependency rule prevents.
+
+So the trade is deliberate: **`shared`'s tests are verified by running, not by typechecking.** `server`'s and `client`'s test files *are* checked, since they sit inside programs the root solution builds. Worth revisiting only if a type error in a shared test ever costs real time.
 
 **Typechecking reads `shared`'s source directly. No declaration output, no project references across packages.** `server` and `client` resolve `@vod/shared` through its `exports` field to `src/index.ts` and pull that source into their own programs, so `shared` is checked as a byproduct of being imported and needs no pass of its own. The root `tsconfig.json` is a solution file over `server` and `client` only.
 
