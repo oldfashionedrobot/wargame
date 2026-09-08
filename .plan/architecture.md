@@ -1,481 +1,100 @@
 # Victory or Death — Architecture
 
-Turn-based strategy game, American Revolutionary War theme — infantry, cavalry, artillery rather than tanks and jets. React + TypeScript + Babylon.js, built with bun.
+Turn-based strategy game, American Revolutionary War theme. React + TypeScript
++ Babylon.js, built with bun.
 
-Hot-seat is the current mode — one client driving both players, against a real server process. Networked multiplayer is the end goal, so the server/client split existed in the code from the start rather than being retrofitted; phase 3 made it a real process boundary.
+**This document describes the code as it is.** No rationale, no history. What
+is planned but unbuilt lives in [`roadmap.md`](roadmap.md).
 
-**This document describes the target.** Everything is marked: ✅ built · 🚧 partial · ⬜ not built. It's the single running spec — no decision history, no changelog.
+**What plays today:** hot-seat against a real server process. Select a unit,
+see its movement range over terrain, move it along a route, end turn. Two
+players, three infantry each, on an 8×8 all-plains map. No combat.
 
-**Plays end-to-end right now**: select a unit, see its movement range, move it, end turn, repeat. Two players, three units each. Everything else below is target.
+## Packages
 
-## Structure ✅
+Three bun workspaces, split by authority. Installs are isolated rather than
+hoisted, so a package can only import what it declares.
 
-Bun workspaces, three packages, no task runner on top — builds are seconds long and there's no CI to cache for. Turborepo layers on later without moving files if that changes.
+| Package | Depends on | Holds |
+|---|---|---|
+| `@vod/shared` | nothing | The rulebook: types, content tables, queries, movement, validation, resolution, the event fold, and the wire protocol. No I/O, no RNG, no React, no Babylon, no `Date.now()`. |
+| `@vod/server` | `shared` | The authority: the database, the event log, match construction, and the HTTP surface. |
+| `@vod/client` | `shared` | Presentation: Babylon rendering, input, React, and the HTTP `GameServer`. |
+
+`shared` has two entry points and no build step — `exports` point at TypeScript
+source, which bun runs natively and Vite compiles:
+
+- `.` → `src/index.ts`, the rulebook barrel. Holds only what `server` and
+  `client` consume.
+- `./testing` → `src/testing.ts`, fixtures, imported by tests only.
+
+`server` has no barrel and no `exports`; `src/http.ts` is an entry point that
+gets run. Nothing imports `server`.
 
 ```
 packages/
-  shared/     zero dependencies — pure rulebook, no React, no Babylon, no I/O, no RNG
-    src/index.ts    barrel — the package's public surface
-    src/  types · coordinate · queries · legality
-          movement.ts ✅ exploreMovement · entryCost · validatePath
-          terrainGrid.ts ✅ parseTerrainGrid -- the only way a grid is built
-          testing.ts ✅ fixtures, a second export subpath (see below)
-          action.ts ✅ validateCommand (the only Action constructor) · resolveAction
-          move · endTurn  per-command validate + resolve
-          applyEvents.ts ✅ the only mutator — folds events into state
-          protocol.ts  ✅ GameServer · CommandResult · HTTP shapes · parseCommand
-      data/  unitTypes ✅ · terrain ✅ · damageTable ⬜ · chargeThresholds ⬜
-  server/     depends on shared only — an app, not a library: no barrel
-    src/  http.ts ✅ createServer() — Bun.serve routes, /api/* plus the client build
-          db.ts ✅ libSQL client + Drizzle, pragmas, migrations at boot
-          const.ts ✅ the env-derived defaults, read once in one place
-          schema.ts ✅ matches · resolutions, typed from shared/
-          match.ts ✅ MatchStore — create/list/snapshot/since/submit
-          initialState.ts ✅
-    drizzle/ ✅ generated migrations + snapshots, committed
-    schema.sql ✅ the whole current shape, one readable file
-  client/     depends on shared only — Vite + React + Babylon
-    index.html  vite.config.ts  public/
-    src/  main.tsx · index.css
-          App.tsx ✅ router shell — / and /:matchId
-      routes/ ✅  StartScreen (list + create) · MatchRoute (connect by id)
-      net/ ✅     api.ts fetch + notFound/unreachable classification, and
-                         api.matches list / create
-                  gameServer.ts match-scoped polling GameServer
-      game/       GameCanvas.tsx · useGameSession.ts · interaction/ · render/
-      scripts/    compressDist.ts ✅ (5c-1, covered by tsconfig.node.json)
+  shared/src/
+    types.ts          Coordinate · Facing · Player · Unit · GameState · Command · GameEvent
+    coordinate.ts     coordinatesEqual · coordinateKey · isWithinGrid
+    queries.ts        getUnit · getUnitAt · getTileAt · getCurrentPlayer
+    legality.ts       canSelectUnit
+    movement.ts       exploreMovement · validatePath · entryCost (private)
+    terrainGrid.ts    parseTerrainGrid
+    action.ts         validateCommand · resolveAction · the Action brand
+    move.ts           validateMove · resolveMove
+    endTurn.ts        validateEndTurn · resolveEndTurn
+    applyEvents.ts    applyEvents
+    protocol.ts       GameServer · CommandResult · wire shapes · parseCommand
+    testing.ts        makeState · route · unitAt
+    index.ts          the barrel
+    data/
+      unitTypes.ts    UNIT_TYPES · getUnitType
+      terrain.ts      TileType · TERRAIN · getTerrain
+  server/
+    src/
+      http.ts         createServer() — Bun.serve routes, /api/* plus the client build
+      match.ts        MatchStore: create · list · snapshot · since · submit
+      db.ts           libSQL client + Drizzle, pragmas, migrations at boot
+      schema.ts       matches · resolutions, typed from shared
+      initialState.ts DEFAULT_MAP and the starting roster
+      const.ts        env-derived defaults
+    drizzle/          generated migrations, committed
+    schema.sql        the whole current shape in one file
+  client/
+    index.html  vite.config.ts  public/  scripts/compressDist.ts
+    src/
+      main.tsx · App.tsx · index.css · test-setup.ts
+      routes/     StartScreen.tsx · MatchRoute.tsx
+      net/        api.ts · gameServer.ts
+      game/       useGameSession.ts · GameCanvas.tsx
+        interaction/  selection.ts
+        render/       renderer.ts · terrain.ts · units.ts · highlight.ts
+                      movementRange.ts · gridLines.ts · picking.ts · coordinates.ts
 ```
 
-Cross-package imports go through `@vod/shared`'s **exports map**, never into individual files. There are two entry points, both deliberate: `.` is the rulebook barrel, and `./testing` is fixtures -- consumed by server and client *tests* only, which is why it is a separate subpath rather than part of the public surface. The barrel holds only what `server/` and `client/` actually consume — commands go through `validateCommand` and `resolveAction`, union members are reached through their union, and anything used solely inside `shared/` stays out of it.
+## Commands
 
-**`@vod/server` is an application, not a library.** Nothing imports it, so it has no barrel and no `exports` field; `http.ts` is an entry point that gets run.
-
-The split is by **authority**, not subject matter:
-
-- **`shared/`** — types, legality predicates, queries, pathfinding, command validation and resolution, the event fold, and the wire protocol. Pure functions either side may read. They live here, not in `server/`: they take a state and return events or a new state, they never *hold* one.
-- **`server/`** — the mutable state reference, roll generation, the event log, and match construction.
-- **`client/`** — Babylon rendering, input, React, and the `GameServer` implementation that talks HTTP.
-
-Separate `package.json` files are the point: `server/` doesn't list Babylon or React, so a stray import is a resolution error rather than something caught in review. `shared/` having zero dependencies is the same guarantee for purity.
-
-**No build step for `shared/` at all** — its `exports` point at TS source. Bun runs TS natively on the server; Vite compiles it for the client. (A real build would be needed only if the server ever moves off bun.) It emits **nothing**: `packages/shared/tsconfig.json` sets `noEmit`, and `server`/`client` pull the source into their own programs, so it is typechecked as a byproduct of being imported — see Verification. Its own `build` script is a manual typecheck of that one package and is not reached by any root script.
-
-**Dependency rule** — now enforced by package boundaries rather than convention:
-
-- `shared/data/` imports nothing from the rest of `shared/`
-- `shared/` imports from `shared/data/` only
-- `server/` and `client/` both import from `shared/`; neither imports the other
-
-Bun installs these *isolated* rather than hoisted — `packages/server/node_modules/` holds only what `server` itself declares, so a stray `import 'react'` there is a hard resolution failure rather than something caught in review.
-
-No exceptions: phase 3 removed the last one. `client` no longer lists `@vod/server` at all — it constructs an HTTP `GameServer` locally and takes the interface from `shared`.
-
-## Invariants
-
-1. ✅ **The database is the only mutable state. The server holds nothing between requests.** Every request reads state, computes, and writes back — there is no in-memory `GameState` anywhere in `server/`, and reintroducing a cache would break statelessness rather than satisfy this. On the client, `GameCanvas`'s `useState` is a render replica fed by `subscribe`; anything needing the authoritative value calls `getState()`.
-2. ✅ **`shared/` is pure** — no I/O, no RNG, no Babylon, no React, no `Date.now()`.
-3. ✅ **`GameServer.submit()` is async**, from the first version — sync-to-async is a retrofit that touches every call site.
-4. ✅ **`GameState` is JSON-serializable** — no `Map`, `Set`, class instances, `Date`, or functions reachable from it.
-5. ✅ **An unvalidated action is unrepresentable.** `validateCommand` is the only constructor of an `Action` — it checks `actor === state.currentTurn` before anything else, then legality — and `resolveAction` accepts nothing else. The ordering a convention used to ask for is now enforced by the compiler: resolution cannot happen without validation having happened. `Action` carries a `unique symbol` brand that is never exported, so forging one or reviving one from JSON does not compile (verified; a deliberate `as unknown as Action` still does, which is the honest limit).
-
-   Resolution returns **events, not state** — see invariant 9.
-6. ✅ **Single source of truth, derive the rest.** A unit's position lives only in `unit.position`. Tile occupancy, selection, transport cargo — all derived by querying `state.units`.
-7. ✅ **Ephemeral UI state stays out of `GameState`** — hover, selection, camera, animation progress.
-8. ✅ **The client never resolves game outcomes** — no rolls, no damage math, no combat resolution. It submits commands and renders the events it gets back. *(Structurally in place; genuinely exercised only once combat introduces an outcome worth resolving.)*
-
-   It *may* read any deterministic part of `shared/` to **preview** — what's selectable (`legality.ts`), where a unit can move (`movement.ts`'s `exploreMovement`, already driving the blue overlay), what it could attack from there. That's consulting the rulebook for UI affordance, not deciding anything, and the server re-checks all of it as the actual enforcement.
-
-   The line is **deterministic preview, yes; random resolution, no.**
-
-9. ✅ **`applyEvents` is the only thing that mutates state.** Reducers decide what happened and return events; folding them produces the next state. One mutation path, so live play and replay run the same code and `initialState + log` reproduces `currentState` by construction. Two rules bind every event: **independently applicable** to the state before it, and **absolute values, not deltas** — which is what makes applying one twice a no-op. Both are covered by tests, per event type.
-
-## Server model ✅ *(phase 9 extends it with real identity)*
-
-Pure server authority, no client-side prediction. An ordinary SaaS request/response app that happens to draw a battlefield: the client submits a command, waits, and renders what comes back.
-
-**No hidden information.** Modelled on tabletop wargames — every player sees the whole board. No fog of war, ever; it isn't a deferral, it's out of scope.
-
-### Three types, three jobs
-
-| | Direction | Contents |
-|---|---|---|
-| **`Command`** | client → server | Intent only. No actor, no dice. Can be rejected. |
-| **`Action`** | inside the server | A `Command` the authority has **accepted**: authenticated, checked, plus any rolls it generated. Unforgeable — see invariant 5. |
-| **`GameEvent`** | server → clients | A fact that already happened. What clients fetch and animate. |
-
-`validateCommand` authenticates and checks a command, minting an `Action`; `resolveAction` turns that into events; `applyEvents` folds them into the next state. Keeping `Command` and `Action` distinct is what stops a client from supplying its own `actor` or its own dice — those fields exist only on the type the client can't send.
-
-Events, not actions, are what clients receive: a client that renders facts needs no rule parity with the server, so a stale browser tab can't compute a divergent outcome, and animation gets its ordered sequence — move, hit, death — without re-running resolution in the renderer.
-
-### Command shape ⬜ *(step 7d — today it's `MoveCommand | EndTurnCommand`)*
-
-One command per unit action, matching AW's move-then-choose flow. Move and attack are a **single atomic command**, not two:
-
-```ts
-{ type: 'unitAction', unitId, path, facing,
-  then: { kind: 'attack', targetId } | { kind: 'wait' } }
-```
-
-Atomicity is the point: with separate commands, a move could succeed and its follow-up attack be rejected, leaving the unit stranded in the open having spent its turn. One command, one validation, one outcome.
-
-**`facing` sits beside `path`, not inside `then`** — a unit that waits still ends up facing somewhere, so it is a property of where you finished rather than of what you did there. Validation is one of four values and nothing else; any facing is legal from any tile. See Facing and directional defence.
-
-**The client sends the path; the server validates it rather than deriving it.**
-
-`validatePath(state, unit, path, movementRange, movementType)` walks the array — O(path length), no search. The budget and movement type are arguments for the same reason `exploreMovement` takes them; `validateMove` resolves them from the catalog. It checks: starts at the unit's current tile, every step orthogonally adjacent to the last, no tile visited twice, no step onto impassable terrain or an enemy-occupied tile, total cost within the unit's movement budget, and the final tile unoccupied (friendly tiles are pass-through, not stopping points).
-
-Cost accumulates over `path[1..n]` — you don't pay for the tile you're already on. So a **single-element path is legal and costs 0**: that's "attack without moving," and it's the only legal shape for a `canMoveAndAttack: false` unit.
-
-Ownership, `hasActed`, and `actor` are checked separately. `validatePath` answers one question — is this route walkable by this unit right now — and stays composable with the rest.
-
-This is the same stance as every other reducer — *check what you're told, don't assume how it was produced* — and it has two payoffs:
-
-- **Manual routing is then a pure UI feature.** Deliberately walking the long way round a forest needs no protocol change, no new validation, nothing server-side. Just a different way of building the array the client already sends.
-- **Pathfinding needs no cross-machine determinism.** Because the server never re-derives a route, `exploreMovement` in `shared/` is a client-side convenience for previewing. It can use any heuristic or tie-break, and change freely, without risking disagreement. Only the cost model has to agree — see the invariant in Terrain.
-
-What *does* have to agree is the **cost model** — the terrain table and how cost accumulates. If the client's reachable-tile overlay and the server's budget check disagree, the UI offers a move the server then rejects. That's a UX bug rather than a correctness one, and it's a much weaker constraint than identical search behaviour.
-
-`canMoveAndAttack: false` units are rejected if `path` has more than one element.
-
-### Transport ✅
-
-**Plain HTTP request/response. No SSE, no WebSockets, no server push at all.** Commands are inherently request/response, so the POST response *is* the answer, including the rejection reason. "Another player did something" is discovered by asking.
-
-```
-GET  /api/matches                     → MatchSummary[]
-POST /api/matches                     → MatchSummary  (creates one)
-
-GET  /api/matches/:id/state           → { seq, state }          initial load
-GET  /api/matches/:id/events?since=N  → { seq, events, state }  everything after N
-POST /api/matches/:id/commands        → { ok: true, seq, events, state }   200
-                                      | { error }                        422
-```
-
-**Status carries the outcome, not just the transport.** A missing match is 404. A body that was never a command is 400. A well-formed command the *rules* refused is **422** — distinct from both, with the reason in the body. That last one used to answer 200 with `{ ok: false, reason }` on the argument that a rejection is an answer rather than a failure; the argument is fine but it left the client unable to tell a refused move from a broken request without parsing, and it made 200 mean two things.
-
-`MatchStore.submit` returns `CommandResult | null` — `null` for a missing match, as `snapshot` and `since` already did. That is what makes the mapping one line each: `ok: false` now means exactly one thing.
-
-✅ **The client reads it.** A 422 surfaces as a `RejectedError` carrying the server's reason — a separate type from `HttpError`, so a rejection cannot reach the connect path's two-case UI — and `submit` returns it as `{ ok: false, reason }` without raising the reconnecting banner. Every other non-2xx reads the `ErrorResponse` body too, so a 500's reason reaches the UI verbatim, with `server returned N` as the fallback when the body is not ours.
-
-**Every non-2xx body this code writes is an `ErrorResponse` — `{ error: string }`** — declared in `shared/protocol.ts` alongside the rest of the wire contract, and with no exceptions inside the app: the client-serving path's "not built" 404 uses it too, and nothing constructs a non-2xx `Response` outside `errorResponse`. The one body that is not ours is bun's own 413, which it answers before a handler is reached — see Payloads below. Deliberately *not* `CommandResult`'s `{ ok: false, reason }`, which the 400s and the 500 used to borrow: the two mean different things, and sharing a shape invites a client to conflate "your move was illegal" with "that was not a command". Success bodies go out through `Response.json`, which sets the content type itself.
-
-**Dispatch is `Bun.serve`'s own `routes` table**, not hand-rolled path parsing — one entry per endpoint above, keyed by method. Params come from the path literal, so `request.params.id` is typed and a typo in it is a compile error rather than `undefined` at runtime (verified). A `'/api/*'` entry catches everything the table does not claim, including a method an endpoint does not serve, which keeps those 404 rather than 405, and a `'/*'` entry below it serves the client build. There is no `fetch` handler at all: every path is accounted for in the table, and only `routes` receive a `BunRequest` — which is what carries `cookies`.
-
-The session cookie is the one thing this cost. `Bun.serve` has no middleware — [an open request upstream](https://github.com/oven-sh/bun/issues/17608), not an oversight here — and a matched route never reaches a fallback, so there is no choke point to stamp every response from. A `withSession` wrapper sits on each entry instead, visible on every line of the table: forgetting it is otherwise silent, since the endpoint keeps working and merely stops issuing a session.
-
-**Why not push.** A push channel is the only thing that would require a process holding connections open, and it buys very little here: an opponent takes tens of seconds to move, so seeing it a second or two late is imperceptible. Dropping it deletes an entire category of work — stream lifecycle, disconnect cleanup, heartbeats, proxy buffering, reconnect handling — none of which existed for any reason except the open connection.
-
-It also leaves the door open to stateless handlers behind a data store, since nothing then needs to stay alive between requests.
-
-**Polling is `GET /api/matches/:id/events?since=N`.** The client keeps the last `seq` it saw and asks for everything after it — routine polling, catch-up after a laptop sleeps, and recovery from a missed response are all the same call. **The event log *is* the polling primitive**, which is why this costs nothing to build.
-
-First load uses `GET /api/matches/:id/state`, which returns state plus its `seq` — there are no events to animate on arrival, only a board to draw. the events endpoint is for everything after that.
-
-Interval: a couple of seconds normally, doubling on failure up to 30s so a dead server isn't hammered, and resetting on the next success. A failed poll costs nothing — the next one asks from the same `lastSeq`.
-
-A hidden tab polls at the slowest interval, and a `visibilitychange` listener resets the backoff and polls immediately on return. Without that reset, restoring a tab could leave it up to thirty seconds stale while looking live.
-
-**Everything is same-origin, in dev and in production alike**, so there is no CORS anywhere and the client has no URL to configure — it calls `/api/*` relative in both environments and the code is identical. See Deployment.
-
-**Commands must be validated at runtime, not just typed.** TypeScript is erased; a POST body is attacker-controlled and can be anything. `shared/protocol.ts` gets a `parseCommand(input: unknown): Command | null` that checks the object shape and field types, and the HTTP handler rejects with 400 before the authority sees it. Hand-rolled — the command union is tiny and a schema library would be the package's first dependency.
-
-`validateCommand` also carries an exhaustive `default` refusing an unknown `type`, and `applyEvents` throws on an unknown event rather than skipping it — silently ignoring one would desync a replay. An earlier switch without such a default returned `undefined` and the caller threw reading `.ok` off it — verified, not theoretical. Types make that unreachable in-process and guarantee nothing over a wire.
-
-**Payloads are bounded in two places**, because validating a body means allocating it first:
-
-- `maxRequestBodySize` on `Bun.serve` (64KB) — a command is a few hundred bytes, so anything near this is a bug or an attempt to make us allocate. Rejected with 413 before parsing. ⚠️ **This is the one non-2xx body that is not ours**: bun answers it before any handler runs, so it is the single exception to the `ErrorResponse` rule above, and nothing tests it.
-- `MAX_PATH_STEPS` in `parseCommand` — a defensive allocation bound, *not* a game rule; `validatePath` owns the real limit. Stops a path that fits under the body cap from still materialising thousands of coordinates.
-
-Static file serving resolves against the build directory and confirms the result stays inside it. URL parsing already collapses `..`, so this is belt-and-braces — but "safe because of how the parser happens to behave" is not a property to rest filesystem access on.
-
-- Both events *and* resulting state come back together — **when there are any**. Events drive animation; state is the truth to snap to afterward, and pairing them is what makes the client self-correcting, so a missed event is fixed by the next poll rather than desyncing silently. ✅ A *caught-up* poll answers `{ seq, events: [] }` with no board at all: the client drops any update whose `seq` it already holds, so a state sent with one was parsed and discarded. Measured at 1414 → **21 bytes** for the ordinary case, and it skips the log query outright. The rule is keyed on `seq` moving, not on the event array being empty, so a resolution that somehow produced no events could never strand a client without the state it implies.
-- **`seq` makes the double-apply problem disappear.** The acting client applies its own POST response, then records that `seq`; the next poll returns nothing new because it asks for everything *after* it. No dedup logic, and no need for the subscribe-only rule that push required.
-- Bun serves this with no dependencies. HTTP/2 comes free from any reverse proxy at deploy time; the app server doesn't need it.
-
-### Deployment 🚧 *(dev verified; production untested)*
-
-**The server serves the client build.** `Bun.serve` handles `/api/*` and serves `packages/client/dist` for everything else — one process, one port, one deploy.
-
-Since a persistent process is required regardless (below), having it also serve a small static bundle costs nothing and collapses the rest of the problem — no CORS, no client URL config, no second deploy, no dev/prod origin mismatch.
-
-Splitting the client onto a static host, or putting a reverse proxy in front of both, becomes worth considering when the client outgrows this or CDN edge caching starts to matter. Neither is close.
-
-**Handlers are stateless.** Every request reads state from the database, computes, and writes back; nothing is held between them. Dropping push removed the only thing that needed a connection held open, and phase 4 removed the only thing that needed memory held between requests.
-
-The process stays alive because something has to listen on a port — not because it remembers anything.
-
-State lives in SQLite — see Data store.
-
-**In dev, Vite proxies `/api` to the server** so the same relative paths work:
-
-```ts
-// vite.config.ts
-server: { proxy: { '/api': { target: 'http://localhost:3001', changeOrigin: true } } }
-```
-
-Ordinary request/response through a proxy is unremarkable — the buffering and streaming hazards that made this worth worrying about disappeared with push.
-
-### Running it ✅
-
-Two processes in dev, one in production.
+Run from the repo root. All exit non-zero on failure.
 
 | | |
 |---|---|
-| `packages/server` | `"dev": "bun --env-file=../../.env --watch src/http.ts"` · `"start"` likewise |
-| `packages/client` | `"dev": "vite"` (unchanged) |
-| root | `"dev": "bun run --filter '@vod/client' --filter '@vod/server' dev"` — runs both in parallel |
-
-Both filtered explicitly for legibility; `'*'` would also work — bun skips packages that lack the script and only errors when none match.
-
-**`http.ts` exports `createServer({ port, databaseUrl })` and starts one only under `import.meta.main`.** Running the file is what listens; importing it yields the factory and nothing else. That is what keeps the module free of side effects at import — both inputs are arguments rather than ambient environment, which is the difference between the server being testable and merely importable. Without the guard the scripts would define the factory and exit without serving (observed).
-
-**One `.env`, at the repo root.** Bun reads `.env` from the working directory and does not walk up, and `bun run --filter` runs with the cwd set to the package — so the server scripts pass `--env-file=../../.env` explicitly rather than each package keeping its own.
-
-`.env.example` is committed; `.env` is not, and a missing `.env` is not an error — `--env-file` on an absent file just leaves the vars unset, so a fresh clone runs on defaults. Config surface:
-
-| | |
-|---|---|
-| `PORT` | server port, default 3001 |
-| `DATABASE_URL` ✅ | `file:./packages/server/vod.db` locally, a `libsql://…` URL on Turso |
-
-The client has none, because same-origin means it never needs a base URL.
-
-### Client-side layering ✅
-
-`GameServer` is scoped to **one** match — `connectGameServer(matchId)` returns a connection to that match, so listing and creating don't belong on it. Two modules under `client/src/net/`:
-
-| | |
-|---|---|
-| `api.ts` | the `/api` base, JSON, and the one place a response becomes `notFound`, `unreachable`, or a command rejection — plus `api.matches.list()` / `.create()`, the endpoints that aren't match-scoped |
-| `gameServer.ts` | the polling `GameServer` for a single match |
-
-**The match endpoints live in `api.ts` rather than a module of their own.** They are two one-line wrappers over `getJson`/`postJson` with no state, no lifecycle, and no interface — a separate file was an import and a name for nothing. They stay off `GameServer` for the reason above, which is a different question from which file they sit in.
-
-`gameServer.ts` is the one that stays separate, because it is the opposite kind of thing: a live connection with a poll loop, a `seq` cursor, backoff, and a `dispose()`. The split in `net/` is **stateless calls versus a connection**, not one file per endpoint group.
-
-`net/` sits beside `game/` rather than inside it: the start screen consumes it and is not part of the game. `game/` is the Babylon canvas and the interaction on it.
-
-Polling, `seq` dedup, and listener management stay together in `gameServer.ts` — they look like three concerns but they're one, the lifecycle of a live connection, and the dedup only makes sense next to the code producing the updates it guards.
-
-**`MatchSummary` lives in `shared/protocol.ts`**, not `server/`. It exists so the client can render what the server sends, which makes it wire contract like `GameServer` and `CommandResult` — and the client cannot import from `@vod/server` by design.
-
-When the server eventually needs fields the client shouldn't see — `ownerId` in phase 9 — **map explicitly, don't extend.** A server type extending the wire type is assignable to it structurally, so `JSON.stringify` ships every added field and the type system reports nothing wrong:
-
-```ts
-interface MatchRecord extends MatchSummary { ownerId }   // leaks on serialize
-const toSummary = (r: MatchRecord): MatchSummary => ({ id: r.id, ... })   // cannot
-```
-
-Nothing to map today — all four fields are rendered, and `list()` already builds the shape from selected columns.
-
-### Routing ✅
-
-**react-router, declarative** — `<BrowserRouter>` with `<Routes>`, data loaded in effects.
-
-Not the data router: loaders would fetch the match list before render, but **a `GameServer` needs `dispose()` and loaders have no teardown hook**. The match route would keep its effect anyway, leaving two data paradigms with the harder half unimproved. Data routers earn their keep when most routes are data-driven; here one route is a resource with a lifecycle.
-
-| | |
-|---|---|
-| `/` | StartScreen — lists matches, creates one, navigates to it |
-| `/:matchId` | MatchRoute — connects, renders GameCanvas |
-
-Deep links survive a refresh in both environments already: the server falls back to `index.html` for unknown paths, and Vite's dev server does history fallback by default.
-
-**A missing match is not a retryable error.** `connectGameServer` returns `{ ok: true; server } | { ok: false; kind: 'notFound' | 'unreachable' }` rather than throwing — the same reasoning as the reducers, that expected non-success should be representable. The two need different UI: one offers a way back to `/`, the other offers Retry, and a thrown error makes the caller reverse-engineer which it got.
-
-### The `GameServer` interface
-
-Lives in `shared/protocol.ts` — both sides need it, and phase 3's client-side HTTP implementation must not have to import `@vod/server`. `GameCanvas` talks only to this and never learns what's behind it:
-
-```ts
-interface GameServer {
-  getState(): GameState
-  submit(command: Command): Promise<CommandResult>
-  subscribe(onUpdate: (events: GameEvent[], state: GameState) => void): () => void
-  dispose(): void
-}
-```
-
-`dispose()` is not optional bookkeeping. **Unsubscribing every listener does not stop the polling loop** — an implementation that polls runs regardless of whether anyone is listening, so whoever constructed the server has to be able to shut it down. `MatchRoute` calls it from its effect cleanup, and also on a connection that resolves *after* teardown, which is exactly what StrictMode produces: a connect already in flight when the effect unmounts, leaking a second poll loop for the life of the tab if nobody disposes it.
-
-`getState()` is kept for debugging and for reads that need the authoritative value rather than a render replica. It is **synchronous**, which has a consequence worth stating plainly:
-
-**A remote implementation cannot have state at construction time.** It needs a round trip first. So `MatchRoute` owns the async bootstrap — it constructs the server, awaits the initial state, and renders `GameCanvas` only once ready, passing the server in as a prop. `GameCanvas` stops constructing its own authority and becomes a pure consumer of one.
-
-That is the better shape regardless (a component shouldn't create the thing it talks to), and it's what makes "phase 3 doesn't change `GameCanvas`" nearly true instead of false — the loading state lives one level up.
-
-**The `seq` guard lives inside the implementation, not in `GameCanvas`.** The remote `GameServer` tracks the highest `seq` it has delivered and drops anything at or below it, from either source — its own `submit` response or a poll. Callers of `subscribe` see each update exactly once and never learn that `seq` exists.
-
-This matters because it's the difference between "phase 3 doesn't change `GameCanvas`" being true or false. If the component tracked `lastAppliedSeq`, it would need rewriting; keeping the guard in the implementation means the component stays a dumb consumer.
-
-The guard is doing real work: a poll already in flight when you submit can return the same events the POST response is about to deliver. State is idempotent so a double-apply is invisible, but **events are not** — the unit would animate its move twice.
-
-Applying its own `submit` response immediately is what keeps your own moves responsive rather than waiting for the next poll interval.
-
-### Identity 🚧
-
-Server issues an opaque id on first contact and sets it as a cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` in production only (dev runs over plain `http://localhost`).
-
-One implementation, using bun's own cookie map. Only `routes` receive a `BunRequest`, and only a `BunRequest` carries `.cookies` — which is why the client build is a `'/*'` route rather than a `fetch` fallback. With every handler holding one, `withSession` reads and writes through `request.cookies` and never builds a `Set-Cookie` header itself; bun applies the change to the response, and does not parse the header until `cookies` is first touched.
-
-**The client never touches it.** The browser returns it automatically, so there is no token to read, store, or attach — less client code than a `localStorage` scheme, not more, and nothing to migrate when phase 9 makes the session mean something. Same-origin makes this work with no CORS involved, in dev through the Vite proxy as well.
-
-`SameSite=Lax` is what covers CSRF, which is the risk cookies introduce and bearer tokens don't. The trade is deliberate: `localStorage` is immune to CSRF but readable by any XSS, and for a same-origin app an `HttpOnly` cookie is the better side of it.
-
-**Phase 3: identity, not authentication** — anyone can send any id. Fine while it's one local client driving both players.
-
-`actor` is attached by the server from that identity, **never read from the client payload**. Under hot-seat one connection drives both players, so the server stamps `actor = state.currentTurn` on whatever arrives. A deliberate concession, not a security model.
-
-**Phase 9: OAuth only, sessions in our own database. No passwords, ever.**
-
-Sign in with a provider (Discord is the natural fit for a game; GitHub or Google work the same way). Store `(provider, external_id) → player_id`, issue our own session token into a `sessions` table, and resolve it to a `PlayerId` per request.
-
-The point of never accepting a password is that it deletes the parts of auth that are both hardest and most dangerous — hashing, reset flows, verification email, breach response. We never hold a credential worth stealing. A **magic link** is the natural later addition for people who don't want a third-party account; it keeps the same property.
-
-A small OAuth library plus a sessions table, not an auth platform. Hosted providers (Clerk, WorkOS, Auth0) stay a contained swap if auth ever becomes a distraction.
-
-**Better Auth is the candidate to evaluate first**, because it *is* that description rather than an alternative to it: sessions in our own database, a first-class Drizzle adapter, SQLite supported, httpOnly cookies, OAuth providers, and no password path required. It would replace `resolveActor`, supply the `sessions` table, and subsume `withSession` entirely — session creation becomes an insert, which retires the concurrent-mint race rather than working around it. To check when we get there: whether its cookie replaces `vod_session` cleanly, and what it assumes about a framework, since `Bun.serve` is not one.
-
-**The transport doesn't change** — it's the same cookie phase 3 already sets. What changes is what the session *means*: a row in `sessions` tied to a real player record, rather than an opaque id the server trusts on sight.
-
-Whatever provides identity, **it resolves to a `PlayerId` in one place on the server**, before `actor` is stamped. Auth is a lookup in front of the authority, never something the reducers know about — and game rules never move into the database layer, whatever the store turns out to be.
-
-## Data store ✅
-
-**SQLite locally, Turso when deployed — the same code either way.** The libSQL client rather than `bun:sqlite` directly: it behaves identically against a local file, and pointing it at a hosted Turso database is a connection string rather than a rewrite. `drizzle-orm/libsql` *is* the Turso adapter, so that promise survives the ORM — the URL is the entire difference. Turso is the destination because it removes the two things that actually bite about SQLite in production — ephemeral disks wiping the file on redeploy, and being pinned to a single machine.
-
-Start with the local file. Nothing has to change to move.
-
-```sql
-matches      (id, created_at, initial_state JSON, current_state JSON,
-              current_seq, current_turn,
-              PRIMARY KEY (id))
-resolutions  (match_id, seq, actor, action JSON, events JSON, created_at,
-              PRIMARY KEY (match_id, seq),
-              FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE)
-```
-
-**A resolution is one accepted action and everything it produced.** That is what a row is, and what the earlier name `log_entries` never said. `actor` is promoted out of the action blob because it is the one field of an action worth filtering on — and the only record of who did something, once phase 9 makes that mean anything.
-
-**`initial_state` is written and never read — on purpose.** Together with the log it makes a match a complete, self-contained history; without it the log is a sequence of deltas with no anchor to replay from. Kept because it costs a few kilobytes once per match and **cannot be backfilled** — the starting state is exactly the thing that would be missing.
-
-**`current_state` is a checkpoint, not a second source of truth.** Every event-sourced system checkpoints; keeping the latest is the degenerate case, at an interval of one. It exists for `submit`, which must validate against current state and already reads that row for the concurrency guard — so reading it costs nothing extra. Measured: 0.06 ms against ~8 ms to fold 2000 entries, on a path that runs per command.
-
-Events remain authoritative (invariant 9), and a test folds the log from `initial_state` on every run to prove the two agree. If they ever diverge, rebuild the checkpoint — the log is the truth.
-
-`current_turn` is denormalised out of `current_state` so listing matches doesn't parse an entire board per row just to show whose turn it is — the one field the start screen needs without loading a game.
-
-State goes in as **JSON blobs** — nothing ever queries inside them, and invariant 4 already guarantees they survive the round trip. A rule written for the wire pays off again here.
-
-**`GameState` deliberately keeps `grid` and `players`.** Neither changes during a match, yet both are serialised into `current_state` on every command, beside an `initial_state` that is never read. That looks like waste, and it raises two separate questions with different answers.
-
-**Splitting `GameState` in code is rejected on cost.** It stops being one value a pure function takes and returns, every rulebook signature grows a second parameter, and `applyEvents(initial, log) === current` stops covering the whole thing — for a saving the table below shows is zero at today's board size.
-
-**Moving `initial_state` out of the hot row is a size question**, and the honest answer is *not yet*. Measured with real states from the real reducer, `wal_autocheckpoint` disabled, counting WAL frames rather than file growth:
-
-| per move | same row | own table |
-|---|---|---|
-| 8×8 (today) | 0.97 pages · 3.9 KB | 0.97 pages · 3.9 KB |
-| 40×40 | 9.8 pages · 39 KB | 5.9 pages · 24 KB |
-
-The mechanism is worth stating precisely, because it is easy to get backwards in both directions. SQLite writes whole **pages** to the WAL, and an `UPDATE` that leaves the record's layout alone dirties only the pages it actually changed — updating a small column beside a 14.5 KB blob costs 1.1 pages against 1.0 with the blob moved away, so an untouched neighbour really is free *in that case*. But when the updated column's **length** changes, the record shifts and the chain is rewritten, untouched neighbours included. `current_state` changes length on essentially every move (measured 1337–1339 bytes across a real 8×8 game), so a large-map row does pay for `initial_state` on every command.
-
-Today that costs nothing, because the whole row fits inside one 4 KB page and there is nothing to separate. At 40×40 the split cuts WAL per move by 40%, so **revisit it when maps grow** — it is a one-table change with no read path, not a redesign.
-
-⚠️ **The methodology matters, because the first attempt at this measurement was confidently wrong.** Leaving `wal_autocheckpoint` at its default lets a checkpoint reuse frames in place, so WAL *file growth* undercounts what was written; and writing the same blob every iteration keeps the record layout stable, hiding the exact effect under test. Those two mistakes together produced a clean, plausible "2% — splitting never helps", which is false.
-
-Two neighbouring ideas fail for their own reasons, recorded so they are not re-derived. **Referencing the map by `map_id` instead of embedding the grid** would make a stored state no longer self-contained — old matches would silently depend on map modules never changing, which is the ruleset-versioning problem under Known compromises arriving early — and the client, which is sent an instantiated grid precisely so it never needs map definitions, would have to gain them. **Compressing the blob** works and buys a lot on repetitive grid JSON, but it makes every row opaque to `sqlite3` and adds a codec to the read path, for a game whose moves are tens of seconds apart.
-
-The instinct is sound, and on the wire it was already collecting: a caught-up poll used to ship a whole board the client discarded. That one was worth fixing and is fixed; see Transport. On disk it is a real but *deferred* cost, gated on map size rather than dismissed.
-
-The schema is close to identical on Postgres, but not free: `created_at` holds `Date.now()`, which overflows Postgres `INTEGER` (int4) and would need `BIGINT` or `TIMESTAMPTZ`. It works in SQLite only because SQLite integers are 64-bit.
-
-### Access ✅ *(Drizzle)*
-
-`schema.ts` defines both tables in `drizzle-orm/sqlite-core`; queries are typed from it, so a column rename is a compile error rather than a runtime surprise. JSON columns carry `$type<GameState>()` and friends, which removes the `JSON.parse(x as string) as GameState` pattern from every call site.
-
-Worth knowing what `$type` is: a compile-time assertion, not validation. It centralises a cast rather than performing a check. Real validation would need a validator, and the natural home would cost `shared/` its zero-dependency property.
-
-**Migrations are generated, not hand-written.** `bun run db:generate` diffs `schema.ts` against snapshots in `packages/server/drizzle/meta/` and writes SQL; `migrate()` applies pending ones at boot. Committed, because they record what has been applied to real databases and cannot be regenerated from the schema alone. `schema.sql` is refreshed by the same script — the whole current shape in one readable file, since incremental migrations don't give you that.
-
-Two things stay on the raw driver because Drizzle cannot express them: the pragmas, and the `'write'` transaction mode — see Concurrency.
-
-⚠️ **`file:` paths in `DATABASE_URL` are relative to the repo root**, resolved there regardless of cwd. Two processes read the same variable from different directories — the server runs with cwd set to its own package, `drizzle-kit` runs from the root — so left to cwd, one string would mean two different files and migrations would quietly build a second, empty database beside the real one. The `db:*` scripts live at the root and do **not** use `bun run --filter`, which would set cwd to the package and lose the single root `.env`.
-
-**The fallback itself lives once**, in `src/const.ts`: `createDb` takes it as its default, and `drizzle.config.ts` imports the same constant. There is no second literal to keep in step — drizzle-kit transpiles the config and resolves its relative imports, so reaching into the app's module graph works (verified: both `db:generate` and `db:migrate` run, and no stray database appears beside the real one).
-
-What that does *not* remove is the cwd dependency above. `DEFAULT_DB_URL` is a repo-root-relative `file:` path; `db.ts` resolves it against `REPO_ROOT` explicitly, while drizzle-kit resolves it against cwd. They agree only because the `db:*` scripts run from the root — which is why those scripts must not move to `bun run --filter`.
-
-### Concurrency
-
-Once `submit` is async, two requests can interleave at `await` boundaries even in a single-threaded process — both read the same state, both compute against it, both try to write.
-
-```
-read state + seq  →  validate → resolve → applyEvents (all pure)  →  batch[ INSERT log, UPDATE match ]
-```
-
-Statements are **built by Drizzle and run by the raw driver**. Drizzle's own `batch()` cannot pass a transaction mode — it always gets libSQL's default, `deferred`, which starts as a read and upgrades on first write. `'write'` is `BEGIN IMMEDIATE`: the lock is taken up front, so the upgrade cannot fail partway through. `.toSQL()` gives typed construction *and* the mode; one cast (`bind`) bridges Drizzle's `unknown[]` params to libSQL's `InValue[]`.
-
-**`batch` makes the two writes atomic in one round trip.** That matters mainly for *crashes*, not races: if the process died between the insert and the update, the log would be one ahead of the materialized state and every later command would fail forever. Atomicity is worth having whether or not anyone else is writing.
-
-**`PRIMARY KEY (match_id, seq)` catches the race for free.** It's the natural key for the log anyway, and it's what makes `WHERE seq > N` an index scan — so it isn't concurrency machinery, it's just the schema. Two writers claiming the same seq means one violates it and throws.
-
-**The `WHERE … AND current_seq = ?` guard is now asserted.** `submit` checks the update's `rowsAffected` and throws if it matched nothing. That branch cannot be reached from the API — verified by trying: twenty attempts to move the row between the read and the write fired it zero times, because libSQL serialises on one connection, and the primary key would violate first regardless. The test covers the mechanism it rests on rather than the branch, and says so.
-
-**A violation is left to throw.** It needs one player submitting twice inside a single round trip, which the client's in-flight guard already prevents — so it's an impossible-today condition, and impossible conditions should be loud. It surfaces as a 500 (as JSON, so the client can report it accurately) and lands in the logs. If it ever starts happening, a retry goes in exactly one place.
-
-Explicitly *not* done: no `BEGIN IMMEDIATE` (it would hold the write lock across our own compute and network latency, for a workload that computes a pure function over a snapshot), and no in-process lock (process-local state that does nothing across instances, and would hide the condition rather than surface it).
-
-**Set the pragmas, in the two places their lifetimes belong.** WAL mode (concurrent readers alongside one writer) and `busy_timeout` (contention waits instead of throwing `SQLITE_BUSY`). Defaults are meaningfully worse and this is easy to not know about. Both are no-ops against a remote libSQL server, which manages its own concurrency.
-
-They are not the same kind of setting, which is worth stating because pairing them looks natural and is a trap. **`journal_mode = WAL` is a property of the database file** and survives every restart, so it belongs with `migrate()` — set once. **`busy_timeout` is per connection and resets to 0 on each new one** (verified), so it belongs in `createDb`. Together in `migrate()` they worked only because every caller happened to call both; the day migrations move to a deploy step, that pairing would have taken `busy_timeout` with them and produced intermittent `SQLITE_BUSY` a long way from the change.
-
-### Deploying SQLite ⬜
-
-Known costs, none of them surprises later if they're written down now:
-
-- **Ephemeral filesystems are the real hazard.** Railway, Render, Cloud Run, Vercel, and friends hand you a disk that vanishes on redeploy — and the app cheerfully creates a fresh empty database rather than failing loudly. Needs an attached volume, or a hosted database. Fly.io with a volume, a persistent disk on Render/Railway, or a plain VPS all work.
-- **One instance, structurally.** No horizontal scaling, and every deploy is stop-then-start rather than rolling — anyone mid-match sees a few seconds of errors.
-- **Backups are yours.** Litestream (continuous replication to S3-compatible storage) is the standard answer.
-- **`bun:sqlite` is synchronous**, so a slow query blocks the event loop. Irrelevant for primary-key lookups on a tiny table; it matters only for maintenance like `VACUUM`.
-
-Moving to Turso or Postgres is what buys multi-instance and ephemeral-disk tolerance. Neither is close to necessary.
-
-## Match log 🚧
-
-The match is an initial state plus an ordered log of validated changes.
-
-Each row of `resolutions` holds one **action** and the **events** it produced, keyed by a monotonic `seq`. Three fields, three jobs:
-
-| | | |
-|---|---|---|
-| `seq` | the cursor for catch-up | ✅ |
-| `events` | what happened, at animation granularity | ✅ read on every poll |
-| `action` | the accepted command: `+ actor`, later `+ rolls` | ⬜ written, never read — an audit record, not something to act on |
-
-**Events are authoritative.** `applyEvents` is the only thing that mutates state, so `initialState + log` reproduces `currentState` by construction, and a test checks it over a multi-turn script and at every intermediate step. `matches.current_state` is a checkpoint, not a second truth — see below.
-
-`GET /events?since=N` is the log's other job, and the reason push could be dropped: the log *is* the subscription mechanism, so polling cost nothing to build.
-
-**The client deliberately does not fold.** An earlier plan had it mirroring the server with `applyEvents`; 5b settled against — the renderer animates from event payloads, and nothing else consumes intermediate states (see 5b, *Why the client does not fold*). `applyEvents` stays exported, so a replay or debug tool can fold the log any time without the live client doing so.
-
-**Rejections are not logged.** `submit` returns before the write, so the log records what happened, never what was attempted. "Who tried what" needs failed actions stored too.
-
-**Materialize, don't fold.** `matches.current_state` is a checkpoint rather than a second source of truth — see Data store for the reasoning and the numbers.
-
-Persisted in SQLite. See Data store.
-
-Events are per-change, at the granularity a client needs to animate:
-
-```ts
-type GameEvent =
-  | { type: 'unitMoved'; unitId; path }
-  | { type: 'unitAttacked'; attackerId; targetId; damage }
-  | { type: 'unitDied'; unitId }
-  | { type: 'turnEnded'; nextPlayer }
-```
-
-Resolution returns events and nothing else; state comes from folding them:
+| `bun run dev` | Vite (5173) + server (3001); `/api` is proxied, same-origin everywhere |
+| `bun run test` | `bun test` for shared + server, then Vitest for client |
+| `bun run typecheck` | `tsc -b` — use `bunx tsc -b --force` for a real check, since `.tsbuildinfo` can report stale |
+| `bun run lint` | ESLint across the repo |
+| `bun run build` | `tsc -b`, then bundle and compress the client |
+| `bun run format` / `format:check` | Prettier (Markdown is excluded) |
+| `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
+| `bun run preview` | Serve the production build |
+
+Single test file: `bun test packages/server/src/match.test.ts` (`-t 'name'` to
+filter); client: `cd packages/client && bunx vitest run src/net/gameServer.test.ts`.
+
+`db:*` must run from the root: `file:` URLs in `DATABASE_URL` resolve against
+the repo root, and running them through `bun run --filter` sets the cwd to the
+package and loses the single root `.env`.
+
+## The pipeline
 
 ```ts
 validateCommand(state, command, actor) → { ok: true, action } | { ok: false, reason }
@@ -483,969 +102,352 @@ resolveAction(state, action)           → GameEvent[]
 applyEvents(state, events)             → GameState
 ```
 
+| | Direction | Contents |
+|---|---|---|
+| `Command` | client → server | Intent only. No actor, no dice. Can be rejected. |
+| `Action` | inside the server | An accepted `Command`, plus `actor`. Carries a `unique symbol` brand that is never exported, so it can only come from `validateCommand`. |
+| `GameEvent` | server → clients | A fact that already happened. What clients animate. |
+
+`validateCommand` checks `actor === state.currentTurn` first, then dispatches to
+the per-command validator. `resolveAction` accepts nothing but an `Action`.
+
+## Rules that hold
+
+1. **The database is the only mutable state.** No module-level mutable state
+   exists in `server/`; every request reads, computes, and writes back.
+2. **`shared/` is pure** — no I/O, no RNG, no Babylon, no React, no `Date.now()`.
+3. **`GameServer.submit()` is async.**
+4. **`GameState` is JSON-serializable** — no `Map`, `Set`, class instance,
+   `Date`, or function is reachable from it.
+5. **An unvalidated action is unrepresentable** — `validateCommand` is the only
+   constructor of an `Action`.
+6. **Single source of truth.** A unit's position lives only in `unit.position`;
+   occupancy and selection are derived by query.
+7. **Ephemeral UI state stays out of `GameState`** — hover, selection, camera,
+   animation progress.
+8. **The client never resolves outcomes.** It may read any deterministic part of
+   `shared/` to preview (what is selectable, where a unit can move); the server
+   re-checks all of it.
+9. **`applyEvents` is the only thing that mutates state.** Every event is
+   **independently applicable** to the state before it and carries **absolute
+   values, not deltas**, so applying one twice is a no-op. Both are tested per
+   event type.
+10. **The client and server share one movement cost model** — `entryCost` in
+    `movement.ts` is the single function both the search and the path check
+    call.
+
 ## State model
 
 ```ts
-Coordinate  { col, row }                                        ✅
-TileType    six terrains, each with a `char`                     ✅ in data/terrain.ts
-Facing      'north' | 'east' | 'south' | 'west'                 ✅ decorative
-            — derived from the path in 6f, mechanical in 7d       ⬜
-PlayerId    string                                              ✅ never a union of colors
-Player      { id, name, color }                                 ✅ color is display-only, never keyed on
-GameState   { grid, units, players, currentTurn }               ✅
+Coordinate  { col, row }
+TileType    'plains' | 'road' | 'bridge' | 'forest' | 'mountain' | 'river'
+Facing      'north' | 'east' | 'south' | 'west'      // decorative; nothing updates it
+PlayerId    string                                   // never a union of colours
+Player      { id, name, color }                      // colour is display-only
+Unit        { id, position, facing, unitTypeId, owner, hasActed }
+GameState   { grid, units, players, currentTurn }    // grid is [row][col]
 
-Unit {
-  id, position, facing, owner, hasActed                         ✅
-  unitTypeId                                                    ✅ 6a
-  health                                                        ⬜ 7b
-}                     movementRange lives on UnitType; maxHealth will too
+Command       MoveCommand { type, unitId, path } | EndTurnCommand { type }
+Action        Command & { actor } & brand
+GameEvent     UnitMovedEvent { type, unitId, path } | TurnEndedEvent { type, nextPlayer }
 
-Command       MoveCommand | EndTurnCommand                      ✅
-              UnitActionCommand (move + optional attack)        ⬜ replaces MoveCommand
-Action        Command & { actor: PlayerId }                     ✅
-              + rolls                                          ⬜ arrives with combat
-ValidationResult { ok, action } | { ok: false, reason }         ✅
-CommandResult { ok, seq, events, state } | { ok: false, reason } ✅
-ErrorResponse { error } — the body of every non-2xx              ✅
-GameEvent     UnitMovedEvent | TurnEndedEvent                   ✅
-              damage / death / charge outcomes                  ⬜
+ValidationResult  { ok: true, action } | { ok: false, reason }
+CommandResult     { ok: true, seq, events, state } | { ok: false, reason }
+StateResponse     { seq, state }
+EventsResponse    { seq, events, state? }
+MatchSummary      { id, createdAt, seq, currentTurn }
+ErrorResponse     { error }                          // the body of every non-2xx
 ```
 
-- `PlayerId` is a plain string so player count isn't baked into the type system. Turn order is array rotation over `GameState.players`, wrapping via modulo — works for 2 or 4 players, and is where a "skip eliminated players" rule goes.
-- **One `hasActed` flag**, not separate move/attack flags — one command per unit action sets it exactly once. Reset by the `turnEnded` event, for the incoming player only.
-- ✅ ~~**`MoveAction.path` is an unvalidated field**~~ — the reducer read only the last element and never checked the intermediate steps. Closed by `validatePath` in 6c, which walks every one.
+Turn order is array rotation over `GameState.players`, wrapping via modulo.
+`hasActed` is one flag per unit, set by `unitMoved` and reset by `turnEnded` for
+the incoming player only.
 
 ## Content — `shared/data/`
 
-Static content, not runtime state: what damage cavalry deals to infantry never changes mid-match. Plain TypeScript `Record<K, V>` tables, which give compile-time exhaustiveness — add a unit type and every incomplete table becomes a build error.
+Static tables keyed by `Record`, so adding a member makes every incomplete table
+a compile error.
 
-| File | Contents | |
+**`unitTypes.ts`** — `{ id, name, movementType, movementRange }`:
+
+| Unit | Movement type | Range |
 |---|---|---|
-| `unitTypes.ts` | `UnitType` catalog keyed by `UnitTypeId`, referenced by `Unit.unitTypeId` | ✅ identity + movement; combat fields ⬜ |
-| `terrain.ts` | Per terrain: a map `char`, a single `defense` value, and `cost` per movement type, `null` = impassable. See Terrain | ✅ |
-| `chargeThresholds.ts` | `Record<AttackerUnitTypeId, Record<DefenderUnitTypeId, number>>` | ⬜ |
-| `damageTable.ts` | attacker-vs-defender base damage % | ⬜ |
+| Infantry | `foot` | 3 |
+| Cavalry | `horse` | 6 |
+| Artillery | `wheels` | 4 |
 
-`TileType` moves here from `shared/types.ts` when terrain lands — it's content vocabulary, and `terrain.ts` needs it.
+**`terrain.ts`** — `{ char, defense, cost }` per terrain. `char` is the map
+symbol; `defense` is stars of cover and is not read by anything yet; `cost` is
+movement points to *enter*, and `null` is impassable.
 
-## Units
+| Terrain | char | defense | foot | horse | wheels |
+|---|---|---|---|---|---|
+| road | `-` | 0 | 1 | 1 | 1 |
+| bridge | `=` | 0 | 1 | 1 | 1 |
+| plains | `.` | 1 | 1 | 1 | 2 |
+| forest | `f` | 2 | 1 | 2 | 3 |
+| mountain | `^` | 4 | 2 | — | — |
+| river | `~` | 0 | 2 | — | — |
 
-Three unit types, three movement types, one-to-one for now. Artillery is wheeled/horse-drawn — historically right for the era and a clean spread: infantry goes anywhere slowly, cavalry is fast in the open but stopped by rough ground, artillery is slow *and* road-preferring. (An earlier draft called cavalry "road-bound"; the table below gives `horse` the same plains cost as `foot`, so what actually distinguishes it is speed plus impassable mountain and river -- forest merely costs it double. Only `wheels` genuinely prefers roads.)
+`getUnitType` and `getTerrain` throw on an unknown id.
 
-| Unit | Movement type | Ranged ⬜ | Charge ⬜ |
-|---|---|---|---|
-| Infantry | `foot` ✅ | musket fire | bayonet |
-| Cavalry | `horse` ✅ | — | yes |
-| Artillery | `wheels` ✅ | cannon | — |
+## Maps
 
-Movement range, `ranged`, and `charge` are all fields on the same `UnitType` record — movement and combat aren't separate systems. The catalog currently carries identity and movement only.
+Every grid comes from parsing a character map; there is no other construction
+path. `parseTerrainGrid(rows: string[]): TileType[][]` inverts the terrain
+table's `char` column and throws on an unknown character or a ragged row.
 
-## Terrain ✅ *(6b/6c; rendering is 6e, maps are 6d)*
+`createInitialState()` parses `DEFAULT_MAP` in `initialState.ts` — 8×8, all
+plains. The test fixture `makeState` accepts either map rows or a size, and a
+size generates a plains character map and parses that.
 
-`plains · road · bridge · forest · mountain · river`
-
-**Bridge is its own type**, mechanically identical to road. The renderer has to *know* it's a bridge to draw a road crossing water, and inferring that from "road adjacent to river" is fragile — a road running alongside a river isn't a bridge. Terrain types are already a mechanics-and-presentation pair, so a presentational distinction is a legitimate reason for one.
-
-Rivers stay meaningful: fordable on foot at a cost, impassable to wheels.
-
-**`sea` and `beach` are cut from the v1 roster.** They were in an earlier draft "for map shape, not because naval units exist" — but with an all-land roster `sea` is impassable to every movement type, which makes it a wall with a different colour, plus a table row, a renderer colour, and a thing to tune around. Six types do the work; add the coastline when a map wants one. `bridge` survives the same test because it is mechanically identical to road *and* visually distinct, which is the case the paragraph above argues.
-
-### One table, both axes
-
-All six, because this is the only place defence values live — Combat reads them from here rather than keeping a copy. The map character rides along, so **adding a terrain type stays one edit** and `Record` exhaustiveness now covers three axes rather than two:
+## Movement
 
 ```ts
-{ road:     { char: '-', defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
-  bridge:   { char: '=', defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
-  plains:   { char: '.', defense: 1, cost: { foot: 1, horse: 1, wheels: 2 } },
-  forest:   { char: 'f', defense: 2, cost: { foot: 1, horse: 2, wheels: 3 } },
-  mountain: { char: '^', defense: 4, cost: { foot: 2, horse: null, wheels: null } },
-  river:    { char: '~', defense: 0, cost: { foot: 2, horse: null, wheels: null } } }
+exploreMovement(state, unit, movementRange, movementType) → Movement
+  .reachable                   // Coordinate[] — where the unit may stop
+  .pathTo(destination)         // Coordinate[] | null — cheapest route
 ```
 
-Roads and bridges are identical rows — mechanically they *are* the same terrain, and the split exists for the renderer (see above). `wheels` paying 2 on plains against 1 on road is the whole of "artillery prefers roads"; the defence column is unread until phase 7.
+The budget and movement type are arguments; callers resolve them from
+`getUnitType`. The search relaxes over a FIFO queue: a neighbour already
+recorded more expensively is lowered and re-queued.
 
-Defence is a **single number per terrain**, not a unit×terrain matrix — AW uses 0–5 stars at 1% per star per HP. Cost stays a matrix because it genuinely varies by movement type.
+`reachable` and *settled* are different sets. A friendly unit's tile is settled
+and walkable-through but is not a destination, so `pathTo` answers for a larger
+set than `reachable` lists. The unit's own tile stays in the map — every path
+chain terminates there — and `pathTo(unit.position)` is `[position]`.
 
-Flying units, if they ever exist, take the AW model: **no terrain defence at all** and unhindered movement. That's `defense = 0` for an air movement type, not a new dimension on the table.
-
-One file rather than separate `movementCost` and defence tables: adding a terrain type is then one edit, and `Record` exhaustiveness covers both axes at once. Combat reads `defense` without terrain needing to know why.
-
-### Movement is one search, and it is the pathfinding
-
-Cost varies per tile crossed and by who's crossing. One search yields both outputs:
+An enemy blocks the tile *and* the route; a friend blocks only the tile.
 
 ```ts
-const movement = exploreMovement(state, unit, movementRange, movementType)
-movement.reachable            // the overlay -- where this unit may legally stop
-movement.pathTo(destination)  // walked back through predecessors, no second search
+validatePath(state, unit, path, movementRange, movementType) → string | null
 ```
 
-`pathTo` returns the **cheapest** route, `null` for a destination the search never settled, and `[position]` for the unit's own tile — the single-element path that costs 0. Manual routing — deliberately taking the long way — remains possible later because the protocol carries a path and the server validates rather than derives it; it's a UI feature, not a protocol change.
+Walks a client-supplied route: starts at the unit, every step orthogonally
+adjacent, no tile twice, nothing impassable or enemy-held, total within budget,
+and a destination unoccupied by anyone but the moving unit. A single-element
+path is legal and costs 0. The server never derives a route.
 
-**The existing loop stays; it does not become a priority queue.** An earlier draft said the terrain-blind BFS "stops being correct" once costs vary, and that is wrong — the loop already relaxes (`if (known.cost <= nextCost) continue;` *else* lower it and re-push), and relaxation over a FIFO queue is SPFA, which is correct for any non-negative costs. Uniform cost 1 is simply the case where nothing is ever improved after its first visit, which is why it has been indistinguishable from BFS until now.
+Both the search and the walk call `entryCost(state, unit, coordinate,
+movementType)`, which returns `{ ok: true, cost }` or `{ ok: false, reason }` —
+the one place that decides whether a tile can be entered and what it costs.
 
-What a priority queue would buy is *settles-once* — a node's cost final the first time it is popped — which is easier to reason about but not more correct, since SPFA's costs and predecessors are both consistent at termination. And it buys no speed worth having: the explored region is bounded by the **budget**, not the board, so a range-6 unit touches a few dozen tiles whatever the map size. If settles-once is ever wanted for clarity, the right shape is a **bucket queue** indexed `0..budget` rather than a heap — the costs are small bounded integers, so that is a true Dijkstra with O(1) pops in about fifteen lines.
+## HTTP
 
-⚠️ **`reachable` and *settled* are different sets, and `pathTo` needs the larger one.** Friendly-occupied tiles are pass-through but not stopping points, so the search settles them and the *output* filters them out — filter the map itself and a route through a friendly unit to a tile beyond it becomes unfindable. Two names, one map: `settled` holds cost and predecessor for everything the search touched and is what `pathTo` walks; `reachable` is derived from it once, at the return. The unit's own tile **stays in `settled`** — it is where every path chain terminates — and is excluded when building `reachable`, which is a change from today's code, where it is deleted from the map outright.
-
-**`exploreMovement` takes the budget and movement type as arguments; it does not look them up.** Resolving them is the caller's job, and there are two. A search that looked them up would make every test here name a real unit type to get a budget, coupling tests about the *search* to catalog values — tuning cavalry's range would break tests that have nothing to do with cavalry. Passing the whole `UnitType` instead would be one parameter fewer and worse: the search would be handed an object it uses two fields of, and phase 7's `ranged` and `charge` would start implying it cares about them.
-
-**The route preview is what earns 6e's destination step**, and it should be argued for on those terms rather than as a confirmation dialog. With variable cost the cheapest route is genuinely non-obvious, so seeing it before committing is real information. The *confirm click itself* is scaffolding for 7's move-then-attack menu — in phase 6 it offers exactly one choice — and is worth landing anyway, because 7e otherwise rebuilds the interaction it replaces. Three gestures the plan owes it, none of which were written down: a second click on the chosen tile **confirms**, a click on another reachable tile **re-targets**, and a click on the unit or outside the range **cancels**. `SelectionState` grows `destinationChosen` as a member, exactly as 5a designed for. (`reachableTiles` became `movement` back in 6c, where `handleTileClick` first needed `pathTo`; the hover preview is its second consumer.)
-
-**The turn model is what makes snapshotting `movement` safe**, and that is worth stating because it is load-bearing rather than incidental. A selection only exists during its owner's turn (`canSelectUnit` requires `owner === currentTurn`), only that player may submit during it (`validateCommand` refuses anyone else with *not your turn*), and their own client serialises submits behind the in-flight guard. So nothing can move under a live selection: an opponent's poll cannot arrive carrying a move, because the opponent cannot make one.
-
-The single hole is one player driving two clients at once — possible today, since `resolveActor` trusts whoever asks, and possible in phase 9 for someone with two tabs open. There the stale snapshot produces a refused command and a selection rollback, which is the correction that already exists and is already tested.
-
-⚠️ **What would make this genuinely racy is a change to the turn model** — simultaneous turns, or out-of-turn reactions like opportunity fire. Neither is planned, and if either is ever considered, the selection snapshot is one of the things it invalidates.
-
-**On `SelectionState` growing:** it needs no splitting into slices. It is one union, one populated member, three fields today, and the union is already what makes "tiles with no selected unit" unrepresentable — the coordination problem a split would reintroduce. What to watch instead is that each new phase genuinely needs everything the previous one carried *plus* more, so the members start repeating fields. When they do, factor the shared part into a base and intersect it per phase (`{ phase: 'destinationChosen'; path; facing } & Selected`) rather than piling optional fields onto one member. Accumulating optionals is the failure mode; member count is not.
-
-### ⚠️ Invariant: one cost model
-
-**Client and server read the same terrain table from `shared/`.** Pathfinding needs no cross-machine determinism, because the server validates rather than re-derives — but the *cost model* must agree, or the reachable overlay offers moves the server rejects. Any movement modifier added later belongs in `shared/`, never on one side.
-
-**Enforced by construction from 6c, not by discipline.** The search and the walk are two consumers of the same question — *may this unit step onto this tile, and what does it cost* — so they call one function rather than each implementing it:
-
-```ts
-type Entry = { ok: true; cost: number } | { ok: false; reason: string }
-entryCost(state, unit, coordinate, movementType): Entry
-```
-
-It answers the three ways a step can fail -- off the grid, impassable to this movement type, blocked by an enemy -- and otherwise the terrain cost. `exploreMovement` does `if (!entry.ok) continue`; `validatePath` does `if (!entry.ok) return entry.reason`. The result/reason shape is the one `ValidationResult` and `CommandResult` already use.
-
-Note what it deliberately does **not** decide: whether a unit may *stop* there. Entering and stopping are different questions — a friendly unit's tile is enterable and not stoppable — which is the same distinction `settled` and `reachable` draw, so the destination check stays with `validatePath`.
-
-### `validatePath` belongs here, not to combat
-
-It is a movement rule that happens to be needed before attacking, and it closed an **existing** hole: `path` was accepted unvalidated, so a client could submit a straight line through anything. That only became exploitable once terrain made such a line meaningfully different from a legal route, which is why terrain and validation landed together in 6b/6c.
-
-It was also a breaking change to the client, which sent exactly the straight line the check refuses — so `validatePath` and the client's switch to `pathTo` landed as one commit (6c).
-
-**One carve-out the walk needs:** the occupancy check must exclude the moving unit itself. `path[0]` is the unit's own tile, and a single-element path — legal at cost 0, the "attack without moving" shape — ends where it starts. Without the exclusion a unit standing still fails its own occupancy test. In phase 6 that shape is simply "wait in place", worth allowing since it costs nothing and 7d needs it.
-
-**It lives in `movement.ts`**, beside `exploreMovement` and sharing `entryCost` with it — `move.ts` stays the command reducer. It needs no barrel export: `validateMove` is its only caller.
-
-**The reasons it returns are specific, and they are diagnostics.** "Move exceeds movement range" and "destination is occupied" replace today's blanket `illegal move`, which costs nothing given there is no hidden information to leak. But be clear about who reads them: once the client picks destinations from `movement.reachable` and paths from `pathTo`, **a well-behaved client can only trip these through a stale snapshot** — every other failure means the client is broken or hostile. So they are written for whoever is debugging, not as prose for a player.
-
-**What actually bounds a path's length is the budget, not the no-revisit rule.** Every terrain costs at least 1 to enter, so a total within budget already caps the number of steps. The no-revisit check stays because a path that visits a tile twice is nonsense no legitimate client produces and refusing nonsense is two lines — but it should not be justified as a bound, and `MAX_PATH_STEPS` remains what it says it is: an allocation limit applied before parsing, far above any real path.
-
-**`canMoveUnit` is deleted here.** `validateMove` was its only caller and it was never in the barrel; its two jobs come apart cleanly into `canSelectUnit` (ownership and `hasActed`) and `validatePath` (is this route walkable), which is the separation this section already asks for. `validateMove` becomes a unit lookup, that check, and the walk — and `'move has no destination'` disappears, since an empty path is just one of the things the walk refuses.
-
-### Maps
-
-A character grid, because then the source file looks like the map:
-
-```ts
-const MAP = [
-  '..^^^...',
-  '..~~~...',
-  '--===---',
-  '..~~~...',
-  '..fff...',
-]
-// . plains   - road   = bridge
-// ~ river    ^ mountain   f forest
-```
-
-The legend is not written down twice: every character above is the `char` field of its entry in the terrain table, and `parseTerrainGrid` builds the lookup by inverting it.
-
-Readable in an editor, in a diff, and in review. AW and AWBW store maps as terrain-id grids; FFT isn't a useful reference, since its 3D tiles with height solve a different problem.
-
-**Units are a separate list**, not encoded in the grid — they carry type, owner, and facing, which doesn't fit one character:
-
-```ts
-units: [{ at: { col: 1, row: 4 }, type: 'infantry', owner: 0 }, …]
-```
-
-**Map definitions live in `server/maps/`. The parser does not.** The client never needs map definitions — it receives an instantiated `grid` in `GameState` — so the *data* belongs to the server. But `parseTerrainGrid(rows: string[]): TileType[][]` is a pure function over shared vocabulary, and **`shared/`'s own tests need terrain grids** while `shared/` cannot import from `server/`. So it lives in `shared/` and is exported from the barrel, `server/` being its other consumer. It inverts the `char` column of the terrain table above rather than keeping a second legend, and throws on an unknown character or a ragged row — the same reasoning as `applyEvents` refusing an unknown event, since a silently mistyped tile is a map that plays wrong.
-
-⚠️ **Every grid in the repo comes from parsing a character map. There is no second construction path.** The two places that used to build one by hand — `createInitialState` and the `makeState` fixture, both filling an array with `'land'` — parse instead, so the shape production plays on is the shape tests exercise. A `DEFAULT_MAP` constant (8×8 plains) is the fallback that keeps `createMatchState` honest until real maps exist in 6d, and `makeState`'s numeric shorthand is sugar that *generates* a plains character grid and parses it rather than a way to skip the parser.
-
-Consequence: `createInitialState()` becomes `createMatchState(map)`, and a match records which map it was built from.
-
-## Combat ⬜
-
-Modelled on Advance Wars' actual mechanics. What follows is the reference behaviour with sources, then where we intend to diverge — kept together because the divergences only make sense against what they're diverging from.
-
-### The damage formula
-
-Stripping CO modifiers (which we don't have), AW reduces to this — ⚠️ **written in AW's units, where HP is the displayed 1–10 and not our 0–100. Do not implement this line:**
+Plain request/response over `Bun.serve`'s own `routes` table. No SSE, no
+WebSockets, no server push. Everything is same-origin in dev and production
+alike; the client calls `/api/*` relative.
 
 ```
-damage = baseDamage × (attackerHP / 10) × ((100 − terrainStars × 10 × defenderHP / 10) / 100)
+GET  /api/matches                     → MatchSummary[]           (newest 50)
+POST /api/matches                     → MatchSummary             201
+GET  /api/matches/:id/state           → { seq, state }
+GET  /api/matches/:id/events?since=N  → { seq, events, state? }
+POST /api/matches/:id/commands        → { ok: true, seq, events, state }   200
+                                      | { error }                         422
+'/api/*'  → 404, including a method an endpoint does not serve
+'/*'      → the client build
 ```
 
-**Ours, in our units** — the only version to build from:
+Status carries the outcome: a missing match is **404**, a body that was never a
+command is **400**, a well-formed command the rules refused is **422** with the
+reason in the body. Every non-2xx body this code writes is an `ErrorResponse`;
+the one exception is bun's own 413 from `maxRequestBodySize`, which it answers
+before a handler runs.
 
-```
-damage = baseDamage × (attackerHP / 100) × ((100 − terrainStars × 10 × defenderHP / 100) / 100)
-```
+`state` is present on an events response only when `seq` advanced past the
+requested `since`. A caught-up poll answers `{ seq, events: [] }` and skips the
+log query.
 
-Both `/10`s become `/100` because we store and display 0–100 (see the next section). Taking the AW line literally is not a rounding difference: at 4 stars with a full-health defender it computes `100 − 4 × 10 × 10 = −300`, so mountains would *heal* the unit standing on them. `baseDamage` stays a percentage of a full-health target, exactly as AW's tables give it, so the matchup numbers transfer unchanged — it is only the HP terms that rescale.
+**Payload limits:** `maxRequestBodySize` is 64 KB; `MAX_PATH_STEPS` in
+`parseCommand` is 256. `parseCommand` validates shape and field types at
+runtime and rebuilds a fresh object, so extra properties are dropped.
 
-Every step rounds down. Three things fall out of it:
+**Session:** `withSession` wraps every route entry and mints an opaque id into a
+`vod_session` cookie — `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` in
+production. Nothing reads it: `resolveActor` returns `state.currentTurn`, so any
+client can act as whoever's turn it is.
 
-- **A wounded attacker hits softer** — linearly, by HP fraction.
-- **A wounded defender loses its cover.** Terrain defence scales by *defender* HP, so a 4-star mountain protects a full-health unit far more than a nearly-dead one. This accelerates kills and stops damaged units turtling on good ground.
-- **Terrain is not a minor modifier.** Four stars at full health is a 40% reduction. Tuning a matchup table with defence stubbed to zero would produce numbers to throw away — which is why terrain comes first.
+**Serving the client build:** `'/*'` serves `packages/client/dist`, falling back
+to `index.html` so deep links survive a refresh. `clientDist` is a
+`createServer` option. Requests resolve against the dist directory and are
+confirmed to stay inside it. When `Accept-Encoding` allows, the `.br` then `.gz`
+sibling is served with `Content-Encoding`, the original file's `Content-Type`,
+and `Vary: Accept-Encoding`. `/assets/*` is `Cache-Control: immutable`;
+everything else is `no-cache`.
 
-**Luck** adds 0 to +9 to `baseDamage`, itself scaled by attacker HP: each point of health lost narrows the luck range by 1%, floor of +1%. Because `baseDamage` is a percentage in both schemes, this term needs **no rescaling** — the 0–9 is already in our units, and the "each point of health" that narrows it is AW's 1–10 point, so ours narrows per 10 HP. So damaged units are less swingy as well as weaker. *(Sources disagree slightly on where luck enters relative to the HP multiplier; the magnitude is consistent.)*
+## Data store
 
-### HP representation — where we diverge ⚠️
+SQLite via the libSQL client and Drizzle. `DATABASE_URL` is the only difference
+between a local file and hosted Turso.
 
-**AW stores 100 internally and displays 1–10.** A displayed "9" is anywhere from 81 to 90. Three consequences people know the game by:
-
-- You cannot read exact health off the board.
-- **Counter-attacks reliably under-deliver** versus the preview, because the defender counters on its real internal HP while the preview used the rounded display.
-- Chip damage accumulates invisibly until a bar drops.
-
-**We keep 100 internal and display 100.** The 1–10 display was a GBA screen constraint, and inheriting it means permanently explaining why a "9 HP" unit died to 15 damage. The counter-attack surprise is arguably good texture, but it should be a choice rather than an inherited artefact.
-
-This is upstream of the formula, the preview, the health bar, and the tuning harness — which is why it's settled here rather than discovered later.
-
-### Terrain defence
-
-Each star is 10% reduction *at full defender HP*. **The values live in the terrain table — see Terrain — and this section does not restate them**, because it used to and drifted: the old table here was AW's, listing `Woods` (our `forest`), plus `City` and `HQ`, which are buildings the roadmap puts out of scope for v1. A second table in a second vocabulary is exactly how a defence value gets tuned in one place and read from the other.
-
-For reference while reading the formula above: our six terrains run 0 stars (road, bridge, river) through 1 (plains), 2 (forest), to 4 (mountain).
-
-### Facing and directional defence ⬜ — where we diverge ⚠️
-
-**AW has no facing. This is ours**, and the second original mechanic in the game after charge. It earns its place on theme as much as on mechanics: the period's tactics *are* line, flank and rear, and it gives cavalry's speed a purpose beyond arriving sooner — getting behind something.
-
-A unit takes full defence from the **front**, less from a **flank**, least from the **rear**. Only the *defender's* facing matters; the attacker's is irrelevant, exactly as in FFT.
-
-**The classification is arithmetic on a four-cycle** — one pure function in `shared/`, trivially testable:
-
-```
-(directionOfAttack − defenderFacing) mod 4   →   0 front · 1,3 flank · 2 rear
+```sql
+matches      (id, created_at, initial_state JSON, current_state JSON,
+              current_seq, current_turn, PRIMARY KEY (id))
+resolutions  (match_id, seq, actor, action JSON, events JSON, created_at,
+              PRIMARY KEY (match_id, seq),
+              FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE)
 ```
 
-Adjacent attacks give an orthogonal direction. Ranged ones need not — a cannon three tiles away can sit diagonally — so the direction resolves by **dominant axis, with a perfect diagonal counting as a flank**.
-
-**It enters combat as a factor, never a branch.** A `directionalMultiplier` inside `computeDamage` alongside terrain, which means counter-attacks inherit it for free with the roles swapped: a unit that moved in to attack is facing its target, so its counter arrives at the target's front and takes full defence. No special case, exactly as counter-attacks are already specified to be a second call rather than a branch.
-
-For **charge**, the natural knob is the *threshold* rather than the roll: a rear charge lowers `matchupThreshold`, so `margin = targetHP − threshold` shrinks and the existing formula carries it unchanged.
-
-#### An override with a default, not a step
-
-**Facing is chosen, but never demanded.** The destination step already reads *pick destination → see route → confirm*; facing inserts as *→ rotate →* between the last two, defaulting to the direction of travel, which is right most of the time. Confirm accepts the default; a rotate gesture changes it.
-
-That default is what makes this affordable. Three units a turn over a forty-turn game is a hundred-plus facing decisions, and most of them do not matter — a required step would tax every move in the game to price the few that do. FFT gets away with demanding it because it is slow and menu-driven by design; this is meant to feel closer to AW.
-
-⚠️ **Sequencing, and the reason it is split across two phases: facing selection is pure friction until combat reads it.** So:
-
-- **6f derives it** from the last step of the path, with no UI at all. Free, deterministic, and it stops units moonwalking.
-- **7d makes it mechanical** — the command carries it, `computeDamage` reads it — while the client still sends nothing but the derived default.
-- **7e lets the player override it**, at which point the choice already has consequences.
-
-At no point does the game ask for a decision that does nothing.
-
-⚠️ **Tune charge head-on before layering direction onto it.** Charge is already the one mechanic with no reference behaviour, an untuned threshold table and an untuned failure-damage function; rear-charge bonuses put a *second* untuned original mechanic in the same expression. Get charge behaving sensibly front-on first, then add the directional term — otherwise every observation is adjusting two unknowns at once.
-
-**One quiet payoff:** the single-element path — legal at cost 0, so far justified only as "wait in place" — becomes **turn in place**, a real defensive action. A mechanic we had already decided to allow for other reasons acquires a purpose.
-
-### Counter-attacks
-
-**Only when both units are direct combat.** If either side is indirect, no counter in either direction. The defender counters using its post-damage HP.
-
-Our `ranged.min === 1` ↔ direct mapping reproduces this exactly, so a counter fires iff both units have `min === 1`, the defender survives, and the attacker is within the defender's range.
-
-**Not a special case.** A counter is `computeDamage` applied in the other direction with the defender's reduced HP — the same function, called twice. If it becomes a branch inside the attack resolver rather than a second call, that's the smell.
-
-### Damage preview
-
-The sharp edge of invariant 8, and AW shows one before you commit. The client computes it from the same formula with the luck term omitted — a deterministic estimate, explicitly not a prediction. The server rolls and decides the real number, which will differ. **Preview the formula, never the dice.**
-
-### Ranged — one category, not two
-
-```ts
-ranged: { range: { min, max }, canMoveAndAttack: boolean }
-```
-
-`min === 1` behaves like AW direct fire (adjacent through max, symmetric counter-attack). `min > 1` behaves like indirect fire (can't hit adjacent, no counter given or received). The category falls out of the numbers; no separate flag.
-
-`canMoveAndAttack` is independent of range category — a mounted archer can be indirect *and* mobile; a cannon indirect and static. AW ties these together (indirects can't move and fire); we don't, deliberately.
-
-No line-of-sight system. AW never had one either.
-
-### Charge
-
-A distinct attack type, chosen instead of firing on a given turn, consuming `hasActed` either way. Capability lives on the attacker's `UnitType` (`charge?`), optional; any unit can be a *target* regardless. **This has no AW equivalent** — it's our melee model, and the one part of combat with no reference behaviour to check against.
-
-Requires the attacker to be able to enter the target's tile — reads the terrain table, so if the target's terrain is impassable to the attacker's movement type, charge isn't available.
-
-```
-margin   = targetCurrentHP% − matchupThreshold%
-luckRoll = random(0, luckMax)
-success  = margin <= luckRoll
-```
-
-No clamp needed — it falls out of `luckMax` being bounded. `margin ≤ 0` always succeeds; a small positive margin needs a good roll; a margin above `luckMax` is impossible.
-
-- **Success**: target dies, attacker displaces onto the vacated tile.
-- **Failure**: attacker takes bonus damage scaled by `margin`, no position change.
-
-Fire and charge are **different resolutions, dispatched once** on an `attackKind` discriminant — fire produces damage, charge produces death-plus-displacement or a backfire. Two self-contained functions, not conditionals threaded through one.
-
-### Tuning
-
-**Untuned**: `luckMax`, every charge threshold, the failure-damage scaling function, the flank and rear multipliers, and the whole damage matchup table.
-
-**Two of those have no reference behaviour at all** — charge and directional defence are both ours, and they meet in the rear-charge threshold. Tune them **in sequence, never together**: the matchup table against AW's numbers first, then charge front-on, then the directional term. Each stage leaves exactly one unknown to move against an observation.
-
-**Build the harness before tuning.** `shared/` is pure and rolls are inputs, so a script that runs the matchup grid and prints **hits-to-kill** — attacker × defender at full health on plains, then shifted by terrain — is roughly thirty lines and needs no browser. Hits-to-kill is the artefact worth tuning against; a raw damage number isn't. Without it, tuning means editing a table, restarting, creating a match, manoeuvring two units together, and reading one number.
-
-*Sources: [Wars World News — Battle Mechanics](https://www.warsworldnews.com/wp/aw/game-aw/battle-mechanics/) · [AWBW Wiki — Damage Formula](https://awbw.fandom.com/wiki/Damage_Formula) · [Advance Wars Wiki — Luck](https://advancewars.fandom.com/wiki/Luck) · [AWBW Wiki — Terrain](https://awbw.fandom.com/wiki/Terrain) · [Advance Wars Wiki — Indirect Combat](https://advancewars.fandom.com/wiki/Indirect_Combat)*
-
-## Rendering 🚧
-
-- `client/render/` is a presentation of state and never a source of truth for it.
-- **Camera**: `ArcRotateCamera` in `ORTHOGRAPHIC_CAMERA` mode, fixed isometric 3/4 angle (alpha ≈ -π/2, beta ≈ π/3.5). Orthographic so tiles read as clean squares. Orbit/zoom stay attached for dev convenience.
-- **Tile lookup is math, not mesh-picking** — `screenToTile` intersects a camera ray with the `y=0` plane. Babylon's `scene.pick()` on pointer-move is gated behind `constantlyUpdateMeshUnderPointer`; the math version has no such gate and doesn't care what's rendered. ⚠️ **The flip side is that terrain has to stay flat**: the day a mountain has real height, clicking its peak selects the tile behind it, because the ray still meets `y=0` somewhere else entirely. Terrain reads by colour for now, and elevation is a later visual pass that owes an answer to picking before it starts.
-- ⬜ **Rotation follows facing** *(6f)* — `createUnitMesh` sets `rotation.y` from `Facing` once and nothing has updated it since. `snapUnits` starts writing it alongside position, so a snapped-over or skipped animation cannot leave a unit facing a direction the state disagrees with.
-- Terrain is one merged mesh, vertex-colored per tile. Grid lines are a `LineSystem` overlay. Highlights are parameterized single-tile meshes.
-- ✅ **Animation is driven by the authority's events**, not by the command the client sent — `GameRenderer.playEvents(events)` walks the list the server returned and animates each in order.
-- ⬜ **`GameRenderer.syncUnits(state)`** — reconciles meshes against current state. It currently builds every unit mesh once at startup with no add/remove, so the first kill would leave a mesh on the board forever.
-- ✅ **`GameRenderer.snapUnits(state)`** *(5b)* — positions existing meshes from state, no tween; runs inside the hook's queue on every batch, before the commit, and is what `syncUnits` grows out of.
-- **`renderer.ts` is the accumulation point** — every feature so far has added wiring there. Deliberately not split: when `syncUnits` lands, `unitMeshes.ts` comes out of it, following the pattern the other render modules already set.
-
-## Dev tooling ✅
-
-Babylon Inspector as a dev-only toggle. Pattern: gate behind `import.meta.env.DEV` and load the package via a dynamic `import()` *inside* that guard, never a static top-level import — that combination lets the bundler prove the branch is dead and strip it. Verified: no Inspector UI code in `dist/`, bundle size unchanged. 5c-3 added `@babylonjs/core/Debug/debugLayer` to the same guarded load — `scene.debugLayer` is itself a prototype augmentation, so it rides the guard with the Inspector rather than shipping in every bundle — and re-verified the `dist/` check still holds.
-
-## Open questions
-
-- **Counter-attack for `min > 1` units.** "No counter given or received" was settled when indirect fire and immobility were the same thing. Now that `canMoveAndAttack` is independent of range category, it's worth re-checking whether the rule should still key off `min > 1` alone. Probably still correct — nothing has challenged it — but never explicitly revisited. **Owned by 8b**, which is where it stops being answerable in the abstract.
-- ✅ ~~**`net/gameServer.ts` is untested**~~ — 24 tests as of 5a: seq deduplication (a poll in flight during a submit no longer goes unchecked), exponential backoff and its cap, the status transitions, `dispose` including a poll resolving after teardown, and — once step 5's harness landed — the hidden-tab interval and the `visibilitychange` reset. `fetch` and timers faked, happy-dom for the document.
-- ✅ ~~**No automated tests.**~~ 201 of them now — 106 in `shared/`, 45 in `server/`, 50 in `client/`. `bun test` for the first two, Vitest for the third. Covers `parseCommand`, validation and resolution, the event fold and its two design rules, the terrain table and its parser, `exploreMovement` and `validatePath`, `MatchStore` against `:memory:`, the HTTP surface end to end including the compressed client-build serving, `handleTileClick`, the polling `GameServer`, and `useGameSession` with its animation gate. What is *not* covered: the renderer — WebGL, so a real browser remains the check for it.
-
-The item below does not belong to a phase, which is how things stay recorded forever:
-
-- ✅ ~~**The server refactor.**~~ Drizzle and real migrations, `log_entries` became `resolutions`, events made authoritative and independently applicable, `Action` became a branded validated type, and the repo got its first tests. The client-side event folding once listed as its last piece was rescoped away in 5b — see *Why the client does not fold*.
-
-## Known compromises
-
-Things we've decided to live with, recorded so they don't get forgotten rather than because they're acceptable forever. Distinct from *Out of scope for v1* below, which is unbuilt features rather than shortcuts taken.
-
-| | Current state | What it needs eventually |
-|---|---|---|
-| **Session identity** | Opaque id in an httpOnly cookie; the server trusts it on sight | Phase 9 — OAuth sign-in and a real session record. Same cookie, real meaning. No passwords at any point |
-| **`actor` under hot-seat** | Server stamps `currentTurn` on its one connection | Phase 9 — session→player map established at join |
-| **Matches are unowned and unbounded** | Anyone can create any number; no delete, no expiry. `list()` is capped at 50 newest — a bound, not pagination | Phase 9 — scope listing to the player, and add deletion. Until identity exists there's nothing to scope by |
-| **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | Phase 9 — match lifecycle and, eventually, notification. Not new mechanics |
-| **Ruleset versioning** | None | Stamp a ruleset id on the match so old logs replay under the rules they were played with |
-| **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
-| **Migrations run at boot** | `migrate()` on startup, fine for one instance and ~0.4 ms once nothing is pending. Drizzle lists runtime migration as a first-class flow for monoliths, so this is a choice rather than a shortcut | `bun run db:migrate` as a deploy step, once there is more than one instance, a rolling deploy, or a reason to deny the runtime DDL rights |
-| **Two reads per command** | `resolveActor` needs state to stamp `actor = currentTurn`, but `submit` owns the read | Phase 9 — `resolveActor` becomes a session lookup and the extra read disappears |
-| **`typecheck` can pass stale** | `tsc -b` skips work its `.tsbuildinfo` believes current — observed reporting 0 while `tsc -p packages/server` flagged two `TS6133`s | Run `tsc -b --force` in the gate, or drop the incremental cache |
-
-## Out of scope for v1
-
-- **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
-- **Buildings / capture points.** A terrain type with attached `{ owner, captureProgress }`, not a separate object layered on a tile.
-- **Graying out acted units.** The mechanical restriction is in scope; the visual is a later UI pass — but note phase 7 asks for a "units that can still act" indicator, which is the same thing under another name. Whichever phase draws it, it should be one treatment, not two.
-- **Manual routing.** Dragging out a deliberately non-optimal path. Unblocked by the protocol carrying a path and the server validating it — purely a matter of building the UI for it.
-
-## Roadmap
-
-### Shipped
-
-1. ✅ ~~**Monorepo restructure**~~ — `packages/{shared,server,client}`, bun workspaces, root scripts.
-2. ✅ ~~**`GameServer` interface + in-process implementation**~~ — `GameCanvas` stopped owning `GameState`, `submit` is async, `actor` lands on every action with reducer checks, events are the reducer's output channel. Beyond plan: rejection reasons surface in the UI rather than the console.
-3. ✅ ~~**Real server**~~ — `Bun.serve` with the three endpoints, event log with `seq`, session cookie, `parseCommand` at the boundary, exhaustive `default` in `applyAction`, Vite proxy, dev script running both processes. `App` owned the connection (4b moved it to `MatchRoute`); `GameCanvas` takes the server as a prop; `client` no longer depends on `@vod/server`.
-4. ✅ ~~**Matches become real things.**~~ Split in two, because the schema wanted writing once:
-
-   **4a ✅** Match ids; `matches` and `log_entries` in SQLite via the libSQL client (later replaced by `resolutions`, and the hand-written SQL by Drizzle); match-scoped API; `match.ts` as an async `MatchStore`; one `.env` at the repo root.
-
-   **4b ✅** react-router (declarative); `/` start screen; `/:matchId` for the game; `connectGameServer(matchId)` returning a result rather than throwing. `net/` moved out of `game/`; `MatchSummary` moved to `shared/protocol.ts`.
-
-**Why 2 and 3 were separate.** Phase 2 changed the *shape* — who owns state, what a call site looks like, sync vs async. Phase 3 changed the *transport*. Kept apart, a phase 3 failure was necessarily the transport. The same reasoning splits 5 from 6 below.
-
-Three client issues stopped being latent the moment a command became a round trip, and were fixed in phase 3: requests can fail (backoff plus a visible `retrying` state), selection rolls back on rejection, and an in-flight guard stops two clicks submitting against the same stale state.
-
-The last one landed with 5b: **state now commits only after its events finish animating.** The hook's queue gates the commit, and `snapUnits` corrects whatever a skipped or failed animation left behind — so 7c's `syncUnits` will reconcile against a state whose events have already been shown.
-
-### 5 — Client refactor
-
-Before combat rather than during. **Split in two**, for the same reason phases 2
-and 3 were: 5a changes shape and nothing else, 5b changes behaviour. Kept apart,
-a 5a regression is necessarily the refactor.
-
-5c is appended rather than part of that split: it is tooling, not refactor, and
-nothing in 5a or 5b depends on it.
-
-**`renderer.ts` is not split.** It's 158 lines, the sub-modules are already
-separate files, and what's left is wiring — which is what an assembly point is
-for. Splitting scene setup from the returned object would produce two files you
-always read together. When `syncUnits` lands in phase 7, extract `unitMeshes.ts`
-for mesh lifecycle and diffing and have `renderer.ts` call it, exactly as it
-already calls `terrain.ts` and `highlight.ts`. An extraction driven by real
-content, not a preemptive split.
-
-#### 5a ✅ — the refactor. One behaviour change, its own commit.
-
-**`GameCanvas.tsx` owned the session and the canvas at once**, which is what
-made it 135 lines. `useGameSession(server, { onSelectionChange, onEvents })`
-now owns the session — render replica, rejection state, in-flight guard,
-`submitCommand`, the tile-click handler, subscription, and one `applySelection`
-funnel every selection write passes through, so the
-set-the-ref-then-push-the-renderer pairing lives once instead of at three call
-sites. `GameCanvas` keeps the renderer effect (it needs the canvas ref) and the
-JSX, imports neither `handleTileClick` nor `initialSelectionState`, and knows
-three things: a canvas ref, the renderer lifecycle, and how to draw a
-selection. It gets `endTurn` rather than a raw `submitCommand`, so `Command`
-construction never leaves the session. One hook, not two; the split is *the
-session* versus *the canvas*.
-
-**`selection.ts` stays pure.** State and a coordinate in, new state and a command
-out, no React and no server. Moving `submitCommand` into it would destroy that.
-
-✅ **`SelectionState` became a union**, even though 5a doesn't need the extra
-phases:
-
-```ts
-| { phase: 'idle' }
-| { phase: 'unitSelected';      unitId; position; movement }
-| { phase: 'destinationChosen'; unitId; position; movement; path }   // 6e adds this
-```
-
-It replaced `{ selectedUnitId: string | null; reachableTiles: Coordinate[] }` — two
-independently-settable fields, so "tiles with no selected unit" was representable
-and meaningless. Phase 6 then added a member rather than converting a type, and
-phase 7 adds `choosingTarget` the same way. (`reachableTiles` became `movement`
-in 6c, when `handleTileClick` needed `pathTo` to build a command.)
-
-`position` is captured at selection time, exactly as `reachableTiles` already
-is — the type becomes coherently a snapshot instead of half snapshot, half
-lookup. That is what lets the selection push become a projection of the
-selection alone: no `state` parameter, no choice between the render replica and
-`server.getState()` to reason about. Selection is ephemeral UI state (invariant
-7), not `GameState`, so snapshotting what it previews takes nothing from
-invariant 6 — and phase 6's confirmation step needs snapshot semantics
-regardless.
-
-*(Phase 6 renames `reachableTiles` to `movement` when it stops being a bare array
-and becomes the `exploreMovement` result with `.reachable` and `.pathTo`. Not
-before: `selection.movement.some(…)` describes something the field isn't yet.)*
-
-**Three decisions the extraction forced, all settled:**
-
-- **How does the canvas learn the selection?** → **an `onSelectionChange`
-  callback**, not returned state. The hook owns the selection (it owns
-  `submitCommand`, whose whole job is optimistic set plus rollback) and must not
-  know about Babylon. Returning it as state is the idiomatic option, but it costs
-  two new effects, forces the click handler to be re-registered as its identity
-  changes, and pulls the renderer into state to make those effects wake. The
-  callback keeps the handler stable and registered once. Two riders make it a
-  simplification rather than a relocation: every selection write funnels
-  through one `applySelection` in the hook, and the canvas's callback reads its
-  renderer ref **at call time** — which also closes a
-  rollback-into-a-disposed-renderer hazard `submitCommand` carries today, since
-  it captures the renderer before its await.
-- **One subscription or two?** → **one, in the hook, with an `onEvents`
-  callback.** The single callback sets state, clears rejection, *and* animates;
-  the first two belong to the hook and the third to the canvas, so two
-  listeners looks natural. Rejected because 5b sequences the commit *after* the
-  animation — an ordering only expressible where one listener owns both. Two
-  listeners, state in the hook and animation in the canvas, have no order
-  between them at all. It also makes both hook inputs one shape rather than
-  two mechanisms.
-
-  The load-bearing line inside: the hook holds both callbacks in a
-  **latest-ref**, so the subscription depends on `server` alone. `subscribe`
-  fires synchronously and the listener clears the rejection — a subscription
-  effect that depended on the callbacks' identities would re-run per render
-  and wipe a rejection before anyone saw it. A hook test re-renders with fresh
-  identities and asserts the rejection survives; it was verified to fail
-  against the dependent-subscription shape.
-- **`submitCommand`'s `!renderer` guard** → **accept that it disappears.** It
-  existed partly to bind `renderer` for the `showSelection` calls below it, and
-  the hook has no renderer. The `pendingRef` half survives; the push guards a
-  null renderer itself. The honest delta: a click in the sub-frame window
-  before the renderer effect runs changed from *silently refused* to
-  *submitted normally* — unobservable in practice, named rather than rounded
-  to zero because 5a's zero-delta claim is load-bearing.
-
-✅ **One `MatchRoute` bug fell out of this and was fixed first.** It never
-reset `server` when `matchId` changed, and react-router reuses the component for
-a param change — so navigating between two matches rendered `GameCanvas` against
-the *previous* match's server, which the effect cleanup had already disposed,
-until the new connection resolved. Fixed by keying the connection component on
-`matchId` — a param change remounts it, resetting *all* of its state (the
-planned two-line reset would have missed `connection`, and the repo's own
-`react-hooks` lint forbids synchronous setState in an effect body, which is
-React's position too). It mattered to 5a because it was the only way `server`
-could change under a mounted canvas; with the remount, it cannot by
-construction, and the renderer stays a `ref`.
-
-✅ **The client learned about 422.** The server answers a rule-rejected command
-with 422 and an `ErrorResponse` body; the client used to throw on any non-2xx
-that was not 404, so a refused move read *"server returned 422"* and raised the
-reconnecting banner. `client/net/api.ts` gained `RejectedError` — a separate
-type rather than a widening of `FailureKind`, whose two cases are exactly what
-`MatchRoute` has UI for — and reads the reason off the body of every non-2xx;
-`gameServer.submit` stopped treating a rejection as a transport failure.
-`GameCanvas` was untouched, since `submit()` still returns a `CommandResult`.
-
-✅ **`net/gameServer.ts` got tests, and one simplification.** It was the most
-intricate untested code in the client: seq deduplication, exponential backoff,
-the hidden-tab interval, and `dispose`. The dedup is load-bearing — without it a
-poll in flight during a submit animates the same move twice — and nothing checked
-it. `fetch` and timers are both things Vitest can fake, so the core was testable
-without a DOM; the `visibilitychange` behaviour needs one, which the harness
-below supplies before the extraction.
-
-The simplification: `applyUpdate` took `EventsResponse | CommandResult` and
-opened with `if ('ok' in update && !update.ok) return`, a union that existed only
-to serve two callers. Moving the check to the one caller that needs it lets it
-take a single shape.
-
-```ts
-poll:    applyUpdate(response)
-submit:  if (result.ok) applyUpdate(result)
-```
-
-✅ **The DOM harness moved up from 5b** — `happy-dom` plus
-`@testing-library/react` — because 5a's riskiest change was otherwise the one
-thing 5a could not test. The extraction's failure mode is the `onEvents` wipe
-described under the second decision above, and every client test had been
-`handleTileClick`: the refactor could have broken the rejection UI with the gate
-green, and "a 5a regression is necessarily the refactor" has teeth only if the
-regression is detectable. Two dev dependencies one increment early bought
-`useGameSession` landing with tests, `gameServer.ts`'s `visibilitychange`
-coverage no longer waiting on 5b, and 5b starting with a harness instead of
-building one while also changing behaviour. The `typeof document` guards in
-`gameServer.ts` went with it — their only beneficiary was a DOM-less test run.
-
-✅ **`strict` went on here, and it was a one-line flag flip.** It was parked for
-years as its own increment on the grounds that the fallout is unpredictable.
-Measured: adding `"strict": true` to `packages/server/tsconfig.json` and
-`packages/client/tsconfig.app.json` produces **zero errors** across every
-package. Verified the measurement rather than trusting it — a deliberate
-`string | null` assignment in client code is caught, so `strict` genuinely
-reaches the source being checked — and re-measured with `tsc -b --force` on the
-day it landed.
-
-So there was no fallout to absorb, and turning it on cannot change behaviour —
-this step is as shape-only as the refactor around it.
-
-⚠️ 5a does carry one behaviour-changing step, but it is not this one: teaching
-the client to read the server's 422 alters the error text a user sees. It lands
-as its own commit, after the `gameServer` tests exist to cover it. Everything
-else in 5a is shape-only, which is what "a 5a regression is necessarily the
-refactor" depends on.
-
-It went **first**, but for a different reason than absorbing risk: 5a
-writes new code — the `SelectionState` union, `useGameSession`, the `gameServer`
-tests — and writing that under `strict` from the start is cheaper than
-retrofitting it. The union is the clearest case: `{ selectedUnitId: string |
-null }` becoming a discriminated union is the same nullability work
-`strictNullChecks` would force anyway.
-
-*(`packages/client/tsconfig.node.json` covers `vite.config.ts` and the build
-scripts and was not included in the measurement; 5c-1 turned `strict` on there
-too, measured at zero errors, so the flag is now on in every program.)*
-
-**Verifiable now.** The earlier warning here — *"nothing verifies this beyond
-playing the game"* — is retired. `handleTileClick` has 11 Vitest tests, of which
-**4 assertions across 3 tests** touch the record shape; the rest assert
-`initialSelectionState` or the emitted command and survive the conversion
-untouched. Playing it in a browser is still the check for the renderer half.
-
-#### 5b ✅ — animation gates the state commit. A behaviour change.
-
-The one problem this phase solves is the ordering bug latent since phase 3:
-**state commits before animation finishes.** The listener sets the replica to
-the final state and *then* starts the tween. Harmless today for exactly one
-reason — Babylon owns the unit meshes and nothing reconciles them against
-state — and fatal in 7c, where `syncUnits(state)` would snap a mid-tween unit
-to its destination, or delete a dying unit's mesh before the hit lands.
-
-That is an *ordering* problem, not a state-derivation problem, and the fix is
-one constraint, not a new state model: **a state is committed only after the
-events that produced it have finished animating.**
-
-##### The pipeline
-
-`useGameSession`'s listener becomes a short serial pipeline:
+`initial_state` is written and never read. `current_state` is a checkpoint;
+events are authoritative. `current_turn` is denormalised so listing matches
+parses no boards. `action` is written and never read.
+
+**Paths:** a relative `file:` URL in `DATABASE_URL` resolves against the repo
+root, not the cwd. `DEFAULT_DB_URL` lives in `src/const.ts`, and
+`drizzle.config.ts` imports the same constant.
+
+**Migrations** are generated by `db:generate` from `schema.ts`, committed, and
+applied by `migrate()` at boot. `schema.sql` is refreshed by the same script.
+
+**Pragmas:** `journal_mode = WAL` is set in `migrate()` (a property of the
+file); `busy_timeout` is set in `createDb` (per connection). Both are no-ops
+against a remote libSQL server.
+
+**Writes:** `submit` reads state and seq, validates, resolves and folds — all
+pure — then runs one `batch` in `'write'` mode containing the log insert and the
+match update. The update carries `AND current_seq = ?` and throws if it matched
+nothing. Two writers claiming the same seq violate `PRIMARY KEY (match_id, seq)`.
+Statements are built by Drizzle and executed by the raw driver, because Drizzle's
+own `batch()` cannot pass a transaction mode.
+
+## Client
+
+**`net/api.ts`** — the `/api` base, JSON, and the one place a response becomes
+`notFound`, `unreachable`, or a rejection. `HttpError` carries a `FailureKind`;
+`RejectedError` is a separate type for a 422. Also holds `api.matches.list()`
+and `.create()`.
+
+**`net/gameServer.ts`** — `connectGameServer(matchId)` returns
+`{ ok: true, server } | { ok: false, kind, reason }`. It fetches initial state
+before returning, so `getState()` is synchronous. Polling every 2s, doubling to
+30s on failure and resetting on success; a hidden tab polls at the slowest
+interval and a `visibilitychange` listener resets and polls immediately on
+return. Updates are deduplicated by `seq` before reaching any listener.
+`dispose()` stops the loop, clears listeners, and removes the listener.
+
+**`routes/`** — `/` is `StartScreen` (list and create); `/:matchId` is
+`MatchRoute`, which is keyed on the id so a param change remounts the
+connection. It owns the async connect, renders `GameCanvas` only once a server
+is ready, and disposes on unmount including a connection that resolves after
+teardown.
+
+**`game/useGameSession.ts`** — the session: render replica, rejection state,
+in-flight guard, selection, and submits. Takes `onSelectionChange`, `onEvents`
+and `onSnap` callbacks held in a latest-ref, so the subscription depends on
+`server` alone.
+
+Every update runs through a serial promise queue:
 
 ```
 on update (events, state):
-  clear the rejection                 -- on arrival: newer authority supersedes it
+  clear the rejection                       -- immediately, on arrival
   enqueue:
-    if worthAnimating(events):  await onEvents(events)   -- the canvas's playEvents
-    onSnap(state)                                        -- idempotent correction
-    commit state                                         -- setGameState, always last
+    if worthAnimating(events): await onEvents(events)
+    onSnap(state)
+    commit state
 ```
 
-- **The queue is a promise chain inside the hook.** Batches run in arrival
-  order; a batch cannot start until the previous one committed. It exists
-  because a poll can deliver batch two while batch one is still animating.
-  `GameServer` and `UpdateListener` do not change — backpressure from animation
-  is a UI concern and never belongs in the transport.
-- **`onEvents` becomes awaitable** — `(events: GameEvent[]) => Promise<void>`.
-  The canvas already holds the promise (`playEvents` returns it; today it is
-  discarded). Events stay an array; there is no per-event callback.
-- **`onSnap(state)` always runs, inside the queue, before the commit.** Today
-  it is `renderer.snapUnits(state)` — position the existing meshes from state,
-  no tween, ~10 lines — and 7c grows it into `syncUnits` (add/remove). After an
-  animated batch it is a visual no-op; after a skipped or *failed* animation it
-  is the correction. This is "the snapshot is self-healing" made concrete, and
-  because it runs inside the queue it can never race another batch's animation
-  — which an effect driven by the committed state could, so it deliberately is
-  not one. `snapUnits` calls `scene.stopAnimation` per mesh before
-  positioning: no live path overlaps a tween with a snap today (the queue
-  forbids it), but stopping first makes "snapped over" hold even if a future
-  animation dies mid-flight. The canvas's `onSnap` callback reads the renderer
-  ref at call time with a null guard, exactly as `onSelectionChange` does.
-- **A failed animation is caught, snapped over, and committed.** The queue must
-  never wedge on a rendering error.
-- `submitCommand` gets a `try`/`catch`/`finally` while this file is open — the
-  hook is written against the `GameServer` *interface*, and an implementation
-  that rejects would otherwise soft-lock the UI forever. The catch turns the
-  thrown error into `{ ok: false, reason }`, which is exactly how the real
-  implementation already reports a transport failure — the impossible case
-  reads as a rejection through the existing UI instead of an unhandled
-  promise, and the finally releases the in-flight flag either way.
-
-##### `worthAnimating` — snap, don't replay
-
-**Animate small live batches; snap everything else.** Two conditions, either
-one skips straight to `onSnap` + commit:
-
-- **The batch is large** (more than ~10 events — the constant just has to
-  separate "a dropped poll" from "gone a while"). Catch-up replay is for a
-  spotty connection missing one poll, not for returning after lunch: these are
-  chess-length games, and replaying an absence at tween speed is worse than
-  useless.
-- **The tab is hidden.** Browsers throttle rAF in hidden tabs, so an awaited
-  animation would stall the queue — snap-on-hidden is wedge-prevention, not
-  just taste. (The `visibilitychange` handler already polls immediately on
-  return, so the return path animates normally.)
-
-One edge is accepted rather than handled: `worthAnimating` reads
-`document.hidden` at batch start, so a batch that began animating *visible*
-freezes when the tab hides mid-tween — rAF throttles, the queue stalls, and
-commits wait until the tab returns. Nobody is looking at a hidden tab, the
-`visibilitychange` reset polls immediately on return, and the queue then
-drains in order — the cost is a stale turn label nobody can see.
-
-##### Why the client does not fold
-
-An earlier version of this phase had `useGameSession` folding each event with
-`applyEvents`, mirroring the server's model. Dropped, for the same kind of
-reason push was dropped: enumerate the consumers and nobody needs it.
-
-- **The renderer animates from event payloads, not from state.** That is the
-  granularity principle events were designed around — `unitMoved` carries the
-  path, `unitAttacked` will carry resulting HP, `unitDied` carries the id.
-  `playEvents` never reads `GameState` at all.
-- **The only React consumer of the replica is the turn label.** Per-event
-  folding buys the label flipping mid-batch instead of at batch end —
-  imperceptible at one-to-three events, and arguably worse (today it flips
-  before the unit finishes walking).
-- **Replay stays buildable without being wired in.** `applyEvents` remains
-  exported from `shared/`; a replay or debug tool can fold the log any time.
-  Late-join needs no replay — `GET /state` is one request.
-
-The escape hatch is recorded at 7d, where it could first be needed: if a
-combat animation ever needs the state *between* events of one batch (damage
-numbers are `before − after`, and a catch-up batch can hit the same unit
-twice), the answer is a **local** fold threaded through the animation walk —
-`applyEvents` as a plain helper inside the queue task, never a per-event React
-commit, never a signature change.
-
-##### What stays true
-
-- **The replica lags deliberately during animation.** `getState()` is already
-  authoritative and ahead (invariant 1); `clickTile` reads it and does not
-  change. The lag is the point — the *displayed* world stays consistent with
-  what has been shown.
-- **The in-flight guard still releases when the response arrives**, not when
-  the animation ends — correct, because `clickTile` reads `getState()`, so a
-  second command is always built against the state the first one produced.
-  The one artifact is cosmetic: clicking mid-tween can select a unit at its
-  authoritative (destination) tile while its mesh is still walking, so the
-  highlight briefly leads the unit. Accepted — the alternative couples input
-  latency to animation length.
-- The client still keeps no checkpoint and runs none of the server's
-  event-sourcing machinery — it is now further from it, not closer.
-- Folding was never resolution, and neither is snapping — invariant 8 is
-  untouched: *deterministic preview yes, random resolution no*.
-
-##### Order and verification
-
-Two commits: the `try`/`catch`/`finally` fix (independent, lands first), then
-`snapUnits` + the pipeline + its tests together. The harness is already in
-place from 5a; the tests drive a deferred animate callback and assert the
-commit is gated on it, batches serialize, the threshold and hidden cases skip
-to snap-and-commit, and a rejecting animation still commits. The browser check
-(`/run-app`) is the visual half: a move should animate before the turn label
-flips.
-
-Expect churn in 5a's hook tests, and read it correctly: the commit moves into
-a microtask, so a synchronous assertion right after a push sees the *old*
-state and needs `await act(async …)`. That is the behaviour change being
-visible, not the queue breaking. The rejection-clear stays synchronous on
-arrival, and its existing test stays untouched as proof.
-
-#### 5c ✅ — ship the build properly
-
-Vite stays the bundler, Vitest stays the client runner, and the workspaces
-stay separated. What 5c shipped instead is the serving path for the bundle
-Vite already produces: compression, caching, and the Babylon import rewrite
-that shrinks the bundle at its source.
-
-Until 5c the server sent `index-*.js` exactly as Vite wrote it: 6.7 MB,
-uncompressed, no cache headers, re-downloaded on every visit. After all
-three steps a first load transfers **255 KB** of brotli for the main bundle
-(26× less), and a repeat visit re-downloads one sub-kilobyte HTML file —
-`no-cache` with no validator, since an ETag that saves 876 bytes is
-machinery nobody misses. That, not the bundler, is where the load time was.
-
-##### Why not bun's bundler — measured, not assumed
-
-An earlier 5c replaced Vite and Vitest with `bun build` and `bun test`, gated
-on one open unknown: whether bun produces a comparable Babylon build. Spiked
-(2026-09), it does not — the numbers, not taste, made the decision:
-
-| | eager payload | gzipped | requests on load | disk |
-|---|---|---|---|---|
-| Vite 8 (today) | 6.7 MB, 1 file | 1.46 MB | 1 | 6.9 MB |
-| bun 1.3.14 `--splitting` | 7.8 MB, ~650 files | — | ~650 | 25 MB |
-| bun 1.4.2 `--splitting --min-chunk-size` | 8.1 MB, 1 file | 1.95 MB | 1 | 23 MB |
-
-Bun 1.4 fixed the chunk explosion within a release of it being measured
-(`--min-chunk-size`, tree-shaking through dynamic `import()`), so the
-trajectory is right — but a third more wire bytes, and ~10 MB of never-fetched
-`@babylonjs/inspector` editor chunks still emitted to disk (the documented
-unreachable-chunk elimination does not hold yet), is strictly worse than what
-Vite produces today for an app whose bundle is almost entirely Babylon.
-Re-spike when bun's `sideEffects` shaking closes the gap; nothing below blocks
-the swap later.
-
-Two consequences of keeping Vite, stated so they stop being implied. Vitest
-stays, because its config *is* `vite.config.ts` — one config for both tools
-remains the reason the client runs it. And **the workspaces stay separated**:
-the collapse was only ever justified by removing the client's tooling, and
-with the manifests still earning their keep — `server`'s isolated
-`node_modules` makes a stray `import 'react'` a resolution error, `shared/`'s
-empty dependency list enforces purity — folding them into one `package.json`
-would trade a resolution-enforced boundary for a lint rule and touch every
-repo-root-relative db path, for no payoff.
-
-##### 5c-1 ✅ — precompress at build
-
-The client's `bundle` script gains a post-build step
-(`scripts/compressDist.ts`, covered by `tsconfig.node.json`) writing `.br`
-and `.gz` beside every compressible asset (js/css/html/svg). Hand-rolled,
-~20 lines: `node:zlib` has `brotliCompressSync` and `gzipSync` and bun
-implements both — a compression plugin would be a build dependency for
-something two functions provide. Vite empties `dist/` per build, so a stale
-variant cannot survive a rebuild. Landed at max brotli quality, ~4s on the
-6.7 MB bundle: 76 assets, `index-*.js` 6.67 MB → 1.05 MB br / 1.46 MB gz —
-the measured numbers above, reproduced by the real script.
-
-##### 5c-2 ✅ — serveClient serves it well
-
-- **Content negotiation.** When `Accept-Encoding` admits it, serve the `.br`
-  (then `.gz`) sibling if it exists, with `Content-Encoding`, the *original*
-  file's `Content-Type` (`Bun.file` would guess octet-stream from `.br`),
-  and `Vary: Accept-Encoding` on every response. Falls through to the
-  uncompressed file, so a missing variant is never an error.
-- **Cache headers, by path shape.** `/assets/*` names are content-hashed:
-  `Cache-Control: public, max-age=31536000, immutable`. Everything else is
-  `no-cache` — index.html above all, the one file whose name never changes
-  and whose content decides which hashes get fetched; the unhashed favicon
-  rides the same rule rather than earning its own case.
-- **`clientDist` is a `createServer` option**, defaulting to the checked-in
-  build — the same inputs-are-arguments move that made `port` and
-  `databaseUrl` testable, and what lets `http.test.ts` drive the whole path
-  black-box against a fixture dist whose variants hold *distinct plaintext*,
-  so the body proves which file was served (bun's fetch decodes
-  `Content-Encoding` transparently while keeping the header). The two
-  pre-existing client-path tests stay deliberately agnostic to whether the
-  build exists, untouched.
-
-##### 5c-3 ✅ — Babylon per-file imports
-
-Every `render/` file imported from the `@babylonjs/core` barrel — eight
-files — which Babylon documents as defeating deep tree-shaking. The rewrite
-targets individual files and adds the explicit side-effect imports that
-style requires, all prototype augmentations the barrel used to smuggle in.
-Three, not the two predicted: `scene.beginAnimation`/`stopAnimation` need
-`Animations/animatable`, `scene.createPickingRay` needs `Culling/ray`, and
-`scene.debugLayer` is an augmentation too — loaded via dynamic `import()`
-inside the DEV guard alongside the Inspector, so neither ships in a
-production bundle. The compiler enforces all of this: without the
-augmentation module in the program, the method does not typecheck. **Any new
-Babylon usage in phases 6–7 follows this convention** — per-file imports,
-side-effect modules named where the augmented method is called.
-
-Measured: `index-*.js` went 6.67 MB → **1.28 MB** raw (5.2×, better than the
-2–3× reported elsewhere) and 1.05 MB → **255 KB** brotli; the whole `dist/`,
-compressed variants included, is 2.8 MB — smaller than the old bundle alone.
-Verified by the gate, by `/run-app` driving selection, movement, animation
-and End Turn with zero console errors (each augmentation exercised at
-runtime), and by re-checking `dist/` for the Inspector: no inspector,
-editor, or debugLayer chunk exists; the one `debugLayer` string in the
-bundle is core's own lazy property shim on `Scene.prototype`, not UI code.
-
-### 6 — Terrain and movement
-
-Terrain and pathfinding are one system: the Dijkstra **is** the pathing, `validatePath` is meaningless without a cost table, and route preview is the same search reading its predecessors. Full spec in Terrain.
-
-Terrain leads because **terrain defence is not a minor modifier** — four stars at full health halves incoming damage. Tuning a matchup table with it stubbed to zero produces numbers to throw away.
-
-Verifiable with no combat: does the overlay stop at mountains, does cavalry outrange artillery on roads, does the server reject a path through impassable terrain.
-
-**Two hard dependencies, both found by reviewing this section against the code rather than by building it.** They are what the sub-steps below are ordered around:
-
-- ⚠️ **The cost table is keyed by `MovementType`, and no `Unit` can answer to one.** `Unit` today carries a bare `movementRange: number`; `shared/data/unitTypes.ts` holds `movementType` and has sat unreferenced since early on. Wiring the two together was 7a, *after* this phase — so phase 6 as originally written could not be built. 7a moves here as **6a**, which costs nothing: `Unit` lives inside `GameState`, a JSON blob, so there is no migration (the same reasoning 7b already gives).
-- ⚠️ **`validatePath` and the client's `pathTo` are one commit, not two.** The client sends `path: [position, destination]` — a two-element straight line the server accepts only because `validateMove` reads the last element and ignores the rest. `validatePath` requires each step to be orthogonally adjacent, so the day it lands *every non-adjacent move is rejected* unless the client is already sending a real route.
-
-#### The sub-steps
-
-- **6a** ✅ — `Unit` gains `unitTypeId` and drops `movementRange`, which moves onto `UnitType` (7a, pulled forward). Pure `shared/` plus `initialState`; no migration. The barrel gained `UnitType`, `UnitTypeId`, `MovementType` and `getUnitType`, which had never been exported — `unitTypes.ts` was dead code from the first commit, so this is the first thing that ever imported it. `getUnitType` now throws on an unknown id rather than returning `undefined`, which is what turns a stale row into a legible error instead of NaN movement somewhere else; the catalog got its first tests, written against the contract rather than the numbers so tuning does not break them. Behaviour is unchanged end to end, verified in the browser against a fresh database.
-- **6b** ✅ — the terrain table and `exploreMovement`, returning `reachable` and `pathTo`. Pure and fully unit-testable. `getReachableTiles` became `exploreMovement` through the barrel, and `reachableTiles.ts` became `movement.ts`. Landed as three commits, each green: the table and `TileType`'s move to `data/terrain.ts`; `parseTerrainGrid` with `route()` and the fixture conversion; then the search. `shared/` went from 50 tests to 92 (106 after 6c).
-
-  Three commits, each green on its own: **the terrain table** (`TileType` moves to `data/terrain.ts`, `getTileAt` joins `getUnitAt` in `queries.ts`, `'plains'` replaces `'land'`); **`parseTerrainGrid`** with its tests, both grid constructors moving onto it, and the `route()` fixture helper pulled forward from 6c so path fixtures are routes *before* the validator starts refusing endpoints; then **`exploreMovement`** itself. `reachableTiles.ts` becomes `movement.ts`, which is what the module is once it owns a search and a result type rather than one query.
-
-  ⚠️ **Expanding `TileType` breaks the client build in this step, not 6e.** `render/terrain.ts` keys `TILE_COLORS` on `Record<TileType, Color4>`, which had one entry, so six placeholder colours landed here to keep the gate green; 6e does the real visual pass. That is the `Record` exhaustiveness working exactly as intended — it will not let the renderer forget a terrain.
-
-  **`SelectionState` does not change here.** It stores `movement.reachable` and keeps its field name; **6c** switches it to hold the whole `movement`, because that is where `handleTileClick` first needs `pathTo` to build a command. (An earlier draft said 6e — wrong: 6e's hover preview is the second consumer, not the first.)
-
-  ⚠️ **Wipe the dev database again**: `'land'` leaves `TileType`, so any match created since the 6a wipe stops loading.
-- **6c** ✅ — `validatePath` inside `validateMove`, **and** the client sending `pathTo`'s result, together. It lands in `validateMove` rather than anywhere else because validation and resolution are already separate: `validateMove` decides legality, `resolveMove` only emits the event. `canMoveUnit`'s `getReachableTiles` call leaves the server path entirely — an O(path) walk replaces an O(board) search per command.
-
-  ✅ The fixture half of this landed in 6b: `route(...waypoints)` in `testing.ts` expands endpoints into step-by-step orthogonal routes, and every path fixture that feeds `validateCommand` already uses it, so 6c turns the walk on against fixtures that satisfy it rather than changing the checker and ten fixtures at once. It is a helper rather than a fixture library because `testing.ts` lives inside `shared/`, whose zero-dependency property is what makes purity a resolution error rather than a review catch — and factories generate plausible varied data where this problem is a domain constraint. Tests asserting on *illegal* paths keep hand-written arrays, so the illegality stays visible where it is asserted.
-
-  **`SelectionState` renames `reachableTiles` to `movement` here, not at 6e.** `handleTileClick` needs `pathTo` to build the command it emits, which is the first real consumer — 6e's hover preview is the second. ⚠️ **The range check must stay `movement.reachable.some(...)` and must not become `pathTo(…) !== null`**: `pathTo` answers for any *settled* tile, friendly-occupied ones included, and those are exactly the tiles nobody may stop on.
-
-  Remaining client churn is five sites: `selection.ts` three times, `GameCanvas.tsx`'s `showSelection`, and two fixtures that still assert two-element paths (`selection.test.ts`, `useGameSession.test.ts`).
-
-  **A `getUnit(state, id)` joins `getUnitAt` in `queries.ts`** — finding a unit by id is currently written out in both `move.ts` and `selection.ts`, which are the two files this step edits anyway.
-- **6d** ⬜ — character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`; `matches` gains `map_id`. **That column is the first real schema migration** — the thing the tooling exists for, worth doing deliberately. Two mechanics the plan owes it: maps are *code modules*, so `map_id` is a text column with **no foreign key**, and a `NOT NULL` column on a non-empty table needs a default or nullability.
-- **6e** ⬜ — terrain rendering, route preview, and the confirm gesture. New Babylon code follows 5c-3's convention: per-file imports, side-effect modules named where the augmented method is called.
-
-  Two notes the rendering half needs. **The route preview is computed in the renderer, not in React**: hover already lives entirely inside the renderer (`POINTERMOVE` → `screenToTile` → move the highlight, with React never hearing about it), and the selection push already hands over the `movement` object, so calling `pathTo(hovered)` there is presentation using data it was given — where routing it through the hook would mean a React state update per mouse move. And ⚠️ **terrain stays flat**: `screenToTile` intersects the `y = 0` plane rather than mesh-picking, which is what makes tile lookup independent of what is drawn — the day terrain gains real height, clicking a peak selects the tile behind it. Elevation is a later visual pass that has to answer the picking question first.
-- **6f** ⬜ — **facing follows the path.** `applyEvents` already derives the final position from a `unitMoved` path; it derives `facing` from the last step the same way — deterministic, idempotent, no new event field, no UI. `snapUnits` starts setting rotation as well as position, or a snapped-over animation leaves a unit facing wrongly with nothing to correct it; `FACING_ROTATION` is module-local in `units.ts` today, so this wants a `setUnitFacing(mesh, facing)` beside `createUnitMesh` rather than exporting the table. **A single-element path has no direction, so facing is left unchanged** — turning in place is a phase 7 action, not something a zero-length move should invent. Lands after 6c because deriving a facing from today's two-element straight line would produce a diagonal, which is not one. See Facing and directional defence for where this goes next.
-
-  Animation itself needs **no structural change** — `animateUnitAlongPath` already walks `path.slice(1)` one tween per segment and has only ever been handed two-element paths, so today a unit slides diagonally across open ground. Real routes make it walk, for free. What does want revisiting is the pace: one constant for every unit (`FRAMES_PER_TILE`), and with a single speed, **5b's `worthAnimating` threshold should count tiles rather than events** — one `unitMoved` can now be a six-tile walk, so nine of them sit under a ten-*event* cap and animate for twenty seconds.
-
-⚠️ **Wipe the dev database when phase 6 starts — at 6a, not later.** Stored matches break at the *first* step, not the terrain one: their units carry `movementRange` and no `unitTypeId`, so `getUnitType(undefined)` is undefined and the movement lookup throws. 6b then breaks them a second way — `TileType` stops including `'land'`, `current_state` is read on every submit, and `$type<GameState>()` is a compile-time assertion rather than validation, so an old row keeps `'land'` tiles and `TERRAIN['land']` is undefined. Either way the start screen still lists those matches and opening one breaks the client. Dev-only data, so wiping is the answer; it is written here so it is a step rather than a surprise. (`initial_state` goes stale identically and is never read, so it does not bite.)
-
-### 7 — Combat: the smallest thing you can win
-
-Terrain and pathing already exist by this point, so the numbers mean something. The integration risk here is the chain — command → resolve → events → animate → death → mesh removal → victory — not the damage formula.
-
-- **7a** — *moved to 6a.* The `UnitType` catalog wiring is a prerequisite of the terrain cost table, not a consequence of combat; see phase 6's hard dependencies.
-- **7b** `Unit` gains `health`; update the starting units. (`unitTypeId` arrived in 6a.) **`maxHealth` does not go on `Unit`** — it is static per unit type, which is the exact distinction 6a exists to draw, and putting it on every instance would re-introduce the duplication that moving `movementRange` onto `UnitType` just removed. If every unit tops out at 100 it is a constant in `shared/`; the day one doesn't, it is a `UnitType` field. **No migration** — `Unit` lives inside `GameState`, which is a JSON blob, so the shape changes without the schema moving. That is the JSON-blob decision paying off, and it is why `map_id` in phase 6 is the first migration rather than this.
-- **7c** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. It grows out of 5b's `snapUnits` and runs where that runs: inside the hook's queue, after the batch's animation, before the commit. Assumes 5b landed — without the gated commit, reconciling meshes against a state whose events are still animating is exactly the ordering bug 5b retired.
-- **7d** `UnitActionCommand` replaces `MoveCommand` — path, facing, plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events. **Facing becomes mechanical here** — the command carries it and `computeDamage` reads it as a directional factor beside terrain — while the client still sends only the default 6f derives. The player does not get to choose until 7e, by which point choosing already matters. Touches three places, all separate now: `parseCommand` for the wire shape, `validateMove`'s successor for legality, and `resolveMove`'s for the events — plus rolls, which arrive as an argument to resolution so `shared/` stays pure.
-
-  ⚠️ **Invariant 9 constrains the events.** `unitAttacked` must carry the target's *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client can compute from the state preceding the event. And a successful charge emits `unitDied` **plus** `unitMoved`, two independently-applicable events, not one compound event carrying both effects.
-
-  ⚠️ One nuance the client will hit here, parked by 5b with its answer attached: in a multi-resolution catch-up batch, "the state preceding event *k*" is the pre-batch replica folded through events 1..k−1 — a second hit on the same unit computes its damage number from the intermediate HP, not the pre-batch one. If the animation needs that, thread a **locally** folded state through the animation walk (`applyEvents` as a plain helper inside the queue task) — never per-event React commits, never a callback-signature change. Large batches snap without animating anyway (5b's threshold), so this only matters for small ones.
-- **7e** Attack in `handleTileClick` — clicking an enemy while selected becomes a real action, plus an attack-range overlay. Reuses 6e's destination step rather than replacing it: the `then:` branch is the choice that step was scaffolding for, and `SelectionState` gains `choosingTarget` as a member. **The facing override lands here too** — a rotate gesture between route and confirm, defaulting to the travel direction 6f already derives. It arrives now rather than in 6e because 7d is what makes the choice mean anything; that step now gives 6e's confirm click its second reason to exist.
-- **7f** ⬜ **Health has to be visible**, and was missing from this phase entirely. 7b puts `health` in the model and 7d makes it change, but nothing draws it — a unit at 40 reads identically to one at 100, which makes combat unplayable by eye and unverifiable in the browser, the only check the renderer has. Smallest thing that works: a billboarded bar or a scaled emissive band on the unit mesh, driven from `syncUnits` since that already runs per commit with the state in hand. It belongs before 7g, because tuning a matchup table you cannot see the results of is guesswork.
-- **7g** ⬜ **The damage preview** — specified under Combat as "the sharp edge of invariant 8" and, until now, scheduled nowhere. The client computes the same formula with the luck term omitted and shows it on the target before the click commits. This is the step where *deterministic preview, yes; random resolution, no* stops being a slogan and becomes code, so it is worth its own commit rather than riding inside 7e.
-- **7h** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
-
-Without 7h the board reaches a state where one side has nothing left and End Turn keeps working forever.
-
-**Does 7d roll?** Yes. The step reads "damage from a table" and also "plus rolls", which is a contradiction worth settling in favour of rolling: the rolls plumbing — the server generating them, `Action` carrying them, resolution taking them as an argument so `shared/` stays pure — is the only *structurally* new thing in 7d, and it is what makes 7g's preview mean anything. A deterministic first cut would defer exactly the part worth proving.
-
-**Keep game outcome separate from lobby status.** An outcome is a fact about the board — produced by a reducer, replayable from the log — so it belongs in `GameState`. "Waiting for an opponent to join" is about *users*, belongs on the `matches` row, and no reducer should know about it. A single `status` field spanning both is the muddle to avoid.
-
-**Build the tuning harness first** — specified once, under Tuning. It prints **hits-to-kill**, not raw damage or a distribution; that section argues why, and this one used to say something slightly different, which is how two harnesses get built. This is also the first real use of the purity invariant: `shared/` is pure and rolls are inputs, so the script needs no browser and no server.
-
-**Where identity shows up.** Two bits of UI here need to know who the user is — a "your units that can still act" indicator, and a victory screen saying *You won* rather than *Blue won*. Get it from one function rather than inlining `state.currentTurn` at each call site. Hot-seat: whoever's turn it is, because two people share one client. With auth: the session. Same concept, different source — nothing to build in advance.
-
-Selection doesn't need it: `canSelectUnit` is a game fact ("may this unit act"), and the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
-
-### 8 — Combat depth
-
-Four mechanics layered onto the pipeline **phase 7** proved. (This said "phase 6" while phase 6 has no combat in it.) They were one sentence between them, which understated the last one badly — so, in order:
-
-- **8a** `ranged: { range: { min, max }, canMoveAndAttack }` on `UnitType`. 7d hardcodes adjacency, so this is where the field is actually introduced and where "the category falls out of the numbers" gets tested: `min === 1` is direct, `min > 1` is indirect, no separate flag. `canMoveAndAttack: false` is where 6c's single-element path stops being a curiosity and becomes the only legal shape for a static unit.
-- **8b** Counter-attacks. Fires iff both units are direct, the defender survives, and the attacker is in its range — `computeDamage` called a second time in the other direction, on the defender's post-damage HP. **If it becomes a branch inside the attack resolver rather than a second call, that is the smell** the Combat section warns about.
-- **8c** Charge, its threshold table, and its own tuning pass. It gets its own step because it is the riskiest mechanic in the game: **the one part of combat with no reference behaviour to check against**, an untuned threshold per matchup, an untuned failure-damage function, and a success case that emits two events and displaces a unit. Everything else in phases 7–8 can be checked against AW; this can only be played.
-
-  ⚠️ **Tune it head-on first, then add the rear-charge threshold reduction.** Facing is the other mechanic with no AW precedent, and a rear charge puts both unknowns inside one expression — every observation would be adjusting two dials at once. Front-on charge until it feels right, directional term second.
-
-The **Open questions** entry on counter-attacks for `min > 1` units belongs to 8b and should be settled there rather than carried further — it was decided when indirect fire and immobility were the same thing, and 8a separates them.
-
-### 9 — Multiplayer and auth
-
-- **Match lifecycle** — a way for a second person to join, and matches bound to users rather than open to anyone. The largest of the three and still a single bullet: it wants a lobby state, a join mechanism, and the `status` column this section is careful to keep apart from game outcome. Phase 4 was split in two for less; this should be split before it starts.
-- **OAuth sign-in** with sessions in our own DB — see Identity.
-- **Session→player map** at join, so `actor` comes from *who you are* rather than *whose turn it is*.
-
-⬜ **Spike Better Auth before designing around it.** Identity names it the first candidate and names the real unknown in the same breath — "what it assumes about a framework, since `Bun.serve` is not one". That is structurally the same gating question 5c carried about bun's bundler, and 5c is the reason to mark it: a plan built around an unverified assumption had to be rewritten when the spike came back negative. Answer three things first — does it run without a framework adapter, does its cookie replace `vod_session` cleanly, does its Drizzle adapter fit the existing libSQL client — and if any answer is no, the fallback is the thing the section already describes anyway: a `sessions` table of our own plus a small OAuth library.
-
-⚠️ **`owner_id` lands on a table full of unowned rows**, exactly as `'land'` tiles meet phase 6. Nullable column, backfill to a sentinel, or wipe — dev-only data, so wiping is almost certainly right, but it is a step to write down rather than hit.
-
-⚠️ **Decide whether hot-seat survives.** Every match ever played here has been two players sharing one browser, and the moment `actor` comes from the session that stops working by construction. If hot-seat stays, `resolveActor` needs a per-match mode and the whole phase grows a second path through its most security-sensitive function; if it goes, the mode the game was built and tested in disappears with it. Either is fine. Not choosing means discovering the answer while writing the auth code, which is the worst time.
-
-Schema work: `owner_id` on `matches`, a lobby `status` column, and a `sessions` table — three migrations, generated from `schema.ts`. Also **removes a read**: `http.ts` currently loads the match twice per command because `resolveActor` needs state to stamp `actor = currentTurn` while `submit` owns the read. A session lookup needs no state, so the extra read goes with it.
-
-`resolveActor` is the only server change: it stops returning `state.currentTurn` and looks up the session. Client-side, the one function that answers "who is the user" reads it from the session instead of deriving it, and gains an ownership check so a browser doesn't offer units it can't command.
-
-Until all three land, two tabs share control of both players rather than being two players.
-
-#### Security work that only becomes possible here
-
-**Today there is no authorization, not weak authorization.** `resolveActor` ignores the session and returns `state.currentTurn`, so the cookie gates nothing: any client, with or without one, can submit as whichever player's turn it is, to any match id — and `GET /api/matches` hands out the ids. That's the deliberate hot-seat concession, but it's worth stating in those terms, because several defences are pointless until it changes:
-
-- **CSRF hardening is premature.** `SameSite=Lax` already blocks a cross-site POST from carrying the cookie, and an attacker doesn't need the cookie anyway — there is no authority to forge. Tokens and double-submit patterns become meaningful the same day `resolveActor` starts trusting the session, and not before.
-- **`GET /api/matches` becomes an information leak.** It currently lists every match from every visitor. Harmless while matches are unowned; the moment they're owned, listing must be scoped to the player — which is the same change already recorded under Known compromises, arriving for a second reason.
-- **`404` on a missing match stops being neutral.** Once matches are owned, "no such match" and "not yours" should be the same response, or the endpoint becomes an existence oracle.
-
-⚠️ The race below is survivable today partly by accident: in dev, Vite serves `index.html`, so the browser's first contact with *our* server is already an API call, and in production the HTML response sets the cookie before any API call can race. If dev ever collapses to one process serving both, that accidental ordering becomes the only thing between us and concurrent cookie-less requests on a cold load — the constraints below would stop being a production-only concern.
-
-**Two constraints on the sessions table, from how the cookie behaves today.** `withSession` mints an id for any request arriving without one, so concurrent requests from a browser with no cookie yet each mint a *different* id and each set it — last write wins. That is not a defect: nothing reads the id (`resolveActor` ignores it) and nothing persists it, so there is no state to corrupt. It becomes one the moment a session store assumes otherwise, which is why the requirements are recorded here rather than worked around in the wrapper:
-
-- **Create session rows at sign-in, not on arrival.** The orphan problem is a *rows* problem. If a row only exists once someone authenticates, the ids a browser mints and discards never become rows, and the race stops mattering without needing to be prevented — which is the only approach that works, since two cookie-less requests are indistinguishable and cannot be serialised.
-- **Rotate the id on sign-in.** An id minted for an anonymous visitor must not survive into an authenticated one, or an attacker who plants a known cookie inherits the session after the victim logs in. Standard session-fixation defence, and it makes every pre-auth id irrelevant by construction.
-
-Both are defaults in Better Auth, which is a further point in its favour above.
-
-**Where the check goes.** Whatever provides identity resolves to a `PlayerId` in one place, before `actor` is stamped — see Identity. Ownership is then a lookup in front of the authority, never a rule the reducers know about. Note that `canSelectUnit` deliberately stays a game fact and needs no identity: the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
-
-## Verification
-
-`bun run lint`, `bun run test` and `bun run build` after any change — all must stay clean, and all exit non-zero on failure (verified, not assumed).
-
-⚠️ Check the **exit code**, not the output. `bun run typecheck | tail -3 && echo OK` chains the `&&` to `tail`, which always succeeds, so it prints OK on failure. That happened.
-
-`build` is `tsc -b && bun run --filter '@vod/client' bundle`: one typecheck pass across every package, then bundle. `bun run typecheck` is the `tsc -b` half alone.
-
-`noUnusedLocals` / `noUnusedParameters` are on, `strict` is on (5a's first commit), and `verbatimModuleSyntax` requires explicit `import type`.
-
-**Tests: `bun test` for `shared/` and `server/`, Vitest for `client/`.** Two runners because `bun test` needs no dependency or config and covers the pure packages, while Vitest reuses the client's `vite.config.ts` and is the only route to React component and hook tests. Test files are portable between them — the same suite ran under both, differing only in the import line. The root `test` script runs both. Server tests use `:memory:`, so the real development database is never in reach. `match.test.ts` takes a fresh one per test, migrated in `beforeEach`; `http.test.ts` deliberately does not — it holds one server, and therefore one database, for the whole file, and isolates per *match* instead (see below).
-
-**`http.test.ts` is a black box over real requests**, not a call into a handler: it calls `createServer({ port: 0, databaseUrl: ':memory:' })`, reads `server.url`, and drives it with `fetch`. Nothing in it knows how a URL is dispatched, which is why swapping hand-rolled parsing for `routes` did not touch a line of it — the property worth keeping the next time routing changes.
-
-Both inputs are **arguments rather than environment**, which is what makes the setup three lines and a plain static import. Port 0 lets the OS pick, so a running dev server cannot collide with the suite; `:memory:` keeps the real database out of reach. `http.ts` starts a server only under `import.meta.main`, so importing it for the factory listens on nothing — verified in both directions, since a module that opened a port on import would have made all of this ordering-dependent.
-
-⚠️ **`shared/`'s own test files are not typechecked, and that is a consequence of its zero dependencies.** Verified rather than assumed: a blatant `const x: number = "string"` in `movement.test.ts` passes `tsc -b --force` (exit 0), while the same line in `movement.ts` fails it (exit 2). The reason is the chain below — `server` and `client` pull in only the `shared` files they *import*, and nothing imports a test file, so they never enter a program. Fixing it needs `bun:test` types in a `shared` program, which needs `@types/bun` as a dependency of the package whose defining property is having none — and that would also make `import { … } from 'bun'` typecheck in the rulebook, which is exactly the leak the zero-dependency rule prevents.
-
-So the trade is deliberate: **`shared`'s tests are verified by running, not by typechecking.** `server`'s and `client`'s test files *are* checked, since they sit inside programs the root solution builds. Worth revisiting only if a type error in a shared test ever costs real time.
-
-**Typechecking reads `shared`'s source directly. No declaration output, no project references across packages.** `server` and `client` resolve `@vod/shared` through its `exports` field to `src/index.ts` and pull that source into their own programs, so `shared` is checked as a byproduct of being imported and needs no pass of its own. The root `tsconfig.json` is a solution file over `server` and `client` only.
-
-This replaced a project-references setup, and the reasoning is worth keeping because the arguments for references sound better than they measure:
-
-- **Ordering was circular.** References are what made `server` unable to typecheck before `shared` had emitted; `tsc -b` then solved a constraint nothing else imposed. Without them there is no artifact to wait for and no order to get wrong — and the whole `TS6305` failure class goes with it.
-- **Incremental caching didn't apply.** Only the referenced project was ever skipped; `server` and `client` are `noEmit`, so they have no output to prove currency and re-check every run regardless. Three consecutive no-op runs measured 2.80s / 2.74s / 2.62s — flat.
-- **The one real cost of removing them**: an error inside `shared` is now reported twice, once per consuming program. Verified. Accepted as cheap at two consumers; it's the thing to re-examine if a third appears or `shared` grows a lot.
-- Stale artifacts were a live hazard rather than a theoretical one. Deleting `dist-types/` left `.tsbuildinfo` still claiming everything was current, and `tsc -b` declined to regenerate — recovery meant deleting every `.tsbuildinfo` by hand.
-
-`client` keeps its own `tsconfig.app.json` / `tsconfig.node.json` split, which is unrelated: `vite.config.ts` needs Node types and `nodenext`, `src/` needs DOM and `bundler`. Two genuinely different programs.
-
-None of this ever was a runtime build step: package `exports` point at `src/*.ts`, and both Vite and bun load the TypeScript directly.
-
-For anything visual, run the dev server and check in a browser. Hot reload usually suffices, but hard-reload if something that worked stops — Babylon's engine/scene lifecycle doesn't always survive HMR cleanly.
+`worthAnimating` is false for an empty batch, for more than 10 events, and while
+the tab is hidden. A failing animation or snap is caught and logged; the commit
+always happens.
+
+**`game/interaction/selection.ts`** — `handleTileClick(state, selection,
+coordinate)` returns a new selection and an optional command. Pure: no React, no
+server. `SelectionState` is a discriminated union:
+
+```ts
+| { phase: 'idle' }
+| { phase: 'unitSelected'; unitId; position; movement }
+```
+
+`movement` is the whole `exploreMovement` result, snapshotted at selection time.
+`reachable` decides whether a click is a move; `pathTo` builds the path the
+command carries.
+
+**`game/GameCanvas.tsx`** — the canvas ref, the renderer lifecycle, the turn
+label and End Turn button. Its three callbacks read the renderer ref at call
+time.
+
+## Rendering
+
+`createGameRenderer(canvas, initialState)` returns:
+
+```ts
+onTileClick(handler)      setSelectedTile(coordinate | null)
+setMovementRange(tiles)   playEvents(events): Promise<void>
+snapUnits(state)          toggleInspector()          dispose()
+```
+
+- **Camera:** `ArcRotateCamera` in `ORTHOGRAPHIC_CAMERA` mode, fixed isometric
+  angle. Orbit and zoom stay attached.
+- **Tile lookup is math, not mesh-picking** — `screenToTile` intersects a camera
+  ray with the `y = 0` plane, so terrain must stay flat.
+- Terrain is one merged mesh, vertex-coloured per tile from a
+  `Record<TileType, Color4>`. Grid lines are a `LineSystem`. Highlights and the
+  movement overlay are single meshes.
+- Unit meshes are built once at startup; there is no add or remove.
+- `playEvents` walks `unitMoved` paths one tween per tile, ~0.4s each.
+- `snapUnits` positions meshes from state with no tween, stopping any running
+  animation first.
+- Babylon imports are **per-file**, not from the `@babylonjs/core` barrel. Side
+  effect modules are imported where the augmented method is used:
+  `Animations/animatable` for `beginAnimation`/`stopAnimation`, `Culling/ray`
+  for `createPickingRay`. `Debug/debugLayer` and `@babylonjs/inspector` load
+  via dynamic `import()` inside an `import.meta.env.DEV` guard, so neither
+  ships in production.
+
+## Configuration
+
+One `.env`, at the repo root; bun does not walk up, so server scripts pass
+`--env-file=../../.env`. A missing `.env` leaves the vars unset and the defaults
+apply. `.env.example` is committed.
+
+| | |
+|---|---|
+| `PORT` | server port, default 3001 |
+| `DATABASE_URL` | `file:./packages/server/vod.db` locally, a `libsql://…` URL on Turso |
+
+The client has no configuration.
+
+## Testing
+
+225 tests: 116 in `shared/`, 49 in `server/`, 60 in `client/`. `bun test` runs
+the first two, Vitest the third; the root `test` script runs both.
+
+- Server tests use `:memory:`. `match.test.ts` takes a fresh database per test;
+  `http.test.ts` holds one server for the file and isolates per match.
+- `http.test.ts` drives real `fetch` against `createServer({ port: 0,
+  databaseUrl: ':memory:', clientDist: <fixture> })`. It never uses the real
+  client build.
+- `db.test.ts` is the only test that touches the filesystem, in a temp
+  directory.
+- Client tests use happy-dom and `@testing-library/react`. `src/test-setup.ts`
+  registers `cleanup()`, which Testing Library cannot register itself here
+  because this repo imports its test functions explicitly.
+- `fetch` and timers are faked in `gameServer.test.ts`; every timer advance is
+  the async form.
+
+**Not covered:** the renderer, which is WebGL — a browser is its only check. The
+`/run-app` skill drives the app headlessly for that.
+
+⚠️ **`shared/`'s own test files are not typechecked.** Nothing imports them, so
+they never enter a program `tsc -b` builds, and giving them `bun:test` types
+would mean adding a dependency to the package that has none. `server`'s and
+`client`'s test files are checked.
+
+**Typechecking** reads `shared`'s source directly: `server` and `client` resolve
+`@vod/shared` through its `exports` and pull that source into their own
+programs. The root `tsconfig.json` is a solution file over those two only.
+`shared` emits nothing. `strict`, `noUnusedLocals`, `noUnusedParameters`,
+`erasableSyntaxOnly` and `verbatimModuleSyntax` are on everywhere.
+
+## Deployment
+
+One process serves both: `Bun.serve` handles `/api/*` and serves
+`packages/client/dist` for everything else. Handlers are stateless. In dev, Vite
+proxies `/api` to the server so the same relative paths work.
+
+Migrations run at boot. SQLite needs a persistent disk; an ephemeral filesystem
+silently creates a fresh empty database on redeploy.

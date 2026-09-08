@@ -4,12 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## The spec comes first
 
-`.plan/architecture.md` is the single running spec — architecture, invariants,
-combat design, roadmap, all marked ✅ built · 🚧 partial · ⬜ not built. Read
-the relevant section before changing anything structural, and **update the doc
-in the same commit as the code it describes**. It keeps no decision history;
-scratch docs (like the former `phase-5a-decisions.md`) get absorbed into it and
-deleted when their increment lands.
+Two living documents, kept accurate in the same commit as the code they
+describe:
+
+- **`.plan/architecture.md`** — what the code does *now*. No rationale, no
+  history, no plans. Read the relevant section before changing anything
+  structural, and update it with the change.
+- **`.plan/roadmap.md`** — what is designed but unbuilt: combat, facing,
+  remaining phases, accepted limits. Nothing in it describes current behaviour.
+
+When something ships, it moves from the roadmap into the architecture doc and
+is deleted from the roadmap. Neither file keeps a changelog; `git log` is the
+history.
 
 ## Commands
 
@@ -46,8 +52,9 @@ rulebook (zero deps — no I/O, no RNG, no React/Babylon, no `Date.now()`),
 `server/` is the authority (owns the DB, generates rolls, keeps the event log),
 `client/` is presentation. Installs are isolated, so a stray `import 'react'`
 in server code is a resolution error, not a review catch. Cross-package imports
-go through the `@vod/shared` barrel only, never into files; `server/` is an
-app, not a library — no barrel, `http.ts` is the entry point.
+go through `@vod/shared`'s `exports` map — `.` is the rulebook barrel, and
+`./testing` is fixtures for tests. `server/` is an app, not a library: no
+barrel, `http.ts` is the entry point.
 
 The pipeline: `validateCommand` (the only constructor of a branded `Action`) →
 `resolveAction` (returns **events, not state**) → `applyEvents` (the only
@@ -60,7 +67,11 @@ deltas**, and independently applicable — that's what makes replay and the
 The server holds nothing between requests — SQLite (libSQL + Drizzle) is the
 only mutable state. Transport is plain HTTP polling with a `seq` cursor; no
 push, no WebSockets, ever. Rule-rejected commands answer **422**; every non-2xx
-body is `{ error: string }`.
+body this code writes is `{ error: string }`.
+
+Movement: `exploreMovement` searches, `validatePath` checks a client-supplied
+route, and both call `entryCost` — one function decides what a tile costs, so
+the client's overlay and the server's check cannot disagree.
 
 ## Traps that bit before
 
@@ -76,6 +87,15 @@ body is `{ error: string }`.
 - **`http.test.ts` is a black box** over real `fetch` against `createServer`.
   Keep it that way — it survived a routing rewrite untouched precisely because
   nothing in it knows how URLs dispatch.
+- **`shared/`'s own test files are not typechecked** — nothing imports them
+  into a program `tsc -b` builds. They are verified by running. `server/` and
+  `client/` test files *are* checked.
+- **Tests must not touch the real dev database.** Server suites use `:memory:`;
+  `db.test.ts` uses a temp directory. A relative `file:` URL resolves against
+  the repo root, so a careless one opens `packages/server/vod.db`.
+- **`http.test.ts` serves a fixture dist, never the real build.** `dist/` is
+  gitignored and `bun run test` does not build it, so tests written against it
+  quietly change meaning depending on whether someone ran a build.
 - `strict` is on everywhere; `erasableSyntaxOnly` forbids constructor parameter
   properties; `verbatimModuleSyntax` requires explicit `import type`.
 
