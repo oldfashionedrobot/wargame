@@ -25,6 +25,7 @@ history.
 | `bun run test` | `bun test` for shared+server, then Vitest for client |
 | `bun run typecheck` | `tsc -b` — but see the stale-cache trap below |
 | `bun run lint` / `bun run build` / `bun run format:check` | all exit non-zero on failure |
+| | `format:check` skips Markdown (`.prettierignore`), so these docs are not covered |
 | `bun run db:generate` / `db:migrate` | **from the repo root only** — see traps |
 
 Single test file: `bun test packages/server/src/match.test.ts` (add `-t 'name'`
@@ -49,7 +50,8 @@ its only check.
 
 Three bun workspaces split by **authority**, not subject: `shared/` is the pure
 rulebook (zero deps — no I/O, no RNG, no React/Babylon, no `Date.now()`),
-`server/` is the authority (owns the DB, generates rolls, keeps the event log),
+`server/` is the authority (owns the DB, keeps the event log, and will own
+rolls when combat lands),
 `client/` is presentation. Installs are isolated, so a stray `import 'react'`
 in server code is a resolution error, not a review catch. Cross-package imports
 go through `@vod/shared`'s `exports` map — `.` is the rulebook barrel, and
@@ -81,9 +83,10 @@ the client's overlay and the server's check cannot disagree.
   second empty database beside the real one.
 - **One `.env`, at the repo root.** Bun doesn't walk up; server scripts pass
   `--env-file=../../.env` explicitly.
-- **Don't assert on transport-failure message text** in client tests — assert
-  the error's kind/type. The wording belongs to the server (`ErrorResponse`
-  body passthrough) and changes without the failure mode changing.
+- **Don't pin the server's wording in client tests.** Assert the failure's
+  *kind* — the reason text belongs to the server and changes without the
+  failure mode changing. Asserting that a reason the fixture supplied arrives
+  intact is a different thing and is fine; that is passthrough, not wording.
 - **`http.test.ts` is a black box** over real `fetch` against `createServer`.
   Keep it that way — it survived a routing rewrite untouched precisely because
   nothing in it knows how URLs dispatch.
@@ -96,8 +99,11 @@ the client's overlay and the server's check cannot disagree.
 - **`http.test.ts` serves a fixture dist, never the real build.** `dist/` is
   gitignored and `bun run test` does not build it, so tests written against it
   quietly change meaning depending on whether someone ran a build.
-- `strict` is on everywhere; `erasableSyntaxOnly` forbids constructor parameter
-  properties; `verbatimModuleSyntax` requires explicit `import type`.
+- `strict` is on in every program `tsc -b` builds — `server`, and both client
+  configs. `shared` has no program of its own; its source is checked inside
+  the two that import it, and its `tsconfig.json` exists for editors.
+  `erasableSyntaxOnly` forbids constructor parameter properties;
+  `verbatimModuleSyntax` requires explicit `import type`.
 
 ## Commits
 

@@ -21,8 +21,8 @@ hoisted, so a package can only import what it declares.
 | `@vod/server` | `shared` | The authority: the database, the event log, match construction, and the HTTP surface. |
 | `@vod/client` | `shared` | Presentation: Babylon rendering, input, React, and the HTTP `GameServer`. |
 
-`shared` has two entry points and no build step — `exports` point at TypeScript
-source, which bun runs natively and Vite compiles:
+`shared` has two entry points, no build script, and emits nothing — `exports`
+point at TypeScript source, which bun runs natively and Vite compiles:
 
 - `.` → `src/index.ts`, the rulebook barrel. Holds only what `server` and
   `client` consume.
@@ -56,8 +56,9 @@ packages/
       match.ts        MatchStore: create · list · snapshot · since · submit
       db.ts           libSQL client + Drizzle, pragmas, migrations at boot
       schema.ts       matches · resolutions, typed from shared
-      initialState.ts DEFAULT_MAP and the starting roster
+      initialState.ts createInitialState() — parses DEFAULT_MAP, places the roster
       const.ts        env-derived defaults
+    drizzle.config.ts drizzle-kit config; imports DEFAULT_DB_URL from const.ts
     drizzle/          generated migrations, committed
     schema.sql        the whole current shape in one file
   client/
@@ -85,7 +86,8 @@ Run from the repo root. All exit non-zero on failure.
 | `bun run build` | `tsc -b`, then bundle and compress the client |
 | `bun run format` / `format:check` | Prettier (Markdown is excluded) |
 | `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
-| `bun run preview` | Serve the production build |
+| `bun run preview` | `vite preview` — the built client with no `/api` proxy, so it reaches no match |
+| `bun run --filter '@vod/server' start` | The production shape: one process serving the API and `dist` together |
 
 Single test file: `bun test packages/server/src/match.test.ts` (`-t 'name'` to
 filter); client: `cd packages/client && bunx vitest run src/net/gameServer.test.ts`.
@@ -130,8 +132,8 @@ the per-command validator. `resolveAction` accepts nothing but an `Action`.
    re-checks all of it.
 9. **`applyEvents` is the only thing that mutates state.** Every event is
    **independently applicable** to the state before it and carries **absolute
-   values, not deltas**, so applying one twice is a no-op. Both are tested per
-   event type.
+   values, not deltas**, so applying one twice is a no-op. Idempotence is tested
+   per event type; independent applicability by replaying log prefixes.
 10. **The client and server share one movement cost model** — `entryCost` in
     `movement.ts` is the single function both the search and the path check
     call.
@@ -143,12 +145,15 @@ Coordinate  { col, row }
 TileType    'plains' | 'road' | 'bridge' | 'forest' | 'mountain' | 'river'
 Facing      'north' | 'east' | 'south' | 'west'      // decorative; nothing updates it
 PlayerId    string                                   // never a union of colours
+PlayerColor 'blue' | 'red' | 'green' | 'yellow'      // the renderer keys on it
 Player      { id, name, color }                      // colour is display-only
 Unit        { id, position, facing, unitTypeId, owner, hasActed }
 GameState   { grid, units, players, currentTurn }    // grid is [row][col]
 
 Command       MoveCommand { type, unitId, path } | EndTurnCommand { type }
-Action        Command & { actor } & brand
+Action        (MoveCommand & Validated) | (EndTurnCommand & Validated)
+              -- a union of intersections, not Command & { actor }: the
+              latter would admit an endTurn carrying a path
 GameEvent     UnitMovedEvent { type, unitId, path } | TurnEndedEvent { type, nextPlayer }
 
 ValidationResult  { ok: true, action } | { ok: false, reason }
@@ -163,7 +168,7 @@ Turn order is array rotation over `GameState.players`, wrapping via modulo.
 `hasActed` is one flag per unit, set by `unitMoved` and reset by `turnEnded` for
 the incoming player only.
 
-## Content — `shared/data/`
+## Content — `shared/src/data/`
 
 Static tables keyed by `Record`, so adding a member makes every incomplete table
 a compile error.
@@ -250,8 +255,8 @@ POST /api/matches/:id/commands        → { ok: true, seq, events, state }   200
 '/*'      → the client build
 ```
 
-Status carries the outcome: a missing match is **404**, a body that was never a
-command is **400**, a well-formed command the rules refused is **422** with the
+Status carries the outcome: a missing match is **404**, a malformed body, a body that was never a
+command, and a bad `since` query parameter are all **400**, a well-formed command the rules refused is **422** with the
 reason in the body. Every non-2xx body this code writes is an `ErrorResponse`;
 the one exception is bun's own 413 from `maxRequestBodySize`, which it answers
 before a handler runs.
@@ -265,17 +270,18 @@ log query.
 runtime and rebuilds a fresh object, so extra properties are dropped.
 
 **Session:** `withSession` wraps every route entry and mints an opaque id into a
-`vod_session` cookie — `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` in
-production. Nothing reads it: `resolveActor` returns `state.currentTurn`, so any
+`vod_session` cookie — `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` one
+year, and `Secure` in production. Nothing reads it: `resolveActor` returns `state.currentTurn`, so any
 client can act as whoever's turn it is.
 
 **Serving the client build:** `'/*'` serves `packages/client/dist`, falling back
 to `index.html` so deep links survive a refresh. `clientDist` is a
 `createServer` option. Requests resolve against the dist directory and are
 confirmed to stay inside it. When `Accept-Encoding` allows, the `.br` then `.gz`
-sibling is served with `Content-Encoding`, the original file's `Content-Type`,
-and `Vary: Accept-Encoding`. `/assets/*` is `Cache-Control: immutable`;
-everything else is `no-cache`.
+sibling is served with `Content-Encoding` and the *original* file's
+`Content-Type`. `Vary: Accept-Encoding` rides every response, compressed or
+not. `/assets/*` gets `Cache-Control: public, max-age=31536000, immutable`;
+everything else `no-cache`.
 
 ## Data store
 
@@ -302,8 +308,8 @@ root, not the cwd. `DEFAULT_DB_URL` lives in `src/const.ts`, and
 applied by `migrate()` at boot. `schema.sql` is refreshed by the same script.
 
 **Pragmas:** `journal_mode = WAL` is set in `migrate()` (a property of the
-file); `busy_timeout` is set in `createDb` (per connection). Both are no-ops
-against a remote libSQL server.
+file); `busy_timeout` is set in `createDb` (per connection). Both are skipped for a
+non-`file:` URL.
 
 **Writes:** `submit` reads state and seq, validates, resolves and folds — all
 pure — then runs one `batch` in `'write'` mode containing the log insert and the
@@ -319,8 +325,10 @@ own `batch()` cannot pass a transaction mode.
 `RejectedError` is a separate type for a 422. Also holds `api.matches.list()`
 and `.create()`.
 
-**`net/gameServer.ts`** — `connectGameServer(matchId)` returns
-`{ ok: true, server } | { ok: false, kind, reason }`. It fetches initial state
+**`net/gameServer.ts`** — `connectGameServer(matchId, { onConnectionChange? })`
+returns `{ ok: true, server } | { ok: false, kind, reason }`.
+`onConnectionChange` reports a `ConnectionStatus` of `'connected' | 'retrying'`,
+which surfaces as a reconnecting banner. It fetches initial state
 before returning, so `getState()` is synchronous. Polling every 2s, doubling to
 30s on failure and resetting on success; a hidden tab polls at the slowest
 interval and a `visibilitychange` listener resets and polls immediately on
@@ -331,7 +339,9 @@ return. Updates are deduplicated by `seq` before reaching any listener.
 `MatchRoute`, which is keyed on the id so a param change remounts the
 connection. It owns the async connect, renders `GameCanvas` only once a server
 is ready, and disposes on unmount including a connection that resolves after
-teardown.
+teardown. A failure renders one of two things, which is what `FailureKind` is
+for: `notFound` offers a link back and no retry, `unreachable` offers a working
+Retry that re-runs the connect.
 
 **`game/useGameSession.ts`** — the session: render replica, rejection state,
 in-flight guard, selection, and submits. Takes `onSelectionChange`, `onEvents`
@@ -366,8 +376,10 @@ server. `SelectionState` is a discriminated union:
 `reachable` decides whether a click is a move; `pathTo` builds the path the
 command carries.
 
-**`game/GameCanvas.tsx`** — the canvas ref, the renderer lifecycle, the turn
-label and End Turn button. Its three callbacks read the renderer ref at call
+**`game/GameCanvas.tsx`** — the canvas ref, the renderer lifecycle, and the
+chrome around it: the turn label, End Turn, the rejection reason, the
+reconnecting banner, and a Toggle Inspector button under an
+`import.meta.env.DEV` guard. Its three callbacks read the renderer ref at call
 time.
 
 ## Rendering
@@ -380,13 +392,18 @@ setMovementRange(tiles)   playEvents(events): Promise<void>
 snapUnits(state)          toggleInspector()          dispose()
 ```
 
-- **Camera:** `ArcRotateCamera` in `ORTHOGRAPHIC_CAMERA` mode, fixed isometric
-  angle. Orbit and zoom stay attached.
+- **Camera:** `ArcRotateCamera` in `ORTHOGRAPHIC_CAMERA` mode, starting at a
+  fixed isometric angle. Orbit and wheel zoom stay attached and both work. The
+  ortho bounds are recomputed from the grid size on construction and on window
+  resize; the `resize` listener is removed in `dispose()`.
 - **Tile lookup is math, not mesh-picking** — `screenToTile` intersects a camera
   ray with the `y = 0` plane, so terrain must stay flat.
 - Terrain is one merged mesh, vertex-coloured per tile from a
-  `Record<TileType, Color4>`. Grid lines are a `LineSystem`. Highlights and the
-  movement overlay are single meshes.
+  `Record<TileType, Color4>`. Grid lines are a `LineSystem`. The selection
+  highlight and the movement overlay are single meshes driven by the pushed
+  selection.
+- A second highlight follows the pointer, moved from `POINTERMOVE` inside the
+  renderer. React never hears about hover.
 - Unit meshes are built once at startup; there is no add or remove.
 - `playEvents` walks `unitMoved` paths one tween per tile, ~0.4s each.
 - `snapUnits` positions meshes from state with no tween, stopping any running
@@ -421,16 +438,21 @@ the first two, Vitest the third; the root `test` script runs both.
 - `http.test.ts` drives real `fetch` against `createServer({ port: 0,
   databaseUrl: ':memory:', clientDist: <fixture> })`. It never uses the real
   client build.
-- `db.test.ts` is the only test that touches the filesystem, in a temp
-  directory.
+- Two suites use a temp directory and clean it up: `db.test.ts` for real
+  database files, `http.test.ts` for its fixture dist. Nothing else touches the
+  filesystem.
 - Client tests use happy-dom and `@testing-library/react`. `src/test-setup.ts`
   registers `cleanup()`, which Testing Library cannot register itself here
   because this repo imports its test functions explicitly.
 - `fetch` and timers are faked in `gameServer.test.ts`; every timer advance is
   the async form.
 
-**Not covered:** the renderer, which is WebGL — a browser is its only check. The
-`/run-app` skill drives the app headlessly for that.
+**Not covered:** the renderer, which is WebGL — a browser is its only check, and
+the `/run-app` skill drives the app headlessly for that. No React component has
+a test either: the four client suites cover `api`, `gameServer`, `selection` and
+`useGameSession`, so `App`, `GameCanvas`, `MatchRoute` and `StartScreen` are
+unexercised. In `shared/`, `legality.ts` and `move.ts` have no dedicated suites
+and are covered through `action.test.ts`.
 
 ⚠️ **`shared/`'s own test files are not typechecked.** Nothing imports them, so
 they never enter a program `tsc -b` builds, and giving them `bun:test` types
@@ -440,8 +462,10 @@ would mean adding a dependency to the package that has none. `server`'s and
 **Typechecking** reads `shared`'s source directly: `server` and `client` resolve
 `@vod/shared` through its `exports` and pull that source into their own
 programs. The root `tsconfig.json` is a solution file over those two only.
-`shared` emits nothing. `strict`, `noUnusedLocals`, `noUnusedParameters`,
-`erasableSyntaxOnly` and `verbatimModuleSyntax` are on everywhere.
+`shared` emits nothing. `strict`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`,
+`erasableSyntaxOnly` and `verbatimModuleSyntax` are on in all four tsconfigs.
+`shared` has no program of its own — its config exists for editors, and its
+source is checked inside the two programs that import it.
 
 ## Deployment
 

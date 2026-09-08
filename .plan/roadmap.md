@@ -49,7 +49,7 @@ This is upstream of the formula, the preview, the health bar, and the tuning har
 
 ### Terrain defence
 
-Each star is 10% reduction *at full defender HP*. **The values live in the terrain table — see Terrain — and this section does not restate them**, because it used to and drifted: the old table here was AW's, listing `Woods` (our `forest`), plus `City` and `HQ`, which are buildings the roadmap puts out of scope for v1. A second table in a second vocabulary is exactly how a defence value gets tuned in one place and read from the other.
+Each star is 10% reduction *at full defender HP*. **The values live in the terrain table (`architecture.md`) and this section does not restate them**, because it used to and drifted: the old table here was AW's, listing `Woods` (our `forest`), plus `City` and `HQ`, which are buildings the roadmap puts out of scope for v1. A second table in a second vocabulary is exactly how a defence value gets tuned in one place and read from the other.
 
 For reference while reading the formula above: our six terrains run 0 stars (road, bridge, river) through 1 (plains), 2 (forest), to 4 (mountain).
 
@@ -230,7 +230,7 @@ The **Open questions** entry on counter-attacks for `min > 1` units belongs to 8
 ### 9 — Multiplayer and auth
 
 - **Match lifecycle** — a way for a second person to join, and matches bound to users rather than open to anyone. The largest of the three and still a single bullet: it wants a lobby state, a join mechanism, and the `status` column this section is careful to keep apart from game outcome. Phase 4 was split in two for less; this should be split before it starts.
-- **OAuth sign-in** with sessions in our own DB — see Identity.
+- **OAuth sign-in** with sessions in our own database — see *Identity* below.
 - **Session→player map** at join, so `actor` comes from *who you are* rather than *whose turn it is*.
 
 ⬜ **Spike Better Auth before designing around it.** Identity names it the first candidate and names the real unknown in the same breath — "what it assumes about a framework, since `Bun.serve` is not one". That is structurally the same gating question 5c carried about bun's bundler, and 5c is the reason to mark it: a plan built around an unverified assumption had to be rewritten when the spike came back negative. Answer three things first — does it run without a framework adapter, does its cookie replace `vod_session` cleanly, does its Drizzle adapter fit the existing libSQL client — and if any answer is no, the fallback is the thing the section already describes anyway: a `sessions` table of our own plus a small OAuth library.
@@ -242,6 +242,22 @@ The **Open questions** entry on counter-attacks for `min > 1` units belongs to 8
 Schema work: `owner_id` on `matches`, a lobby `status` column, and a `sessions` table — three migrations, generated from `schema.ts`. Also **removes a read**: `http.ts` currently loads the match twice per command because `resolveActor` needs state to stamp `actor = currentTurn` while `submit` owns the read. A session lookup needs no state, so the extra read goes with it.
 
 `resolveActor` is the only server change: it stops returning `state.currentTurn` and looks up the session. Client-side, the one function that answers "who is the user" reads it from the session instead of deriving it, and gains an ownership check so a browser doesn't offer units it can't command.
+
+#### Identity
+
+**OAuth only, sessions in our own database. No passwords, ever.**
+
+Sign in with a provider (Discord is the natural fit for a game; GitHub or Google work the same way). Store `(provider, external_id) → player_id`, issue our own session token into a `sessions` table, and resolve it to a `PlayerId` per request.
+
+Never accepting a password deletes the parts of auth that are both hardest and most dangerous — hashing, reset flows, verification email, breach response. We never hold a credential worth stealing. A **magic link** is the natural later addition for people who do not want a third-party account; it keeps the same property.
+
+A small OAuth library plus a sessions table, not an auth platform. Hosted providers (Clerk, WorkOS, Auth0) stay a contained swap if auth ever becomes a distraction.
+
+**Better Auth is the candidate to evaluate first**, because it *is* that description rather than an alternative to it: sessions in our own database, a first-class Drizzle adapter, SQLite supported, httpOnly cookies, OAuth providers, no password path required. It would replace `resolveActor`, supply the `sessions` table, and subsume `withSession` entirely — session creation becomes an insert, which retires the concurrent-mint race rather than working around it.
+
+**The transport does not change** — it is the same cookie the server already sets. What changes is what the session *means*: a row in `sessions` tied to a real player record, rather than an opaque id the server trusts on sight.
+
+Whatever provides identity, **it resolves to a `PlayerId` in one place on the server**, before `actor` is stamped. Auth is a lookup in front of the authority, never something the reducers know about — and game rules never move into the database layer, whatever the store turns out to be.
 
 Until all three land, two tabs share control of both players rather than being two players.
 
@@ -262,5 +278,5 @@ Until all three land, two tabs share control of both players rather than being t
 
 Both are defaults in Better Auth, which is a further point in its favour above.
 
-**Where the check goes.** Whatever provides identity resolves to a `PlayerId` in one place, before `actor` is stamped — see Identity. Ownership is then a lookup in front of the authority, never a rule the reducers know about. Note that `canSelectUnit` deliberately stays a game fact and needs no identity: the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
+**Where the check goes.** Whatever provides identity resolves to a `PlayerId` in one place, before `actor` is stamped — see *Identity* above. Ownership is then a lookup in front of the authority, never a rule the reducers know about. Note that `canSelectUnit` deliberately stays a game fact and needs no identity: the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
 

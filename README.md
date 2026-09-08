@@ -37,7 +37,7 @@ Bun workspaces, three packages, split by **authority** rather than by subject:
 |---|---|---|
 | `@vod/shared` | nothing | The rulebook — types, content tables, queries, movement, validation, resolution, the event fold, the wire protocol. Pure functions: no React, no Babylon, no I/O, no randomness. |
 | `@vod/server` | `shared` | The authority — the database, the event log, match construction, the HTTP surface. |
-| `@vod/client` | `shared` | Presentation — Babylon rendering, input, React. |
+| `@vod/client` | `shared` | Presentation and transport — Babylon rendering, input, React, and the polling `GameServer` that talks to the API. |
 
 Installs are isolated rather than hoisted, so a package can only import what it
 declares: a stray `import 'react'` in server code is a resolution failure, not
@@ -48,10 +48,10 @@ entry points: `.` is the rulebook barrel, and `./testing` is fixtures for tests.
 `server` is an application rather than a library — nothing imports it, so it has
 no barrel; `src/http.ts` is an entry point that gets run.
 
-`shared` has no build step and emits nothing — its `exports` point at TypeScript
-source, which bun runs natively and Vite compiles. `server` and `client` pull
-that source into their own programs, so it is typechecked as a byproduct of
-being imported.
+`shared` has no build script and emits nothing — its `exports` point at
+TypeScript source, which bun runs natively and Vite compiles. `server` and
+`client` pull that source into their own programs, so it is typechecked as a
+byproduct of being imported.
 
 ## Scripts
 
@@ -64,12 +64,14 @@ Run from the repo root. All exit non-zero on failure.
 | `bun run typecheck` | `tsc -b` across the packages |
 | `bun run lint` | ESLint across the repo |
 | `bun run build` | Typecheck, then bundle and compress the client |
-| `bun run format` / `format:check` | Prettier |
+| `bun run format` / `format:check` | Prettier (Markdown is excluded) |
 | `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
-| `bun run preview` | Serve the production build |
+| `bun run preview` | `vite preview` — serves the built client with **no `/api` proxy**, so it cannot reach a match. To exercise a real build, run the server (`bun run --filter '@vod/server' start`), which serves `dist` itself |
 
-Two things worth knowing:
+Three things worth knowing:
 
+- Check **exit codes, not output**. `bun run typecheck | tail -3 && echo OK`
+  chains the `&&` to `tail`, which always succeeds, and prints OK on failure.
 - `tsc -b` can report success from a stale `.tsbuildinfo`. `bunx tsc -b --force`
   is the real check.
 - The `db:*` scripts must run from the repo root. Relative `file:` URLs in
