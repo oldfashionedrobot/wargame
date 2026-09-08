@@ -20,6 +20,10 @@ export type {
 // offers moves the server refuses.
 export type { Terrain, TileType } from './data/terrain';
 export { getTerrain, TERRAIN } from './data/terrain';
+// Maps are character grids, and this is the only thing that turns one into a
+// board -- the server parses its map definitions with it, and so does the
+// test fixture.
+export { parseTerrainGrid } from './terrainGrid';
 
 // The unit catalog. Both sides read it: the client to preview what a unit can
 // do, the server to resolve the same thing authoritatively.

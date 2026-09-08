@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'bun:test';
 import { resolveAction, validateCommand } from './action';
-import { makeState } from './testing';
+import { makeState, route } from './testing';
 import type { Command } from './types';
 
+// b1 starts at (0,0). A real route, not an endpoint pair -- validatePath
+// walks every step in 6c, so a fixture describing a straight jump would be
+// describing a move no client can make.
 const to = (col: number, row: number): Command => ({
   type: 'move',
   unitId: 'b1',
-  path: [
-    { col: 0, row: 0 },
-    { col, row },
-  ],
+  path: route({ col: 0, row: 0 }, { col, row }),
 });
 
 /** validateCommand is the only Action constructor, so tests go through it too. */
@@ -103,8 +103,11 @@ describe('resolveAction', () => {
       {
         type: 'unitMoved',
         unitId: 'b1',
+        // Every step, not just the destination: the renderer walks these one
+        // tween per tile.
         path: [
           { col: 0, row: 0 },
+          { col: 1, row: 0 },
           { col: 2, row: 0 },
         ],
       },

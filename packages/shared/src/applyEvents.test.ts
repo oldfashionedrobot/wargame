@@ -1,18 +1,22 @@
 import { describe, expect, it } from 'bun:test';
 import { resolveAction, validateCommand } from './action';
 import { applyEvents } from './applyEvents';
-import { makeState, unitAt } from './testing';
-import type { Command, GameEvent, GameState, PlayerId } from './types';
+import { makeState, route, unitAt } from './testing';
+import type { Command, Coordinate, GameEvent, GameState, PlayerId } from './types';
 
 const pos = (col: number, row: number) => ({ col, row });
 
 const moved = (unitId: string, from: [number, number], to: [number, number]): GameEvent => ({
   type: 'unitMoved',
   unitId,
-  path: [
-    { col: from[0], row: from[1] },
-    { col: to[0], row: to[1] },
-  ],
+  path: route(pos(from[0], from[1]), pos(to[0], to[1])),
+});
+
+/** A move command whose path is a walkable route rather than two endpoints. */
+const move = (unitId: string, from: Coordinate, to: Coordinate): Command => ({
+  type: 'move',
+  unitId,
+  path: route(from, to),
 });
 
 describe('applyEvents', () => {
@@ -102,12 +106,12 @@ describe('the fold: initial state + events reproduces current state', () => {
     // Commands plus the actor the server would stamp. Tests cannot build an
     // Action directly -- that is the brand doing its job.
     const script: [Command, PlayerId][] = [
-      [{ type: 'move', unitId: 'b1', path: [pos(0, 0), pos(1, 2)] }, 'blue'],
-      [{ type: 'move', unitId: 'b2', path: [pos(1, 0), pos(2, 2)] }, 'blue'],
+      [move('b1', pos(0, 0), pos(1, 2)), 'blue'],
+      [move('b2', pos(1, 0), pos(2, 2)), 'blue'],
       [{ type: 'endTurn' }, 'blue'],
-      [{ type: 'move', unitId: 'r1', path: [pos(7, 7), pos(6, 5)] }, 'red'],
+      [move('r1', pos(7, 7), pos(6, 5)), 'red'],
       [{ type: 'endTurn' }, 'red'],
-      [{ type: 'move', unitId: 'b1', path: [pos(1, 2), pos(2, 4)] }, 'blue'],
+      [move('b1', pos(1, 2), pos(2, 4)), 'blue'],
       [{ type: 'endTurn' }, 'blue'],
     ];
 

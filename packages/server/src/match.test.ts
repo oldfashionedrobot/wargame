@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
+import { route } from '@vod/shared/testing';
 import type { Command } from '@vod/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore } from './match';
@@ -18,13 +19,12 @@ beforeEach(async () => {
   sql = database.db.$client;
 });
 
+// A walkable route, not two endpoints -- validatePath walks every step in 6c,
+// so an endpoint pair describes a move no client can make.
 const move = (unitId: string, to: [number, number], from: [number, number]): Command => ({
   type: 'move',
   unitId,
-  path: [
-    { col: from[0], row: from[1] },
-    { col: to[0], row: to[1] },
-  ],
+  path: route({ col: from[0], row: from[1] }, { col: to[0], row: to[1] }),
 });
 
 // The starting board, from initialState.ts. Only blue-1 at (0,0) and red-1 at

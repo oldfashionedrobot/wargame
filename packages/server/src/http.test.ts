@@ -10,6 +10,7 @@ import type {
   MatchSummary,
   StateResponse,
 } from '@vod/shared';
+import { route } from '@vod/shared/testing';
 import { createServer } from './http';
 
 // Black box on purpose. Nothing below knows how a URL is dispatched, so the
@@ -52,14 +53,13 @@ async function newMatch(): Promise<MatchSummary> {
   return (await postJson('/api/matches')).json() as Promise<MatchSummary>;
 }
 
-// blue-1 starts at (0,0) as infantry, range 3, and blue moves first.
+// blue-1 starts at (0,0) as infantry, range 3, and blue moves first. The path
+// is a walkable route rather than two endpoints, which is what a client
+// actually sends -- validatePath walks every step in 6c.
 const legalMove: Command = {
   type: 'move',
   unitId: 'blue-1',
-  path: [
-    { col: 0, row: 0 },
-    { col: 0, row: 2 },
-  ],
+  path: route({ col: 0, row: 0 }, { col: 0, row: 2 }),
 };
 
 describe('GET /api/matches', () => {
@@ -191,13 +191,12 @@ describe('POST /api/matches/:id/commands', () => {
   // 400s above, which mean the body was never a command at all.
   it('answers 422 when the rulebook refuses', async () => {
     const { id } = await newMatch();
+    // A perfectly walkable route, refused on distance alone -- which keeps
+    // this testing the rulebook rather than the path checker 6c adds.
     const outOfRange: Command = {
       type: 'move',
       unitId: 'blue-1',
-      path: [
-        { col: 0, row: 0 },
-        { col: 7, row: 7 },
-      ],
+      path: route({ col: 0, row: 0 }, { col: 7, row: 7 }),
     };
 
     const response = await postJson(`/api/matches/${id}/commands`, outOfRange);

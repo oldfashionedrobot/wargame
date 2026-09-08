@@ -1,14 +1,27 @@
-import type { GameState, Player, TileType, Unit } from '@vod/shared';
+import { parseTerrainGrid } from '@vod/shared';
+import type { GameState, Player, Unit } from '@vod/shared';
 
-const GRID_WIDTH = 8;
-const GRID_HEIGHT = 8;
 const PLAYER_ONE_ID = 'player-blue';
 const PLAYER_TWO_ID = 'player-red';
 
+// Written as a character map, and parsed like any other, so there is no
+// second way a grid gets built. All plains until 6d puts real maps in
+// server/maps/ and records which one a match was built from.
+//
+// . plains   - road   = bridge   ~ river   ^ mountain   f forest
+const DEFAULT_MAP = [
+  '........',
+  '........',
+  '........',
+  '........',
+  '........',
+  '........',
+  '........',
+  '........',
+];
+
 export function createInitialState(): GameState {
-  const grid: TileType[][] = Array.from({ length: GRID_HEIGHT }, () =>
-    Array.from({ length: GRID_WIDTH }, () => 'plains'),
-  );
+  const grid = parseTerrainGrid(DEFAULT_MAP);
 
   const players: Player[] = [
     { id: PLAYER_ONE_ID, name: 'Blue Army', color: 'blue' },
