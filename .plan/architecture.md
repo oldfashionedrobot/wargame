@@ -545,13 +545,18 @@ Rivers stay meaningful: fordable on foot at a cost, impassable to wheels.
 
 ### One table, both axes
 
+All six, because this is the only place defence values live — Combat reads them from here rather than keeping a copy:
+
 ```ts
-{ plains:   { defense: 1, cost: { foot: 1, horse: 1, wheels: 2 } },
+{ road:     { defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
+  bridge:   { defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
+  plains:   { defense: 1, cost: { foot: 1, horse: 1, wheels: 2 } },
   forest:   { defense: 2, cost: { foot: 1, horse: 2, wheels: 3 } },
   mountain: { defense: 4, cost: { foot: 2, horse: null, wheels: null } },
-  river:    { defense: 0, cost: { foot: 2, horse: null, wheels: null } },
-  … }
+  river:    { defense: 0, cost: { foot: 2, horse: null, wheels: null } } }
 ```
+
+Roads and bridges are identical rows — mechanically they *are* the same terrain, and the split exists for the renderer (see above). `wheels` paying 2 on plains against 1 on road is the whole of "artillery prefers roads"; the defence column is unread until phase 7.
 
 Defence is a **single number per terrain**, not a unit×terrain matrix — AW uses 0–5 stars at 1% per star per HP. Cost stays a matrix because it genuinely varies by movement type.
 
@@ -619,11 +624,19 @@ Modelled on Advance Wars' actual mechanics. What follows is the reference behavi
 
 ### The damage formula
 
-Stripping CO modifiers (which we don't have), AW reduces to:
+Stripping CO modifiers (which we don't have), AW reduces to this — ⚠️ **written in AW's units, where HP is the displayed 1–10 and not our 0–100. Do not implement this line:**
 
 ```
 damage = baseDamage × (attackerHP / 10) × ((100 − terrainStars × 10 × defenderHP / 10) / 100)
 ```
+
+**Ours, in our units** — the only version to build from:
+
+```
+damage = baseDamage × (attackerHP / 100) × ((100 − terrainStars × 10 × defenderHP / 100) / 100)
+```
+
+Both `/10`s become `/100` because we store and display 0–100 (see the next section). Taking the AW line literally is not a rounding difference: at 4 stars with a full-health defender it computes `100 − 4 × 10 × 10 = −300`, so mountains would *heal* the unit standing on them. `baseDamage` stays a percentage of a full-health target, exactly as AW's tables give it, so the matchup numbers transfer unchanged — it is only the HP terms that rescale.
 
 Every step rounds down. Three things fall out of it:
 
@@ -631,7 +644,7 @@ Every step rounds down. Three things fall out of it:
 - **A wounded defender loses its cover.** Terrain defence scales by *defender* HP, so a 4-star mountain protects a full-health unit far more than a nearly-dead one. This accelerates kills and stops damaged units turtling on good ground.
 - **Terrain is not a minor modifier.** Four stars at full health is a 40% reduction. Tuning a matchup table with defence stubbed to zero would produce numbers to throw away — which is why terrain comes first.
 
-**Luck** adds 0 to +9 to base damage, itself scaled by attacker HP: each point of health lost narrows the luck range by 1%, floor of +1%. So damaged units are less swingy as well as weaker. *(Sources disagree slightly on where luck enters relative to the HP multiplier; the magnitude is consistent.)*
+**Luck** adds 0 to +9 to `baseDamage`, itself scaled by attacker HP: each point of health lost narrows the luck range by 1%, floor of +1%. Because `baseDamage` is a percentage in both schemes, this term needs **no rescaling** — the 0–9 is already in our units, and the "each point of health" that narrows it is AW's 1–10 point, so ours narrows per 10 HP. So damaged units are less swingy as well as weaker. *(Sources disagree slightly on where luck enters relative to the HP multiplier; the magnitude is consistent.)*
 
 ### HP representation — where we diverge ⚠️
 
@@ -647,15 +660,9 @@ This is upstream of the formula, the preview, the health bar, and the tuning har
 
 ### Terrain defence
 
-| | Stars |
-|---|---|
-| Road | 0 |
-| Plains | 1 |
-| Woods | 2 |
-| City | 3 |
-| Mountain / HQ | 4 |
+Each star is 10% reduction *at full defender HP*. **The values live in the terrain table — see Terrain — and this section does not restate them**, because it used to and drifted: the old table here was AW's, listing `Woods` (our `forest`), plus `City` and `HQ`, which are buildings the roadmap puts out of scope for v1. A second table in a second vocabulary is exactly how a defence value gets tuned in one place and read from the other.
 
-Each star is 10% reduction *at full defender HP*. Values live in the terrain table — see Terrain.
+For reference while reading the formula above: our six terrains run 0 stars (road, bridge, river) through 1 (plains), 2 (forest), to 4 (mountain).
 
 ### Counter-attacks
 
@@ -1228,7 +1235,7 @@ Verifiable with no combat: does the overlay stop at mountains, does cavalry outr
 Terrain and pathing already exist by this point, so the numbers mean something. The integration risk here is the chain — command → resolve → events → animate → death → mesh removal → victory — not the damage formula.
 
 - **7a** — *moved to 6a.* The `UnitType` catalog wiring is a prerequisite of the terrain cost table, not a consequence of combat; see phase 6's hard dependencies.
-- **7b** `Unit` gains `health`/`maxHealth`; update the starting units. (`unitTypeId` arrived in 6a.) **No migration** — `Unit` lives inside `GameState`, which is a JSON blob, so the shape changes without the schema moving. That is the JSON-blob decision paying off, and it is why `map_id` in phase 6 is the first migration rather than this.
+- **7b** `Unit` gains `health`; update the starting units. (`unitTypeId` arrived in 6a.) **`maxHealth` does not go on `Unit`** — it is static per unit type, which is the exact distinction 6a exists to draw, and putting it on every instance would re-introduce the duplication that moving `movementRange` onto `UnitType` just removed. If every unit tops out at 100 it is a constant in `shared/`; the day one doesn't, it is a `UnitType` field. **No migration** — `Unit` lives inside `GameState`, which is a JSON blob, so the shape changes without the schema moving. That is the JSON-blob decision paying off, and it is why `map_id` in phase 6 is the first migration rather than this.
 - **7c** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. It grows out of 5b's `snapUnits` and runs where that runs: inside the hook's queue, after the batch's animation, before the commit. Assumes 5b landed — without the gated commit, reconciling meshes against a state whose events are still animating is exactly the ordering bug 5b retired.
 - **7d** `UnitActionCommand` replaces `MoveCommand` — path plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events. Touches three places, all separate now: `parseCommand` for the wire shape, `validateMove`'s successor for legality, and `resolveMove`'s for the events — plus rolls, which arrive as an argument to resolution so `shared/` stays pure.
 
@@ -1242,7 +1249,7 @@ Without 7f the board reaches a state where one side has nothing left and End Tur
 
 **Keep game outcome separate from lobby status.** An outcome is a fact about the board — produced by a reducer, replayable from the log — so it belongs in `GameState`. "Waiting for an opponent to join" is about *users*, belongs on the `matches` row, and no reducer should know about it. A single `status` field spanning both is the muddle to avoid.
 
-**Build the tuning harness first.** `shared/` is pure and rolls are inputs, so a script running a thousand attacks across every matchup and printing damage distributions is roughly twenty lines and needs no browser. Without it, tuning means editing a table, restarting, creating a match, manoeuvring two units together, and observing one number. This is also the first real use of the purity invariant.
+**Build the tuning harness first** — specified once, under Tuning. It prints **hits-to-kill**, not raw damage or a distribution; that section argues why, and this one used to say something slightly different, which is how two harnesses get built. This is also the first real use of the purity invariant: `shared/` is pure and rolls are inputs, so the script needs no browser and no server.
 
 **Where identity shows up.** Two bits of UI here need to know who the user is — a "your units that can still act" indicator, and a victory screen saying *You won* rather than *Blue won*. Get it from one function rather than inlining `state.currentTurn` at each call site. Hot-seat: whoever's turn it is, because two people share one client. With auth: the session. Same concept, different source — nothing to build in advance.
 
