@@ -13,7 +13,10 @@ import { tileToWorld } from './coordinates';
 const UNIT_DIAMETER = 0.5;
 const UNIT_HEIGHT = 0.6;
 const FRAME_RATE = 30;
-const FRAMES_PER_TILE = 12;
+// One tile of walking, at FRAME_RATE. The pace every unit moves at -- there is
+// no per-type speed, so this is the single dial for how long a move takes: a
+// three-tile move is 3x this. 9/30 = 0.3s.
+const FRAMES_PER_TILE = 9;
 
 // A symmetric cylinder placeholder has no visible "front", but wiring facing to
 // rotation now means a real unit model/sprite can drop in later with no renderer changes.

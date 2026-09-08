@@ -10,11 +10,11 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
-import type { Coordinate, GameEvent, GameState } from '@vod/shared';
+import type { Coordinate, GameEvent, GameState, Movement } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
 import { createTileHighlight, setHighlightTile } from './highlight';
-import { createMovementRangeOverlay, setMovementRangeTiles } from './movementRange';
+import { createTileOverlay } from './tileOverlay';
 import { screenToTile } from './picking';
 import { createTerrainMesh } from './terrain';
 import { animateUnitAlongPath, createUnitMesh } from './units';
@@ -29,10 +29,25 @@ const SELECTED_COLOR = new Color3(1, 0.85, 0.1);
 const SELECTED_ALPHA = 0.55;
 const SELECTED_HEIGHT = 0.025;
 
+// The reachable set, and the route through it to whatever the pointer is
+// over. The route sits above the range so it reads on top of it.
+const RANGE_COLOR = new Color3(0.3, 0.55, 1);
+const RANGE_ALPHA = 0.4;
+const RANGE_HEIGHT = 0.015;
+
+const ROUTE_COLOR = new Color3(0.95, 0.98, 1);
+const ROUTE_ALPHA = 0.75;
+const ROUTE_HEIGHT = 0.018;
+
 export interface GameRenderer {
   onTileClick(handler: (coordinate: Coordinate) => void): void;
   setSelectedTile(coordinate: Coordinate | null): void;
-  setMovementRange(coordinates: Coordinate[]): void;
+  /**
+   * The selected unit's movement, or null when nothing is selected. The
+   * renderer keeps it so it can draw the route to whatever the pointer is
+   * over -- hover never reaches React.
+   */
+  setMovement(movement: Movement | null): void;
   /** Animates what the authority says happened. Resolves when done. */
   playEvents(events: GameEvent[]): Promise<void>;
   /**
@@ -105,7 +120,22 @@ export function createGameRenderer(
     SELECTED_COLOR,
     SELECTED_ALPHA,
   );
-  const movementRange = createMovementRangeOverlay(scene);
+  const rangeOverlay = createTileOverlay(scene, {
+    name: 'movement-range',
+    color: RANGE_COLOR,
+    alpha: RANGE_ALPHA,
+    height: RANGE_HEIGHT,
+    gridWidth,
+    gridHeight,
+  });
+  const routeOverlay = createTileOverlay(scene, {
+    name: 'movement-route',
+    color: ROUTE_COLOR,
+    alpha: ROUTE_ALPHA,
+    height: ROUTE_HEIGHT,
+    gridWidth,
+    gridHeight,
+  });
 
   const unitMeshes = new Map<string, Mesh>();
   for (const unit of initialState.units) {
@@ -117,10 +147,33 @@ export function createGameRenderer(
   const hoveredCoordinate = (): Coordinate | null =>
     screenToTile(scene, camera, scene.pointerX, scene.pointerY, gridWidth, gridHeight);
 
+  // The route is recomputed only when the pointer crosses into a different
+  // tile, not on every mouse event.
+  let movement: Movement | null = null;
+  let hoveredKey: string | null = null;
+
+  const showRouteTo = (coordinate: Coordinate | null): void => {
+    if (!movement || !coordinate) return routeOverlay.setTiles([]);
+    // `pathTo` answers for any settled tile, including ones occupied by a
+    // friendly unit that nobody may stop on. Only draw a route somewhere the
+    // unit could actually end up.
+    const reachable = movement.reachable.some(
+      (tile) => tile.col === coordinate.col && tile.row === coordinate.row,
+    );
+    routeOverlay.setTiles(reachable ? (movement.pathTo(coordinate) ?? []) : []);
+  };
+
   let clickHandler: ((coordinate: Coordinate) => void) | null = null;
   scene.onPointerObservable.add((pointerInfo) => {
     if (pointerInfo.type === PointerEventTypes.POINTERMOVE) {
-      setHighlightTile(hoverHighlight, hoveredCoordinate(), HOVER_HEIGHT, gridWidth, gridHeight);
+      const coordinate = hoveredCoordinate();
+      setHighlightTile(hoverHighlight, coordinate, HOVER_HEIGHT, gridWidth, gridHeight);
+
+      const key = coordinate ? `${coordinate.col},${coordinate.row}` : null;
+      if (key !== hoveredKey) {
+        hoveredKey = key;
+        showRouteTo(coordinate);
+      }
       return;
     }
 
@@ -147,8 +200,12 @@ export function createGameRenderer(
     setSelectedTile(coordinate) {
       setHighlightTile(selectedHighlight, coordinate, SELECTED_HEIGHT, gridWidth, gridHeight);
     },
-    setMovementRange(coordinates) {
-      setMovementRangeTiles(movementRange, coordinates, gridWidth, gridHeight);
+    setMovement(next) {
+      movement = next;
+      rangeOverlay.setTiles(next?.reachable ?? []);
+      // The selection changed under the pointer, so the route it was showing
+      // may no longer apply.
+      showRouteTo(next ? hoveredCoordinate() : null);
     },
     async playEvents(events) {
       for (const event of events) {

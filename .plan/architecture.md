@@ -70,7 +70,7 @@ packages/
       game/       useGameSession.ts · GameCanvas.tsx
         interaction/  selection.ts
         render/       renderer.ts · terrain.ts · units.ts · highlight.ts
-                      movementRange.ts · gridLines.ts · picking.ts · coordinates.ts
+                      tileOverlay.ts · gridLines.ts · picking.ts · coordinates.ts
 ```
 
 ## Commands
@@ -388,7 +388,7 @@ time.
 
 ```ts
 onTileClick(handler)      setSelectedTile(coordinate | null)
-setMovementRange(tiles)   playEvents(events): Promise<void>
+setMovement(movement)     playEvents(events): Promise<void>
 snapUnits(state)          toggleInspector()          dispose()
 ```
 
@@ -399,13 +399,20 @@ snapUnits(state)          toggleInspector()          dispose()
 - **Tile lookup is math, not mesh-picking** — `screenToTile` intersects a camera
   ray with the `y = 0` plane, so terrain must stay flat.
 - Terrain is one merged mesh, vertex-coloured per tile from a
-  `Record<TileType, Color4>`. Grid lines are a `LineSystem`. The selection
-  highlight and the movement overlay are single meshes driven by the pushed
-  selection.
-- A second highlight follows the pointer, moved from `POINTERMOVE` inside the
+  `Record<TileType, Color4>`. Grid lines are a `LineSystem`. Two
+  `createTileOverlay` meshes draw the reachable range and the route through it,
+  at different heights so the route reads on top.
+- A highlight follows the pointer, moved from `POINTERMOVE` inside the
   renderer. React never hears about hover.
+- **The route preview is computed here, not in React.** `setMovement` hands the
+  renderer the whole `Movement`, so `POINTERMOVE` can call `pathTo` on the
+  hovered tile — recomputed only when the pointer crosses into a different
+  tile. A route is drawn only to a tile in `reachable`, since `pathTo` also
+  answers for tiles nobody may stop on.
 - Unit meshes are built once at startup; there is no add or remove.
-- `playEvents` walks `unitMoved` paths one tween per tile, ~0.4s each.
+- `playEvents` walks `unitMoved` paths one tween per tile, 0.3s each
+  (`FRAMES_PER_TILE` over `FRAME_RATE` in `units.ts` — one dial for every
+  unit's pace).
 - `snapUnits` positions meshes from state with no tween, stopping any running
   animation first.
 - Babylon imports are **per-file**, not from the `@babylonjs/core` barrel. Side

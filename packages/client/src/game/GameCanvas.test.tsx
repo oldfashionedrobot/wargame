@@ -23,7 +23,7 @@ beforeEach(() => {
       clickTile = handler;
     }),
     setSelectedTile: vi.fn(),
-    setMovementRange: vi.fn(),
+    setMovement: vi.fn(),
     playEvents: vi.fn(() => Promise.resolve()),
     snapUnits: vi.fn(),
     toggleInspector: vi.fn(),
@@ -91,7 +91,11 @@ describe('GameCanvas', () => {
 
     clickTile({ col: 1, row: 1 }); // the unit's own tile
     expect(renderer.setSelectedTile).toHaveBeenLastCalledWith({ col: 1, row: 1 });
-    expect(vi.mocked(renderer.setMovementRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
+    // The whole search is handed over, so the renderer can draw a route on
+    // hover without asking React for anything.
+    const movement = vi.mocked(renderer.setMovement).mock.lastCall?.[0];
+    expect(movement?.reachable.length).toBeGreaterThan(0);
+    expect(typeof movement?.pathTo).toBe('function');
   });
 
   it('clears the overlays when the selection is dropped', () => {
@@ -99,6 +103,6 @@ describe('GameCanvas', () => {
     clickTile({ col: 1, row: 1 }); // select
     clickTile({ col: 1, row: 1 }); // click it again to deselect
     expect(renderer.setSelectedTile).toHaveBeenLastCalledWith(null);
-    expect(renderer.setMovementRange).toHaveBeenLastCalledWith([]);
+    expect(renderer.setMovement).toHaveBeenLastCalledWith(null);
   });
 });
