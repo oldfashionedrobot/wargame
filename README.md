@@ -23,7 +23,7 @@ Bun workspaces, three packages, split by **authority** rather than by subject ma
 
 Bun installs these isolated rather than hoisted, so `packages/server/node_modules/` contains only `@vod/shared`. A stray `import 'react'` in server code is a resolution failure, not something to catch in review.
 
-Cross-package imports go through each package's barrel (`@vod/shared`, `@vod/server`), never into individual files.
+Cross-package imports go through the `@vod/shared` barrel, never into individual files. `server` is an application rather than a library — nothing imports it, so it has no barrel and no `exports` field; `http.ts` is an entry point that gets run.
 
 `shared` has no build step and emits nothing at all — its `exports` point at TypeScript source. Bun runs TS natively; Vite compiles it for the browser. `tsc` reads that same source: `server` and `client` pull it into their own programs, so it is typechecked as a byproduct of being imported rather than through declaration files.
 

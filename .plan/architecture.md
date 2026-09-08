@@ -54,7 +54,7 @@ The split is by **authority**, not subject matter:
 
 Separate `package.json` files are the point: `server/` doesn't list Babylon or React, so a stray import is a resolution error rather than something caught in review. `shared/` having zero dependencies is the same guarantee for purity.
 
-**No runtime build step for `shared/`** — its `exports` point at TS source. Bun runs TS natively on the server; Vite compiles it for the client. (A real build would be needed only if the server ever moves off bun.) It *does* emit `.d.ts` for typechecking — see Verification.
+**No build step for `shared/` at all** — its `exports` point at TS source. Bun runs TS natively on the server; Vite compiles it for the client. (A real build would be needed only if the server ever moves off bun.) It emits **nothing**: `packages/shared/tsconfig.json` sets `noEmit`, and `server`/`client` pull the source into their own programs, so it is typechecked as a byproduct of being imported — see Verification. Its own `build` script is a manual typecheck of that one package and is not reached by any root script.
 
 **Dependency rule** — now enforced by package boundaries rather than convention:
 
@@ -153,7 +153,7 @@ POST /api/matches/:id/commands        → { ok: true, seq, events, state }   200
 
 ✅ **The client reads it.** A 422 surfaces as a `RejectedError` carrying the server's reason — a separate type from `HttpError`, so a rejection cannot reach the connect path's two-case UI — and `submit` returns it as `{ ok: false, reason }` without raising the reconnecting banner. Every other non-2xx reads the `ErrorResponse` body too, so a 500's reason reaches the UI verbatim, with `server returned N` as the fallback when the body is not ours.
 
-**Every non-2xx body is an `ErrorResponse` — `{ error: string }`** — declared in `shared/protocol.ts` alongside the rest of the wire contract, with no exceptions: the client-serving path's "not built" 404 uses it too, so the rule needs no footnote. Deliberately *not* `CommandResult`'s `{ ok: false, reason }`, which the 400s and the 500 used to borrow: the two mean different things, and sharing a shape invites a client to conflate "your move was illegal" with "that was not a command". Success bodies go out through `Response.json`, which sets the content type itself.
+**Every non-2xx body this code writes is an `ErrorResponse` — `{ error: string }`** — declared in `shared/protocol.ts` alongside the rest of the wire contract, and with no exceptions inside the app: the client-serving path's "not built" 404 uses it too, and nothing constructs a non-2xx `Response` outside `errorResponse`. The one body that is not ours is bun's own 413, which it answers before a handler is reached — see Payloads below. Deliberately *not* `CommandResult`'s `{ ok: false, reason }`, which the 400s and the 500 used to borrow: the two mean different things, and sharing a shape invites a client to conflate "your move was illegal" with "that was not a command". Success bodies go out through `Response.json`, which sets the content type itself.
 
 **Dispatch is `Bun.serve`'s own `routes` table**, not hand-rolled path parsing — one entry per endpoint above, keyed by method. Params come from the path literal, so `request.params.id` is typed and a typo in it is a compile error rather than `undefined` at runtime (verified). A `'/api/*'` entry catches everything the table does not claim, including a method an endpoint does not serve, which keeps those 404 rather than 405, and a `'/*'` entry below it serves the client build. There is no `fetch` handler at all: every path is accounted for in the table, and only `routes` receive a `BunRequest` — which is what carries `cookies`.
 
@@ -179,7 +179,7 @@ A hidden tab polls at the slowest interval, and a `visibilitychange` listener re
 
 **Payloads are bounded in two places**, because validating a body means allocating it first:
 
-- `maxRequestBodySize` on `Bun.serve` (64KB) — a command is a few hundred bytes, so anything near this is a bug or an attempt to make us allocate. Rejected with 413 before parsing.
+- `maxRequestBodySize` on `Bun.serve` (64KB) — a command is a few hundred bytes, so anything near this is a bug or an attempt to make us allocate. Rejected with 413 before parsing. ⚠️ **This is the one non-2xx body that is not ours**: bun answers it before any handler runs, so it is the single exception to the `ErrorResponse` rule above, and nothing tests it.
 - `MAX_PATH_STEPS` in `parseCommand` — a defensive allocation bound, *not* a game rule; `validatePath` owns the real limit. Stops a path that fits under the body cap from still materialising thousands of coordinates.
 
 Static file serving resolves against the build directory and confirms the result stays inside it. URL parsing already collapses `..`, so this is belt-and-braces — but "safe because of how the parser happens to behave" is not a property to rest filesystem access on.
@@ -548,15 +548,15 @@ Rivers stay meaningful: fordable on foot at a cost, impassable to wheels.
 
 ### One table, both axes
 
-All six, because this is the only place defence values live — Combat reads them from here rather than keeping a copy:
+All six, because this is the only place defence values live — Combat reads them from here rather than keeping a copy. The map character rides along, so **adding a terrain type stays one edit** and `Record` exhaustiveness now covers three axes rather than two:
 
 ```ts
-{ road:     { defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
-  bridge:   { defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
-  plains:   { defense: 1, cost: { foot: 1, horse: 1, wheels: 2 } },
-  forest:   { defense: 2, cost: { foot: 1, horse: 2, wheels: 3 } },
-  mountain: { defense: 4, cost: { foot: 2, horse: null, wheels: null } },
-  river:    { defense: 0, cost: { foot: 2, horse: null, wheels: null } } }
+{ road:     { char: '-', defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
+  bridge:   { char: '=', defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
+  plains:   { char: '.', defense: 1, cost: { foot: 1, horse: 1, wheels: 2 } },
+  forest:   { char: 'f', defense: 2, cost: { foot: 1, horse: 2, wheels: 3 } },
+  mountain: { char: '^', defense: 4, cost: { foot: 2, horse: null, wheels: null } },
+  river:    { char: '~', defense: 0, cost: { foot: 2, horse: null, wheels: null } } }
 ```
 
 Roads and bridges are identical rows — mechanically they *are* the same terrain, and the split exists for the renderer (see above). `wheels` paying 2 on plains against 1 on road is the whole of "artillery prefers roads"; the defence column is unread until phase 7.
@@ -609,6 +609,8 @@ const MAP = [
 // ~ river    ^ mountain   f forest
 ```
 
+The legend is not written down twice: every character above is the `char` field of its entry in the terrain table, and `parseTerrainGrid` builds the lookup by inverting it.
+
 Readable in an editor, in a diff, and in review. AW and AWBW store maps as terrain-id grids; FFT isn't a useful reference, since its 3D tiles with height solve a different problem.
 
 **Units are a separate list**, not encoded in the grid — they carry type, owner, and facing, which doesn't fit one character:
@@ -617,7 +619,7 @@ Readable in an editor, in a diff, and in review. AW and AWBW store maps as terra
 units: [{ at: { col: 1, row: 4 }, type: 'infantry', owner: 0 }, …]
 ```
 
-**Maps live in `server/maps/`.** The client never needs map *definitions* — it receives an instantiated `grid` in `GameState`. `shared/data/` is for content both sides read, and this isn't.
+**Map definitions live in `server/maps/`. The parser does not.** The client never needs map definitions — it receives an instantiated `grid` in `GameState` — so the *data* belongs to the server. But `parseTerrainGrid(rows: string[]): TileType[][]` is a pure function over shared vocabulary, and **`shared/`'s own tests need terrain grids** while `shared/` cannot import from `server/`. So it lives in `shared/` and is exported from the barrel, `server/` being its other consumer. It inverts the `char` column of the terrain table above rather than keeping a second legend, and throws on an unknown character or a ragged row — the same reasoning as `applyEvents` refusing an unknown event, since a silently mistyped tile is a map that plays wrong.
 
 Consequence: `createInitialState()` becomes `createMatchState(map)`, and a match records which map it was built from.
 
@@ -1264,18 +1266,24 @@ Verifiable with no combat: does the overlay stop at mountains, does cavalry outr
 
 #### The sub-steps
 
-- **6a** — `Unit` gains `unitTypeId` and drops `movementRange`, which moves onto `UnitType` (7a, pulled forward). Pure `shared/` plus `initialState`; no migration.
+- **6a** — `Unit` gains `unitTypeId` and drops `movementRange`, which moves onto `UnitType` (7a, pulled forward). Pure `shared/` plus `initialState`; no migration. The barrel gains `UnitType`, `UnitTypeId`, `MovementType` and `getUnitType`, which have never been exported — `unitTypes.ts` has been dead code since the first commit, so 6a is the first time anything imports it.
 - **6b** — the terrain table and `exploreMovement`, returning `reachable` and `pathTo`. Pure and fully unit-testable. `getReachableTiles` becomes `exploreMovement` through the barrel, which ripples through its tests and `selection.ts`.
+
+  ⚠️ **`exploreMovement` takes the budget and movement type as arguments; it does not look them up.** The lookup belongs to its two or three callers. Otherwise every search test has to name a real unit type to get a budget, which couples tests about *Dijkstra* to catalog values — and tuning cavalry's range would break tests that have nothing to do with cavalry. The current `getReachableTiles(state, unit)` already reads a plain number off the unit; this keeps that property once the number moves.
+
+  `makeState` also grows a terrain parameter here — it hardcodes `'land'` today, and "does the overlay stop at a mountain" is not askable without one.
 - **6c** — `validatePath` inside `validateMove`, **and** the client sending `pathTo`'s result, together. It lands in `validateMove` rather than anywhere else because validation and resolution are already separate: `validateMove` decides legality, `resolveMove` only emits the event. `canMoveUnit`'s `getReachableTiles` call leaves the server path entirely — an O(path) walk replaces an O(board) search per command.
+
+  ⚠️ **Named scope: about ten hand-built path fixtures across nine files stop being legal here**, because every one of them is a two-element endpoint pair that only passes today since `validateMove` reads the last element and ignores the rest. Some are not even orthogonal — the replay test that proves `initial_state + log = current_state` walks `(0,0) → (1,2)` diagonally. The fix is a `route(...waypoints)` helper in `testing.ts` that expands endpoints into step-by-step orthogonal routes, **not** a fixture library: `testing.ts` lives inside `shared/`, whose zero-dependency property is what makes purity a resolution error rather than a review catch, and factories generate plausible varied data where the problem here is a domain constraint. Tests that assert on *illegal* paths keep writing the array by hand, so the illegality stays visible where it is asserted.
 - **6d** — character-grid maps in `server/maps/`; `createInitialState()` becomes `createMatchState(map)`; `matches` gains `map_id`. **That column is the first real schema migration** — the thing the tooling exists for, worth doing deliberately. Two mechanics the plan owes it: maps are *code modules*, so `map_id` is a text column with **no foreign key**, and a `NOT NULL` column on a non-empty table needs a default or nullability.
 - **6e** — terrain rendering, route preview, and the confirm gesture. New Babylon code follows 5c-3's convention: per-file imports, side-effect modules named where the augmented method is called.
 
   Two notes the rendering half needs. **The route preview is computed in the renderer, not in React**: hover already lives entirely inside the renderer (`POINTERMOVE` → `screenToTile` → move the highlight, with React never hearing about it), and the selection push already hands over the `movement` object, so calling `pathTo(hovered)` there is presentation using data it was given — where routing it through the hook would mean a React state update per mouse move. And ⚠️ **terrain stays flat**: `screenToTile` intersects the `y = 0` plane rather than mesh-picking, which is what makes tile lookup independent of what is drawn — the day terrain gains real height, clicking a peak selects the tile behind it. Elevation is a later visual pass that has to answer the picking question first.
-- **6f** — **facing follows the path.** `applyEvents` already derives the final position from a `unitMoved` path; it derives `facing` from the last step the same way — deterministic, idempotent, no new event field, no UI. `snapUnits` starts setting rotation as well as position, or a snapped-over animation leaves a unit facing wrongly with nothing to correct it. Lands after 6c because deriving a facing from today's two-element straight line would produce a diagonal, which is not one. See Facing and directional defence for where this goes next.
+- **6f** — **facing follows the path.** `applyEvents` already derives the final position from a `unitMoved` path; it derives `facing` from the last step the same way — deterministic, idempotent, no new event field, no UI. `snapUnits` starts setting rotation as well as position, or a snapped-over animation leaves a unit facing wrongly with nothing to correct it; `FACING_ROTATION` is module-local in `units.ts` today, so this wants a `setUnitFacing(mesh, facing)` beside `createUnitMesh` rather than exporting the table. **A single-element path has no direction, so facing is left unchanged** — turning in place is a phase 7 action, not something a zero-length move should invent. Lands after 6c because deriving a facing from today's two-element straight line would produce a diagonal, which is not one. See Facing and directional defence for where this goes next.
 
   Animation itself needs **no structural change** — `animateUnitAlongPath` already walks `path.slice(1)` one tween per segment and has only ever been handed two-element paths, so today a unit slides diagonally across open ground. Real routes make it walk, for free. What does want revisiting is the pace: one constant for every unit (`FRAMES_PER_TILE`), and with a single speed, **5b's `worthAnimating` threshold should count tiles rather than events** — one `unitMoved` can now be a six-tile walk, so nine of them sit under a ten-*event* cap and animate for twenty seconds.
 
-⚠️ **6b orphans every existing match, and the dev database must be wiped at 6d.** `TileType` stops including `'land'`, `current_state` is read on every submit, and `$type<GameState>()` is a compile-time assertion rather than validation — so an old row keeps `'land'` tiles, `TERRAIN['land']` is `undefined`, and the cost lookup throws. The start screen still lists those matches, so opening one breaks the client. Dev-only data, so wiping is the answer; it is written here so it is a step rather than a surprise. (`initial_state` has the same staleness and never gets read, so it does not bite.)
+⚠️ **Wipe the dev database when phase 6 starts — at 6a, not later.** Stored matches break at the *first* step, not the terrain one: their units carry `movementRange` and no `unitTypeId`, so `getUnitType(undefined)` is undefined and the movement lookup throws. 6b then breaks them a second way — `TileType` stops including `'land'`, `current_state` is read on every submit, and `$type<GameState>()` is a compile-time assertion rather than validation, so an old row keeps `'land'` tiles and `TERRAIN['land']` is undefined. Either way the start screen still lists those matches and opening one breaks the client. Dev-only data, so wiping is the answer; it is written here so it is a step rather than a surprise. (`initial_state` goes stale identically and is never read, so it does not bite.)
 
 ### 7 — Combat: the smallest thing you can win
 
@@ -1365,7 +1373,7 @@ Both are defaults in Better Auth, which is a further point in its favour above.
 
 `noUnusedLocals` / `noUnusedParameters` are on, `strict` is on (5a's first commit), and `verbatimModuleSyntax` requires explicit `import type`.
 
-**Tests: `bun test` for `shared/` and `server/`, Vitest for `client/`.** Two runners because `bun test` needs no dependency or config and covers the pure packages, while Vitest reuses the client's `vite.config.ts` and is the only route to React component and hook tests. Test files are portable between them — the same suite ran under both, differing only in the import line. The root `test` script runs both. Server tests use `:memory:`, one database per test, migrated in `beforeEach`.
+**Tests: `bun test` for `shared/` and `server/`, Vitest for `client/`.** Two runners because `bun test` needs no dependency or config and covers the pure packages, while Vitest reuses the client's `vite.config.ts` and is the only route to React component and hook tests. Test files are portable between them — the same suite ran under both, differing only in the import line. The root `test` script runs both. Server tests use `:memory:`, so the real development database is never in reach. `match.test.ts` takes a fresh one per test, migrated in `beforeEach`; `http.test.ts` deliberately does not — it holds one server, and therefore one database, for the whole file, and isolates per *match* instead (see below).
 
 **`http.test.ts` is a black box over real requests**, not a call into a handler: it calls `createServer({ port: 0, databaseUrl: ':memory:' })`, reads `server.url`, and drives it with `fetch`. Nothing in it knows how a URL is dispatched, which is why swapping hand-rolled parsing for `routes` did not touch a line of it — the property worth keeping the next time routing changes.
 
