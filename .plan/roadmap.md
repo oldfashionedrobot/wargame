@@ -205,53 +205,8 @@ option, and both cost a few lines against a table's seeding machinery.
 
 ### 6 — Terrain and movement
 
-Steps 6a–6c are built, and so is the hover route preview; see `architecture.md`.
-What remains:
-
-#### 6d — maps
-
-Character-grid maps in `server/maps/`, `createInitialState()` becoming
-`createMatchState(map)`, and `matches` gaining `map_id`.
-
-```ts
-interface GameMap {
-  id: string;
-  rows: string[];                                        // parsed by parseTerrainGrid
-  units: { at: Coordinate; type: UnitTypeId; owner: number }[];
-}
-```
-
-**`owner` is an index into the match's players, not a `PlayerId`.** Players stay
-hardcoded on the server: there is no lobby, no accounts, and nothing to choose
-between yet. The index is what lets a four-player map exist later without the
-format changing, and it keeps maps from naming players they cannot know about.
-Placing units per player is a **battlefield setup step**, which is a phase 9
-concern — the map is the placeholder for it.
-
-**Unit ids are generated deterministically**, `${colour}-${n}` counting per
-owner in map order. Deterministic because `initial_state` plus the log has to
-replay identically, and a random id breaks that. This format reproduces
-today's `blue-1` … `red-3` exactly for the default map, so no fixture that
-names a unit has to change.
-
-Both of these replace hardcoded data with slightly differently shaped hardcoded
-data. Neither is a design commitment beyond phase 6.
-
-**The migration is measured, not assumed** — trial-run and reverted:
-
-```sql
-ALTER TABLE `matches` ADD `map_id` text DEFAULT 'classic' NOT NULL;
-```
-
-`db:generate` produces exactly that, refreshes `schema.sql`, and `migrate()`
-applies it to a **populated** database with the existing row defaulted and its
-resolution log intact. `map_id` is a text column with no foreign key, because
-maps are code modules rather than rows — see *Maps in a table* under Known
-compromises for when that changes, and for why map ids should be treated as
-immutable in the meantime.
-
-The barrel gains `UnitTypeId`, which 6a deliberately left out until something
-consumed it.
+Steps 6a–6d are built, and so is the hover route preview; see
+`architecture.md`. What remains:
 
 #### 6e — the destination step
 
@@ -307,10 +262,7 @@ sixteen seconds. With one speed for every unit, tiles are the honest measure.
 
 #### Suggested order
 
-**6d, then 6f, then 6e.** Everything 6b and 6c built is invisible today — the
-board is all plains, so no route ever bends around anything. 6d makes it
-visible, and it carries the migration, which is best done while the database is
-still disposable. 6f is small and independent. 6e is the interaction change and
+**6f, then 6e.** 6f is small and independent. 6e is the interaction change and
 the one with an open question above it.
 
 ### 7 — Combat: the smallest thing you can win

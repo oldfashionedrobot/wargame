@@ -56,7 +56,8 @@ packages/
       match.ts        MatchStore: create · list · snapshot · since · submit
       db.ts           libSQL client + Drizzle, pragmas, migrations at boot
       schema.ts       matches · resolutions, typed from shared
-      initialState.ts createInitialState() — parses DEFAULT_MAP, places the roster
+      matchState.ts   createMatchState(map) — instantiates a map into a board
+      maps/           classic.ts · index.ts (registry) · types.ts (GameMap)
       const.ts        env-derived defaults
     drizzle.config.ts drizzle-kit config; imports DEFAULT_DB_URL from const.ts
     drizzle/          generated migrations, committed
@@ -202,9 +203,33 @@ Every grid comes from parsing a character map; there is no other construction
 path. `parseTerrainGrid(rows: string[]): TileType[][]` inverts the terrain
 table's `char` column and throws on an unknown character or a ragged row.
 
-`createInitialState()` parses `DEFAULT_MAP` in `initialState.ts` — 8×8, all
-plains. The test fixture `makeState` accepts either map rows or a size, and a
-size generates a plains character map and parses that.
+Maps are modules in `server/src/maps/`, registered by id:
+
+```ts
+interface GameMap {
+  id: string;
+  name: string;
+  rows: string[];                                       // parsed by parseTerrainGrid
+  units: { at: Coordinate; type: UnitTypeId; owner: number }[];
+}
+```
+
+`owner` is an **index into the match's players**, not a `PlayerId` — a map
+cannot know who is playing it. `createMatchState(map)` resolves the index
+against the two hardcoded players and generates unit ids as `${colour}-${n}`,
+numbered per owner in the order the map lists them. The ids are deterministic
+because `initial_state` plus the log must replay identically.
+
+⚠️ **Map ids are immutable.** A match records the id it was built from, so
+changing a map's terrain under its id retroactively changes what every existing
+match claims to have been played on. A changed map gets a new id.
+
+`getMap` throws on an unknown id. One map exists: `classic` — a river split by
+a single bridge, with mountains flanking the far approach and forest the near
+one, so infantry can ford where cavalry and artillery must take the bridge.
+
+The test fixture `makeState` accepts either map rows or a size, and a size
+generates a plains character map and parses that.
 
 ## Movement
 
@@ -290,7 +315,7 @@ between a local file and hosted Turso.
 
 ```sql
 matches      (id, created_at, initial_state JSON, current_state JSON,
-              current_seq, current_turn, PRIMARY KEY (id))
+              current_seq, current_turn, map_id, PRIMARY KEY (id))
 resolutions  (match_id, seq, actor, action JSON, events JSON, created_at,
               PRIMARY KEY (match_id, seq),
               FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE)
@@ -298,7 +323,7 @@ resolutions  (match_id, seq, actor, action JSON, events JSON, created_at,
 
 `initial_state` is written and never read. `current_state` is a checkpoint;
 events are authoritative. `current_turn` is denormalised so listing matches
-parses no boards. `action` is written and never read.
+parses no boards. `action` and `map_id` are written and never read.
 
 **Paths:** a relative `file:` URL in `DATABASE_URL` resolves against the repo
 root, not the cwd. `DEFAULT_DB_URL` lives in `src/const.ts`, and

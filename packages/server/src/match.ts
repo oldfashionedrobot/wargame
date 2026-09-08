@@ -11,7 +11,8 @@ import type {
   StateResponse,
 } from '@vod/shared';
 import type { Database } from './db';
-import { createInitialState } from './initialState';
+import { getMap, DEFAULT_MAP_ID } from './maps';
+import { createMatchState } from './matchState';
 import { Matches, Resolutions } from './schema';
 
 // Nothing deletes or expires matches yet, and anyone can create them, so the
@@ -61,7 +62,9 @@ export function createMatchStore({ db }: Database): MatchStore {
     async create() {
       const id = crypto.randomUUID();
       const createdAt = Date.now();
-      const state = createInitialState();
+      // One map today; choosing between them is a lobby concern.
+      const mapId = DEFAULT_MAP_ID;
+      const state = createMatchState(getMap(mapId));
 
       await db.insert(Matches).values({
         id,
@@ -70,6 +73,7 @@ export function createMatchStore({ db }: Database): MatchStore {
         currentState: state,
         currentSeq: 0,
         currentTurn: state.currentTurn,
+        mapId,
       });
 
       return { id, createdAt, seq: 0, currentTurn: state.currentTurn };

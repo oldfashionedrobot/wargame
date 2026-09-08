@@ -16,6 +16,10 @@ export const Matches = sqliteTable('matches', {
   // Denormalised out of current_state so listing matches doesn't parse an
   // entire board per row just to show whose turn it is.
   currentTurn: text('current_turn').$type<PlayerId>().notNull(),
+  // Which map the board was instantiated from. Written and not read yet --
+  // provenance, like initial_state. No foreign key: maps are code modules, and
+  // their ids are immutable so this cannot come to mean something else.
+  mapId: text('map_id').notNull().default('classic'),
 });
 
 /**
