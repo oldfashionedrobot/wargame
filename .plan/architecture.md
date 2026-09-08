@@ -430,7 +430,7 @@ The client has no configuration.
 
 ## Testing
 
-225 tests: 116 in `shared/`, 49 in `server/`, 60 in `client/`. `bun test` runs
+254 tests: 126 in `shared/`, 49 in `server/`, 79 in `client/`. `bun test` runs
 the first two, Vitest the third; the root `test` script runs both.
 
 - Server tests use `:memory:`. `match.test.ts` takes a fresh database per test;
@@ -447,17 +447,18 @@ the first two, Vitest the third; the root `test` script runs both.
 - `fetch` and timers are faked in `gameServer.test.ts`; every timer advance is
   the async form.
 
-**Not covered:** the renderer, which is WebGL — a browser is its only check, and
-the `/run-app` skill drives the app headlessly for that. No React component has
-a test either: the four client suites cover `api`, `gameServer`, `selection` and
-`useGameSession`, so `App`, `GameCanvas`, `MatchRoute` and `StartScreen` are
-unexercised. In `shared/`, `legality.ts` and `move.ts` have no dedicated suites
-and are covered through `action.test.ts`.
+- React components are tested with the renderer mocked, so Babylon never
+  loads: `GameCanvas` covers the chrome, the renderer lifecycle and the tile
+  click; `MatchRoute` covers both failure branches, Retry, and disposal
+  including a connection that resolves after teardown; `StartScreen` covers
+  its four states and create-and-navigate.
 
-⚠️ **`shared/`'s own test files are not typechecked.** Nothing imports them, so
-they never enter a program `tsc -b` builds, and giving them `bun:test` types
-would mean adding a dependency to the package that has none. `server`'s and
-`client`'s test files are checked.
+**Not covered:** the renderer itself, which is WebGL — a browser is its only
+check, and the `/run-app` skill drives the app headlessly for that. `App.tsx` is
+a route table with no logic of its own.
+
+⚠️ **`shared/`'s own test files are not typechecked** — see *Accepted limits*
+in the roadmap. `server`'s and `client`'s test files are.
 
 **Typechecking** reads `shared`'s source directly: `server` and `client` resolve
 `@vod/shared` through its `exports` and pull that source into their own

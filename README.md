@@ -83,8 +83,8 @@ Working on one package? `bun run --filter '@vod/client' bundle` bundles
 
 ## Tests
 
-225 tests across the three packages. The renderer is not covered — it is WebGL,
-so a browser is its only check.
+254 tests across the three packages. The renderer is not covered — it is WebGL,
+so a browser is its only check; React components are tested with it mocked.
 
 ```sh
 bun run test                                              # everything
