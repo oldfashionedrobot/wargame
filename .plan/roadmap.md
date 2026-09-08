@@ -158,10 +158,40 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 | **Matches are unowned and unbounded** | Anyone can create any number; no delete, no expiry. `list()` is capped at 50 newest — a bound, not pagination | Phase 9 — scope listing to the player, and add deletion. Until identity exists there's nothing to scope by |
 | **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | Phase 9 — match lifecycle and, eventually, notification. Not new mechanics |
 | **Ruleset versioning** | None | Stamp a ruleset id on the match so old logs replay under the rules they were played with |
+| **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Fine at one map | A `maps` table once there are enough to select among — see below |
 | **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
 | **`shared/`'s test files are not typechecked** | Nothing imports them, so they never enter a program `tsc -b` builds. Verified both ways: a deliberate type error in a `shared` test passes the typecheck, the same error in a source file fails it. They are verified by running instead | `bun:test` types in a `shared` program, which today means `@types/bun` as a dependency of the package whose defining property is having none — and that would also let `import … from 'bun'` typecheck inside the rulebook. Either a hand-written minimal declaration plus a lint rule closing the purity hole, or leave it |
 | **Migrations run at boot** | `migrate()` on startup, fine for one instance and ~0.4 ms once nothing is pending. Drizzle lists runtime migration as a first-class flow for monoliths, so this is a choice rather than a shortcut | `bun run db:migrate` as a deploy step, once there is more than one instance, a rolling deploy, or a reason to deny the runtime DDL rights |
 | **Two reads per command** | `resolveActor` needs state to stamp `actor = currentTurn`, but `submit` owns the read | Phase 9 — `resolveActor` becomes a session lookup and the extra read disappears |
+
+### Maps in a table
+
+Revisit when there are **enough maps to choose among**, or when they stop being
+written by developers. Random selection, filtering, a picker, or user-authored
+maps all make them a library rather than a constant, and a library of
+selectable rows is what a table is for.
+
+The tempting argument against — *content lives in code, like `terrain.ts` and
+`unitTypes.ts`* — does not actually hold. Those are **fixed global lookups**:
+one table each, always loaded, never chosen between. Maps are a **collection
+you select from**, which is a different shape and a more database-shaped one.
+What holds instead is narrower:
+
+- The character-grid format exists to be read in a diff. A `TEXT` column keeps
+  the format and throws away the reason for it.
+- There is no seeding machinery. Migrations are schema-only and nothing inserts
+  data at boot, so a table means inventing an idempotent seed step.
+- The foreign key would protect metadata that cannot corrupt anything —
+  `initial_state` holds the instantiated grid, so a match replays correctly
+  whatever `map_id` points at. A dangling id is a wrong label, not a broken
+  match.
+
+⚠️ **One real risk while maps stay in code:** editing `classic.ts` retroactively
+changes what every existing match's `map_id: 'classic'` refers to. This is
+ruleset versioning in miniature. The cheap mitigation is not a table — it is to
+treat **map ids as immutable**: a changed map gets a new id, and the old one
+stays as it was played. Stamping the map rows onto the match row is the other
+option, and both cost a few lines against a table's seeding machinery.
 
 ## Out of scope for v1
 
@@ -216,7 +246,9 @@ ALTER TABLE `matches` ADD `map_id` text DEFAULT 'classic' NOT NULL;
 `db:generate` produces exactly that, refreshes `schema.sql`, and `migrate()`
 applies it to a **populated** database with the existing row defaulted and its
 resolution log intact. `map_id` is a text column with no foreign key, because
-maps are code modules rather than rows.
+maps are code modules rather than rows — see *Maps in a table* under Known
+compromises for when that changes, and for why map ids should be treated as
+immutable in the meantime.
 
 The barrel gains `UnitTypeId`, which 6a deliberately left out until something
 consumed it.
