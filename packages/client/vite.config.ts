@@ -16,5 +16,8 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
+    // Unmounts what each test rendered. See the file for why this is not
+    // automatic here.
+    setupFiles: ['./src/test-setup.ts'],
   },
 });

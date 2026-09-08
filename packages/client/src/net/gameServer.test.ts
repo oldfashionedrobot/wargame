@@ -171,11 +171,7 @@ describe('polling', () => {
     expect(server.getState()).toEqual(state1);
   });
 
-  // A caught-up poll carries no board. Nothing to deliver, nothing to adopt,
-  // and the held state must survive -- the guard reads the missing state, so
-  // an implementation that took `undefined` as the new state would blank the
-  // board on the first idle poll.
-  it('holds its state when a poll answers with no board', async () => {
+  it('delivers nothing when the poll brings nothing new', async () => {
     const server = await connect();
     const listener = vi.fn();
     server.subscribe(listener);
@@ -184,12 +180,32 @@ describe('polling', () => {
     expect(server.getState()).toEqual(state0);
   });
 
-  it('delivers nothing when the poll brings nothing new', async () => {
+  // The `!update.state` half of the guard, which needs a response the seq
+  // check does *not* already reject: a cursor that moved, carrying no board.
+  // The protocol says that cannot happen -- state accompanies every advance
+  // -- so this is the impossible case being made loud rather than silently
+  // adopting `undefined` as the board and blanking it.
+  //
+  // An earlier version of this test used a caught-up response, where
+  // `update.seq <= lastSeq` short-circuits first, so it never reached the
+  // clause it claimed to cover.
+  it('ignores an update that advances the cursor without a board', async () => {
     const server = await connect();
     const listener = vi.fn();
     server.subscribe(listener);
+
+    onEvents = () => Promise.resolve(json({ seq: 7, events: moved }));
     await vi.advanceTimersByTimeAsync(POLL);
-    expect(listener).toHaveBeenCalledTimes(1);
+
+    expect(listener).toHaveBeenCalledTimes(1); // nothing delivered
+    expect(server.getState()).toEqual(state0); // and the board it holds survives
+
+    // The cursor did not advance either, so the next poll asks from the same
+    // place rather than skipping whatever it could not apply.
+    onEvents = nothingNew;
+    await vi.advanceTimersByTimeAsync(POLL);
+    const asked = requested.filter((url) => url.includes('/events'));
+    expect(asked[asked.length - 1]).toContain('since=0');
   });
 });
 

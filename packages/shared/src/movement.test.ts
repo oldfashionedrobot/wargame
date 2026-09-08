@@ -27,6 +27,10 @@ describe('exploreMovement: where a unit may stop', () => {
   it('reaches exactly the tiles within the movement budget', () => {
     const state = makeState(9, [{ id: 'b1', col: 4, row: 4 }]);
     const tiles = reachable(state, 'b1', 2);
+    // The count is what makes "exactly" mean something: 4 tiles one step out,
+    // 8 two steps out. Spot checks alone would pass an implementation that
+    // also admitted an extra ring.
+    expect(tiles).toHaveLength(12);
     expect(has(tiles, 4, 2)).toBe(true); // 2 away
     expect(has(tiles, 5, 5)).toBe(true); // 2 away, diagonal by two orthogonal steps
     expect(has(tiles, 4, 1)).toBe(false); // 3 away
@@ -97,7 +101,8 @@ describe('exploreMovement: terrain costs', () => {
 
     // The same three points buy one tile of forest and no more.
     expect(has(onRoad, 0, 1)).toBe(true); // one forest tile costs 3
-    expect(has(onRoad, 1, 1)).toBe(false); // two would be 6
+    // Cheapest to (1,1) is road to (1,0) then down into forest: 1 + 3 = 4.
+    expect(has(onRoad, 1, 1)).toBe(false);
   });
 
   it('refuses terrain its movement type cannot enter at all', () => {
@@ -110,13 +115,17 @@ describe('exploreMovement: terrain costs', () => {
 
   it('takes the cheap way round rather than the short way through', () => {
     // Two forests sit between the unit and its target on the top row. For
-    // wheels that direct line costs 3+3+1 = 7; the road below costs five
-    // steps at 1 each. With a budget of 5 the long way is the only way, and
-    // it is also genuinely cheaper -- which is what `pathTo` should prefer.
+    // wheels the direct line costs 3+3+1 = 7 across three steps; the road
+    // below costs 1 five times.
+    //
+    // The budget is 7 on purpose, so *both* routes are affordable and the
+    // search has to actually prefer the cheaper one. An earlier version used
+    // 5, which put the direct line out of reach -- the test could only fail
+    // by finding no route at all, never by picking the expensive one, which
+    // is the thing its name claims to check.
     const state = makeState(['-ff-', '----'], [{ id: 'b1', col: 0, row: 0 }]);
-    const path = explore(state, 'b1', 5, 'wheels').pathTo(at(3, 0));
+    const path = explore(state, 'b1', 7, 'wheels').pathTo(at(3, 0));
     expect(path).toEqual([at(0, 0), at(0, 1), at(1, 1), at(2, 1), at(3, 1), at(3, 0)]);
-    expect(path?.every((step) => step.row === 1 || step.col === 0 || step.col === 3)).toBe(true);
   });
 });
 
@@ -161,6 +170,9 @@ describe('exploreMovement: pathTo', () => {
   it('never returns a route longer than the budget allows', () => {
     const state = makeState(9, [{ id: 'b1', col: 4, row: 4 }]);
     const movement = explore(state, 'b1', 2);
+    // Without this the loop body is skipped entirely if `reachable` ever
+    // regresses to empty, and the test passes by having asserted nothing.
+    expect(movement.reachable).toHaveLength(12);
     for (const tile of movement.reachable) {
       // On plains, foot pays 1 a tile, so steps and cost coincide here.
       expect(movement.pathTo(tile)!.length - 1).toBeLessThanOrEqual(2);

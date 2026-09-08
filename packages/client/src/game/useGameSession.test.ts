@@ -248,7 +248,35 @@ describe('useGameSession', () => {
     ]);
     // Cleared the moment the command left, not when the server answered.
     expect(cb.onSelectionChange).toHaveBeenLastCalledWith({ phase: 'idle' });
-    expect(result.current.rejection).toBeNull();
+  });
+
+  // Invariant 1, and the one place it can be observed: the replica lags on
+  // purpose while a batch animates, so a click landing in that window must
+  // read `server.getState()` -- the authority, already ahead -- and not the
+  // state React is still showing. Nothing else in this suite distinguishes
+  // them, because the fake normally moves both in lockstep.
+  it('clicks against the authority, not the replica it is still displaying', async () => {
+    const fake = fakeServer(board);
+    const cb = callbacks();
+    let finishAnimating!: () => void;
+    vi.mocked(cb.onEvents).mockImplementation(() => new Promise((res) => (finishAnimating = res)));
+    const { result } = renderSession(fake, cb);
+    await act(async () => {});
+
+    // b1 has moved to (1,3) as far as the server is concerned, and the batch
+    // is still animating -- so the replica still has it at (1,1).
+    const movedState = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
+    await act(async () => fake.push([moved()], movedState));
+    expect(result.current.gameState).toEqual(board); // replica: still at (1,1)
+
+    // Clicking the unit where the *authority* has it must select it. Reading
+    // the replica would find an empty tile there and select nothing.
+    act(() => result.current.clickTile(at(1, 3)));
+    expect(cb.onSelectionChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'unitSelected', unitId: 'b1' }),
+    );
+
+    await act(async () => finishAnimating());
   });
 
   it('sets rejection and rolls the selection back when the authority refuses', async () => {

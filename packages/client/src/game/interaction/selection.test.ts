@@ -75,7 +75,11 @@ describe('handleTileClick, a unit selected', () => {
     expect(result).toEqual({ selection: initialSelectionState, command: null });
   });
 
-  it('switches to another of your units rather than trying to move onto it', () => {
+  // b3 is five tiles away, well outside infantry's range of 3, so this is the
+  // out-of-range case: a click that is neither a move nor a deselect still
+  // finds a selectable unit. The in-range case -- where the friendly-occupancy
+  // rule is what stops it being a move -- is the test below.
+  it('selects another of your units even when it is out of range', () => {
     const state = makeState(7, [
       { id: 'b1', col: 1, row: 1 },
       { id: 'b3', col: 6, row: 1 },
