@@ -293,21 +293,54 @@ describe('useGameSession', () => {
     });
   });
 
-  it('selects on click and submits a move for a reachable tile, clearing optimistically', async () => {
+  it('pins a destination on click, and submits only once Wait is chosen', async () => {
     const fake = fakeServer(board);
-    const cb = callbacks();
-    const { result } = renderSession(fake, cb);
+    const { result } = renderSession(fake, callbacks());
 
     act(() => result.current.clickTile(at(1, 1)));
     expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
 
+    act(() => result.current.clickTile(at(1, 3)));
+    expect(result.current.selection).toMatchObject({ phase: 'destinationChosen', unitId: 'b1' });
+    expect(fake.submissions).toEqual([]); // the whole point: nothing has left yet
+
     fake.respond({ ok: true, seq: 1, events: [], state: board });
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await act(async () => result.current.confirmWait());
     expect(fake.submissions).toEqual([
       { type: 'move', unitId: 'b1', path: route(at(1, 1), at(1, 3)) },
     ]);
     // Cleared the moment the command left, not when the server answered.
     expect(result.current.selection).toEqual({ phase: 'idle' });
+  });
+
+  it('sends nothing at all when a pinned destination is cancelled', async () => {
+    const fake = fakeServer(board);
+    const { result } = renderSession(fake, callbacks());
+
+    act(() => result.current.clickTile(at(1, 1)));
+    act(() => result.current.clickTile(at(1, 3)));
+    act(() => result.current.cancelDestination());
+
+    expect(fake.submissions).toEqual([]);
+    // Still selected, standing where it started, ready to pick again.
+    expect(result.current.selection).toMatchObject({
+      phase: 'unitSelected',
+      unitId: 'b1',
+      position: at(1, 1),
+    });
+  });
+
+  it('ignores tile clicks while the menu is open', async () => {
+    const fake = fakeServer(board);
+    const { result } = renderSession(fake, callbacks());
+
+    act(() => result.current.clickTile(at(1, 1)));
+    act(() => result.current.clickTile(at(1, 3)));
+    const pinned = result.current.selection;
+
+    act(() => result.current.clickTile(at(1, 2))); // another reachable tile
+    expect(result.current.selection).toBe(pinned);
+    expect(fake.submissions).toEqual([]);
   });
 
   // Invariant 1, and the one place it can be observed: the replica lags on
@@ -337,18 +370,23 @@ describe('useGameSession', () => {
     await act(async () => finishAnimating());
   });
 
-  it('sets rejection and rolls the selection back when the authority refuses', async () => {
+  it('sets rejection and rolls back to the unit, not to the refused destination', async () => {
     const fake = fakeServer(board);
-    const cb = callbacks();
-    const { result } = renderSession(fake, cb);
+    const { result } = renderSession(fake, callbacks());
 
     act(() => result.current.clickTile(at(1, 1)));
+    act(() => result.current.clickTile(at(1, 3)));
     fake.respond({ ok: false, reason: 'illegal move' });
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await act(async () => result.current.confirmWait());
 
     expect(result.current.rejection).toBe('illegal move');
-    // The rollback restored the selection it cleared optimistically.
-    expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
+    // Handing back the pin would invite the player to confirm the very move
+    // the server just refused.
+    expect(result.current.selection).toMatchObject({
+      phase: 'unitSelected',
+      unitId: 'b1',
+      position: at(1, 1),
+    });
   });
 
   it('clears the rejection on the next server update', async () => {
@@ -405,10 +443,11 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, cb);
 
     act(() => result.current.clickTile(at(1, 1)));
+    act(() => result.current.clickTile(at(1, 3)));
     let release!: (result: CommandResult) => void;
     fake.respond(new Promise<CommandResult>((res) => (release = res)));
 
-    await act(async () => result.current.clickTile(at(1, 3))); // in flight now
+    await act(async () => result.current.confirmWait()); // in flight now
     const during = result.current.selection;
     act(() => result.current.clickTile(at(1, 1))); // swallowed by the guard
     expect(fake.submissions).toHaveLength(1);

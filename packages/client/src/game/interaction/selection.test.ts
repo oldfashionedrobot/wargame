@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { makeState, route } from '@vod/shared/testing';
 import type { Coordinate, GameState } from '@vod/shared';
-import { handleTileClick, initialSelectionState } from './selection';
-import type { SelectionState } from './selection';
+import {
+  handleTileClick,
+  initialSelectionState,
+  moveCommandFor,
+  unpinDestination,
+} from './selection';
+import type { DestinationChosen, SelectionState } from './selection';
 
-// handleTileClick is the only genuinely pure thing in the client: state and a
-// coordinate in, new selection and an optional command out. No React, no
-// Babylon, no server.
+// The pure half of the client: state and a coordinate in, a new selection out.
+// No React, no Babylon, no server. A click never produces a command -- it picks
+// a destination -- so committing is `moveCommandFor` and abandoning is
+// `unpinDestination`, both driven by the menu.
 //
 // Blue to move. b1 is free, b2 has already acted, r1 belongs to the opponent.
 const board = (): GameState =>
@@ -20,12 +26,18 @@ const at = (col: number, row: number): Coordinate => ({ col, row });
 
 /** Select b1 and hand back the resulting selection, since most cases start there. */
 const withB1Selected = (state: GameState): SelectionState =>
-  handleTileClick(state, initialSelectionState, at(1, 1)).selection;
+  handleTileClick(state, initialSelectionState, at(1, 1));
+
+/** Select b1, then pin `destination`. */
+function withB1Pinned(state: GameState, destination: Coordinate): DestinationChosen {
+  const pinned = handleTileClick(state, withB1Selected(state), destination);
+  if (pinned.phase !== 'destinationChosen') throw new Error('expected a pinned destination');
+  return pinned;
+}
 
 describe('handleTileClick, nothing selected', () => {
   it('selects a unit that can act, snapshotting its position and range', () => {
-    const { selection, command } = handleTileClick(board(), initialSelectionState, at(1, 1));
-    expect(command).toBeNull();
+    const selection = handleTileClick(board(), initialSelectionState, at(1, 1));
     expect(selection.phase).toBe('unitSelected');
     if (selection.phase !== 'unitSelected') return;
     expect(selection.unitId).toBe('b1');
@@ -44,55 +56,55 @@ describe('handleTileClick, nothing selected', () => {
       { id: 'foot', col: 4, row: 4 },
       { id: 'horse', col: 4, row: 0, unitTypeId: 'cavalry' },
     ]);
-    const infantry = handleTileClick(state, initialSelectionState, at(4, 4)).selection;
-    const cavalry = handleTileClick(state, initialSelectionState, at(4, 0)).selection;
+    const infantry = handleTileClick(state, initialSelectionState, at(4, 4));
+    const cavalry = handleTileClick(state, initialSelectionState, at(4, 0));
     if (infantry.phase !== 'unitSelected' || cavalry.phase !== 'unitSelected') throw new Error();
 
-    // Four steps from either unit: beyond infantry's 3, inside cavalry's 6.
+    // Four steps from either unit: beyond infantry's 3, inside cavalry's 5.
     expect(infantry.movement.pathTo(at(4, 8))).toBeNull();
     expect(cavalry.movement.pathTo(at(4, 4))).not.toBeNull();
   });
 
   it('ignores an empty tile', () => {
-    const result = handleTileClick(board(), initialSelectionState, at(3, 3));
-    expect(result).toEqual({ selection: initialSelectionState, command: null });
+    const selection = handleTileClick(board(), initialSelectionState, at(3, 3));
+    expect(selection).toEqual(initialSelectionState);
   });
 
   it('ignores an enemy unit', () => {
-    const result = handleTileClick(board(), initialSelectionState, at(6, 6));
-    expect(result).toEqual({ selection: initialSelectionState, command: null });
+    const selection = handleTileClick(board(), initialSelectionState, at(6, 6));
+    expect(selection).toEqual(initialSelectionState);
   });
 
   // Selection is a preview of a game rule, not a UI whim -- canSelectUnit is
   // the same predicate the server enforces.
   it('ignores an own unit that has already acted', () => {
-    const result = handleTileClick(board(), initialSelectionState, at(5, 5));
-    expect(result).toEqual({ selection: initialSelectionState, command: null });
+    const selection = handleTileClick(board(), initialSelectionState, at(5, 5));
+    expect(selection).toEqual(initialSelectionState);
   });
 });
 
 describe('handleTileClick, a unit selected', () => {
-  it('emits a move command for a reachable tile, and clears the selection', () => {
+  it('pins a reachable tile rather than committing it', () => {
     const state = board();
-    const { selection, command } = handleTileClick(state, withB1Selected(state), at(1, 3));
-    expect(command).toEqual({
-      type: 'move',
-      unitId: 'b1',
-      path: route(at(1, 1), at(1, 3)),
-    });
-    expect(selection).toEqual(initialSelectionState);
+    const pinned = withB1Pinned(state, at(1, 3));
+    expect(pinned.path).toEqual(route(at(1, 1), at(1, 3)));
+    // The unit has not moved and nothing has been sent -- path[0] is still
+    // where it stands, which is what Cancel restores it to.
+    expect(pinned.path[0]).toEqual(at(1, 1));
   });
 
-  it('deselects when the selected unit is clicked again', () => {
+  // AW's answer to "how do you act without moving": the unit's own tile is a
+  // destination like any other, so no gesture of its own is needed.
+  it('pins in place when the selected unit is clicked again', () => {
     const state = board();
-    const result = handleTileClick(state, withB1Selected(state), at(1, 1));
-    expect(result).toEqual({ selection: initialSelectionState, command: null });
+    const pinned = withB1Pinned(state, at(1, 1));
+    expect(pinned.path).toEqual([at(1, 1)]);
   });
 
   it('clears the selection on an unreachable empty tile, without a command', () => {
     const state = board();
-    const result = handleTileClick(state, withB1Selected(state), at(6, 1));
-    expect(result).toEqual({ selection: initialSelectionState, command: null });
+    const selection = handleTileClick(state, withB1Selected(state), at(6, 1));
+    expect(selection).toEqual(initialSelectionState);
   });
 
   // b3 is five tiles away, well outside infantry's range of 3, so this is the
@@ -104,8 +116,7 @@ describe('handleTileClick, a unit selected', () => {
       { id: 'b1', col: 1, row: 1 },
       { id: 'b3', col: 6, row: 1 },
     ]);
-    const { selection, command } = handleTileClick(state, withB1Selected(state), at(6, 1));
-    expect(command).toBeNull();
+    const selection = handleTileClick(state, withB1Selected(state), at(6, 1));
     expect(selection).toMatchObject({ phase: 'unitSelected', unitId: 'b3' });
   });
 
@@ -116,8 +127,7 @@ describe('handleTileClick, a unit selected', () => {
       { id: 'b1', col: 1, row: 1 },
       { id: 'b3', col: 1, row: 2 },
     ]);
-    const { selection, command } = handleTileClick(state, withB1Selected(state), at(1, 2));
-    expect(command).toBeNull();
+    const selection = handleTileClick(state, withB1Selected(state), at(1, 2));
     expect(selection).toMatchObject({ phase: 'unitSelected', unitId: 'b3' });
   });
 
@@ -126,16 +136,46 @@ describe('handleTileClick, a unit selected', () => {
       { id: 'b1', col: 1, row: 1 },
       { id: 'r1', col: 1, row: 2, owner: 'red' },
     ]);
-    const result = handleTileClick(state, withB1Selected(state), at(1, 2));
-    expect(result).toEqual({ selection: initialSelectionState, command: null });
+    const selection = handleTileClick(state, withB1Selected(state), at(1, 2));
+    expect(selection).toEqual(initialSelectionState);
   });
 
   it('recovers if the selected unit has vanished from state', () => {
     const state = board();
     const stale = withB1Selected(state);
     const without: GameState = { ...state, units: state.units.filter((u) => u.id !== 'b1') };
-    const { selection, command } = handleTileClick(without, stale, at(3, 3));
-    expect(command).toBeNull();
+    const selection = handleTileClick(without, stale, at(3, 3));
     expect(selection).toEqual(initialSelectionState);
+  });
+});
+
+describe('a destination pinned', () => {
+  it('ignores tile clicks, returning the very same selection', () => {
+    const state = board();
+    const pinned = withB1Pinned(state, at(1, 3));
+    // Identity, not equality: the menu owns the decision, and a re-render for
+    // a click that changes nothing is waste React can see.
+    expect(handleTileClick(state, pinned, at(2, 2))).toBe(pinned);
+    expect(handleTileClick(state, pinned, at(1, 1))).toBe(pinned);
+  });
+
+  it('commits the pinned path exactly, and nothing else', () => {
+    const state = board();
+    expect(moveCommandFor(withB1Pinned(state, at(1, 3)))).toEqual({
+      type: 'move',
+      unitId: 'b1',
+      path: route(at(1, 1), at(1, 3)),
+    });
+  });
+
+  // Cancel goes back to a selected unit rather than to idle, so the next click
+  // picks a different destination instead of re-selecting.
+  it('unpins to the unit selected where it still stands', () => {
+    const state = board();
+    const pinned = withB1Pinned(state, at(1, 3));
+    const back = unpinDestination(pinned);
+    expect(back).toMatchObject({ phase: 'unitSelected', unitId: 'b1', position: at(1, 1) });
+    if (back.phase !== 'unitSelected') return;
+    expect(back.movement).toBe(pinned.movement); // the same snapshot, not a new search
   });
 });

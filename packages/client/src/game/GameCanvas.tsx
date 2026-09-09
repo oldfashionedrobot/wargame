@@ -12,8 +12,18 @@ import type { GameRenderer } from './render/renderer';
 // A pure projection of the selection: everything it draws is on the snapshot,
 // so there is no game state to fetch and no question of which copy to read.
 function showSelection(renderer: GameRenderer, selection: SelectionState): void {
-  renderer.setSelectedTile(selection.phase === 'unitSelected' ? selection.position : null);
-  renderer.setMovement(selection.phase === 'unitSelected' ? selection.movement : null);
+  // The pinned destination takes the highlight, and the range stays drawn --
+  // it is the context the player is deciding against, and the unit is still
+  // standing at `path[0]` until the move is committed.
+  const highlight =
+    selection.phase === 'unitSelected'
+      ? selection.position
+      : selection.phase === 'destinationChosen'
+        ? selection.path[selection.path.length - 1]
+        : null;
+
+  renderer.setSelectedTile(highlight);
+  renderer.setMovement(selection.phase === 'idle' ? null : selection.movement);
 }
 
 export interface GameCanvasProps {
@@ -40,10 +50,11 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
     rendererRef.current?.snapUnits(state);
   }, []);
 
-  const { gameState, rejection, selection, clickTile, endTurn } = useGameSession(server, {
-    onEvents,
-    onSnap,
-  });
+  const { gameState, rejection, selection, clickTile, confirmWait, cancelDestination, endTurn } =
+    useGameSession(server, { onEvents, onSnap });
+
+  // DOM, like every other control: the canvas draws the game and nothing else.
+  const choosing = selection.phase === 'destinationChosen';
 
   // `clickTile` changes identity whenever the selection does, and the renderer
   // is registered with it exactly once. A stable wrapper over a latest-ref
@@ -99,13 +110,25 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
       />
       <div>
         <span>{getCurrentPlayer(gameState).name}&apos;s turn</span>{' '}
-        <button type="button" onClick={endTurn}>
+        {/* Disabled while a destination is pinned: ending the turn there would
+            submit around a plan the player has not answered for yet. */}
+        <button type="button" onClick={endTurn} disabled={choosing}>
           End Turn
         </button>{' '}
         {import.meta.env.DEV && (
           <button type="button" onClick={() => rendererRef.current?.toggleInspector()}>
             Toggle Inspector
           </button>
+        )}
+        {choosing && (
+          <>
+            <button type="button" onClick={confirmWait}>
+              Wait
+            </button>{' '}
+            <button type="button" onClick={cancelDestination}>
+              Cancel
+            </button>{' '}
+          </>
         )}
         {rejection && <span style={{ color: '#c0392b' }}> rejected: {rejection}</span>}
         {connection === 'retrying' && <span style={{ color: '#b9770e' }}> reconnecting…</span>}

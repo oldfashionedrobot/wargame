@@ -6,10 +6,11 @@ Turn-based strategy game, American Revolutionary War theme. React + TypeScript
 **This document describes the code as it is.** No rationale, no history. What
 is planned but unbuilt lives in [`roadmap.md`](roadmap.md).
 
-**What plays today:** hot-seat against a real server process. Select a unit,
-see the tiles it can reach across terrain, hover to preview the route, click to
-move it there, end turn. Two players, one infantry, cavalry and artillery each,
-on an 8×8 map split by a river with a single bridge. No combat.
+**What plays today:** hot-seat against a real server process. Select a unit, see
+the tiles it can reach across terrain, hover to preview the route, click a
+destination to pin it, then *Wait* to commit or *Cancel* to think again — end
+turn. Two players, one infantry, cavalry and artillery each, on an 8×8 map split
+by a river with a single bridge. No combat.
 
 ## Packages
 
@@ -374,6 +375,10 @@ the next click see the same value. `pendingRef` stays a ref — it is a mutex
 against a second submit landing before the first resolves, and has to be
 synchronously current rather than rendered.
 
+The menu's two actions are `confirmWait()` and `cancelDestination()`. A refused
+submit rolls back to the unit **selected**, not to the destination the server
+just refused — handing that back would invite confirming the same move again.
+
 Every update runs through a serial promise queue:
 
 ```
@@ -391,25 +396,46 @@ events**, because one `unitMoved` can be a six-tile walk and every unit moves at
 the same pace — so tiles are what the wait is made of. A failing animation or
 snap is caught and logged; the commit always happens.
 
-**`game/interaction/selection.ts`** — `handleTileClick(state, selection,
-coordinate)` returns a new selection and an optional command. Pure: no React, no
-server. `SelectionState` is a discriminated union:
+**`game/interaction/selection.ts`** — pure: no React, no server.
+
+```ts
+handleTileClick(state, selection, coordinate) → SelectionState
+unpinDestination(pinned)                      → SelectionState
+moveCommandFor(pinned)                        → Command
+```
+
+`handleTileClick` **never produces a command**. A click picks a destination and
+the menu commits one, so the two are separate functions: every command's
+accompanying selection is a constant the caller already knows, which left the
+old paired return carrying no information.
 
 ```ts
 | { phase: 'idle' }
 | { phase: 'unitSelected'; unitId; position; movement }
+| { phase: 'destinationChosen'; unitId; path; movement }
 ```
 
 `movement` is the whole `exploreMovement` result, snapshotted at selection time.
-`reachable` decides whether a click is a move; `pathTo` builds the path the
-command carries.
+`reachable` decides whether a click pins; `pathTo` builds the path.
+
+A pinned destination is a **plan, not a submission** — nothing has been sent, and
+Cancel discards it without the server hearing. `path[0]` is where the unit still
+stands, so unpinning needs no extra field, and the selected unit's own tile is a
+destination like any other: that is how acting without moving needs no gesture of
+its own, and a single-element path is legal at cost 0. While a destination is
+pinned, `handleTileClick` returns the **same object** it was given — the menu owns
+the decision, and a re-render for a click that changes nothing is waste.
 
 **`game/GameCanvas.tsx`** — the canvas ref, the renderer lifecycle, and the
 chrome around it: the turn label, End Turn, the rejection reason, the
 reconnecting banner, and a Toggle Inspector button under an
-`import.meta.env.DEV` guard. Its two callbacks read the renderer ref at call
-time, so a queue task resolving after unmount finds `null` rather than a disposed
-renderer.
+`import.meta.env.DEV` guard, plus the *Wait* / *Cancel* menu shown while a
+destination is pinned. The menu is DOM like every other control — the canvas
+draws the game and nothing else. End Turn is disabled while pinned, since ending
+the turn there would submit around a plan the player has not answered for.
+
+Its two callbacks read the renderer ref at call time, so a queue task resolving
+after unmount finds `null` rather than a disposed renderer.
 
 Selection reaches the renderer as a projection: an effect keyed on it calls
 `showSelection`. The tile-click handler, by contrast, is registered **once**, as

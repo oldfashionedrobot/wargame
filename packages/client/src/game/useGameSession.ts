@@ -7,7 +7,12 @@ import type {
   GameServer,
   GameState,
 } from '@vod/shared';
-import { handleTileClick, initialSelectionState } from './interaction/selection';
+import {
+  handleTileClick,
+  initialSelectionState,
+  moveCommandFor,
+  unpinDestination,
+} from './interaction/selection';
 import type { SelectionState } from './interaction/selection';
 
 // The session half of what GameCanvas used to own -- everything about playing
@@ -75,6 +80,10 @@ export interface GameSession {
    */
   selection: SelectionState;
   clickTile: (coordinate: Coordinate) => void;
+  /** Menu: commit the pinned move and act no further this turn. */
+  confirmWait: () => void;
+  /** Menu: discard the pinned destination. Nothing was ever sent. */
+  cancelDestination: () => void;
   endTurn: () => void;
 }
 
@@ -106,12 +115,17 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
    * is what stops a refused action from looking like it happened.
    */
   const submitCommand = useCallback(
-    async (command: Command, nextSelection: SelectionState): Promise<void> => {
+    async (
+      command: Command,
+      nextSelection: SelectionState,
+      // What to show if the authority refuses. Defaults to what was on screen,
+      // which is right for End Turn; a refused move overrides it, because
+      // handing back a pinned destination the server just rejected invites the
+      // player to confirm it again.
+      rollbackSelection: SelectionState = selection,
+    ): Promise<void> => {
       if (pendingRef.current) return;
 
-      // The selection this render closed over is by definition the one to
-      // restore if the authority refuses.
-      const previousSelection = selection;
       pendingRef.current = true;
       setSelection(nextSelection);
 
@@ -134,7 +148,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       if (response.ok) return;
 
       setRejection(response.reason);
-      setSelection(previousSelection);
+      setSelection(rollbackSelection);
     },
     [server, selection],
   );
@@ -183,22 +197,30 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
 
       // The authoritative board, not the replica (invariant 1) -- the replica
       // is in scope and tempting, and a beat old.
-      const result = handleTileClick(server.getState(), selection, coordinate);
-
-      // Selection-only clicks are pure UI and commit immediately; anything
-      // carrying a command goes through submitCommand so it can be undone.
-      if (!result.command) {
-        setSelection(result.selection);
-        return;
-      }
-      void submitCommand(result.command, result.selection);
+      // A click never commits anything now -- it picks a destination, and the
+      // menu decides what to do with it.
+      setSelection(handleTileClick(server.getState(), selection, coordinate));
     },
-    [server, selection, submitCommand],
+    [server, selection],
   );
+
+  const confirmWait = useCallback((): void => {
+    if (selection.phase !== 'destinationChosen') return;
+    void submitCommand(
+      moveCommandFor(selection),
+      initialSelectionState,
+      unpinDestination(selection),
+    );
+  }, [selection, submitCommand]);
+
+  const cancelDestination = useCallback((): void => {
+    if (selection.phase !== 'destinationChosen') return;
+    setSelection(unpinDestination(selection));
+  }, [selection]);
 
   const endTurn = useCallback((): void => {
     void submitCommand({ type: 'endTurn' }, initialSelectionState);
   }, [submitCommand]);
 
-  return { gameState, rejection, selection, clickTile, endTurn };
+  return { gameState, rejection, selection, clickTile, confirmWait, cancelDestination, endTurn };
 }

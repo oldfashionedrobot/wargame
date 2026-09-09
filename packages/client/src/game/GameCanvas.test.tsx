@@ -179,8 +179,25 @@ describe('GameCanvas', () => {
   it('clears the overlays when the selection is dropped', async () => {
     await renderCanvas(fakeServer());
     await act(async () => clickTile({ col: 1, row: 1 })); // select
-    await act(async () => clickTile({ col: 1, row: 1 })); // click again to deselect
+    await act(async () => clickTile({ col: 4, row: 4 })); // dead click, out of range
     expect(renderer.setSelectedTile).toHaveBeenLastCalledWith(null);
     expect(renderer.setMovement).toHaveBeenLastCalledWith(null);
+  });
+
+  // The menu is DOM like every other control -- the canvas draws the game and
+  // nothing else -- so it is here rather than in the renderer.
+  it('offers Wait and Cancel once a destination is pinned, and locks End Turn', async () => {
+    await renderCanvas(fakeServer());
+    expect(screen.queryByRole('button', { name: 'Wait' })).toBeNull();
+
+    await act(async () => clickTile({ col: 1, row: 1 })); // select
+    await act(async () => clickTile({ col: 1, row: 3 })); // pin
+
+    expect(screen.getByRole('button', { name: 'Wait' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'End Turn' })).toHaveProperty('disabled', true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('button', { name: 'Wait' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'End Turn' })).toHaveProperty('disabled', false);
   });
 });
