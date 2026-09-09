@@ -416,17 +416,41 @@ state today — `selectionRef` is the single copy and `onSelectionChange` pushes
 to the renderer. The menu and the facing picker need it in React, and holding
 *both* a ref and state would be two copies of one fact.
 
-The reason a ref is needed at all is a coupling in `GameCanvas`: one effect both
-creates the renderer and registers the click handler, with `clickTile` in its
-dependencies — so a `clickTile` that depended on selection would rebuild the
-whole Babylon scene on every click. `onTileClick` is an idempotent setter, so
-splitting that into two effects removes the constraint, selection becomes plain
-React state with one copy, and **`onSelectionChange` disappears** — `GameCanvas`
-projects selection to the renderer in an effect instead.
+A `clickTile` that reads selection changes identity every time selection does,
+and `GameCanvas` registers it on a renderer. The fix is a **stable wrapper over a
+latest-ref**:
+
+```tsx
+const clickTileRef = useRef(clickTile);
+useEffect(() => { clickTileRef.current = clickTile; });
+renderer.onTileClick((coordinate) => clickTileRef.current(coordinate));
+```
+
+The registered identity never changes, so the renderer is never rebuilt, and
+`onSelectionChange` disappears — `GameCanvas` projects selection to the renderer
+in an effect keyed on it instead.
+
+⚠️ **Not by splitting `GameCanvas`'s effect into create-and-register.** That
+was the plan until 7a made construction async, and it now produces a board that
+cannot be clicked: the registration effect runs at mount while the model load is
+still pending and `rendererRef.current` is null, and assigning a ref later
+re-runs nothing. Verified — the split fails two existing tests.
+
+Two mirrors were weighed against the callback ref and both are worse. Making
+`rendererRef` React state would let a registration effect fire on arrival, but
+`onSnap` would then close over a *disposed* renderer after unmount; nulling that
+ref is what prevents a call into a dead scene, which `GameCanvas.test.tsx` now
+pins by mutation. A `ready` boolean beside the ref avoids the callback mirror but
+duplicates the renderer's lifecycle, which is a fact code branches on — strictly
+the worse thing to copy. The remaining escape is to stop construction being
+async at all, by preloading the models above `createGameRenderer`; that would let
+both refs go, at the cost of plumbing in `MatchRoute`.
 
 The callback surface stays at three rather than shrinking: `onSelectionChange`
-goes and `onPreview` arrives. What this buys is one source of truth for selection
-and a renderer that is no longer rebuilt by a changing handler identity.
+goes and `onPreview` arrives. What this buys is one source of truth for
+selection: `selectionRef` is deleted outright, and the ref that remains mirrors a
+function nothing branches on rather than a value two readers can disagree
+about.
 
 `pendingRef` stays a ref. It is a mutex against double-submit and has to be
 synchronously current; it is not rendered state.
@@ -435,9 +459,9 @@ synchronously current; it is not rendered state.
 
 - **7a** The three glTF models, one per unit type, tinted per player. Renderer
   only — no state, no protocol. Makes every later step visible.
-- **7b** Selection becomes React state; split `GameCanvas`'s effect; drop
-  `onSelectionChange`. Pure refactor, no behaviour change, its own commit so the
-  diff stays legible.
+- **7b** Selection becomes React state, `selectionRef` goes, `clickTile` is
+  registered through a stable wrapper, and `onSelectionChange` drops. Pure
+  refactor, no behaviour change, its own commit so the diff stays legible.
 - **7c** `destinationChosen` and the menu, **without the ghost walk**. Click a
   destination, get *Wait | Cancel*, and Wait submits the move that a click
   submits today. The unit does not move until the server says so. Shippable and
