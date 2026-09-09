@@ -27,6 +27,8 @@ beforeEach(() => {
     setMovement: vi.fn(),
     playEvents: vi.fn(() => Promise.resolve()),
     snapUnits: vi.fn(),
+    previewMove: vi.fn(() => Promise.resolve()),
+    cancelPreview: vi.fn(),
     toggleInspector: vi.fn(),
     dispose: vi.fn(),
   };
@@ -174,6 +176,28 @@ describe('GameCanvas', () => {
 
     expect(createGameRenderer).toHaveBeenCalledTimes(1);
     expect(renderer.dispose).not.toHaveBeenCalled();
+  });
+
+  // The menu is present but inert until the unit arrives: confirming mid-walk
+  // would leave the mesh short of the destination, and the committed move
+  // would then replay from wherever it had got to.
+  it('holds Wait and Cancel shut until the previewed unit arrives', async () => {
+    let arrive!: () => void;
+    vi.mocked(renderer.previewMove).mockReturnValue(
+      new Promise<void>((resolve) => {
+        arrive = resolve;
+      }),
+    );
+    await renderCanvas(fakeServer());
+
+    await act(async () => clickTile({ col: 1, row: 1 }));
+    await act(async () => clickTile({ col: 1, row: 3 }));
+
+    expect(renderer.previewMove).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Wait' })).toHaveProperty('disabled', true);
+
+    await act(async () => arrive());
+    expect(screen.getByRole('button', { name: 'Wait' })).toHaveProperty('disabled', false);
   });
 
   it('clears the overlays when the selection is dropped', async () => {

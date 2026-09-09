@@ -87,6 +87,7 @@ function callbacks(): GameSessionCallbacks {
   return {
     onEvents: vi.fn(() => Promise.resolve()),
     onSnap: vi.fn(),
+    onPreview: vi.fn(() => Promise.resolve()),
   };
 }
 
@@ -168,7 +169,7 @@ describe('useGameSession', () => {
       expect(result.current.gameState).toEqual(end);
     });
 
-    // The threshold is `<=`, so fourteen tiles animate and fifteen do not.
+    // The threshold is `<=`, so 28 tiles animate and 29 do not.
     // Both sides of the boundary, because only one of them tells you which
     // comparison it is.
     it('still animates a batch of exactly the threshold size', async () => {
@@ -177,7 +178,7 @@ describe('useGameSession', () => {
       renderSession(fake, cb);
       await act(async () => {});
 
-      await act(async () => fake.push([walk(14)], board));
+      await act(async () => fake.push([walk(28)], board));
       expect(cb.onEvents).toHaveBeenCalled();
     });
 
@@ -188,7 +189,7 @@ describe('useGameSession', () => {
       await act(async () => {});
 
       const next = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
-      await act(async () => fake.push([walk(15)], next));
+      await act(async () => fake.push([walk(29)], next));
 
       expect(cb.onEvents).not.toHaveBeenCalled();
       expect(cb.onSnap).toHaveBeenLastCalledWith(next);
@@ -204,7 +205,7 @@ describe('useGameSession', () => {
       const long = callbacks();
       renderSession(fake, long);
       await act(async () => {});
-      await act(async () => fake.push([walk(6), walk(6), walk(6)], board));
+      await act(async () => fake.push([walk(12), walk(12), walk(12)], board));
       expect(long.onEvents).not.toHaveBeenCalled();
 
       const short = callbacks();
@@ -296,6 +297,7 @@ describe('useGameSession', () => {
   it('pins a destination on click, and submits only once Wait is chosen', async () => {
     const fake = fakeServer(board);
     const { result } = renderSession(fake, callbacks());
+    await act(async () => {}); // settle the initial batch, which would drop a pin
 
     act(() => result.current.clickTile(at(1, 1)));
     expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
@@ -313,15 +315,112 @@ describe('useGameSession', () => {
     expect(result.current.selection).toEqual({ phase: 'idle' });
   });
 
+  // 7d's contract, and the reason the menu waits: while the ghost walks, the
+  // mesh is short of the destination, and a confirm there would replay the
+  // move from wherever it had got to.
+  it('walks the preview on pin, and holds the menu shut until it arrives', async () => {
+    const fake = fakeServer(board);
+    const cb = callbacks();
+    let arrive!: () => void;
+    vi.mocked(cb.onPreview).mockReturnValue(
+      new Promise<void>((resolve) => {
+        arrive = resolve;
+      }),
+    );
+    const { result } = renderSession(fake, cb);
+    await act(async () => {}); // settle the initial batch, which would drop a pin
+
+    act(() => result.current.clickTile(at(1, 1)));
+    await act(async () => result.current.clickTile(at(1, 3)));
+
+    expect(cb.onPreview).toHaveBeenCalledWith({
+      unitId: 'b1',
+      path: route(at(1, 1), at(1, 3)),
+    });
+    expect(result.current.walking).toBe(true);
+
+    await act(async () => arrive());
+    expect(result.current.walking).toBe(false);
+  });
+
+  // A click that changes nothing must not restart the walk. handleTileClick
+  // returns the same object while pinned, which is what this leans on.
+  it('does not re-walk when a click lands on an already pinned selection', async () => {
+    const fake = fakeServer(board);
+    const cb = callbacks();
+    const { result } = renderSession(fake, cb);
+    await act(async () => {}); // settle the initial batch, which would drop a pin
+
+    act(() => result.current.clickTile(at(1, 1)));
+    await act(async () => result.current.clickTile(at(1, 3)));
+    expect(cb.onPreview).toHaveBeenCalledTimes(1);
+
+    await act(async () => result.current.clickTile(at(1, 2)));
+    expect(cb.onPreview).toHaveBeenCalledTimes(1);
+  });
+
+  // The silence is the design: both of these end with onSnap writing an
+  // authoritative position over the mesh, so the correction the renderer
+  // already performs is the instruction. Hence no commit verb.
+  it('says nothing to the preview on confirm', async () => {
+    const fake = fakeServer(board);
+    const cb = callbacks();
+    const { result } = renderSession(fake, cb);
+    await act(async () => {}); // settle the initial batch, which would drop a pin
+
+    act(() => result.current.clickTile(at(1, 1)));
+    await act(async () => result.current.clickTile(at(1, 3)));
+    vi.mocked(cb.onPreview).mockClear();
+
+    fake.respond({ ok: true, seq: 1, events: [], state: board });
+    await act(async () => result.current.confirmWait());
+    expect(cb.onPreview).not.toHaveBeenCalled();
+  });
+
+  // The one case nothing else would correct: a rejection produces no update,
+  // so snapUnits never runs and the ghost would stand there for good.
+  it('puts the unit back when the authority refuses', async () => {
+    const fake = fakeServer(board);
+    const cb = callbacks();
+    const { result } = renderSession(fake, cb);
+    await act(async () => {}); // settle the initial batch, which would drop a pin
+
+    act(() => result.current.clickTile(at(1, 1)));
+    await act(async () => result.current.clickTile(at(1, 3)));
+    fake.respond({ ok: false, reason: 'illegal move' });
+    await act(async () => result.current.confirmWait());
+
+    expect(cb.onPreview).toHaveBeenLastCalledWith(null);
+  });
+
+  it('drops a pinned destination when the board moves underneath it', async () => {
+    const fake = fakeServer(board);
+    const cb = callbacks();
+    const { result } = renderSession(fake, cb);
+    await act(async () => {}); // settle the initial batch, which would drop a pin
+
+    act(() => result.current.clickTile(at(1, 1)));
+    await act(async () => result.current.clickTile(at(1, 3)));
+    expect(result.current.selection.phase).toBe('destinationChosen');
+
+    // An uncommitted plan does not survive the board changing under it -- it
+    // may not even be legal any more.
+    await act(async () => fake.push([], makeState(7, [{ id: 'b1', col: 1, row: 1 }])));
+    expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
+  });
+
   it('sends nothing at all when a pinned destination is cancelled', async () => {
     const fake = fakeServer(board);
-    const { result } = renderSession(fake, callbacks());
+    const cb = callbacks();
+    const { result } = renderSession(fake, cb);
+    await act(async () => {}); // settle the initial batch, which would drop a pin
 
     act(() => result.current.clickTile(at(1, 1)));
     act(() => result.current.clickTile(at(1, 3)));
     act(() => result.current.cancelDestination());
 
     expect(fake.submissions).toEqual([]);
+    expect(cb.onPreview).toHaveBeenLastCalledWith(null); // and the ghost goes home
     // Still selected, standing where it started, ready to pick again.
     expect(result.current.selection).toMatchObject({
       phase: 'unitSelected',
@@ -333,6 +432,7 @@ describe('useGameSession', () => {
   it('ignores tile clicks while the menu is open', async () => {
     const fake = fakeServer(board);
     const { result } = renderSession(fake, callbacks());
+    await act(async () => {}); // settle the initial batch, which would drop a pin
 
     act(() => result.current.clickTile(at(1, 1)));
     act(() => result.current.clickTile(at(1, 3)));
@@ -373,6 +473,7 @@ describe('useGameSession', () => {
   it('sets rejection and rolls back to the unit, not to the refused destination', async () => {
     const fake = fakeServer(board);
     const { result } = renderSession(fake, callbacks());
+    await act(async () => {}); // settle the initial batch, which would drop a pin
 
     act(() => result.current.clickTile(at(1, 1)));
     act(() => result.current.clickTile(at(1, 3)));
@@ -442,6 +543,7 @@ describe('useGameSession', () => {
     const cb = callbacks();
     const { result } = renderSession(fake, cb);
 
+    await act(async () => {}); // settle the initial batch, which would drop a pin
     act(() => result.current.clickTile(at(1, 1)));
     act(() => result.current.clickTile(at(1, 3)));
     let release!: (result: CommandResult) => void;

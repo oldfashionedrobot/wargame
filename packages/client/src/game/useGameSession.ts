@@ -33,6 +33,17 @@ export interface GameSessionCallbacks {
    * after a skipped or failed one.
    */
   onSnap: (state: GameState) => void;
+  /**
+   * Walk a unit to a destination it has not committed to, or `null` to put it
+   * back. Resolves when the preview settles -- which is arrival, but also a
+   * cancel or an authoritative snap ending it early.
+   *
+   * Deliberately *not* called on confirm, nor when an incoming update drops a
+   * pin: both end with `onSnap` writing authoritative positions over the mesh,
+   * so the correction the display already performs is the instruction. That is
+   * why there is no commit half to this.
+   */
+  onPreview: (next: { unitId: string; path: Coordinate[] } | null) => Promise<void>;
 }
 
 // Animate small live batches; snap everything else. The cap separates "a
@@ -43,8 +54,9 @@ export interface GameSessionCallbacks {
 //
 // Counted in tiles rather than events, because that is what costs time: a
 // move animates per step, so ten long moves is far more waiting than ten
-// short ones. At 0.3s a tile this is a bit over four seconds.
-const MAX_ANIMATED_TILES = 14;
+// short ones. At 0.15s a tile this is a bit over four seconds -- the ceiling
+// is the wait, so it moved when the pace did.
+const MAX_ANIMATED_TILES = 28;
 
 function animatedTiles(events: GameEvent[]): number {
   return events.reduce(
@@ -79,6 +91,12 @@ export interface GameSession {
    * held for callbacks is a second thing that can be wrong.
    */
   selection: SelectionState;
+  /**
+   * The previewed unit is still walking to its pinned destination. The whole
+   * UI is inert until it arrives -- which is what lets a confirmed move skip
+   * re-animating, since the mesh is by then exactly where the event ends.
+   */
+  walking: boolean;
   clickTile: (coordinate: Coordinate) => void;
   /** Menu: commit the pinned move and act no further this turn. */
   confirmWait: () => void;
@@ -91,6 +109,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
   const [gameState, setGameState] = useState<GameState>(() => server.getState());
   const [rejection, setRejection] = useState<string | null>(null);
   const [selection, setSelection] = useState<SelectionState>(initialSelectionState);
+  const [walking, setWalking] = useState(false);
   // A command is a round trip, so a second click can land before the first
   // resolves. Both would read the same state and submit against it; the
   // server rejects the loser, but the UI would already have moved on.
@@ -147,6 +166,9 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       }
       if (response.ok) return;
 
+      // A rejection produces no update, so nothing else would ever put the
+      // previewed unit back -- snapUnits only runs when the server speaks.
+      void callbacksRef.current.onPreview(null);
       setRejection(response.reason);
       setSelection(rollbackSelection);
     },
@@ -186,6 +208,13 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
         } catch (error) {
           console.error('snap failed:', error);
         }
+        // Beside the snap rather than on arrival, so the pin and the mesh
+        // correct together: outside the queue the menu would vanish while the
+        // ghost kept standing until a batch finished animating. An
+        // uncommitted plan does not survive the board moving under it.
+        setSelection((current) =>
+          current.phase === 'destinationChosen' ? unpinDestination(current) : current,
+        );
         setGameState(state);
       });
     });
@@ -199,7 +228,18 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       // is in scope and tempting, and a beat old.
       // A click never commits anything now -- it picks a destination, and the
       // menu decides what to do with it.
-      setSelection(handleTileClick(server.getState(), selection, coordinate));
+      const next = handleTileClick(server.getState(), selection, coordinate);
+      setSelection(next);
+
+      // Identity, not phase: a click while already pinned returns the very
+      // same object, and only a fresh pin should start a walk.
+      if (next === selection || next.phase !== 'destinationChosen') return;
+
+      setWalking(true);
+      void callbacksRef.current
+        .onPreview({ unitId: next.unitId, path: next.path })
+        .catch((error: unknown) => console.error('preview failed:', error))
+        .finally(() => setWalking(false));
     },
     [server, selection],
   );
@@ -215,6 +255,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
 
   const cancelDestination = useCallback((): void => {
     if (selection.phase !== 'destinationChosen') return;
+    void callbacksRef.current.onPreview(null);
     setSelection(unpinDestination(selection));
   }, [selection]);
 
@@ -222,5 +263,14 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     void submitCommand({ type: 'endTurn' }, initialSelectionState);
   }, [submitCommand]);
 
-  return { gameState, rejection, selection, clickTile, confirmWait, cancelDestination, endTurn };
+  return {
+    gameState,
+    rejection,
+    selection,
+    walking,
+    clickTile,
+    confirmWait,
+    cancelDestination,
+    endTurn,
+  };
 }

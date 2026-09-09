@@ -379,6 +379,15 @@ The menu's two actions are `confirmWait()` and `cancelDestination()`. A refused
 submit rolls back to the unit **selected**, not to the destination the server
 just refused — handing that back would invite confirming the same move again.
 
+Pinning a destination starts a **preview walk**: the unit moves on screen while
+nothing has been sent. `onPreview(next | null)` drives it, and the two cases it
+is *not* called on are the design — a confirm and an incoming update both end
+with `onSnap` writing an authoritative position over the mesh, so the correction
+the renderer already performs is the instruction, and there is no commit verb. It
+*is* called on a rejection, which is the one ending that produces no update at
+all. `walking` is true until the preview settles, and the whole UI is inert for
+that time.
+
 Every update runs through a serial promise queue:
 
 ```
@@ -391,9 +400,10 @@ on update (events, state):
 ```
 
 `worthAnimating` is false for an empty batch, while the tab is hidden, and for
-a batch covering more than 14 tiles of walking. The budget counts **tiles, not
+a batch covering more than 28 tiles of walking. The budget counts **tiles, not
 events**, because one `unitMoved` can be a six-tile walk and every unit moves at
-the same pace — so tiles are what the wait is made of. A failing animation or
+the same pace — so tiles are what the wait is made of, and the ceiling moved
+when the pace did. A failing animation or
 snap is caught and logged; the commit always happens.
 
 **`game/interaction/selection.ts`** — pure: no React, no server.
@@ -432,7 +442,9 @@ reconnecting banner, and a Toggle Inspector button under an
 `import.meta.env.DEV` guard, plus the *Wait* / *Cancel* menu shown while a
 destination is pinned. The menu is DOM like every other control — the canvas
 draws the game and nothing else. End Turn is disabled while pinned, since ending
-the turn there would submit around a plan the player has not answered for.
+the turn there would submit around a plan the player has not answered for, and
+*Wait* and *Cancel* render **disabled until the previewed unit arrives** rather
+than appearing on arrival, so the controls do not jump into the layout.
 
 Its two callbacks read the renderer ref at call time, so a queue task resolving
 after unmount finds `null` rather than a disposed renderer.
@@ -455,7 +467,8 @@ unmount. It resolves to:
 ```ts
 onTileClick(handler)      setSelectedTile(coordinate | null)
 setMovement(movement)     playEvents(events): Promise<void>
-snapUnits(state)          toggleInspector()          dispose()
+snapUnits(state)          previewMove(unitId, path): Promise<void>
+cancelPreview()           toggleInspector()          dispose()
 ```
 
 - **Camera:** `ArcRotateCamera` in `ORTHOGRAPHIC_CAMERA` mode, starting at a
@@ -487,12 +500,24 @@ snapUnits(state)          toggleInspector()          dispose()
 - Model origins are at the base, so a unit's `y` is 0 rather than half its
   height.
 - Unit meshes are built once at startup; there is no add or remove.
-- `playEvents` walks `unitMoved` paths one tween per tile, 0.3s each
+- `playEvents` walks `unitMoved` paths one tween per tile, 0.15s each
   (`FRAMES_PER_TILE` over `FRAME_RATE` in `units.ts` — one dial for every
   unit's pace). Each step turns the mesh before it moves, so a unit walks the
   way it is looking; the turn is snapped rather than tweened.
 - `snapUnits` positions *and* orients meshes from state with no tween, stopping
-  any running animation first.
+  any running animation first, and **ends any preview**: authority overwrites
+  every position, so there is no separate commit step.
+- **The preview** is one nullable `{ unitId, origin, facing, settle }`. Arriving
+  and ending are separate moments: the walk resolves the promise, but the record
+  outlives it, because a Cancel *after* the unit lands is exactly when something
+  needs to know where to put it back. The promise means *the preview settled*,
+  which includes a cancel or a snap ending it early — `stopAnimation` fires no
+  end callback, so a promise tied to the tween alone would hang and whatever
+  waits on it would never proceed.
+- `playEvents` **skips a `unitMoved` whose mesh already stands at the path's
+  destination**. A confirmed preview has walked the unit there, and replaying
+  would send it back to the second tile and forward again. Positional rather
+  than a flag, and sound because the menu only opens once the walk has arrived.
 - `setUnitFacing` is the only writer of `rotation.y`, so replacing the
   models' orientation a single constant.
 - Babylon imports are **per-file**, not from the `@babylonjs/core` barrel. Side

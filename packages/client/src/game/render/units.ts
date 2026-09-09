@@ -11,10 +11,10 @@ import type { Coordinate, Facing, PlayerColor, Unit } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 import type { UnitModels } from './unitModels';
 
-const FRAME_RATE = 30;
+const FRAME_RATE = 60;
 // One tile of walking, at FRAME_RATE. The pace every unit moves at -- there is
 // no per-type speed, so this is the single dial for how long a move takes: a
-// three-tile move is 3x this. 9/30 = 0.3s.
+// three-tile move is 3x this. 9/60 = 0.15s.
 const FRAMES_PER_TILE = 9;
 
 // The models face +Z, which is what north is here: tileToWorld maps a rising
@@ -77,6 +77,18 @@ export function createUnitMesh(
  */
 export function setUnitFacing(node: TransformNode, facing: Facing): void {
   node.rotation.y = FACING_ROTATION[facing];
+}
+
+// Exact reverse lookup, and exact is fine: `setUnitFacing` is the only writer
+// of `rotation.y` and it only ever writes a value straight out of this table,
+// so no arithmetic has happened to drift it.
+const ROTATION_FACING = new Map<number, Facing>(
+  (Object.entries(FACING_ROTATION) as [Facing, number][]).map(([facing, y]) => [y, facing]),
+);
+
+/** Which way a unit is pointing, for anything that has to put it back. */
+export function getUnitFacing(node: TransformNode): Facing {
+  return ROTATION_FACING.get(node.rotation.y) ?? 'north';
 }
 
 function animateSegment(mesh: TransformNode, scene: Scene, target: Vector3): Promise<void> {

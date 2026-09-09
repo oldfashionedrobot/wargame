@@ -10,14 +10,14 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import type { Coordinate, GameEvent, GameState, Movement } from '@vod/shared';
+import type { Coordinate, Facing, GameEvent, GameState, Movement } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
 import { createTileHighlight, setHighlightTile } from './highlight';
 import { createTileOverlay } from './tileOverlay';
 import { screenToTile } from './picking';
 import { createTerrainMesh } from './terrain';
-import { animateUnitAlongPath, createUnitMesh, setUnitFacing } from './units';
+import { animateUnitAlongPath, createUnitMesh, getUnitFacing, setUnitFacing } from './units';
 import { loadUnitModels } from './unitModels';
 
 const ORTHO_ZOOM_PADDING = 0.7;
@@ -57,6 +57,16 @@ export interface GameRenderer {
    * syncUnits (mesh add/remove) in 8c.
    */
   snapUnits(state: GameState): void;
+  /**
+   * Walk a unit to a destination it has not actually moved to. Resolves when
+   * the preview **settles** -- which is when the walk finishes, but also when
+   * a cancel or a snap ends it early. Never left pending: `stopAnimation` does
+   * not fire an animation's end callback, so a promise tied to the tween alone
+   * would hang and the menu waiting on it would never open.
+   */
+  previewMove(unitId: string, path: Coordinate[]): Promise<void>;
+  /** Put a previewed unit back where it really stands. */
+  cancelPreview(): void;
   toggleInspector(): void;
   dispose(): void;
 }
@@ -152,6 +162,40 @@ export async function createGameRenderer(
     );
   }
 
+  // The whole ghost: which unit is displaced, where it really stands, and the
+  // promise whoever asked for the preview is waiting on.
+  interface Preview {
+    unitId: string;
+    origin: Coordinate;
+    facing: Facing;
+    settle: () => void;
+  }
+  let preview: Preview | null = null;
+
+  // Arriving and ending are different moments, and conflating them loses the
+  // origin: the record has to outlive the walk, because a Cancel *after* the
+  // unit lands is exactly when something needs to know where to put it back.
+  const arrivePreview = (): void => {
+    preview?.settle();
+  };
+
+  const endPreview = (): void => {
+    preview?.settle();
+    preview = null;
+  };
+
+  // Tiles are 1.0 apart, so this only has to beat float drift off a finished
+  // tween, not distinguish anything close together.
+  const TILE_EPSILON = 0.01;
+
+  const isStandingOn = (mesh: TransformNode, coordinate: Coordinate): boolean => {
+    const target = tileToWorld(coordinate, gridWidth, gridHeight);
+    return (
+      Math.abs(mesh.position.x - target.x) < TILE_EPSILON &&
+      Math.abs(mesh.position.z - target.z) < TILE_EPSILON
+    );
+  };
+
   const hoveredCoordinate = (): Coordinate | null =>
     screenToTile(scene, camera, scene.pointerX, scene.pointerY, gridWidth, gridHeight);
 
@@ -220,10 +264,53 @@ export async function createGameRenderer(
         if (event.type !== 'unitMoved') continue;
         const mesh = unitMeshes.get(event.unitId);
         if (!mesh) continue;
+
+        // Already shown. A confirmed preview has walked this unit here
+        // already, so replaying the move would send it back to the second
+        // tile and forward again. Positional rather than a flag: if the mesh
+        // is where the event says it ends, the move has been seen. Safe
+        // because the menu only opens once the walk has arrived.
+        const destination = event.path[event.path.length - 1];
+        if (isStandingOn(mesh, destination)) continue;
+
         await animateUnitAlongPath(mesh, event.path, gridWidth, gridHeight, scene);
       }
     },
+    previewMove(unitId, path) {
+      endPreview();
+      const mesh = unitMeshes.get(unitId);
+      if (!mesh) return Promise.resolve();
+
+      let settle!: () => void;
+      const settled = new Promise<void>((resolve) => (settle = resolve));
+      preview = { unitId, origin: path[0], facing: getUnitFacing(mesh), settle };
+
+      void animateUnitAlongPath(mesh, path, gridWidth, gridHeight, scene).then(() => {
+        // Only if this preview is still the live one -- a cancel or a snap
+        // may have ended it while the walk was running.
+        if (preview?.settle === settle) arrivePreview();
+      });
+      return settled;
+    },
+    cancelPreview() {
+      const previewed = preview;
+      if (!previewed) return;
+
+      const mesh = unitMeshes.get(previewed.unitId);
+      if (mesh) {
+        // Stop first: a cancel mid-walk must win over the tween still writing
+        // positions, exactly as a snap does.
+        scene.stopAnimation(mesh);
+        const home = tileToWorld(previewed.origin, gridWidth, gridHeight);
+        mesh.position.set(home.x, mesh.position.y, home.z);
+        setUnitFacing(mesh, previewed.facing);
+      }
+      endPreview();
+    },
     snapUnits(state) {
+      // Authority overwrites every position, the previewed one included, so
+      // this *is* the preview ending -- there is no separate commit.
+      endPreview();
       for (const unit of state.units) {
         const mesh = unitMeshes.get(unit.id);
         if (!mesh) continue;

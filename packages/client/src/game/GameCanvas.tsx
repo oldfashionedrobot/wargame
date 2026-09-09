@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { getCurrentPlayer } from '@vod/shared';
-import type { GameEvent, GameServer, GameState } from '@vod/shared';
+import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
 import { useGameSession } from './useGameSession';
 import type { SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
@@ -50,11 +50,35 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
     rendererRef.current?.snapUnits(state);
   }, []);
 
-  const { gameState, rejection, selection, clickTile, confirmWait, cancelDestination, endTurn } =
-    useGameSession(server, { onEvents, onSnap });
+  const onPreview = useCallback(
+    (next: { unitId: string; path: Coordinate[] } | null): Promise<void> => {
+      const renderer = rendererRef.current;
+      if (!renderer) return Promise.resolve();
+      if (!next) {
+        renderer.cancelPreview();
+        return Promise.resolve();
+      }
+      return renderer.previewMove(next.unitId, next.path);
+    },
+    [],
+  );
+
+  const {
+    gameState,
+    rejection,
+    selection,
+    walking,
+    clickTile,
+    confirmWait,
+    cancelDestination,
+    endTurn,
+  } = useGameSession(server, { onEvents, onSnap, onPreview });
 
   // DOM, like every other control: the canvas draws the game and nothing else.
-  const choosing = selection.phase === 'destinationChosen';
+  // The menu waits for the unit to arrive -- confirming mid-walk would leave
+  // the mesh short of the destination, and the move would then replay from
+  // wherever it had got to.
+  const pinned = selection.phase === 'destinationChosen';
 
   // `clickTile` changes identity whenever the selection does, and the renderer
   // is registered with it exactly once. A stable wrapper over a latest-ref
@@ -112,7 +136,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
         <span>{getCurrentPlayer(gameState).name}&apos;s turn</span>{' '}
         {/* Disabled while a destination is pinned: ending the turn there would
             submit around a plan the player has not answered for yet. */}
-        <button type="button" onClick={endTurn} disabled={choosing}>
+        <button type="button" onClick={endTurn} disabled={pinned}>
           End Turn
         </button>{' '}
         {import.meta.env.DEV && (
@@ -120,12 +144,15 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             Toggle Inspector
           </button>
         )}
-        {choosing && (
+        {pinned && (
           <>
-            <button type="button" onClick={confirmWait}>
+            {/* Present but inert while the unit walks, rather than appearing
+                on arrival: a 0.15s-a-tile walk is too short to justify the
+                controls jumping into the layout under the pointer. */}
+            <button type="button" onClick={confirmWait} disabled={walking}>
               Wait
             </button>{' '}
-            <button type="button" onClick={cancelDestination}>
+            <button type="button" onClick={cancelDestination} disabled={walking}>
               Cancel
             </button>{' '}
           </>
