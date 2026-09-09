@@ -12,7 +12,9 @@ import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 // Resolved from this file, not cwd -- the script runs both from the package
 // (bun run --filter) and from wherever a human happens to be.
 const DIST = fileURLToPath(new URL('../dist', import.meta.url));
-const COMPRESSIBLE = new Set(['.js', '.css', '.html', '.svg']);
+// glTF is JSON text -- the unit models are a few hundred KB of it, and
+// uncompressed they would be the largest thing the client ships.
+const COMPRESSIBLE = new Set(['.js', '.css', '.html', '.svg', '.gltf']);
 
 const files = readdirSync(DIST, { recursive: true })
   .map(String)

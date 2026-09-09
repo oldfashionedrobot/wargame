@@ -23,6 +23,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@babylonjs/core": "^9.19.1",
+        "@babylonjs/loaders": "^9.19.1",
         "@vod/shared": "workspace:*",
         "react": "^19.2.7",
         "react-dom": "^19.2.7",

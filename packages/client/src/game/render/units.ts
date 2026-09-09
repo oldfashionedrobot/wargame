@@ -3,24 +3,22 @@ import '@babylonjs/core/Animations/animatable';
 import { Animation } from '@babylonjs/core/Animations/animation';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
-import type { Mesh } from '@babylonjs/core/Meshes/mesh';
+import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Scene } from '@babylonjs/core/scene';
 import { directionBetween } from '@vod/shared';
 import type { Coordinate, Facing, PlayerColor, Unit } from '@vod/shared';
 import { tileToWorld } from './coordinates';
+import type { UnitModels } from './unitModels';
 
-const UNIT_DIAMETER = 0.5;
-const UNIT_HEIGHT = 0.6;
 const FRAME_RATE = 30;
 // One tile of walking, at FRAME_RATE. The pace every unit moves at -- there is
 // no per-type speed, so this is the single dial for how long a move takes: a
 // three-tile move is 3x this. 9/30 = 0.3s.
 const FRAMES_PER_TILE = 9;
 
-// A symmetric cylinder placeholder has no visible "front", but wiring facing to
-// rotation now means a real unit model/sprite can drop in later with no renderer changes.
+// The models face +Z, which is what north is here: tileToWorld maps a rising
+// row to a rising z. So zero rotation is zero correction.
 const FACING_ROTATION: Record<Facing, number> = {
   north: 0,
   east: Math.PI / 2,
@@ -35,38 +33,53 @@ const PLAYER_COLORS: Record<PlayerColor, Color3> = {
   yellow: new Color3(0.9, 0.8, 0.2),
 };
 
+/**
+ * One material per player colour, not per unit -- the models arrive untextured
+ * and near-white, so a flat diffuse colour is the whole of a side's identity.
+ * The scene is the cache: looking the material up by name keeps this a plain
+ * function with no state of its own.
+ */
+function unitMaterial(scene: Scene, color: PlayerColor): StandardMaterial {
+  const name = `unit-${color}`;
+  const existing = scene.getMaterialByName(name);
+  if (existing) return existing as StandardMaterial;
+
+  const material = new StandardMaterial(name, scene);
+  material.diffuseColor = PLAYER_COLORS[color];
+  return material;
+}
+
 export function createUnitMesh(
   scene: Scene,
+  models: UnitModels,
   unit: Unit,
   color: PlayerColor,
   gridWidth: number,
   gridHeight: number,
-): Mesh {
-  const mesh = CreateCylinder(
-    `unit-${unit.id}`,
-    { height: UNIT_HEIGHT, diameter: UNIT_DIAMETER },
-    scene,
-  );
-  const material = new StandardMaterial(`unit-${unit.id}-material`, scene);
-  material.diffuseColor = PLAYER_COLORS[color];
-  mesh.material = material;
+): TransformNode {
+  const node = models.instantiate(unit.unitTypeId, `unit-${unit.id}`);
 
+  const material = unitMaterial(scene, color);
+  for (const mesh of node.getChildMeshes()) mesh.material = material;
+
+  // The models' origin is their base, so they stand on the board rather than
+  // being lifted by half their height the way a centre-origin cylinder was.
   const center = tileToWorld(unit.position, gridWidth, gridHeight);
-  mesh.position.set(center.x, UNIT_HEIGHT / 2, center.z);
-  setUnitFacing(mesh, unit.facing);
-  return mesh;
+  node.position.set(center.x, 0, center.z);
+  setUnitFacing(node, unit.facing);
+  return node;
 }
 
 /**
- * Points a unit mesh a compass direction. The only writer of `rotation.y`, so
- * that swapping the placeholder cylinder for a model means changing what
- * `FACING_ROTATION` holds and nothing else.
+ * Points a unit a compass direction. The only writer of `rotation.y`, and it
+ * writes it on our own node rather than the loader's `__root__` -- see
+ * `unitModels.ts` for why that distinction matters.
  */
-export function setUnitFacing(mesh: Mesh, facing: Facing): void {
-  mesh.rotation.y = FACING_ROTATION[facing];
+export function setUnitFacing(node: TransformNode, facing: Facing): void {
+  node.rotation.y = FACING_ROTATION[facing];
 }
 
-function animateSegment(mesh: Mesh, scene: Scene, target: Vector3): Promise<void> {
+function animateSegment(mesh: TransformNode, scene: Scene, target: Vector3): Promise<void> {
   return new Promise((resolve) => {
     const positionAnimation = new Animation(
       'unit-move',
@@ -85,7 +98,7 @@ function animateSegment(mesh: Mesh, scene: Scene, target: Vector3): Promise<void
 }
 
 export async function animateUnitAlongPath(
-  mesh: Mesh,
+  mesh: TransformNode,
   path: Coordinate[],
   gridWidth: number,
   gridHeight: number,

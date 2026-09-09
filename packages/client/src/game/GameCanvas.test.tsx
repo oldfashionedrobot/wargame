@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { Coordinate, GameServer, GameState } from '@vod/shared';
+import type { ConnectionStatus } from '../net/gameServer';
 import { makeState } from '@vod/shared/testing';
 import { GameCanvas } from './GameCanvas';
 import type { GameRenderer } from './render/renderer';
@@ -29,8 +30,17 @@ beforeEach(() => {
     toggleInspector: vi.fn(),
     dispose: vi.fn(),
   };
-  vi.mocked(createGameRenderer).mockReturnValue(renderer);
+  vi.mocked(createGameRenderer).mockResolvedValue(renderer);
 });
+
+// Construction is async now -- unit models load before the renderer exists --
+// so anything touching `renderer` or `clickTile` has to let that promise settle
+// first. Rendering through one helper keeps every test on the same footing.
+async function renderCanvas(server: GameServer, connection: ConnectionStatus = 'connected') {
+  const result = render(<GameCanvas server={server} connection={connection} />);
+  await act(async () => {});
+  return result;
+}
 
 const fakeServer = (over: Partial<GameServer> = {}): GameServer => ({
   getState: () => board,
@@ -44,13 +54,13 @@ const fakeServer = (over: Partial<GameServer> = {}): GameServer => ({
 });
 
 describe('GameCanvas', () => {
-  it('names whose turn it is', () => {
-    render(<GameCanvas server={fakeServer()} connection="connected" />);
+  it('names whose turn it is', async () => {
+    await renderCanvas(fakeServer());
     expect(screen.getByText(/Blue Army's turn/)).toBeTruthy();
   });
 
-  it('shows the reconnecting banner only while retrying', () => {
-    const { rerender } = render(<GameCanvas server={fakeServer()} connection="connected" />);
+  it('shows the reconnecting banner only while retrying', async () => {
+    const { rerender } = await renderCanvas(fakeServer());
     expect(screen.queryByText(/reconnecting/)).toBeNull();
 
     rerender(<GameCanvas server={fakeServer()} connection="retrying" />);
@@ -61,32 +71,46 @@ describe('GameCanvas', () => {
     const server = fakeServer({
       submit: vi.fn(async () => ({ ok: false as const, reason: 'that unit has already acted' })),
     });
-    render(<GameCanvas server={server} connection="connected" />);
+    await renderCanvas(server);
 
     fireEvent.click(screen.getByRole('button', { name: 'End Turn' }));
     expect(await screen.findByText(/that unit has already acted/)).toBeTruthy();
   });
 
-  it('submits an endTurn when the button is pressed', () => {
+  it('submits an endTurn when the button is pressed', async () => {
     const server = fakeServer();
-    render(<GameCanvas server={server} connection="connected" />);
+    await renderCanvas(server);
     fireEvent.click(screen.getByRole('button', { name: 'End Turn' }));
     expect(server.submit).toHaveBeenCalledWith({ type: 'endTurn' });
   });
 
   // The renderer is built once for a canvas and torn down with it; leaving it
   // alive would keep a WebGL context and a render loop running per navigation.
-  it('builds a renderer on mount and disposes it on unmount', () => {
-    const { unmount } = render(<GameCanvas server={fakeServer()} connection="connected" />);
+  it('builds a renderer on mount and disposes it on unmount', async () => {
+    const { unmount } = await renderCanvas(fakeServer());
     expect(createGameRenderer).toHaveBeenCalledTimes(1);
     unmount();
     expect(renderer.dispose).toHaveBeenCalledTimes(1);
   });
 
+  // The mirror of MatchRoute's late-connect case: models load asynchronously,
+  // so a canvas can unmount while its renderer is still being built. The
+  // renderer that arrives afterwards has to be disposed rather than stored, or
+  // its engine keeps rendering into a canvas nobody is showing.
+  it('disposes a renderer that finishes building after unmount', async () => {
+    const { unmount } = render(<GameCanvas server={fakeServer()} connection="connected" />);
+    unmount();
+    expect(renderer.dispose).not.toHaveBeenCalled();
+
+    await act(async () => {}); // the build resolves now, into a dead component
+    expect(renderer.dispose).toHaveBeenCalledTimes(1);
+    expect(renderer.onTileClick).not.toHaveBeenCalled();
+  });
+
   // The click handler is registered with the renderer, so a tile click has to
   // reach the session through it rather than through any React event.
-  it('routes a tile click into a selection push', () => {
-    render(<GameCanvas server={fakeServer()} connection="connected" />);
+  it('routes a tile click into a selection push', async () => {
+    await renderCanvas(fakeServer());
     expect(renderer.onTileClick).toHaveBeenCalled();
 
     clickTile({ col: 1, row: 1 }); // the unit's own tile
@@ -98,8 +122,8 @@ describe('GameCanvas', () => {
     expect(typeof movement?.pathTo).toBe('function');
   });
 
-  it('clears the overlays when the selection is dropped', () => {
-    render(<GameCanvas server={fakeServer()} connection="connected" />);
+  it('clears the overlays when the selection is dropped', async () => {
+    await renderCanvas(fakeServer());
     clickTile({ col: 1, row: 1 }); // select
     clickTile({ col: 1, row: 1 }); // click it again to deselect
     expect(renderer.setSelectedTile).toHaveBeenLastCalledWith(null);

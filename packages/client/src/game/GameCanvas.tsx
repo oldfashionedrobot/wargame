@@ -51,16 +51,28 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
     onSnap,
   });
 
+  // Construction is async because unit models are loaded before any unit
+  // exists, so this carries the same teardown race MatchRoute's connect does:
+  // a renderer that finishes building after unmount has to be disposed rather
+  // than stored, or its engine keeps running against a detached canvas.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const renderer = createGameRenderer(canvas, server.getState());
-    rendererRef.current = renderer;
-    renderer.onTileClick(clickTile);
+    let disposed = false;
+
+    void createGameRenderer(canvas, server.getState()).then((renderer) => {
+      if (disposed) {
+        renderer.dispose();
+        return;
+      }
+      rendererRef.current = renderer;
+      renderer.onTileClick(clickTile);
+    });
 
     return () => {
-      renderer.dispose();
+      disposed = true;
+      rendererRef.current?.dispose();
       rendererRef.current = null;
     };
   }, [server, clickTile]);

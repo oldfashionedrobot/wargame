@@ -20,7 +20,7 @@ hoisted, so a package can only import what it declares.
 |---|---|---|
 | `@vod/shared` | nothing | The rulebook: types, content tables, queries, movement, validation, resolution, the event fold, and the wire protocol. No I/O, no RNG, no React, no Babylon, no `Date.now()`. |
 | `@vod/server` | `shared` | The authority: the database, the event log, match construction, and the HTTP surface. |
-| `@vod/client` | `shared` | Presentation: Babylon rendering, input, React, and the HTTP `GameServer`. |
+| `@vod/client` | `shared` | Presentation: Babylon rendering and glTF loading, input, React, and the HTTP `GameServer`. |
 
 `shared` has two entry points, no build script, and emits nothing — `exports`
 point at TypeScript source, which bun runs natively and Vite compiles:
@@ -407,7 +407,10 @@ time.
 
 ## Rendering
 
-`createGameRenderer(canvas, initialState)` returns:
+`createGameRenderer(canvas, initialState)` is **async** — it loads the unit
+models before any unit exists, so that no window opens in which a unit has state
+but no mesh. `GameCanvas` disposes a renderer that finishes building after
+unmount. It resolves to:
 
 ```ts
 onTileClick(handler)      setSelectedTile(coordinate | null)
@@ -432,6 +435,17 @@ snapUnits(state)          toggleInspector()          dispose()
   hovered tile — recomputed only when the pointer crosses into a different
   tile. A route is drawn only to a tile in `reachable`, since `pathTo` also
   answers for tiles nobody may stop on.
+- Units are glTF models from `public/models/`, one per unit type, loaded once
+  into `AssetContainer`s and instantiated per unit. Each instance is parented to
+  a `TransformNode` of ours: the loader's own `__root__` carries the
+  right-handed-to-left-handed conversion as a negative scale, and a facing
+  rotation set on that node would compose with the flip and turn the unit the
+  wrong way. Models face `+Z`, which is north here, so there is no offset.
+- One `StandardMaterial` per player colour, looked up by name so the scene is
+  the cache. The models arrive untextured and near-white, so a flat diffuse
+  colour is the whole of a side's identity.
+- Model origins are at the base, so a unit's `y` is 0 rather than half its
+  height.
 - Unit meshes are built once at startup; there is no add or remove.
 - `playEvents` walks `unitMoved` paths one tween per tile, 0.3s each
   (`FRAMES_PER_TILE` over `FRAME_RATE` in `units.ts` — one dial for every
@@ -440,12 +454,13 @@ snapUnits(state)          toggleInspector()          dispose()
 - `snapUnits` positions *and* orients meshes from state with no tween, stopping
   any running animation first.
 - `setUnitFacing` is the only writer of `rotation.y`, so replacing the
-  placeholder cylinder with a model means changing `FACING_ROTATION` and
-  nothing else.
+  models' orientation a single constant.
 - Babylon imports are **per-file**, not from the `@babylonjs/core` barrel. Side
   effect modules are imported where the augmented method is used:
   `Animations/animatable` for `beginAnimation`/`stopAnimation`, `Culling/ray`
-  for `createPickingRay`. `Debug/debugLayer` and `@babylonjs/inspector` load
+  for `createPickingRay`, and `@babylonjs/loaders/glTF/2.0` to register the
+  glTF plugin — the `2.0` entry point specifically, since the package root
+  would also pull the legacy 1.0 loader. `Debug/debugLayer` and `@babylonjs/inspector` load
   via dynamic `import()` inside an `import.meta.env.DEV` guard, so neither
   ships in production.
 

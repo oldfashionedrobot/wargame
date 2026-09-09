@@ -9,7 +9,7 @@ import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
-import type { Mesh } from '@babylonjs/core/Meshes/mesh';
+import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Coordinate, GameEvent, GameState, Movement } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
@@ -18,6 +18,7 @@ import { createTileOverlay } from './tileOverlay';
 import { screenToTile } from './picking';
 import { createTerrainMesh } from './terrain';
 import { animateUnitAlongPath, createUnitMesh, setUnitFacing } from './units';
+import { loadUnitModels } from './unitModels';
 
 const ORTHO_ZOOM_PADDING = 0.7;
 
@@ -77,10 +78,10 @@ async function toggleInspector(scene: Scene): Promise<void> {
   await scene.debugLayer.show({ embedMode: true });
 }
 
-export function createGameRenderer(
+export async function createGameRenderer(
   canvas: HTMLCanvasElement,
   initialState: GameState,
-): GameRenderer {
+): Promise<GameRenderer> {
   const gridHeight = initialState.grid.length;
   const gridWidth = initialState.grid[0]?.length ?? 0;
 
@@ -137,11 +138,18 @@ export function createGameRenderer(
     gridHeight,
   });
 
-  const unitMeshes = new Map<string, Mesh>();
+  // Awaited before any unit exists: a renderer whose units are still loading
+  // would give snapUnits and playEvents a window in which a unit has no mesh.
+  const models = await loadUnitModels(scene);
+
+  const unitMeshes = new Map<string, TransformNode>();
   for (const unit of initialState.units) {
     const owner = initialState.players.find((player) => player.id === unit.owner);
     if (!owner) throw new Error(`unit ${unit.id} has unknown owner ${unit.owner}`);
-    unitMeshes.set(unit.id, createUnitMesh(scene, unit, owner.color, gridWidth, gridHeight));
+    unitMeshes.set(
+      unit.id,
+      createUnitMesh(scene, models, unit, owner.color, gridWidth, gridHeight),
+    );
   }
 
   const hoveredCoordinate = (): Coordinate | null =>
