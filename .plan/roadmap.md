@@ -239,8 +239,21 @@ They are already unit-scaled and stand on `y = 0` — heights 0.57 / 0.64 / 0.39
 against a 1.0 tile, footprints all inside one tile — so they drop in roughly
 where the placeholder cylinder stands.
 
-- Needs `@babylonjs/loaders`, the first Babylon package beyond core and the
-  inspector. Keep the per-file import discipline the rest of the renderer uses.
+⚠️ **Their origin is the base; the cylinder's is its centre.** `createUnitMesh`
+lifts by `UNIT_HEIGHT / 2` and that lift has to go, or every model floats half
+its height. Only the initial placement changes — `animateUnitAlongPath` and
+`snapUnits` both preserve `mesh.position.y` already.
+
+Tile picking is unaffected whatever the height: `screenToTile` intersects the
+`y = 0` plane rather than picking meshes, so a unit never blocks a click on its
+own tile — which the confirmation step relies on.
+
+- Needs `@babylonjs/loaders` at the same major as core, the first Babylon
+  package beyond core and the inspector. It registers through a side-effect
+  import like `Animations/animatable` already does, so the per-file discipline
+  holds. An `AssetContainer` is the right primitive for load-once-instantiate-
+  many: it owns the `__root__` node and the materials rather than leaving them
+  to be cloned by hand.
 - Load each model once and clone per unit; one material per player colour,
   not per unit.
 - ⚠️ **Loading is async and `createGameRenderer` is not.** It builds unit meshes
@@ -257,6 +270,13 @@ where the placeholder cylinder stands.
   Reparenting the child mesh away from it drops the conversion and mirrors the
   model — which on a near-symmetric mesh reads as "facing backwards" rather than
   as anything obviously broken.
+- `compressDist.ts` compresses `.js`, `.css`, `.html` and `.svg`. glTF is JSON
+  text and these are ~280 KB together, so add `.gltf` to that set. Serving is
+  otherwise fine: Bun types `.gltf` as `model/gltf+json`, and Vite's `public/`
+  puts them at `/models/*` in dev and in `dist` alike.
+- Test doubles grow with the interface: the renderer mock in `GameCanvas.test.tsx`
+  gains `previewMove` and `cancelPreview`, and `useGameSession.test.ts`'s
+  `callbacks()` helper swaps `onSelectionChange` for `onPreview`.
 - Re-check movement by eye afterwards. These models are the first thing to make
   unit *type* visible on the board, so a cavalry that paths like infantry
   becomes noticeable here for the first time.
