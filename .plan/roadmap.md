@@ -241,7 +241,14 @@ where the placeholder cylinder stands.
 
 - Needs `@babylonjs/loaders`, the first Babylon package beyond core and the
   inspector. Keep the per-file import discipline the rest of the renderer uses.
-- Load each model once and clone per unit.
+- Load each model once and clone per unit; one material per player colour,
+  not per unit.
+- ⚠️ **Loading is async and `createGameRenderer` is not.** It builds unit meshes
+  synchronously and `GameCanvas` assigns `rendererRef.current` on the same tick.
+  Either preload the three models and await them *before* constructing, or make
+  construction async and handle the unmount race — `MatchRoute` already does the
+  latter for its connect, so the pattern exists. Preloading keeps the renderer's
+  constructor honest and is the smaller change.
 - **They face `+Z`**, the glTF convention, which is also the direction
   `FACING_ROTATION` already calls north (`col→x`, `row→z`, both increasing).
   So model-forward needs no correction and no per-model field.
@@ -301,16 +308,26 @@ are state, and the renderer only moves a mesh.
 `path = [position]` — the single-element path `validatePath` already accepts at
 cost 0, which is what makes "attack from here" need no special case.
 
-**The renderer gets three verbs, not two.** Cancel and confirm both end the
-preview and must do opposite things to the mesh:
+**Two renderer verbs, and `snapUnits` ends the preview.**
 
 ```ts
 previewMove(unitId, path): Promise<void>   // walk it there, remember the origin
 cancelPreview(): void                      // put it back
-commitPreview(): void                      // forget it, leave the mesh where it is
 ```
 
-The renderer holds one nullable `{ unitId, origin }`. That is the whole ghost.
+The renderer holds one nullable `{ unitId, origin }` — that is the whole ghost —
+and `snapUnits` drops it, since it is already writing authoritative positions
+over everything. No third "commit" verb: authority ending the preview *is* the
+commit.
+
+⚠️ **The preview cannot be a projection of `SelectionState`.** This is the part
+that looks wrong and is not. Leaving `destinationChosen` means opposite things to
+the mesh depending on *why*: on confirm the selection clears and the mesh must
+**stay** at the destination for the server's events to land on; on cancel, and on
+a foreign update, it must **return**. One transition, two behaviours — so
+`showSelection` handles highlights and overlays only, and the two preview verbs
+are called imperatively from the three places that know the reason: pin, Cancel,
+and a rejected submit.
 
 ⚠️ **The submit would otherwise re-animate a move already shown.** After a
 confirm, the server's `unitMoved` arrives and `playEvents` would animate a mesh
@@ -329,8 +346,20 @@ deliberately the blunt one: an update drops `destinationChosen` back to
 uncommitted plan that may no longer be legal; a ghost that survives authority is
 a unit standing where the server disagrees.
 
-**A rejected submit falls back to `unitSelected`, snapped home**, with the reason
-shown — not to the pinned destination the server just refused.
+⚠️ **A rejected submit must cancel the preview explicitly.** `gameServer` only
+notifies subscribers when `seq` advances, and a rejection advances nothing — so
+no update arrives, `snapUnits` never runs, and a ghost left standing at the
+destination would stay there permanently. The rejection branch of `submitCommand`
+calls `cancelPreview()` and falls back to `unitSelected`, with the reason shown —
+not to the pinned destination the server just refused.
+
+**End Turn is disabled while a destination is pinned.** Otherwise it submits with
+the ghost still standing, and the turn ends with a unit drawn somewhere it never
+went until the next update snaps it home.
+
+**The menu opens as the walk starts, not after it.** Entering `destinationChosen`
+already blocks tile clicks, so nothing needs guarding while the mesh is moving,
+and no extra state is needed to represent "still walking".
 
 **While the menu is open, tile clicks do nothing.** Cancel, Wait or Attack are
 the only ways out. Cancel returns the unit and keeps it selected, so the next
@@ -373,8 +402,13 @@ synchronously current; it is not rendered state.
   stops deriving it** — 6f's derivation becomes the client's proposed default via
   `directionBetween`. The one step that touches the wire.
 
-Still open: whether the menu is DOM over the canvas or drawn in the scene. DOM is
-the cheaper answer and matches the existing chrome, which is already DOM.
+**The menu is DOM**, like every other control. The canvas draws the game and
+nothing else — no in-scene GUI — which keeps the menu testable with the renderer
+mocked, exactly as the existing chrome already is.
+
+Open for 7e: where "choosing a facing" lives. It is a step between the menu and
+the submit, and this codebase prefers a union member over a boolean on an
+existing one.
 
 ### 8 — Combat: the smallest thing you can win
 
