@@ -401,9 +401,23 @@ not to the pinned destination the server just refused.
 the ghost still standing, and the turn ends with a unit drawn somewhere it never
 went until the next update snaps it home.
 
-**The menu opens as the walk starts, not after it.** Entering `destinationChosen`
-already blocks tile clicks, so nothing needs guarding while the mesh is moving,
-and no extra state is needed to represent "still walking".
+**The menu opens when the unit arrives, not when it sets off.** The walk is brief
+— 0.15s a tile — and the whole UI is inert for its duration: tile clicks are
+already ignored once a destination is pinned, and Wait, Cancel and End Turn are
+all disabled until the mesh gets there.
+
+That is what keeps the positional skip above honest. Were the menu live during
+the walk, confirming mid-stride would leave the mesh halfway along the path, the
+skip would not fire, and `animateUnitAlongPath` would walk it *backwards* to the
+second tile and forward again — and since the menu appears instantly, clicking
+Wait mid-walk is the common case, not an edge one.
+
+So `onPreview` returns a promise and the hook holds a `walking` flag until it
+settles. ⚠️ **The renderer must settle that promise on cancel and on snap, not
+only when the walk finishes.** `scene.stopAnimation` does not fire an
+animation's end callback, so a poll landing mid-walk would otherwise leave the
+promise pending for ever and the menu disabled — a soft lock. The promise means
+*the preview settled*, not *the animation played out*.
 
 **While the menu is open, tile clicks do nothing.** Cancel, Wait or Attack are
 the only ways out. Cancel returns the unit and keeps it selected, so the next
