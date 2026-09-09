@@ -287,16 +287,94 @@ no decision to offer. The player is asked exactly when nothing else can answer.
 **Clicking the selected unit's tile stops meaning cancel.** It deselects today
 (`selection.ts`); it becomes *pin in place*. Cancel moves onto the menu.
 
-#### To settle before building it
+#### Where the uncommitted move lives
 
-- The step split, and what lands in which commit.
-- Where the uncommitted position lives. It is ephemeral UI state, so invariant 7
-  keeps it out of `GameState` — most likely the renderer's, with `SelectionState`
-  gaining a member.
-- Whether `MoveCommand` grows a `facing` field here or in 8d. It has to happen
-  the moment the player can choose, and it retires 6f's derivation inside
-  `applyEvents` in favour of `directionBetween` as the *client's* default.
-- What the menu is made of: DOM over the canvas, or drawn in the scene.
+**In `SelectionState`, not the renderer.** `handleTileClick` is pure and covered;
+the renderer is WebGL and has no tests at all. So the *decision* and the *path*
+are state, and the renderer only moves a mesh.
+
+```ts
+| { phase: 'destinationChosen'; unitId; path: Coordinate[]; movement: Movement }
+```
+
+`path[0]` is the origin, so Cancel needs no extra field. Pinning in place is
+`path = [position]` — the single-element path `validatePath` already accepts at
+cost 0, which is what makes "attack from here" need no special case.
+
+**The renderer gets three verbs, not two.** Cancel and confirm both end the
+preview and must do opposite things to the mesh:
+
+```ts
+previewMove(unitId, path): Promise<void>   // walk it there, remember the origin
+cancelPreview(): void                      // put it back
+commitPreview(): void                      // forget it, leave the mesh where it is
+```
+
+The renderer holds one nullable `{ unitId, origin }`. That is the whole ghost.
+
+⚠️ **The submit would otherwise re-animate a move already shown.** After a
+confirm, the server's `unitMoved` arrives and `playEvents` would animate a mesh
+that is already standing at the destination — walking it *backwards* to
+`path[1]` and forward again. So **`playEvents` skips a `unitMoved` whose mesh is
+already at the path's destination**. Positional truth, not a flag to keep in
+sync: if the mesh is where the event says it ends, the move has been shown.
+Everything else — the opponent's moves, catch-up batches — still animates,
+because those meshes are at their origins.
+
+⚠️ **An incoming update clears the pin.** `onSnap` writes every unit from
+authoritative state, ghost included. Hot-seat hides this today (only one player
+acts, and updates dedupe by `seq`), but it is real from phase 10. The plan is
+deliberately the blunt one: an update drops `destinationChosen` back to
+`unitSelected` and `snapUnits` keeps writing everything. The board moved under an
+uncommitted plan that may no longer be legal; a ghost that survives authority is
+a unit standing where the server disagrees.
+
+**A rejected submit falls back to `unitSelected`, snapped home**, with the reason
+shown — not to the pinned destination the server just refused.
+
+**While the menu is open, tile clicks do nothing.** Cancel, Wait or Attack are
+the only ways out. Cancel returns the unit and keeps it selected, so the next
+click can pick a different destination.
+
+#### Selection stops being a ref
+
+Prerequisite, and a simplification rather than a cost. Selection is not React
+state today — `selectionRef` is the single copy and `onSelectionChange` pushes it
+to the renderer. The menu and the facing picker need it in React, and holding
+*both* a ref and state would be two copies of one fact.
+
+The reason a ref is needed at all is a coupling in `GameCanvas`: one effect both
+creates the renderer and registers the click handler, with `clickTile` in its
+dependencies — so a `clickTile` that depended on selection would rebuild the
+whole Babylon scene on every click. `onTileClick` is an idempotent setter, so
+splitting that into two effects removes the constraint, selection becomes plain
+React state with one copy, and **`onSelectionChange` disappears** — `GameCanvas`
+projects selection to the renderer in an effect instead. The hook's callback
+surface drops from three to two.
+
+`pendingRef` stays a ref. It is a mutex against double-submit and has to be
+synchronously current; it is not rendered state.
+
+#### Steps
+
+- **7a** The three glTF models, one per unit type, tinted per player. Renderer
+  only — no state, no protocol. Makes every later step visible.
+- **7b** Selection becomes React state; split `GameCanvas`'s effect; drop
+  `onSelectionChange`. Pure refactor, no behaviour change, its own commit so the
+  diff stays legible.
+- **7c** `destinationChosen` and the menu, **without the ghost walk**. Click a
+  destination, get *Wait | Cancel*, and Wait submits the move that a click
+  submits today. The unit does not move until the server says so. Shippable and
+  fully testable through `handleTileClick`.
+- **7d** The ghost walk: the three renderer verbs, and `playEvents`' positional
+  skip. This is where the animation moves from after the commit to before it.
+- **7e** `MoveCommand` grows `facing`, and Wait offers the picker. `parseCommand`
+  validates one of four, `resolveMove` puts it on `unitMoved`, and **`applyEvents`
+  stops deriving it** — 6f's derivation becomes the client's proposed default via
+  `directionBetween`. The one step that touches the wire.
+
+Still open: whether the menu is DOM over the canvas or drawn in the scene. DOM is
+the cheaper answer and matches the existing chrome, which is already DOM.
 
 ### 8 — Combat: the smallest thing you can win
 
