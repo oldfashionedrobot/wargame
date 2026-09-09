@@ -16,7 +16,7 @@ export interface Terrain {
   char: string;
   /**
    * Stars of cover: each is a 10% damage reduction at full defender HP.
-   * Unread until phase 7 -- it lives here now so that adding a terrain type
+   * Unread until phase 8 -- it lives here now so that adding a terrain type
    * stays one edit rather than two, and so a matchup table is never tuned
    * against defence stubbed to zero.
    */

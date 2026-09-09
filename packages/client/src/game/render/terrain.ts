@@ -7,8 +7,8 @@ import type { TileType } from '@vod/shared';
 import { TILE_SIZE, tileToWorld } from './coordinates';
 
 // Placeholder palette: flat colour is enough to read a board and to check
-// that pathfinding stops where terrain says it should. 6e does the real
-// visual pass. Being a Record over TileType is what stops a new terrain from
+// that pathfinding stops where terrain says it should. A real visual pass
+// is deliberately deferred -- gameplay before looks. Being a Record over TileType is what stops a new terrain from
 // rendering as undefined -- the compiler asks for its colour here.
 //
 // Terrain stays flat, and not only for now: screenToTile intersects the y=0

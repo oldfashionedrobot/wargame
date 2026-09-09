@@ -53,7 +53,7 @@ export interface GameRenderer {
   /**
    * Positions unit meshes from state, no tween -- a no-op after a played
    * animation, the correction after a skipped or failed one. Grows into
-   * syncUnits (mesh add/remove) in 7c.
+   * syncUnits (mesh add/remove) in 8c.
    */
   snapUnits(state: GameState): void;
   toggleInspector(): void;

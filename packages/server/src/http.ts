@@ -83,7 +83,7 @@ export async function createServer({ port, databaseUrl, clientDist }: ServerOpti
 
           const matchId = request.params.id;
           // Second read of the match -- submit() does its own. Deliberate: it
-          // goes away in phase 9 when resolveActor stops needing state. The
+          // goes away in phase 10 when resolveActor stops needing state. The
           // window can only produce a rejection, never a wrong write.
           const snapshot = await matches.snapshot(matchId);
           if (!snapshot) return notFound();
@@ -208,7 +208,7 @@ async function serveFile(
  * `request.params` to `Record<string, string>`, so a param typo stops being an
  * error.
  *
- * The id is decorative until phase 9. See Identity in the plan for the two
+ * The id is decorative until phase 10. See Identity in the plan for the two
  * constraints that fall on whatever starts storing it.
  */
 function withSession<T extends string>(

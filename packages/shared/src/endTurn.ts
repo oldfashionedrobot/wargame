@@ -4,7 +4,7 @@ import type { GameEvent, GameState, PlayerId } from './types';
  * Nothing beyond the actor check every command gets, which is why this takes
  * no arguments -- ending your own turn is always legal.
  *
- * It will grow some: phase 7f wants every command refused once a game has a
+ * It will grow some: phase 8h wants every command refused once a game has a
  * terminal marker, and that rule lands here and in validateMove alike.
  */
 export function validateEndTurn(): string | null {

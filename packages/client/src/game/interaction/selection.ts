@@ -9,8 +9,8 @@ import {
 import type { Command, Coordinate, GameState, Movement } from '@vod/shared';
 
 // A discriminated union rather than nullable fields: "reachable tiles with no
-// selected unit" was representable and meaningless. Phase 6 adds a
-// `destinationChosen` member, phase 7 `choosingTarget` -- members, not
+// selected unit" was representable and meaningless. Phase 7 adds a
+// `destinationChosen` member, phase 8 `choosingTarget` -- members, not
 // conversions.
 //
 // Everything on the selected member is a snapshot taken at selection time --
@@ -43,7 +43,8 @@ function trySelect(state: GameState, coordinate: Coordinate): SelectionState {
     unitId: unit.id,
     position: unit.position,
     // The whole search, not just its tiles: `pathTo` builds the path a move
-    // command carries, and 6e's route preview reads it again on hover.
+    // command carries, and the renderer reads it again to draw the route
+    // under the pointer.
     movement: exploreMovement(state, unit, movementRange, movementType),
   };
 }

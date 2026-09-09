@@ -31,13 +31,13 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     id: 'cavalry',
     name: 'Cavalry',
     movementType: 'horse',
-    movementRange: 6,
+    movementRange: 5,
   },
   artillery: {
     id: 'artillery',
     name: 'Artillery',
     movementType: 'wheels',
-    movementRange: 4,
+    movementRange: 3,
   },
 };
 

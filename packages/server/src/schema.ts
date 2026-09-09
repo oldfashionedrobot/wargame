@@ -37,7 +37,7 @@ export const Resolutions = sqliteTable(
       .references(() => Matches.id, { onDelete: 'cascade' }),
     seq: integer('seq').notNull(),
     // Promoted out of the action blob: the one field of an action worth
-    // filtering on, and the only record of who did something once phase 9
+    // filtering on, and the only record of who did something once phase 10
     // makes that mean anything.
     actor: text('actor').$type<PlayerId>().notNull(),
     // An audit record, not something to act on. Events are the business data;

@@ -10,7 +10,7 @@ import type { MoveAction } from './action';
  *
  * Three questions, deliberately separate: does the unit exist, may it act at
  * all, and is the route it was given walkable. `validatePath` answers only
- * the last, which is what keeps it composable -- 7d asks the same question
+ * the last, which is what keeps it composable -- 8d asks the same question
  * before an attack.
  */
 export function validateMove(state: GameState, command: MoveCommand): string | null {
