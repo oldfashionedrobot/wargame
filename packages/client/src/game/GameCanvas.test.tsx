@@ -152,7 +152,9 @@ describe('GameCanvas', () => {
     await renderCanvas(fakeServer());
     expect(renderer.onTileClick).toHaveBeenCalled();
 
-    clickTile({ col: 1, row: 1 }); // the unit's own tile
+    // Selection is React state now, so the projection lands on the effect that
+    // follows the commit rather than inside the click.
+    await act(async () => clickTile({ col: 1, row: 1 })); // the unit's own tile
     expect(renderer.setSelectedTile).toHaveBeenLastCalledWith({ col: 1, row: 1 });
     // The whole search is handed over, so the renderer can draw a route on
     // hover without asking React for anything.
@@ -161,10 +163,23 @@ describe('GameCanvas', () => {
     expect(typeof movement?.pathTo).toBe('function');
   });
 
+  // The point of registering a stable wrapper: clickTile's identity changes
+  // with every selection, and the renderer must not be torn down and rebuilt
+  // each time one does.
+  it('does not rebuild the renderer when the selection changes', async () => {
+    await renderCanvas(fakeServer());
+    await act(async () => clickTile({ col: 1, row: 1 }));
+    await act(async () => clickTile({ col: 1, row: 1 }));
+    await act(async () => clickTile({ col: 1, row: 1 }));
+
+    expect(createGameRenderer).toHaveBeenCalledTimes(1);
+    expect(renderer.dispose).not.toHaveBeenCalled();
+  });
+
   it('clears the overlays when the selection is dropped', async () => {
     await renderCanvas(fakeServer());
-    clickTile({ col: 1, row: 1 }); // select
-    clickTile({ col: 1, row: 1 }); // click it again to deselect
+    await act(async () => clickTile({ col: 1, row: 1 })); // select
+    await act(async () => clickTile({ col: 1, row: 1 })); // click again to deselect
     expect(renderer.setSelectedTile).toHaveBeenLastCalledWith(null);
     expect(renderer.setMovement).toHaveBeenLastCalledWith(null);
   });

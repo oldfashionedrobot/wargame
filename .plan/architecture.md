@@ -365,9 +365,14 @@ for: `notFound` offers a link back and no retry, `unreachable` offers a working
 Retry that re-runs the connect.
 
 **`game/useGameSession.ts`** — the session: render replica, rejection state,
-in-flight guard, selection, and submits. Takes `onSelectionChange`, `onEvents`
-and `onSnap` callbacks held in a latest-ref, so the subscription depends on
-`server` alone.
+in-flight guard, selection, and submits. Takes `onEvents` and `onSnap` callbacks
+held in a latest-ref, so the subscription depends on `server` alone.
+
+Selection is React state and is **returned** rather than pushed through a
+callback, so it has one copy: whoever renders it and whoever reads it to compute
+the next click see the same value. `pendingRef` stays a ref — it is a mutex
+against a second submit landing before the first resolves, and has to be
+synchronously current rather than rendered.
 
 Every update runs through a serial promise queue:
 
@@ -402,8 +407,17 @@ command carries.
 **`game/GameCanvas.tsx`** — the canvas ref, the renderer lifecycle, and the
 chrome around it: the turn label, End Turn, the rejection reason, the
 reconnecting banner, and a Toggle Inspector button under an
-`import.meta.env.DEV` guard. Its three callbacks read the renderer ref at call
-time.
+`import.meta.env.DEV` guard. Its two callbacks read the renderer ref at call
+time, so a queue task resolving after unmount finds `null` rather than a disposed
+renderer.
+
+Selection reaches the renderer as a projection: an effect keyed on it calls
+`showSelection`. The tile-click handler, by contrast, is registered **once**, as
+a stable wrapper over a latest-ref — `clickTile` changes identity with every
+selection, and re-registering it would mean putting it in the construction
+effect's dependencies and rebuilding the scene on every click. Registration
+cannot be its own effect either: construction is async, so such an effect would
+run while the renderer ref is still `null` and nothing would re-run it.
 
 ## Rendering
 

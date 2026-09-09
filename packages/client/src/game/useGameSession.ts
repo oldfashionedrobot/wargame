@@ -17,8 +17,6 @@ import type { SelectionState } from './interaction/selection';
 // so the hook never learns what Babylon is.
 
 export interface GameSessionCallbacks {
-  /** The selection changed -- push it to whatever displays it. */
-  onSelectionChange: (selection: SelectionState) => void;
   /**
    * The authority decided these happened -- animate them, in order. The
    * state they produced commits only once the returned promise settles.
@@ -70,6 +68,12 @@ export interface GameSession {
   gameState: GameState;
   /** Why the last command was refused; cleared by the next server update. */
   rejection: string | null;
+  /**
+   * What is selected, and the movement snapshot taken when it was. React state
+   * rather than a ref: the confirmation menu renders off it, and a second copy
+   * held for callbacks is a second thing that can be wrong.
+   */
+  selection: SelectionState;
   clickTile: (coordinate: Coordinate) => void;
   endTurn: () => void;
 }
@@ -77,7 +81,7 @@ export interface GameSession {
 export function useGameSession(server: GameServer, callbacks: GameSessionCallbacks): GameSession {
   const [gameState, setGameState] = useState<GameState>(() => server.getState());
   const [rejection, setRejection] = useState<string | null>(null);
-  const selectionRef = useRef<SelectionState>(initialSelectionState);
+  const [selection, setSelection] = useState<SelectionState>(initialSelectionState);
   // A command is a round trip, so a second click can land before the first
   // resolves. Both would read the same state and submit against it; the
   // server rejects the loser, but the UI would already have moved on.
@@ -92,14 +96,6 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     callbacksRef.current = callbacks;
   });
 
-  // The one write path for the selection: set the ref, push it out. Keeping
-  // the pair in one place is what stops a call site from setting the ref and
-  // forgetting the push, which desyncs the highlight silently.
-  const applySelection = useCallback((next: SelectionState): void => {
-    selectionRef.current = next;
-    callbacksRef.current.onSelectionChange(next);
-  }, []);
-
   /**
    * Submits a command and moves the selection optimistically, rolling the
    * selection back if the authority refuses.
@@ -113,9 +109,11 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     async (command: Command, nextSelection: SelectionState): Promise<void> => {
       if (pendingRef.current) return;
 
-      const previousSelection = selectionRef.current;
+      // The selection this render closed over is by definition the one to
+      // restore if the authority refuses.
+      const previousSelection = selection;
       pendingRef.current = true;
-      applySelection(nextSelection);
+      setSelection(nextSelection);
 
       // Written against the interface, not the implementation: the real
       // GameServer never rejects (it maps transport failures to ok: false),
@@ -136,9 +134,9 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       if (response.ok) return;
 
       setRejection(response.reason);
-      applySelection(previousSelection);
+      setSelection(previousSelection);
     },
-    [server, applySelection],
+    [server, selection],
   );
 
   // Batches run in arrival order, one at a time: a poll can deliver batch
@@ -185,22 +183,22 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
 
       // The authoritative board, not the replica (invariant 1) -- the replica
       // is in scope and tempting, and a beat old.
-      const result = handleTileClick(server.getState(), selectionRef.current, coordinate);
+      const result = handleTileClick(server.getState(), selection, coordinate);
 
       // Selection-only clicks are pure UI and commit immediately; anything
       // carrying a command goes through submitCommand so it can be undone.
       if (!result.command) {
-        applySelection(result.selection);
+        setSelection(result.selection);
         return;
       }
       void submitCommand(result.command, result.selection);
     },
-    [server, submitCommand, applySelection],
+    [server, selection, submitCommand],
   );
 
   const endTurn = useCallback((): void => {
     void submitCommand({ type: 'endTurn' }, initialSelectionState);
   }, [submitCommand]);
 
-  return { gameState, rejection, clickTile, endTurn };
+  return { gameState, rejection, selection, clickTile, endTurn };
 }

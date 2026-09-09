@@ -28,13 +28,8 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   const rendererRef = useRef<GameRenderer | null>(null);
 
   // Both callbacks read the ref at call time, never capture the renderer: a
-  // submit can resolve after this canvas unmounted, and its rollback push must
-  // find null rather than a disposed renderer.
-  const onSelectionChange = useCallback((selection: SelectionState): void => {
-    const renderer = rendererRef.current;
-    if (renderer) showSelection(renderer, selection);
-  }, []);
-
+  // queue task parked on an animation resolves after this canvas unmounted, and
+  // must find null rather than a disposed renderer. Tested by mutation.
   const onEvents = useCallback(
     (events: GameEvent[]): Promise<void> =>
       rendererRef.current?.playEvents(events) ?? Promise.resolve(),
@@ -45,10 +40,20 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
     rendererRef.current?.snapUnits(state);
   }, []);
 
-  const { gameState, rejection, clickTile, endTurn } = useGameSession(server, {
-    onSelectionChange,
+  const { gameState, rejection, selection, clickTile, endTurn } = useGameSession(server, {
     onEvents,
     onSnap,
+  });
+
+  // `clickTile` changes identity whenever the selection does, and the renderer
+  // is registered with it exactly once. A stable wrapper over a latest-ref
+  // keeps the registered function fixed, so a click never rebuilds the scene.
+  // Splitting registration into its own effect does not work: construction is
+  // async, so that effect would run while the ref is still null and nothing
+  // would re-run it when the renderer arrives.
+  const clickTileRef = useRef(clickTile);
+  useEffect(() => {
+    clickTileRef.current = clickTile;
   });
 
   // Construction is async because unit models are loaded before any unit
@@ -67,7 +72,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
         return;
       }
       rendererRef.current = renderer;
-      renderer.onTileClick(clickTile);
+      renderer.onTileClick((coordinate) => clickTileRef.current(coordinate));
     });
 
     return () => {
@@ -75,7 +80,16 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
       rendererRef.current?.dispose();
       rendererRef.current = null;
     };
-  }, [server, clickTile]);
+  }, [server]);
+
+  // Selection reaches the renderer as a projection of state rather than a
+  // callback, which is what lets the hook stop knowing anything about it.
+  // Nothing to draw before the renderer exists: a selection can only come from
+  // a click, and clicks arrive through the renderer.
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (renderer) showSelection(renderer, selection);
+  }, [selection]);
 
   return (
     <div>

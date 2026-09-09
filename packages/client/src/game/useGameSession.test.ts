@@ -85,7 +85,6 @@ function fakeServer(initial: GameState): FakeServer {
 
 function callbacks(): GameSessionCallbacks {
   return {
-    onSelectionChange: vi.fn(),
     onEvents: vi.fn(() => Promise.resolve()),
     onSnap: vi.fn(),
   };
@@ -300,9 +299,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, cb);
 
     act(() => result.current.clickTile(at(1, 1)));
-    expect(cb.onSelectionChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ phase: 'unitSelected', unitId: 'b1' }),
-    );
+    expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
 
     fake.respond({ ok: true, seq: 1, events: [], state: board });
     await act(async () => result.current.clickTile(at(1, 3)));
@@ -310,7 +307,7 @@ describe('useGameSession', () => {
       { type: 'move', unitId: 'b1', path: route(at(1, 1), at(1, 3)) },
     ]);
     // Cleared the moment the command left, not when the server answered.
-    expect(cb.onSelectionChange).toHaveBeenLastCalledWith({ phase: 'idle' });
+    expect(result.current.selection).toEqual({ phase: 'idle' });
   });
 
   // Invariant 1, and the one place it can be observed: the replica lags on
@@ -335,9 +332,7 @@ describe('useGameSession', () => {
     // Clicking the unit where the *authority* has it must select it. Reading
     // the replica would find an empty tile there and select nothing.
     act(() => result.current.clickTile(at(1, 3)));
-    expect(cb.onSelectionChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ phase: 'unitSelected', unitId: 'b1' }),
-    );
+    expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
 
     await act(async () => finishAnimating());
   });
@@ -353,9 +348,7 @@ describe('useGameSession', () => {
 
     expect(result.current.rejection).toBe('illegal move');
     // The rollback restored the selection it cleared optimistically.
-    expect(cb.onSelectionChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ phase: 'unitSelected', unitId: 'b1' }),
-    );
+    expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
   });
 
   it('clears the rejection on the next server update', async () => {
@@ -416,10 +409,10 @@ describe('useGameSession', () => {
     fake.respond(new Promise<CommandResult>((res) => (release = res)));
 
     await act(async () => result.current.clickTile(at(1, 3))); // in flight now
-    const pushes = vi.mocked(cb.onSelectionChange).mock.calls.length;
+    const during = result.current.selection;
     act(() => result.current.clickTile(at(1, 1))); // swallowed by the guard
     expect(fake.submissions).toHaveLength(1);
-    expect(cb.onSelectionChange).toHaveBeenCalledTimes(pushes);
+    expect(result.current.selection).toBe(during);
 
     release({ ok: true, seq: 1, events: [], state: board });
     await act(async () => {});
@@ -434,6 +427,6 @@ describe('useGameSession', () => {
     fake.respond({ ok: true, seq: 1, events: [], state: board });
     await act(async () => result.current.endTurn());
     expect(fake.submissions).toEqual([{ type: 'endTurn' }]);
-    expect(cb.onSelectionChange).toHaveBeenLastCalledWith({ phase: 'idle' });
+    expect(result.current.selection).toEqual({ phase: 'idle' });
   });
 });
