@@ -475,8 +475,8 @@ The client has no configuration.
 
 ## Testing
 
-274 tests: 130 in `shared/`, 64 in `server/`, 80 in `client/`. `bun test` runs
-the first two, Vitest the third; the root `test` script runs both.
+Every package is tested. `bun test` runs `shared` and `server`, Vitest runs
+`client`, and the root `test` script runs both.
 
 - Server tests use `:memory:`. `match.test.ts` takes a fresh database per test;
   `http.test.ts` holds one server for the file and isolates per match.
@@ -496,7 +496,7 @@ the first two, Vitest the third; the root `test` script runs both.
   loads: `GameCanvas` covers the chrome, the renderer lifecycle and the tile
   click; `MatchRoute` covers both failure branches, Retry, and disposal
   including a connection that resolves after teardown; `StartScreen` covers
-  its four states and create-and-navigate.
+  each of its states and create-and-navigate.
 
 **Not covered:** the renderer itself, which is WebGL — a browser is its only
 check, and the `/run-app` skill drives the app headlessly for that. `App.tsx` is
