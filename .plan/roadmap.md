@@ -320,14 +320,38 @@ and `snapUnits` drops it, since it is already writing authoritative positions
 over everything. No third "commit" verb: authority ending the preview *is* the
 commit.
 
-⚠️ **The preview cannot be a projection of `SelectionState`.** This is the part
-that looks wrong and is not. Leaving `destinationChosen` means opposite things to
-the mesh depending on *why*: on confirm the selection clears and the mesh must
-**stay** at the destination for the server's events to land on; on cancel, and on
-a foreign update, it must **return**. One transition, two behaviours — so
-`showSelection` handles highlights and overlays only, and the two preview verbs
-are called imperatively from the three places that know the reason: pin, Cancel,
-and a rejected submit.
+⚠️ **The preview cannot be a projection of `SelectionState`.** Leaving
+`destinationChosen` means opposite things to the mesh depending on *why*: on
+confirm the mesh must **stay** at the destination for the server's events to land
+on; on cancel, and on a foreign update, it must **return**. One transition, two
+behaviours — so `showSelection` handles highlights and overlays only, and never
+touches the mesh.
+
+The preview is driven by one callback instead, `onPreview(next | null)`, which
+`GameCanvas` maps to the two verbs. It is called at three sites, and the two
+silences are the design:
+
+| | selection goes to | `onPreview` |
+|---|---|---|
+| **Pin** a destination | `destinationChosen` | `{ unitId, path }` |
+| **Cancel** | `unitSelected` | `null` |
+| **Rejected** submit | `unitSelected` | `null` |
+| **Confirm** | `idle` | *nothing* |
+| **Foreign update** | `unitSelected` | *nothing* |
+
+Confirm and foreign-update say nothing because **authority is about to overwrite
+the mesh regardless** — `snapUnits` writes the real position and drops the record
+either way. The correction the renderer already performs is the instruction, which
+is why there is no third verb. `unitSelected` is reconstructed from the pinned
+member: `position` is `path[0]` and `movement` is carried.
+
+`cancelPreview` stops any running animation before restoring, the same way
+`snapUnits` does — otherwise a Cancel mid-walk leaves the tween writing positions
+over the restore.
+
+The foreign-update pin-drop belongs **inside the queue task, beside `onSnap`**,
+not in the subscribe handler next to `setRejection(null)`. Outside it, the menu
+would vanish while the ghost kept standing until the queue drained.
 
 ⚠️ **The submit would otherwise re-animate a move already shown.** After a
 confirm, the server's `unitMoved` arrives and `playEvents` would animate a mesh
@@ -378,8 +402,11 @@ dependencies — so a `clickTile` that depended on selection would rebuild the
 whole Babylon scene on every click. `onTileClick` is an idempotent setter, so
 splitting that into two effects removes the constraint, selection becomes plain
 React state with one copy, and **`onSelectionChange` disappears** — `GameCanvas`
-projects selection to the renderer in an effect instead. The hook's callback
-surface drops from three to two.
+projects selection to the renderer in an effect instead.
+
+The callback surface stays at three rather than shrinking: `onSelectionChange`
+goes and `onPreview` arrives. What this buys is one source of truth for selection
+and a renderer that is no longer rebuilt by a changing handler identity.
 
 `pendingRef` stays a ref. It is a mutex against double-submit and has to be
 synchronously current; it is not rendered state.
