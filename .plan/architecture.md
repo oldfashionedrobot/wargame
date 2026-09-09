@@ -86,7 +86,7 @@ Run from the repo root. All exit non-zero on failure.
 | `bun run typecheck` | `tsc -b` — use `bunx tsc -b --force` for a real check, since `.tsbuildinfo` can report stale |
 | `bun run lint` | ESLint across the repo |
 | `bun run build` | `tsc -b`, then bundle and compress the client |
-| `bun run format` / `format:check` | Prettier (Markdown is excluded) |
+| `bun run format` / `format:check` | Prettier (Markdown and exported glTF are excluded) |
 | `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
 | `bun run preview` | `vite preview` — the built client with no `/api` proxy, so it reaches no match |
 | `bun run --filter '@vod/server' start` | The production shape: one process serving the API and `dist` together |
@@ -475,7 +475,7 @@ The client has no configuration.
 
 ## Testing
 
-254 tests: 126 in `shared/`, 49 in `server/`, 79 in `client/`. `bun test` runs
+274 tests: 130 in `shared/`, 64 in `server/`, 80 in `client/`. `bun test` runs
 the first two, Vitest the third; the root `test` script runs both.
 
 - Server tests use `:memory:`. `match.test.ts` takes a fresh database per test;
