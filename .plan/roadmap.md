@@ -242,8 +242,17 @@ where the placeholder cylinder stands.
 - Needs `@babylonjs/loaders`, the first Babylon package beyond core and the
   inspector. Keep the per-file import discipline the rest of the renderer uses.
 - Load each model once and clone per unit.
-- The long axis is X on all three, so model-forward is one fixed offset folded
-  into `FACING_ROTATION`, not a per-model field.
+- ⚠️ **These do not use the glTF convention.** The spec says a model's front
+  faces `+Z`; all three of these are long in X and near-symmetric in Z, so
+  forward is along `±X`. Which way, and whether all three agree, is **not
+  established** — the vertex distributions along X don't obviously line up with
+  each other. Render one and look before deciding whether the correction is a
+  single constant or a per-model field.
+- ⚠️ **Handedness before rotation.** Babylon's scene is left-handed, glTF is
+  right-handed, so the loader inserts a `__root__` node carrying the conversion.
+  Reparenting the child mesh away from it drops the conversion and mirrors the
+  model — which on a near-symmetric mesh reads as "facing backwards" rather than
+  as anything obviously broken.
 - Re-check movement by eye afterwards. These models are the first thing to make
   unit *type* visible on the board, so a cavalry that paths like infantry
   becomes noticeable here for the first time.
