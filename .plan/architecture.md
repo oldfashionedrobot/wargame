@@ -32,33 +32,34 @@ point at TypeScript source, which bun runs natively and Vite compiles:
 `server` has no barrel and no `exports`; `src/http.ts` is an entry point that
 gets run. Nothing imports `server`.
 
+Where things live. What a module exports is its own business — open the file
+rather than look for a list here.
+
 ```
 packages/
   shared/src/
-    types.ts          Coordinate · Facing · Player · Unit · GameState · Command · GameEvent
-    coordinate.ts     coordinatesEqual · coordinateKey · isWithinGrid · directionBetween
-    queries.ts        getUnit · getUnitAt · getTileAt · getCurrentPlayer
-    legality.ts       canSelectUnit
-    movement.ts       exploreMovement · validatePath · entryCost (private)
-    terrainGrid.ts    parseTerrainGrid
-    action.ts         validateCommand · resolveAction · the Action brand
-    move.ts           validateMove · resolveMove
-    endTurn.ts        validateEndTurn · resolveEndTurn
-    applyEvents.ts    applyEvents
-    protocol.ts       GameServer · CommandResult · wire shapes · parseCommand
-    testing.ts        makeState · route · unitAt
+    types.ts          every shared type: coordinates, units, state, commands, events
+    coordinate.ts     grid arithmetic and directions
+    queries.ts        lookups over a GameState
+    legality.ts       what may be selected
+    movement.ts       the search, the path check, and the cost model both call
+    terrainGrid.ts    character rows into a tile grid
+    action.ts         command validation and resolution, and the Action brand
+    move.ts           the move command
+    endTurn.ts        the end-turn command
+    applyEvents.ts    the event fold
+    protocol.ts       the GameServer interface, the wire shapes, and parsing
+    testing.ts        fixtures, imported by tests only
     index.ts          the barrel
-    data/
-      unitTypes.ts    UNIT_TYPES · getUnitType
-      terrain.ts      TileType · TERRAIN · getTerrain
+    data/             the static content tables — unit types and terrain
   server/
     src/
       http.ts         createServer() — Bun.serve routes, /api/* plus the client build
-      match.ts        MatchStore: create · list · snapshot · since · submit
+      match.ts        MatchStore — the only reader and writer of matches
       db.ts           libSQL client + Drizzle, pragmas, migrations at boot
       schema.ts       matches · resolutions, typed from shared
-      matchState.ts   createMatchState(map) — instantiates a map into a board
-      maps/           classic.ts · index.ts (registry) · types.ts (GameMap)
+      matchState.ts   instantiates a map into the board a match starts from
+      maps/           the map registry, and the maps themselves
       const.ts        env-derived defaults
     drizzle.config.ts drizzle-kit config; imports DEFAULT_DB_URL from const.ts
     drizzle/          generated migrations, committed
@@ -67,12 +68,11 @@ packages/
     index.html  vite.config.ts  public/  scripts/compressDist.ts
     src/
       main.tsx · App.tsx · index.css · test-setup.ts
-      routes/     StartScreen.tsx · MatchRoute.tsx
-      net/        api.ts · gameServer.ts
-      game/       useGameSession.ts · GameCanvas.tsx
-        interaction/  selection.ts
-        render/       renderer.ts · terrain.ts · units.ts · highlight.ts
-                      tileOverlay.ts · gridLines.ts · picking.ts · coordinates.ts
+      routes/     the two screens
+      net/        the HTTP client and the polling GameServer
+      game/       the session hook and the canvas component
+        interaction/  click handling, pure
+        render/       everything Babylon touches
 ```
 
 ## Commands
@@ -179,28 +179,17 @@ was — turning on the spot is an action, not a side effect of one.
 ## Content — `shared/src/data/`
 
 Static tables keyed by `Record`, so adding a member makes every incomplete table
-a compile error.
+a compile error. **The values are the modules' — read them there.** Both are
+short, and a copy here would be a second set of numbers to tune.
 
-**`unitTypes.ts`** — `{ id, name, movementType, movementRange }`:
+**`unitTypes.ts`** — `{ id, name, movementType, movementRange }` per type.
+`movementType` is `foot`, `horse` or `wheels`, and picks a column out of the
+terrain cost table; `movementRange` is the budget that column is spent against.
 
-| Unit | Movement type | Range |
-|---|---|---|
-| Infantry | `foot` | 3 |
-| Cavalry | `horse` | 6 |
-| Artillery | `wheels` | 4 |
-
-**`terrain.ts`** — `{ char, defense, cost }` per terrain. `char` is the map
-symbol; `defense` is stars of cover and is not read by anything yet; `cost` is
-movement points to *enter*, and `null` is impassable.
-
-| Terrain | char | defense | foot | horse | wheels |
-|---|---|---|---|---|---|
-| road | `-` | 0 | 1 | 1 | 1 |
-| bridge | `=` | 0 | 1 | 1 | 1 |
-| plains | `.` | 1 | 1 | 1 | 2 |
-| forest | `f` | 2 | 1 | 2 | 3 |
-| mountain | `^` | 4 | 2 | — | — |
-| river | `~` | 0 | 2 | — | — |
+**`terrain.ts`** — `{ char, defense, cost }` per terrain. `char` is the symbol a
+map is drawn with; `defense` is stars of cover, read by nothing yet; `cost` is
+movement points to *enter*, one per movement type, with `null` for impassable —
+which is what makes a river a wall to wheels and a toll to boots.
 
 `getUnitType` and `getTerrain` throw on an unknown id.
 

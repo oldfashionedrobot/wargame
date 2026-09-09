@@ -66,7 +66,7 @@ Run from the repo root. All exit non-zero on failure.
 | `bun run typecheck` | `tsc -b` across the packages |
 | `bun run lint` | ESLint across the repo |
 | `bun run build` | Typecheck, then bundle and compress the client |
-| `bun run format` / `format:check` | Prettier (Markdown is excluded) |
+| `bun run format` / `format:check` | Prettier (Markdown and exported glTF are excluded) |
 | `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
 | `bun run preview` | `vite preview` — serves the built client with **no `/api` proxy**, so it cannot reach a match. To exercise a real build, run the server (`bun run --filter '@vod/server' start`), which serves `dist` itself |
 
