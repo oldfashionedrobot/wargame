@@ -242,12 +242,9 @@ where the placeholder cylinder stands.
 - Needs `@babylonjs/loaders`, the first Babylon package beyond core and the
   inspector. Keep the per-file import discipline the rest of the renderer uses.
 - Load each model once and clone per unit.
-- ⚠️ **These do not use the glTF convention.** The spec says a model's front
-  faces `+Z`; all three of these are long in X and near-symmetric in Z, so
-  forward is along `±X`. Which way, and whether all three agree, is **not
-  established** — the vertex distributions along X don't obviously line up with
-  each other. Render one and look before deciding whether the correction is a
-  single constant or a per-model field.
+- **They face `+Z`**, the glTF convention, which is also the direction
+  `FACING_ROTATION` already calls north (`col→x`, `row→z`, both increasing).
+  So model-forward needs no correction and no per-model field.
 - ⚠️ **Handedness before rotation.** Babylon's scene is left-handed, glTF is
   right-handed, so the loader inserts a `__root__` node carrying the conversion.
   Reparenting the child mesh away from it drops the conversion and mirrors the
