@@ -37,7 +37,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     id: 'artillery',
     name: 'Artillery',
     movementType: 'wheels',
-    movementRange: 3,
+    movementRange: 4,
   },
 };
 
