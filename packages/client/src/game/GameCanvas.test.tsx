@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import type { Coordinate, GameServer, GameState } from '@vod/shared';
+import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
 import type { ConnectionStatus } from '../net/gameServer';
 import { makeState } from '@vod/shared/testing';
 import { GameCanvas } from './GameCanvas';
@@ -109,6 +109,45 @@ describe('GameCanvas', () => {
 
   // The click handler is registered with the renderer, so a tile click has to
   // reach the session through it rather than through any React event.
+  // The renderer ref is nulled on unmount, and that is load-bearing rather than
+  // tidiness: a queue task parked on an animation resolves after teardown and
+  // then calls onSnap, which would otherwise reach a disposed scene.
+  it('does not touch a disposed renderer when a batch lands after unmount', async () => {
+    let push!: (events: GameEvent[], state: GameState) => void;
+    const server = fakeServer({
+      subscribe: vi.fn((onUpdate) => {
+        push = onUpdate;
+        return () => {};
+      }),
+    });
+    const { unmount } = await renderCanvas(server);
+
+    let finish!: () => void;
+    vi.mocked(renderer.playEvents).mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+
+    const moved: GameEvent = {
+      type: 'unitMoved',
+      unitId: 'b1',
+      path: [
+        { col: 1, row: 1 },
+        { col: 1, row: 2 },
+      ],
+    };
+    await act(async () => push([moved], board)); // the task parks on playEvents
+    unmount();
+    vi.mocked(renderer.snapUnits).mockClear();
+
+    await act(async () => {
+      finish();
+      await Promise.resolve();
+    });
+    expect(renderer.snapUnits).not.toHaveBeenCalled();
+  });
+
   it('routes a tile click into a selection push', async () => {
     await renderCanvas(fakeServer());
     expect(renderer.onTileClick).toHaveBeenCalled();
