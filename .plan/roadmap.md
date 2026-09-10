@@ -243,8 +243,16 @@ because it is WebGL, but a mask table is exactly the sort of thing that is
 subtly wrong in one corner of one map and impossible to spot by eye.
 
 ```ts
-composeTerrain(grid: TileType[][]) → { ground: number; overlay?: number }[][]
+neighbourMask(grid, col, row, family)  → 0..15
+composeTerrain(grid: TileType[][])     → { ground: number; overlay?: number }[][]
 ```
+
+**Computing the mask is split from choosing the sprite**, because the two fail
+differently and one must not hide the other. The mask is where an orientation
+bug lives, and it is testable in bit values with no sprite index in sight — *"a
+water cell in a horizontal band has bit 4 clear"* — a test that survives
+swapping tilesets. The table is where index bugs live, and those are tested by
+asserting numbers.
 
 **Roads, bridges and water are chosen by a 4-bit neighbour mask** — `N=1, E=2,
 S=4, W=8`, set when the neighbour is the same family. The sixteen values are the
@@ -258,18 +266,33 @@ being *exactly sixteen tiles* is the tell that the art was drawn for this.
 - **Bridge orientation falls out of the same mask**: `5` (road N and S) → `166`,
   `10` (road E and W) → `130`.
 
-⚠️ **Two rules the mask alone cannot express.**
+⚠️ **Two rules the mask alone cannot express, and they are different in kind.**
 
-**Inner corners.** A water cell with water on all four sides but *land on a
-diagonal* is mask `15`, yet wants a land nub in that corner. So when the mask is
-`15`, check the four diagonals: exactly one land diagonal picks that corner's
-tile. Two or more has no art in this pack — fall back to open water and accept
-it.
+**Inner corners are a refinement, not an exception.** A water cell with water on
+all four sides but *land on a diagonal* is mask `15`, yet wants a land nub. The
+cell has everything it needs — it is looking at eight neighbours rather than
+four — so this lives **inside the water lookup**: when the mask is `15`, check
+the diagonals, and exactly one land diagonal picks that corner's tile. Two or
+more has no art in this pack; fall back to open water. Pulling it into a later
+pass would only mean recomputing the mask to find out the cell was `15`.
 
-**The east–west bridge overhangs.** Its deck is drawn a tile and a half tall, so
-the water cell *south of* an east–west bridge renders as `148` rather than as
-its masked water tile. `classic.ts` runs its road north–south, so this case never
-fires on the only map that exists — it needs a test rather than a look.
+**The east–west bridge overhang is a genuine second pass.** Its deck is drawn a
+tile and a half tall, so the water cell *south of* one renders as `148` — a
+*water* cell's sprite decided by a *bridge* cell's orientation, which is a
+neighbour's decision reaching in. So:
+
+```ts
+const base = mapGrid(grid, (_, col, row) => baseCell(grid, col, row));
+return mapGrid(base, (cell, col, row) => bridgeSkirt(grid, col, row) ?? cell);
+```
+
+Pure, no mutation, and the override is one named function returning `null` for
+nearly every cell. It carries an implicit precedence — the skirt beats the water
+mask, and nothing may then beat the skirt — worth writing down now rather than
+discovering it when a second override wants the same cell.
+
+`classic.ts` runs its road north–south, so the skirt never fires on the only map
+that exists. It needs a test rather than a look.
 
 Grass picks among `0/1/2` by a **deterministic hash of the coordinate**, weighted
 (roughly 70/20/10). Deterministic because the alternative reshuffles the field
