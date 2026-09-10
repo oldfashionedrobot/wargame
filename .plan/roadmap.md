@@ -227,6 +227,9 @@ shipped as individual PNGs and as `tilemap_packed.png` (288×176, no padding) an
 `tilemap.png` (1px gaps). Indices below are row-major over 18 columns, which is
 how the individual files are numbered.
 
+The packed sheet is in the repo as `public/textures/terrain-atlas.png`, beside
+Kenney's licence, and served by URL the way `public/models/` already is.
+
 | | |
 |---|---|
 | grass | `0` plain · `1` tufts · `2` flowers |
