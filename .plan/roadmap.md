@@ -301,10 +301,17 @@ Grass picks among `0/1/2` by a **deterministic hash of the coordinate**, weighte
 (roughly 70/20/10). Deterministic because the alternative reshuffles the field
 every time the mesh rebuilds.
 
-⚠️ **Orientation is the easy thing to get backwards.** `row` increases north and
-`tileToWorld` maps row to +z, so a sprite's top edge must point north or every
-shoreline comes out mirrored. Worth a test that puts water along the bottom row
-only and asserts a *south* edge.
+⚠️ **There are two independent flips, and each can be wrong.** `row` increases
+north and `tileToWorld` maps row to +z, so a sprite's top edge must point north;
+and `Texture`'s `invertY` decides whether `v = 0` is the top or the bottom of the
+PNG, while sheets are indexed from the top. One wrong mirrors every shoreline.
+*Both* wrong looks right again, for the wrong reason, which is the case that
+costs a day.
+
+Settle it with a **digit**. Tiles `180-189` are the numerals, so drawing `184`
+on every cell answers both axes at once and unambiguously: a readable "4" means
+both are right, and upside down or mirrored says exactly which is not. Grass
+cannot answer this — it is uniform, and renders identically under either flip.
 
 #### The mesh
 
@@ -326,8 +333,16 @@ only and asserts a *south* edge.
 
 #### Steps
 
-- **7.5a** The atlas and UV plumbing, with every tile drawn as grass. Proves
-  sampling, bleeding and orientation before any mask logic exists.
+- **7.5a** The atlas, UV plumbing, and **a digit on every tile** — nearest
+  sampling, no bleeding, both flips settled, before any mask logic exists.
+  `TILE_COLORS` goes with it: keeping flat colours as a fallback would let a
+  failed atlas load render a plausible board rather than an obviously broken
+  one. Grid lines stay for now and get judged against real tiles.
+
+  ⬜ Watch the lighting. The hemispheric light will shade the ground, so the
+  tiles will not match the source art exactly. If that reads badly, the fix is
+  `emissiveTexture` with `disableLighting`, which is how flat pixel art usually
+  wants to be drawn — but it is worth looking at before deciding.
 - **7.5b** `composeTerrain` and the mask tables: roads, bridges, water, inner
   corners. The bulk of the work, and all of it testable.
 
