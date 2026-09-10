@@ -17,6 +17,7 @@ import { createTileHighlight, setHighlightTile } from './highlight';
 import { createTileOverlay } from './tileOverlay';
 import { screenToTile } from './picking';
 import { createTerrainMesh } from './terrain';
+import { loadTerrainAtlas } from './terrainAtlas';
 import { animateUnitAlongPath, createUnitMesh, getUnitFacing, setUnitFacing } from './units';
 import { loadUnitModels } from './unitModels';
 
@@ -135,7 +136,10 @@ export async function createGameRenderer(
   const light = new HemisphericLight('light', new Vector3(0, 1, 0.3), scene);
   light.intensity = 0.9;
 
-  createTerrainMesh(scene, initialState.grid);
+  // Awaited alongside the unit models: a board that pops from untextured to
+  // textured is a frame nobody needs to see.
+  const atlas = await loadTerrainAtlas(scene);
+  createTerrainMesh(scene, initialState.grid, atlas);
   createGridLines(scene, gridWidth, gridHeight);
   const hoverHighlight = createTileHighlight(scene, 'hover-highlight', HOVER_COLOR, HOVER_ALPHA);
   const selectedHighlight = createTileHighlight(

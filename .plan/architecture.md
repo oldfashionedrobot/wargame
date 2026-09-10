@@ -511,8 +511,14 @@ cancelPreview()           toggleInspector()          dispose()
   resize; the `resize` listener is removed in `dispose()`.
 - **Tile lookup is math, not mesh-picking** — `screenToTile` intersects a camera
   ray with the `y = 0` plane, so terrain must stay flat.
-- Terrain is one merged mesh, vertex-coloured per tile from a
-  `Record<TileType, Color4>`. Grid lines are a `LineSystem`. Two
+- Terrain is one merged mesh, UV-mapped per tile into a 16px sprite atlas
+  (`public/textures/terrain-atlas.png`, 18×11, no padding) loaded with nearest
+  sampling and no mipmaps. `terrainAtlas.ts` owns the UV arithmetic and the
+  load; `invertY` is off, so the sheet sits as it does on disk and `v = 0` is
+  its top row. Half a texel is inset off every edge, since a UV landing exactly
+  on a boundary can round into a neighbour the unpadded sheet cannot spare.
+  ⬜ Which atlas index a tile gets is not decided yet — every cell currently
+  draws one probe tile pending the autotiler. Grid lines are a `LineSystem`. Two
   `createTileOverlay` meshes draw the reachable range and the route through it,
   at different heights so the route reads on top.
 - A highlight follows the pointer, moved from `POINTERMOVE` inside the
