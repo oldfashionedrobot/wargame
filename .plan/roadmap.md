@@ -210,6 +210,101 @@ option, and both cost a few lines against a table's seeding machinery.
 
 ## Remaining phases
 
+### 7.5 — Tile textures
+
+A detour, not a phase: terrain stops being six flat colours and starts being
+pixel art. Nothing outside the renderer moves — `TileType[][]`,
+`parseTerrainGrid` and `entryCost` are untouched, and the server never learns a
+sprite exists.
+
+⬜ **Not started.**
+
+#### The art
+
+[Kenney's Tiny Battle](https://kenney.nl/assets/tiny-battle), CC0 — no
+attribution required, though crediting is the decent thing. 198 tiles at 16×16,
+shipped as individual PNGs and as `tilemap_packed.png` (288×176, no padding) and
+`tilemap.png` (1px gaps). Indices below are row-major over 18 columns, which is
+how the individual files are numbered.
+
+| | |
+|---|---|
+| grass | `0` plain · `1` tufts · `2` flowers |
+| water | the 3×3 nine-slice at `18-20 / 36-38 / 54-56`, open water `37`, plus inner corners, a waterfall at `73`, and pond variants |
+| road | exactly sixteen: `108-111`, `126-129`, `144-147`, `162-165` |
+| bridge | `166` north–south · `130` east–west · `148` the water beneath an east–west deck |
+| overlays | trees `94` / `112`, mountain `5` |
+| HUD | digits `180-189`, ammo `191`, heart `195` — useful to **8f**, which needs to draw health and has no design yet |
+
+#### The composer
+
+A pure function, and pure is the point: the renderer has no test coverage
+because it is WebGL, but a mask table is exactly the sort of thing that is
+subtly wrong in one corner of one map and impossible to spot by eye.
+
+```ts
+composeTerrain(grid: TileType[][]) → { ground: number; overlay?: number }[][]
+```
+
+**Roads, bridges and water are chosen by a 4-bit neighbour mask** — `N=1, E=2,
+S=4, W=8`, set when the neighbour is the same family. The sixteen values are the
+nine-slice: `15` open, `14/7/13/11` the four edges, `6/12/3/9` the four outer
+corners, `10/5` the straights, `1/2/4/8` end caps, `0` isolated. The road set
+being *exactly sixteen tiles* is the tell that the art was drawn for this.
+
+- `same` is `road || bridge` for roads, `river` for water.
+- **Off-board counts as same for water** and different for road, so a river runs
+  cleanly off the map edge while a road ends.
+- **Bridge orientation falls out of the same mask**: `5` (road N and S) → `166`,
+  `10` (road E and W) → `130`.
+
+⚠️ **Two rules the mask alone cannot express.**
+
+**Inner corners.** A water cell with water on all four sides but *land on a
+diagonal* is mask `15`, yet wants a land nub in that corner. So when the mask is
+`15`, check the four diagonals: exactly one land diagonal picks that corner's
+tile. Two or more has no art in this pack — fall back to open water and accept
+it.
+
+**The east–west bridge overhangs.** Its deck is drawn a tile and a half tall, so
+the water cell *south of* an east–west bridge renders as `148` rather than as
+its masked water tile. `classic.ts` runs its road north–south, so this case never
+fires on the only map that exists — it needs a test rather than a look.
+
+Grass picks among `0/1/2` by a **deterministic hash of the coordinate**, weighted
+(roughly 70/20/10). Deterministic because the alternative reshuffles the field
+every time the mesh rebuilds.
+
+⚠️ **Orientation is the easy thing to get backwards.** `row` increases north and
+`tileToWorld` maps row to +z, so a sprite's top edge must point north or every
+shoreline comes out mirrored. Worth a test that puts water along the bottom row
+only and asserts a *south* edge.
+
+#### The mesh
+
+- Per-tile UVs into the atlas, in place of the vertex colours
+  `createTerrainMesh` uses today.
+- `Texture.NEAREST_SAMPLINGMODE`, or 16×16 upscaled four times is mush.
+- **No mipmaps, or inset UVs by half a texel.** `tilemap_packed.png` has zero
+  padding, so mipmapping bleeds neighbouring tiles into each other.
+- Overlays (trees, mountains) want a second mesh above the ground, since only
+  some cells have one.
+
+⬜ **Open: flat or billboarded overlays.** A tree drawn top-down and viewed from
+a tilted ortho camera reads as painted on the ground. Billboarding the overlay
+quads is the standard fix; the alternative is small glTF models for trees and
+rocks, which is arguably more coherent with units already being 3D and would
+keep the atlas to ground tiles only.
+
+#### Steps
+
+- **7.5a** The atlas and UV plumbing, with every tile drawn as grass. Proves
+  sampling, bleeding and orientation before any mask logic exists.
+- **7.5b** `composeTerrain` and the mask tables: roads, bridges, water, inner
+  corners. The bulk of the work, and all of it testable.
+- **7.5c** Grass weighting and the forest/mountain overlays, once the flat-versus-
+  billboard question is settled.
+
 ### 8 — Combat: the smallest thing you can win
 
 Terrain and pathing already exist, so the numbers mean something. The integration risk here is the chain — command → resolve → events → animate → death → mesh removal → victory — not the damage formula.
