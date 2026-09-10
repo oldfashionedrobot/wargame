@@ -15,6 +15,9 @@ export function StartScreen() {
   // Empty until the list arrives, and empty for good if it fails: the picker
   // just does not appear, and creating falls back to the server's default.
   const [maps, setMaps] = useState<MapSummary[]>([]);
+  // Seeded from the list rather than left undefined, so that what the select
+  // shows and what create sends are the same value. Leaving it unset made them
+  // agree only while the registry happened to lead with the default map.
   const [mapId, setMapId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -25,7 +28,9 @@ export function StartScreen() {
     void api.maps
       .list()
       .then((available) => {
-        if (!cancelled) setMaps(available);
+        if (cancelled) return;
+        setMaps(available);
+        setMapId(available[0]?.id);
       })
       .catch(() => {
         // Not worth an error banner. Without a picker you get the default map,
@@ -64,7 +69,7 @@ export function StartScreen() {
             <label>
               {' on '}
               <select
-                value={mapId ?? maps[0].id}
+                value={mapId}
                 onChange={(event) => setMapId(event.target.value)}
                 disabled={creating}
               >

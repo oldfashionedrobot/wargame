@@ -110,6 +110,21 @@ describe('StartScreen', () => {
 });
 
 describe('StartScreen, choosing a map', () => {
+  // The path nobody was asserting, and the one that was wrong: with the select
+  // untouched, what it displays and what create sends have to be the same map.
+  // They agreed only while the registry happened to lead with the default.
+  it('creates on the map it is showing, without the select being touched', async () => {
+    list.mockResolvedValue([]);
+    create.mockResolvedValue(summary());
+    renderScreen();
+
+    const select = await screen.findByRole('combobox');
+    expect((select as HTMLSelectElement).value).toBe('classic');
+
+    fireEvent.click(screen.getByRole('button', { name: 'New match' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith('classic'));
+  });
+
   it('offers every map the server named, and creates on the chosen one', async () => {
     list.mockResolvedValue([]);
     create.mockResolvedValue(summary({ mapId: 'lakeland' }));

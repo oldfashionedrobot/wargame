@@ -201,7 +201,14 @@ export async function createGameRenderer(
   };
 
   const endPreview = (): void => {
-    preview?.settle();
+    if (!preview) return;
+    // Stopping matters as much as settling: a preview ended mid-walk would
+    // otherwise leave its tween writing positions over whatever replaced it,
+    // and a second preview of the same unit would run two walks on one mesh.
+    const mesh = unitMeshes.get(preview.unitId);
+    if (mesh) scene.stopAnimation(mesh);
+
+    preview.settle();
     preview = null;
   };
 

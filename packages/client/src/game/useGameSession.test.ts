@@ -312,7 +312,7 @@ describe('useGameSession', () => {
     act(() => result.current.clickTile(at(1, 1)));
     expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
 
-    act(() => result.current.clickTile(at(1, 3)));
+    await act(async () => result.current.clickTile(at(1, 3)));
     expect(result.current.selection).toMatchObject({ phase: 'destinationChosen', unitId: 'b1' });
     expect(fake.submissions).toEqual([]); // the whole point: nothing has left yet
 
@@ -329,13 +329,40 @@ describe('useGameSession', () => {
     expect(result.current.selection).toEqual({ phase: 'idle' });
   });
 
+  // The skip in playEvents is sound only because the mesh has arrived, so the
+  // rule lives here rather than on the button's disabled attribute -- a
+  // keyboard shortcut or a direct call would otherwise walk straight past it.
+  it('refuses Wait while the preview is still walking', async () => {
+    const fake = fakeServer(board);
+    const cb = callbacks();
+    let arrive!: () => void;
+    vi.mocked(cb.onPreview).mockReturnValue(
+      new Promise<void>((resolve) => {
+        arrive = resolve;
+      }),
+    );
+    const { result } = renderSession(fake, cb);
+    await act(async () => {}); // settle the initial batch, which would drop a pin
+
+    act(() => result.current.clickTile(at(1, 1)));
+    await act(async () => result.current.clickTile(at(1, 3)));
+    expect(result.current.walking).toBe(true);
+
+    act(() => result.current.confirmWait());
+    expect(result.current.selection.phase).toBe('destinationChosen'); // not yet
+
+    await act(async () => arrive());
+    act(() => result.current.confirmWait());
+    expect(result.current.selection.phase).toBe('choosingFacing');
+  });
+
   it('ignores a facing click that is not beside the unit', async () => {
     const fake = fakeServer(board);
     const { result } = renderSession(fake, callbacks());
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
     act(() => result.current.clickTile(at(1, 1)));
-    act(() => result.current.clickTile(at(1, 3)));
+    await act(async () => result.current.clickTile(at(1, 3)));
     act(() => result.current.confirmWait());
 
     await act(async () => result.current.clickTile(at(5, 5)));
@@ -446,7 +473,7 @@ describe('useGameSession', () => {
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
     act(() => result.current.clickTile(at(1, 1)));
-    act(() => result.current.clickTile(at(1, 3)));
+    await act(async () => result.current.clickTile(at(1, 3)));
     act(() => result.current.cancelDestination());
 
     expect(fake.submissions).toEqual([]);
@@ -465,7 +492,7 @@ describe('useGameSession', () => {
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
     act(() => result.current.clickTile(at(1, 1)));
-    act(() => result.current.clickTile(at(1, 3)));
+    await act(async () => result.current.clickTile(at(1, 3)));
     const pinned = result.current.selection;
 
     act(() => result.current.clickTile(at(1, 2))); // another reachable tile
@@ -494,7 +521,7 @@ describe('useGameSession', () => {
 
     // Clicking the unit where the *authority* has it must select it. Reading
     // the replica would find an empty tile there and select nothing.
-    act(() => result.current.clickTile(at(1, 3)));
+    await act(async () => result.current.clickTile(at(1, 3)));
     expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
 
     await act(async () => finishAnimating());
@@ -506,7 +533,7 @@ describe('useGameSession', () => {
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
     act(() => result.current.clickTile(at(1, 1)));
-    act(() => result.current.clickTile(at(1, 3)));
+    await act(async () => result.current.clickTile(at(1, 3)));
     act(() => result.current.confirmWait());
     fake.respond({ ok: false, reason: 'illegal move' });
     await act(async () => result.current.clickTile(FACE_NORTH));
@@ -576,7 +603,7 @@ describe('useGameSession', () => {
 
     await act(async () => {}); // settle the initial batch, which would drop a pin
     act(() => result.current.clickTile(at(1, 1)));
-    act(() => result.current.clickTile(at(1, 3)));
+    await act(async () => result.current.clickTile(at(1, 3)));
     act(() => result.current.confirmWait());
     let release!: (result: CommandResult) => void;
     fake.respond(new Promise<CommandResult>((res) => (release = res)));

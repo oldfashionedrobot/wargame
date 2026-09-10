@@ -263,9 +263,14 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
   );
 
   const confirmWait = useCallback((): void => {
-    if (selection.phase !== 'destinationChosen') return;
+    // Refused while the preview is still walking, and not only because the
+    // button is disabled: playEvents skips a move whose mesh already stands at
+    // the destination, which is true only once it has arrived. Confirming
+    // early makes the committed move replay from halfway along the path, so
+    // the rule belongs where `walking` lives rather than on a `disabled`.
+    if (walking || selection.phase !== 'destinationChosen') return;
     setSelection(chooseFacing(selection));
-  }, [selection]);
+  }, [selection, walking]);
 
   const cancelDestination = useCallback((): void => {
     if (selection.phase !== 'destinationChosen' && selection.phase !== 'choosingFacing') return;
