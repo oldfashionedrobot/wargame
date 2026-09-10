@@ -310,14 +310,16 @@ only and asserts a *south* edge.
 - `Texture.NEAREST_SAMPLINGMODE`, or 16×16 upscaled four times is mush.
 - **No mipmaps, or inset UVs by half a texel.** `tilemap_packed.png` has zero
   padding, so mipmapping bleeds neighbouring tiles into each other.
-- Overlays (trees, mountains) want a second mesh above the ground, since only
-  some cells have one.
-
-⬜ **Open: flat or billboarded overlays.** A tree drawn top-down and viewed from
-a tilted ortho camera reads as painted on the ground. Billboarding the overlay
-quads is the standard fix; the alternative is small glTF models for trees and
-rocks, which is arguably more coherent with units already being 3D and would
-keep the atlas to ground tiles only.
+- Overlays (trees, mountains) are a second set of quads above the ground, since
+  only some cells have one. **Flat on the ground plane, not billboarded** — this
+  is a texture pass, and a forest tile is a sprite over a grass tile, exactly as
+  the art is drawn.
+- **Alpha test, not alpha blend.** The overlays have hard-edged binary
+  transparency, so `MATERIAL_ALPHATEST` with a 0.5 cut-off keeps the edges crisp
+  and sidesteps transparency sorting entirely.
+- Overlays sit just above the ground and **below the movement overlays** — those
+  are at 0.015 / 0.018 / 0.02, so a tree around 0.005 leaves the range tint
+  drawing over the forest rather than under it, which is what reads correctly.
 
 #### Steps
 
@@ -325,8 +327,7 @@ keep the atlas to ground tiles only.
   sampling, bleeding and orientation before any mask logic exists.
 - **7.5b** `composeTerrain` and the mask tables: roads, bridges, water, inner
   corners. The bulk of the work, and all of it testable.
-- **7.5c** Grass weighting and the forest/mountain overlays, once the flat-versus-
-  billboard question is settled.
+- **7.5c** Grass weighting and the forest/mountain overlays.
 
 ### 8 — Combat: the smallest thing you can win
 
