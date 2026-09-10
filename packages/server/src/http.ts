@@ -5,6 +5,7 @@ import { parseCommand } from '@vod/shared';
 import type { ErrorResponse, GameState, PlayerId } from '@vod/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore } from './match';
+import { listMaps, getMap } from './maps';
 import { DEFAULT_PORT, IS_PROD, SESSION_COOKIE } from './const';
 
 // fileURLToPath, not .pathname -- the latter percent-encodes, so a checkout
@@ -44,9 +45,25 @@ export async function createServer({ port, databaseUrl, clientDist }: ServerOpti
     // A command is only a few hundred bytes
     maxRequestBodySize: 64 * 1024,
     routes: {
+      '/api/maps': {
+        GET: withSession(async () =>
+          // Ids and names only: the rows are nobody else's business, and a
+          // map's terrain reaches the client inside the match state anyway.
+          Response.json(listMaps().map(({ id, name }) => ({ id, name }))),
+        ),
+      },
+
       '/api/matches': {
         GET: withSession(async () => Response.json(await matches.list())),
-        POST: withSession(async () => Response.json(await matches.create(), { status: 201 })),
+        POST: withSession(async (request) => {
+          // The body is optional -- no body means the default map -- so an
+          // unparseable one is treated as absent rather than refused.
+          const body: unknown = await request.json().catch(() => null);
+          const mapId = readMapId(body);
+          if (mapId === INVALID) return badRequest('unknown map');
+
+          return Response.json(await matches.create(mapId), { status: 201 });
+        }),
       },
 
       '/api/matches/:id/state': {
@@ -232,6 +249,27 @@ function withSession<T extends string>(
  * tell them apart and stamps whoever's turn it is. This is where a
  * session -> PlayerId lookup goes once sessions mean something.
  */
+/**
+ * The requested map, `undefined` for "whatever the default is", or `INVALID`.
+ *
+ * Three outcomes rather than two because absent and wrong are different
+ * answers: an older client sends no body at all and should still get a match.
+ */
+const INVALID = Symbol('unknown map');
+
+function readMapId(body: unknown): string | undefined | typeof INVALID {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const { mapId } = body as { mapId?: unknown };
+  if (mapId === undefined) return undefined;
+  if (typeof mapId !== 'string') return INVALID;
+
+  try {
+    return getMap(mapId).id;
+  } catch {
+    return INVALID;
+  }
+}
+
 function resolveActor(_session: string, state: GameState): PlayerId {
   return state.currentTurn;
 }

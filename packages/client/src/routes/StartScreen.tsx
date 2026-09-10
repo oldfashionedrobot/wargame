@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { MatchSummary } from '@vod/shared';
+import type { MapSummary, MatchSummary } from '@vod/shared';
 import { api } from '../net/api';
 
 interface MatchData {
@@ -12,12 +12,25 @@ export function StartScreen() {
   const navigate = useNavigate();
   const [{ matches, error }, setMatchData] = useState<MatchData>({ matches: null, error: null });
   const [creating, setCreating] = useState(false);
+  // Empty until the list arrives, and empty for good if it fails: the picker
+  // just does not appear, and creating falls back to the server's default.
+  const [maps, setMaps] = useState<MapSummary[]>([]);
+  const [mapId, setMapId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
     void fetchMatches().then((result) => {
       if (!cancelled) setMatchData(result);
     });
+    void api.maps
+      .list()
+      .then((available) => {
+        if (!cancelled) setMaps(available);
+      })
+      .catch(() => {
+        // Not worth an error banner. Without a picker you get the default map,
+        // which is what happened before there was one.
+      });
     return () => {
       cancelled = true;
     };
@@ -30,7 +43,7 @@ export function StartScreen() {
   const onCreate = (): void => {
     setCreating(true);
     api.matches
-      .create()
+      .create(mapId)
       .then((match) => void navigate(`/${match.id}`))
       .catch((cause: unknown) => {
         setCreating(false);
@@ -46,6 +59,24 @@ export function StartScreen() {
         <button type="button" onClick={onCreate} disabled={creating}>
           {creating ? 'Creating…' : 'New match'}
         </button>{' '}
+        {maps.length > 0 && (
+          <>
+            <label>
+              {' on '}
+              <select
+                value={mapId ?? maps[0].id}
+                onChange={(event) => setMapId(event.target.value)}
+                disabled={creating}
+              >
+                {maps.map((map) => (
+                  <option key={map.id} value={map.id}>
+                    {map.name}
+                  </option>
+                ))}
+              </select>
+            </label>{' '}
+          </>
+        )}
         <button type="button" onClick={onRefresh}>
           Refresh
         </button>
@@ -63,6 +94,8 @@ export function StartScreen() {
               <Link to={`/${match.id}`}>{match.id.slice(0, 8)}</Link>
               {' — '}
               {match.currentTurn}
+              {' · '}
+              {match.mapId}
               {match.seq === 0 ? ' · not started' : ` · ${match.seq} moves`}
               {' · '}
               {formatWhen(match.createdAt)}

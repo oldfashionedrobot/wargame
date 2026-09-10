@@ -163,7 +163,8 @@ ValidationResult  { ok: true, action } | { ok: false, reason }
 CommandResult     { ok: true, seq, events, state } | { ok: false, reason }
 StateResponse     { seq, state }
 EventsResponse    { seq, events, state? }
-MatchSummary      { id, createdAt, seq, currentTurn }
+MatchSummary      { id, createdAt, seq, currentTurn, mapId }
+MapSummary        { id, name }                       // GET /api/maps
 ErrorResponse     { error }                          // the body of every non-2xx
 ```
 
@@ -234,8 +235,8 @@ down in the source.
 | `two-bridges` | 12×10. One river bent through a right angle, with a bridge across each arm — so both bridge orientations appear on one board, and the river cuts it into three |
 | `lakeland` | 12×12. A lake with an island only infantry can reach, mountains north, woods on both shores, and a one-tile pond |
 
-Only `classic` is reachable in play: `DEFAULT_MAP_ID` is what `create` uses and
-nothing selects between them yet.
+`StartScreen` picks between them and `POST /api/matches` carries the choice;
+omitting it takes `DEFAULT_MAP_ID`.
 
 The test fixture `makeState` accepts either map rows or a size, and a size
 generates a plains character map and parses that.
@@ -279,8 +280,10 @@ WebSockets, no server push. Everything is same-origin in dev and production
 alike; the client calls `/api/*` relative.
 
 ```
+GET  /api/maps                        → MapSummary[]
 GET  /api/matches                     → MatchSummary[]           (newest 50)
-POST /api/matches                     → MatchSummary             201
+POST /api/matches   { mapId? }        → MatchSummary             201
+                                      | { error }                400 unknown map
 GET  /api/matches/:id/state           → { seq, state }
 GET  /api/matches/:id/events?since=N  → { seq, events, state? }
 POST /api/matches/:id/commands        → { ok: true, seq, events, state }   200
@@ -332,7 +335,9 @@ resolutions  (match_id, seq, actor, action JSON, events JSON, created_at,
 
 `initial_state` is written and never read. `current_state` is a checkpoint;
 events are authoritative. `current_turn` is denormalised so listing matches
-parses no boards. `action` and `map_id` are written and never read.
+parses no boards. `map_id` is read only to label a match in the list — replay
+never needs it, because `initial_state` already holds the instantiated board.
+`action` is written and never read.
 
 **Paths:** a relative `file:` URL in `DATABASE_URL` resolves against the repo
 root, not the cwd. `DEFAULT_DB_URL` lives in `src/const.ts`, and
@@ -369,7 +374,9 @@ interval and a `visibilitychange` listener resets and polls immediately on
 return. Updates are deduplicated by `seq` before reaching any listener.
 `dispose()` stops the loop, clears listeners, and removes the listener.
 
-**`routes/`** — `/` is `StartScreen` (list and create); `/:matchId` is
+**`routes/`** — `/` is `StartScreen` (list, and create on a chosen map — the
+picker simply does not appear if `GET /api/maps` fails, which falls back to the
+server's default and is what happened before there was one); `/:matchId` is
 `MatchRoute`, which is keyed on the id so a param change remounts the
 connection. It owns the async connect, renders `GameCanvas` only once a server
 is ready, and disposes on unmount including a connection that resolves after

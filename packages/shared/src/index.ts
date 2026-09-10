@@ -44,6 +44,7 @@ export type {
   ErrorResponse,
   EventsResponse,
   GameServer,
+  MapSummary,
   MatchSummary,
   StateResponse,
   UpdateListener,

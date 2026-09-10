@@ -1,4 +1,4 @@
-import type { ErrorResponse, MatchSummary } from '@vod/shared';
+import type { ErrorResponse, MapSummary, MatchSummary } from '@vod/shared';
 
 // Same-origin: in dev Vite proxies /api to the server, in production the
 // server serves this bundle itself. Either way there's no base URL to
@@ -89,12 +89,18 @@ export async function postJson<T>(path: string, body?: unknown): Promise<T> {
 // or creating isn't. A plain object rather than an interface -- there's only
 // ever going to be one implementation of "call this endpoint".
 export const api = {
+  maps: {
+    list(): Promise<MapSummary[]> {
+      return getJson<MapSummary[]>('/maps');
+    },
+  },
   matches: {
     list(): Promise<MatchSummary[]> {
       return getJson<MatchSummary[]>('/matches');
     },
-    create(): Promise<MatchSummary> {
-      return postJson<MatchSummary>('/matches');
+    /** Omit `mapId` to take the server's default. */
+    create(mapId?: string): Promise<MatchSummary> {
+      return postJson<MatchSummary>('/matches', mapId === undefined ? undefined : { mapId });
     },
   },
 };

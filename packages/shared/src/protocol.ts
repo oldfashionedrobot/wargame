@@ -59,6 +59,14 @@ export interface MatchSummary {
   createdAt: number;
   seq: number;
   currentTurn: PlayerId;
+  /** Which board it was built from, so a list of matches can be told apart. */
+  mapId: string;
+}
+
+/** GET /api/maps -- what a new match can be started on. */
+export interface MapSummary {
+  id: string;
+  name: string;
 }
 
 /** GET /api/state -- initial load. No events; there's nothing to animate. */

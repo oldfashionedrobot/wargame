@@ -22,7 +22,8 @@ import { Matches, Resolutions } from './schema';
 const LIST_LIMIT = 50;
 
 export interface MatchStore {
-  create(): Promise<MatchSummary>;
+  /** On `mapId`, or on the default when it is omitted. Throws on an unknown id. */
+  create(mapId?: string): Promise<MatchSummary>;
   list(): Promise<MatchSummary[]>;
   snapshot(matchId: string): Promise<StateResponse | null>;
   since(matchId: string, from: number): Promise<EventsResponse | null>;
@@ -59,11 +60,12 @@ export function createMatchStore({ db }: Database): MatchStore {
   }
 
   return {
-    async create() {
+    async create(requestedMap) {
       const id = crypto.randomUUID();
       const createdAt = Date.now();
-      // One map today; choosing between them is a lobby concern.
-      const mapId = DEFAULT_MAP_ID;
+      // getMap throws on an unknown id, which is what stops a bad one reaching
+      // the insert -- callers check first so it can answer 400 rather than 500.
+      const mapId = requestedMap ?? DEFAULT_MAP_ID;
       const state = createMatchState(getMap(mapId));
 
       await db.insert(Matches).values({
@@ -76,7 +78,7 @@ export function createMatchStore({ db }: Database): MatchStore {
         mapId,
       });
 
-      return { id, createdAt, seq: 0, currentTurn: state.currentTurn };
+      return { id, createdAt, seq: 0, currentTurn: state.currentTurn, mapId };
     },
 
     async list() {
@@ -88,6 +90,7 @@ export function createMatchStore({ db }: Database): MatchStore {
           createdAt: Matches.createdAt,
           seq: Matches.currentSeq,
           currentTurn: Matches.currentTurn,
+          mapId: Matches.mapId,
         })
         .from(Matches)
         .orderBy(desc(Matches.createdAt))

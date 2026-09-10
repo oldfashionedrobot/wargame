@@ -107,6 +107,36 @@ describe('POST /api/matches', () => {
     expect(match.seq).toBe(0);
     expect(match.currentTurn).toBe('player-blue');
     expect(match.createdAt).toBeGreaterThan(0);
+    expect(match.mapId).toBe('classic'); // the default, with no body sent
+  });
+
+  it('creates on a named map', async () => {
+    const response = await postJson('/api/matches', { mapId: 'lakeland' });
+    expect(response.status).toBe(201);
+    expect(((await response.json()) as MatchSummary).mapId).toBe('lakeland');
+  });
+
+  // Absent and wrong are different answers: a client that sends no body at all
+  // still gets a match, but one that names a map nobody has is confused.
+  it('refuses a map that does not exist', async () => {
+    const response = await postJson('/api/matches', { mapId: 'atlantis' });
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as ErrorResponse).error).toMatch(/unknown map/);
+  });
+
+  it('refuses a mapId that is not a string', async () => {
+    expect((await postJson('/api/matches', { mapId: 7 })).status).toBe(400);
+  });
+});
+
+describe('GET /api/maps', () => {
+  it('names every map a match can be started on', async () => {
+    const response = await get('/api/maps');
+    expect(response.status).toBe(200);
+
+    const maps = (await response.json()) as { id: string; name: string }[];
+    expect(maps.map((map) => map.id)).toContain('classic');
+    expect(maps.every((map) => map.name.length > 0)).toBe(true);
   });
 });
 

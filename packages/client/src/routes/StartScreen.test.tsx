@@ -1,24 +1,36 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import type { MatchSummary } from '@vod/shared';
+import type { MapSummary, MatchSummary } from '@vod/shared';
 import { StartScreen } from './StartScreen';
 
 // The api module is the seam: StartScreen's whole job is turning what it
 // returns into one of four states -- loading, error, empty, a list -- and
 // turning a click into a navigation.
 vi.mock('../net/api', () => ({
-  api: { matches: { list: vi.fn(), create: vi.fn() } },
+  api: { maps: { list: vi.fn() }, matches: { list: vi.fn(), create: vi.fn() } },
 }));
 const { api } = await import('../net/api');
 const list = vi.mocked(api.matches.list);
 const create = vi.mocked(api.matches.create);
+const mapList = vi.mocked(api.maps.list);
+
+const MAPS: MapSummary[] = [
+  { id: 'classic', name: 'Bridgehead' },
+  { id: 'lakeland', name: 'Lakeland' },
+];
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mapList.mockResolvedValue(MAPS);
+});
 
 const summary = (over: Partial<MatchSummary> = {}): MatchSummary => ({
   id: 'aaaaaaaa-1111-2222-3333-444444444444',
   createdAt: Date.now(),
   seq: 0,
   currentTurn: 'player-blue',
+  mapId: 'classic',
   ...over,
 });
 
@@ -94,5 +106,35 @@ describe('StartScreen', () => {
     list.mockResolvedValue([summary({ id: 'dddddddd-7777' })]);
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     expect(await screen.findByText('dddddddd')).toBeTruthy();
+  });
+});
+
+describe('StartScreen, choosing a map', () => {
+  it('offers every map the server named, and creates on the chosen one', async () => {
+    list.mockResolvedValue([]);
+    create.mockResolvedValue(summary({ mapId: 'lakeland' }));
+    renderScreen();
+
+    const select = await screen.findByRole('combobox');
+    fireEvent.change(select, { target: { value: 'lakeland' } });
+    fireEvent.click(screen.getByRole('button', { name: 'New match' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith('lakeland'));
+  });
+
+  // Without a picker the server's default is what you get, which is exactly
+  // what happened before there was one -- so a failed map list is not an error
+  // worth showing anyone.
+  it('creates on the default when the map list could not be fetched', async () => {
+    list.mockResolvedValue([]);
+    mapList.mockRejectedValue(new Error('offline'));
+    create.mockResolvedValue(summary());
+    renderScreen();
+
+    await screen.findByText('No matches yet.');
+    expect(screen.queryByRole('combobox')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New match' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith(undefined));
   });
 });
