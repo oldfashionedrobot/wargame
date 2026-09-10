@@ -1,12 +1,16 @@
 import { classic } from './classic';
+import { crossroads } from './crossroads';
+import { lakeland } from './lakeland';
+import { twoBridges } from './twoBridges';
 import type { GameMap } from './types';
 
 export type { GameMap } from './types';
 
-// Every map, by id. Maps are code rather than rows because there is one of
-// them and it is reviewed as a diff; see *Maps in a table* in the roadmap for
-// when that changes.
-const MAPS: Record<string, GameMap> = { [classic.id]: classic };
+// Every map, by id. Maps are code rather than rows because they are reviewed
+// as diffs; see *Maps in a table* in the roadmap for when that changes.
+const MAPS: Record<string, GameMap> = Object.fromEntries(
+  [classic, crossroads, twoBridges, lakeland].map((map) => [map.id, map]),
+);
 
 export const DEFAULT_MAP_ID = classic.id;
 

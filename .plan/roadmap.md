@@ -327,6 +327,12 @@ only and asserts a *south* edge.
   sampling, bleeding and orientation before any mask logic exists.
 - **7.5b** `composeTerrain` and the mask tables: roads, bridges, water, inner
   corners. The bulk of the work, and all of it testable.
+
+  Worth a coverage test here, once `neighbourMask` is real: assert that the
+  shipped maps between them still produce every mask, both bridge orientations,
+  an inner corner and a skirt. They do today — road `0`, a lone stub in a field,
+  is the only gap, and it belongs in a synthetic grid rather than in content
+  anyone would author. A test turns *checked once* into *stays true*.
 - **7.5c** Grass weighting and the forest/mountain overlays.
 
 ### 8 — Combat: the smallest thing you can win

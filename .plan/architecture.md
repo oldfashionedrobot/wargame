@@ -223,9 +223,19 @@ because `initial_state` plus the log must replay identically.
 changing a map's terrain under its id retroactively changes what every existing
 match claims to have been played on. A changed map gets a new id.
 
-`getMap` throws on an unknown id. One map exists: `classic` — a river split by
-a single bridge, with mountains flanking the far approach and forest the near
-one, so infantry can ford where cavalry and artillery must take the bridge.
+`getMap` throws on an unknown id, and **`rows[0]` is the row nearest the
+camera** — row index increases north, so a map written out top-down is upside
+down in the source.
+
+| | |
+|---|---|
+| `classic` | 8×8. A river split by one bridge, mountains flanking the far approach and forest the near one, so infantry ford where cavalry and artillery take the bridge |
+| `crossroads` | 10×10. A road network closed into a figure of eight, no water and no mountains |
+| `two-bridges` | 12×10. One river bent through a right angle, with a bridge across each arm — so both bridge orientations appear on one board, and the river cuts it into three |
+| `lakeland` | 12×12. A lake with an island only infantry can reach, mountains north, woods on both shores, and a one-tile pond |
+
+Only `classic` is reachable in play: `DEFAULT_MAP_ID` is what `create` uses and
+nothing selects between them yet.
 
 The test fixture `makeState` accepts either map rows or a size, and a size
 generates a plains character map and parses that.

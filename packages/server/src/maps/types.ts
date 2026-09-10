@@ -10,7 +10,13 @@ import type { Coordinate, UnitTypeId } from '@vod/shared';
 export interface GameMap {
   id: string;
   name: string;
-  /** Parsed by `parseTerrainGrid`. Every row must be the same length. */
+  /**
+   * Parsed by `parseTerrainGrid`. Every row must be the same length.
+   *
+   * ⚠️ **`rows[0]` is the row nearest the camera** — the bottom of the screen.
+   * Row index increases north, so a map written top-down on paper is upside
+   * down here. Author it bottom-up, or write it out and reverse it.
+   */
   rows: string[];
   units: MapUnit[];
 }
