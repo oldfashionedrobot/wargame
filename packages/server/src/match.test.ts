@@ -23,6 +23,7 @@ beforeEach(async () => {
 // so an endpoint pair describes a move no client can make.
 const move = (unitId: string, to: [number, number], from: [number, number]): Command => ({
   type: 'move',
+  facing: 'north',
   unitId,
   path: route({ col: from[0], row: from[1] }, { col: to[0], row: to[1] }),
 });

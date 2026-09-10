@@ -27,6 +27,7 @@ beforeEach(() => {
     setMovement: vi.fn(),
     playEvents: vi.fn(() => Promise.resolve()),
     snapUnits: vi.fn(),
+    setFacingChoices: vi.fn(),
     previewMove: vi.fn(() => Promise.resolve()),
     cancelPreview: vi.fn(),
     toggleInspector: vi.fn(),
@@ -134,6 +135,7 @@ describe('GameCanvas', () => {
     const moved: GameEvent = {
       type: 'unitMoved',
       unitId: 'b1',
+      facing: 'north',
       path: [
         { col: 1, row: 1 },
         { col: 1, row: 2 },

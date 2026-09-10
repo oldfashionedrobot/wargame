@@ -25,6 +25,13 @@ export function isWithinGrid(
   );
 }
 
+/** The four, as data: a runtime check needs a list the type alone cannot give. */
+export const FACINGS = ['north', 'east', 'south', 'west'] as const satisfies readonly Facing[];
+
+export function isFacing(value: unknown): value is Facing {
+  return typeof value === 'string' && (FACINGS as readonly string[]).includes(value);
+}
+
 /**
  * Which way you face having stepped from `from` to `to`, or `null` if that is
  * not one orthogonal step.

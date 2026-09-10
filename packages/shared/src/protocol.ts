@@ -1,3 +1,4 @@
+import { isFacing } from './coordinate';
 import type { Command, Coordinate, GameEvent, GameState, PlayerId } from './types';
 
 // The wire contract. Lives in shared because both sides need it: the server
@@ -142,7 +143,8 @@ export function parseCommand(input: unknown): Command | null {
         if (!coordinate) return null;
         path.push(coordinate);
       }
-      return { type: 'move', unitId: input.unitId, path };
+      if (!isFacing(input.facing)) return null;
+      return { type: 'move', unitId: input.unitId, path, facing: input.facing };
     }
     case 'endTurn':
       return { type: 'endTurn' };

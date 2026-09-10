@@ -8,8 +8,8 @@ is planned but unbuilt lives in [`roadmap.md`](roadmap.md).
 
 **What plays today:** hot-seat against a real server process. Select a unit, see
 the tiles it can reach across terrain, hover to preview the route, click a
-destination to pin it, then *Wait* to commit or *Cancel* to think again — end
-turn. Two players, one infantry, cavalry and artillery each, on an 8×8 map split
+destination to pin it, then *Wait* and click a tile beside the unit to choose
+which way it ends up looking, or *Cancel* to think again — end turn. Two players, one infantry, cavalry and artillery each, on an 8×8 map split
 by a river with a single bridge. No combat.
 
 ## Packages
@@ -146,18 +146,18 @@ the per-command validator. `resolveAction` accepts nothing but an `Action`.
 ```ts
 Coordinate  { col, row }
 TileType    'plains' | 'road' | 'bridge' | 'forest' | 'mountain' | 'river'
-Facing      'north' | 'east' | 'south' | 'west'      // set by movement; no rule reads it yet
+Facing      'north' | 'east' | 'south' | 'west'      // chosen by the player; no rule reads it yet
 PlayerId    string                                   // never a union of colours
 PlayerColor 'blue' | 'red' | 'green' | 'yellow'      // the renderer keys on it
 Player      { id, name, color }                      // colour is display-only
 Unit        { id, position, facing, unitTypeId, owner, hasActed }
 GameState   { grid, units, players, currentTurn }    // grid is [row][col]
 
-Command       MoveCommand { type, unitId, path } | EndTurnCommand { type }
+Command       MoveCommand { type, unitId, path, facing } | EndTurnCommand { type }
 Action        (MoveCommand & Validated) | (EndTurnCommand & Validated)
               -- a union of intersections, not Command & { actor }: the
               latter would admit an endTurn carrying a path
-GameEvent     UnitMovedEvent { type, unitId, path } | TurnEndedEvent { type, nextPlayer }
+GameEvent     UnitMovedEvent { type, unitId, path, facing } | TurnEndedEvent { type, nextPlayer }
 
 ValidationResult  { ok: true, action } | { ok: false, reason }
 CommandResult     { ok: true, seq, events, state } | { ok: false, reason }
@@ -171,11 +171,13 @@ Turn order is array rotation over `GameState.players`, wrapping via modulo.
 `hasActed` is one flag per unit, set by `unitMoved` and reset by `turnEnded` for
 the incoming player only.
 
-`facing` is **derived, not carried**: `applyEvents` reads it off the last step of
-a `unitMoved` path via `directionBetween`, the same way it reads position off the
-last tile. A facing field on the event would be a second source for a fact the
-path already states. A single-tile path has no direction and leaves facing as it
-was — turning on the spot is an action, not a side effect of one.
+`facing` is **carried, not derived**. The player picks it, so it need not agree
+with the direction of travel — a unit can end a move looking somewhere it did not
+come from, which is exactly what a derivation could not express. The client
+proposes the travel direction as a default (`directionBetween`), the command
+carries the answer, and `parseCommand` refuses anything but one of the four.
+A single-element path plus a facing is a **turn in place**, and it spends the
+unit's turn like any other action.
 
 ## Content — `shared/src/data/`
 
@@ -375,7 +377,8 @@ the next click see the same value. `pendingRef` stays a ref — it is a mutex
 against a second submit landing before the first resolves, and has to be
 synchronously current rather than rendered.
 
-The menu's two actions are `confirmWait()` and `cancelDestination()`. A refused
+The menu's two actions are `confirmWait()`, which opens the facing choice rather
+than submitting, and `cancelDestination()`, which works from either pinned phase. A refused
 submit rolls back to the unit **selected**, not to the destination the server
 just refused — handing that back would invite confirming the same move again.
 
@@ -410,8 +413,11 @@ snap is caught and logged; the commit always happens.
 
 ```ts
 handleTileClick(state, selection, coordinate) → SelectionState
-unpinDestination(pinned)                      → SelectionState
-moveCommandFor(pinned)                        → Command
+chooseFacing(pinned)                          → SelectionState
+facingChoiceOrigin(choosing)                  → Coordinate
+facingChoiceAt(choosing, coordinate)          → Facing | null
+unpinDestination(pinned | choosing)           → SelectionState
+moveCommandFor(choosing, facing)              → Command
 ```
 
 `handleTileClick` **never produces a command**. A click picks a destination and
@@ -423,6 +429,7 @@ old paired return carrying no information.
 | { phase: 'idle' }
 | { phase: 'unitSelected'; unitId; position; movement }
 | { phase: 'destinationChosen'; unitId; path; movement }
+| { phase: 'choosingFacing'; unitId; path; movement }
 ```
 
 `movement` is the whole `exploreMovement` result, snapshotted at selection time.
@@ -436,12 +443,21 @@ its own, and a single-element path is legal at cost 0. While a destination is
 pinned, `handleTileClick` returns the **same object** it was given — the menu owns
 the decision, and a re-render for a click that changes nothing is waste.
 
+`choosingFacing` is what *Wait* leads to. A click on one of the four tiles beside
+the unit means a direction, read by `facingChoiceAt`, and **that click is the one
+that commits** — the direction is the last decision, so there is nothing left to
+confirm. Anything further away is ignored. The unit is already standing in the
+direction it walked, so keeping that facing is a click on the tile it is looking
+at. The renderer clips the four to the board, which costs nothing: facing off the
+edge is a strictly worse choice than any of the alternatives.
+
 **`game/GameCanvas.tsx`** — the canvas ref, the renderer lifecycle, and the
 chrome around it: the turn label, End Turn, the rejection reason, the
 reconnecting banner, and a Toggle Inspector button under an
 `import.meta.env.DEV` guard, plus the *Wait* / *Cancel* menu shown while a
-destination is pinned. The menu is DOM like every other control — the canvas
-draws the game and nothing else. End Turn is disabled while pinned, since ending
+destination is pinned, and the prompt shown while a facing is being chosen. The
+menu is DOM like every other control — the canvas draws the game and nothing
+else. End Turn is disabled while pinned, since ending
 the turn there would submit around a plan the player has not answered for, and
 *Wait* and *Cancel* render **disabled until the previewed unit arrives** rather
 than appearing on arrival, so the controls do not jump into the layout.
@@ -466,7 +482,8 @@ unmount. It resolves to:
 
 ```ts
 onTileClick(handler)      setSelectedTile(coordinate | null)
-setMovement(movement)     playEvents(events): Promise<void>
+setMovement(movement)     setFacingChoices(around | null)
+playEvents(events): Promise<void>
 snapUnits(state)          previewMove(unitId, path): Promise<void>
 cancelPreview()           toggleInspector()          dispose()
 ```

@@ -12,10 +12,11 @@ describe('parseCommand', () => {
 
   describe('accepts', () => {
     it('a move command', () => {
-      expect(parseCommand({ type: 'move', unitId: 'u1', path })).toEqual({
+      expect(parseCommand({ type: 'move', unitId: 'u1', path, facing: 'north' })).toEqual({
         type: 'move',
         unitId: 'u1',
         path,
+        facing: 'north',
       });
     });
 
@@ -25,10 +26,11 @@ describe('parseCommand', () => {
 
     it('a single-element path -- legal, and means "act without moving"', () => {
       const single = [{ col: 3, row: 4 }];
-      expect(parseCommand({ type: 'move', unitId: 'u1', path: single })).toEqual({
+      expect(parseCommand({ type: 'move', unitId: 'u1', path: single, facing: 'south' })).toEqual({
         type: 'move',
         unitId: 'u1',
         path: single,
+        facing: 'south',
       });
     });
   });
@@ -58,10 +60,21 @@ describe('parseCommand', () => {
     // A defensive allocation bound, not a game rule -- validatePath owns the
     // real limit. This stops a body that fits under maxRequestBodySize from
     // still materialising thousands of coordinates.
+    it('a move with no facing at all', () => {
+      expect(parseCommand({ type: 'move', unitId: 'u1', path })).toBeNull();
+    });
+
+    it('a move whose facing is not one of the four', () => {
+      expect(parseCommand({ type: 'move', unitId: 'u1', path, facing: 'up' })).toBeNull();
+      expect(parseCommand({ type: 'move', unitId: 'u1', path, facing: 0 })).toBeNull();
+    });
+
     it('a path longer than MAX_PATH_STEPS', () => {
       const long = Array.from({ length: 257 }, (_, i) => ({ col: i, row: 0 }));
       expect(parseCommand({ type: 'move', unitId: 'u1', path: long })).toBeNull();
-      expect(parseCommand({ type: 'move', unitId: 'u1', path: long.slice(0, 256) })).not.toBeNull();
+      expect(
+        parseCommand({ type: 'move', unitId: 'u1', path: long.slice(0, 256), facing: 'east' }),
+      ).not.toBeNull();
     });
   });
 
@@ -71,7 +84,13 @@ describe('parseCommand', () => {
   // distinct at runtime rather than only in the type system.
   describe('drops everything it was not asked for', () => {
     it('strips a smuggled actor from a move', () => {
-      const parsed = parseCommand({ type: 'move', unitId: 'u1', path, actor: 'red' });
+      const parsed = parseCommand({
+        type: 'move',
+        unitId: 'u1',
+        path,
+        facing: 'north',
+        actor: 'red',
+      });
       expect(parsed).not.toBeNull();
       expect(parsed).not.toHaveProperty('actor');
     });
@@ -82,17 +101,29 @@ describe('parseCommand', () => {
     });
 
     it('strips arbitrary extra properties', () => {
-      const parsed = parseCommand({ type: 'move', unitId: 'u1', path, rolls: [6, 6] });
-      expect(Object.keys(parsed ?? {}).sort()).toEqual(['path', 'type', 'unitId']);
+      const parsed = parseCommand({
+        type: 'move',
+        unitId: 'u1',
+        path,
+        facing: 'north',
+        rolls: [6, 6],
+      });
+      expect(Object.keys(parsed ?? {}).sort()).toEqual(['facing', 'path', 'type', 'unitId']);
     });
 
     it('strips extra properties from inside a coordinate', () => {
       const parsed = parseCommand({
         type: 'move',
         unitId: 'u1',
+        facing: 'north',
         path: [{ col: 0, row: 0, elevation: 9 }],
       });
-      expect(parsed).toEqual({ type: 'move', unitId: 'u1', path: [{ col: 0, row: 0 }] });
+      expect(parsed).toEqual({
+        type: 'move',
+        unitId: 'u1',
+        path: [{ col: 0, row: 0 }],
+        facing: 'north',
+      });
     });
   });
 });

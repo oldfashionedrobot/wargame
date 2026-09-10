@@ -26,6 +26,7 @@ const moved: GameEvent[] = [
   {
     type: 'unitMoved',
     unitId: 'b1',
+    facing: 'north',
     path: [
       { col: 0, row: 0 },
       { col: 0, row: 1 },

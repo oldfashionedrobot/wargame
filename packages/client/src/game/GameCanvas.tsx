@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { getCurrentPlayer } from '@vod/shared';
 import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
 import { useGameSession } from './useGameSession';
+import { facingChoiceOrigin } from './interaction/selection';
 import type { SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
 import { createGameRenderer } from './render/renderer';
@@ -12,18 +13,26 @@ import type { GameRenderer } from './render/renderer';
 // A pure projection of the selection: everything it draws is on the snapshot,
 // so there is no game state to fetch and no question of which copy to read.
 function showSelection(renderer: GameRenderer, selection: SelectionState): void {
+  renderer.setFacingChoices(
+    selection.phase === 'choosingFacing' ? facingChoiceOrigin(selection) : null,
+  );
+
   // The pinned destination takes the highlight, and the range stays drawn --
   // it is the context the player is deciding against, and the unit is still
   // standing at `path[0]` until the move is committed.
   const highlight =
     selection.phase === 'unitSelected'
       ? selection.position
-      : selection.phase === 'destinationChosen'
-        ? selection.path[selection.path.length - 1]
-        : null;
+      : selection.phase === 'idle'
+        ? null
+        : selection.path[selection.path.length - 1];
 
   renderer.setSelectedTile(highlight);
-  renderer.setMovement(selection.phase === 'idle' ? null : selection.movement);
+  // Movement is settled once a direction is being picked, so the range comes
+  // down and only the four choices are lit.
+  renderer.setMovement(
+    selection.phase === 'idle' || selection.phase === 'choosingFacing' ? null : selection.movement,
+  );
 }
 
 export interface GameCanvasProps {
@@ -79,6 +88,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   // the mesh short of the destination, and the move would then replay from
   // wherever it had got to.
   const pinned = selection.phase === 'destinationChosen';
+  const choosingFacing = selection.phase === 'choosingFacing';
 
   // `clickTile` changes identity whenever the selection does, and the renderer
   // is registered with it exactly once. A stable wrapper over a latest-ref
@@ -136,13 +146,21 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
         <span>{getCurrentPlayer(gameState).name}&apos;s turn</span>{' '}
         {/* Disabled while a destination is pinned: ending the turn there would
             submit around a plan the player has not answered for yet. */}
-        <button type="button" onClick={endTurn} disabled={pinned}>
+        <button type="button" onClick={endTurn} disabled={pinned || choosingFacing}>
           End Turn
         </button>{' '}
         {import.meta.env.DEV && (
           <button type="button" onClick={() => rendererRef.current?.toggleInspector()}>
             Toggle Inspector
           </button>
+        )}
+        {choosingFacing && (
+          <>
+            <span>Click a tile beside the unit to face that way.</span>{' '}
+            <button type="button" onClick={cancelDestination}>
+              Cancel
+            </button>{' '}
+          </>
         )}
         {pinned && (
           <>

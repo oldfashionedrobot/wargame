@@ -32,8 +32,10 @@ export function validateMove(state: GameState, command: MoveCommand): string | n
 
 /**
  * The event carries the whole path: the client animates every step, and the
- * final tile is the new position.
+ * final tile is the new position. Facing rides along rather than being derived
+ * from the path -- the player may end a move looking somewhere they did not
+ * come from, so the path cannot answer for it.
  */
 export function resolveMove(action: MoveAction): GameEvent[] {
-  return [{ type: 'unitMoved', unitId: action.unitId, path: action.path }];
+  return [{ type: 'unitMoved', unitId: action.unitId, path: action.path, facing: action.facing }];
 }

@@ -2,14 +2,20 @@ import { describe, expect, it } from 'bun:test';
 import { resolveAction, validateCommand } from './action';
 import { applyEvents } from './applyEvents';
 import { makeState, route, unitAt } from './testing';
-import type { Command, Coordinate, GameEvent, GameState, PlayerId } from './types';
+import type { Command, Coordinate, Facing, GameEvent, GameState, PlayerId } from './types';
 
 const pos = (col: number, row: number) => ({ col, row });
 
-const moved = (unitId: string, from: [number, number], to: [number, number]): GameEvent => ({
+const moved = (
+  unitId: string,
+  from: [number, number],
+  to: [number, number],
+  facing: Facing = 'north',
+): GameEvent => ({
   type: 'unitMoved',
   unitId,
   path: route(pos(from[0], from[1]), pos(to[0], to[1])),
+  facing,
 });
 
 /** A move command whose path is a walkable route rather than two endpoints. */
@@ -31,23 +37,22 @@ describe('applyEvents', () => {
     expect(unitAt(next, 'b1').hasActed).toBe(true);
   });
 
-  // Facing is derived from the path rather than carried on the event, so what
-  // matters is that the *last* step decides it -- a route that turns a corner
-  // is the case a first-step implementation gets wrong.
-  it('turns a unit to face the way its last step went', () => {
-    const east = applyEvents(state, [moved('b1', [0, 0], [2, 0])]);
-    expect(unitAt(east, 'b1').facing).toBe('east');
-
-    // route() walks columns before rows, so this one ends heading up the board.
-    const north = applyEvents(state, [moved('b1', [0, 0], [2, 2])]);
-    expect(unitAt(north, 'b1').facing).toBe('north');
+  // Facing is carried, not derived. The player picks it, so it need not agree
+  // with the direction of travel -- which is exactly what a derivation could
+  // not express.
+  it('faces the unit where the event says, not where it walked', () => {
+    const next = applyEvents(state, [moved('b1', [0, 0], [2, 0], 'south')]);
+    expect(unitAt(next, 'b1').position).toEqual({ col: 2, row: 0 });
+    expect(unitAt(next, 'b1').facing).toBe('south'); // it travelled east
   });
 
-  it('leaves facing alone when the unit did not go anywhere', () => {
-    const before = unitAt(state, 'b1').facing;
-    const next = applyEvents(state, [{ type: 'unitMoved', unitId: 'b1', path: [pos(0, 0)] }]);
-    expect(unitAt(next, 'b1').facing).toBe(before);
-    expect(unitAt(next, 'b1').hasActed).toBe(true); // still spent, though
+  it('turns a unit that did not go anywhere', () => {
+    const next = applyEvents(state, [
+      { type: 'unitMoved', unitId: 'b1', path: [pos(0, 0)], facing: 'west' },
+    ]);
+    expect(unitAt(next, 'b1').position).toEqual({ col: 0, row: 0 });
+    expect(unitAt(next, 'b1').facing).toBe('west');
+    expect(unitAt(next, 'b1').hasActed).toBe(true); // turning in place spends the turn
   });
 
   it('applies turnEnded: rotates, and refreshes the incoming player only', () => {

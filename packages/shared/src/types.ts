@@ -48,6 +48,12 @@ export interface MoveCommand {
   type: 'move';
   unitId: string;
   path: Coordinate[];
+  /**
+   * Which way the unit ends up looking. Chosen, not derived: the direction of
+   * travel is only the client's suggested default, and a unit may finish a
+   * move facing somewhere it did not come from.
+   */
+  facing: Facing;
 }
 
 export interface EndTurnCommand {
@@ -69,6 +75,8 @@ export interface UnitMovedEvent {
   type: 'unitMoved';
   unitId: string;
   path: Coordinate[];
+  /** Absolute, like every event payload -- applying it twice is a no-op. */
+  facing: Facing;
 }
 
 export interface TurnEndedEvent {

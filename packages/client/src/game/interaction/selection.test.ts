@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { makeState, route } from '@vod/shared/testing';
 import type { Coordinate, GameState } from '@vod/shared';
 import {
+  chooseFacing,
+  facingChoiceAt,
+  facingChoiceOrigin,
   handleTileClick,
   initialSelectionState,
   moveCommandFor,
   unpinDestination,
 } from './selection';
-import type { DestinationChosen, SelectionState } from './selection';
+import type { ChoosingFacing, DestinationChosen, SelectionState } from './selection';
 
 // The pure half of the client: state and a coordinate in, a new selection out.
 // No React, no Babylon, no server. A click never produces a command -- it picks
@@ -159,13 +162,13 @@ describe('a destination pinned', () => {
     expect(handleTileClick(state, pinned, at(1, 1))).toBe(pinned);
   });
 
-  it('commits the pinned path exactly, and nothing else', () => {
+  it('offers the four directions rather than committing straight away', () => {
     const state = board();
-    expect(moveCommandFor(withB1Pinned(state, at(1, 3)))).toEqual({
-      type: 'move',
-      unitId: 'b1',
-      path: route(at(1, 1), at(1, 3)),
-    });
+    const choosing = chooseFacing(withB1Pinned(state, at(1, 3)));
+    expect(choosing.phase).toBe('choosingFacing');
+    if (choosing.phase !== 'choosingFacing') return;
+    // Around the destination, not around where the unit started.
+    expect(facingChoiceOrigin(choosing)).toEqual(at(1, 3));
   });
 
   // Cancel goes back to a selected unit rather than to idle, so the next click
@@ -177,5 +180,51 @@ describe('a destination pinned', () => {
     expect(back).toMatchObject({ phase: 'unitSelected', unitId: 'b1', position: at(1, 1) });
     if (back.phase !== 'unitSelected') return;
     expect(back.movement).toBe(pinned.movement); // the same snapshot, not a new search
+  });
+});
+
+describe('choosing a facing', () => {
+  const choosing = (destination: Coordinate): ChoosingFacing => {
+    const next = chooseFacing(withB1Pinned(board(), destination));
+    if (next.phase !== 'choosingFacing') throw new Error('expected choosingFacing');
+    return next;
+  };
+
+  it('reads a click on an adjacent tile as that direction', () => {
+    const facing = choosing(at(1, 3));
+    expect(facingChoiceAt(facing, at(1, 4))).toBe('north');
+    expect(facingChoiceAt(facing, at(1, 2))).toBe('south');
+    expect(facingChoiceAt(facing, at(2, 3))).toBe('east');
+    expect(facingChoiceAt(facing, at(0, 3))).toBe('west');
+  });
+
+  it('ignores a click that is not one orthogonal step away', () => {
+    const facing = choosing(at(1, 3));
+    expect(facingChoiceAt(facing, at(1, 3))).toBeNull(); // the unit's own tile
+    expect(facingChoiceAt(facing, at(2, 4))).toBeNull(); // diagonal
+    expect(facingChoiceAt(facing, at(1, 5))).toBeNull(); // two away
+  });
+
+  it('still ignores tile clicks as far as the selection goes', () => {
+    const facing = choosing(at(1, 3));
+    // The direction is read by facingChoiceAt; handleTileClick must not also
+    // reselect or clear on the same click.
+    expect(handleTileClick(board(), facing, at(1, 4))).toBe(facing);
+    expect(handleTileClick(board(), facing, at(5, 5))).toBe(facing);
+  });
+
+  it('commits the pinned path with the direction the player chose', () => {
+    const facing = choosing(at(1, 3));
+    expect(moveCommandFor(facing, 'west')).toEqual({
+      type: 'move',
+      unitId: 'b1',
+      path: route(at(1, 1), at(1, 3)),
+      facing: 'west',
+    });
+  });
+
+  it('cancels back to the unit where it really stands', () => {
+    const back = unpinDestination(choosing(at(1, 3)));
+    expect(back).toMatchObject({ phase: 'unitSelected', unitId: 'b1', position: at(1, 1) });
   });
 });

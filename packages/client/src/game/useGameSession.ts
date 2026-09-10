@@ -8,6 +8,8 @@ import type {
   GameState,
 } from '@vod/shared';
 import {
+  chooseFacing,
+  facingChoiceAt,
   handleTileClick,
   initialSelectionState,
   moveCommandFor,
@@ -98,7 +100,7 @@ export interface GameSession {
    */
   walking: boolean;
   clickTile: (coordinate: Coordinate) => void;
-  /** Menu: commit the pinned move and act no further this turn. */
+  /** Menu: stop offering the menu and start offering the four directions. */
   confirmWait: () => void;
   /** Menu: discard the pinned destination. Nothing was ever sent. */
   cancelDestination: () => void;
@@ -213,7 +215,9 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
         // ghost kept standing until a batch finished animating. An
         // uncommitted plan does not survive the board moving under it.
         setSelection((current) =>
-          current.phase === 'destinationChosen' ? unpinDestination(current) : current,
+          current.phase === 'destinationChosen' || current.phase === 'choosingFacing'
+            ? unpinDestination(current)
+            : current,
         );
         setGameState(state);
       });
@@ -224,10 +228,24 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     (coordinate: Coordinate): void => {
       if (pendingRef.current) return;
 
+      // While a facing is being picked, a click on one of the four tiles round
+      // the unit means a direction rather than a destination -- and it is the
+      // one click that commits, because the direction *is* the last decision.
+      if (selection.phase === 'choosingFacing') {
+        const facing = facingChoiceAt(selection, coordinate);
+        if (facing) {
+          void submitCommand(
+            moveCommandFor(selection, facing),
+            initialSelectionState,
+            unpinDestination(selection),
+          );
+        }
+        return;
+      }
+
       // The authoritative board, not the replica (invariant 1) -- the replica
-      // is in scope and tempting, and a beat old.
-      // A click never commits anything now -- it picks a destination, and the
-      // menu decides what to do with it.
+      // is in scope and tempting, and a beat old. Otherwise a click commits
+      // nothing: it picks a destination, and the menu decides from there.
       const next = handleTileClick(server.getState(), selection, coordinate);
       setSelection(next);
 
@@ -241,20 +259,16 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
         .catch((error: unknown) => console.error('preview failed:', error))
         .finally(() => setWalking(false));
     },
-    [server, selection],
+    [server, selection, submitCommand],
   );
 
   const confirmWait = useCallback((): void => {
     if (selection.phase !== 'destinationChosen') return;
-    void submitCommand(
-      moveCommandFor(selection),
-      initialSelectionState,
-      unpinDestination(selection),
-    );
-  }, [selection, submitCommand]);
+    setSelection(chooseFacing(selection));
+  }, [selection]);
 
   const cancelDestination = useCallback((): void => {
-    if (selection.phase !== 'destinationChosen') return;
+    if (selection.phase !== 'destinationChosen' && selection.phase !== 'choosingFacing') return;
     void callbacksRef.current.onPreview(null);
     setSelection(unpinDestination(selection));
   }, [selection]);

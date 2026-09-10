@@ -39,6 +39,11 @@ const RANGE_HEIGHT = 0.015;
 const ROUTE_COLOR = new Color3(0.95, 0.98, 1);
 const ROUTE_ALPHA = 0.75;
 const ROUTE_HEIGHT = 0.018;
+// The four tiles a unit may turn to look at. Warm, so it does not read as
+// somewhere to go -- by this point movement is already decided.
+const FACING_COLOR = new Color3(1, 0.82, 0.35);
+const FACING_ALPHA = 0.55;
+const FACING_HEIGHT = 0.02;
 
 export interface GameRenderer {
   onTileClick(handler: (coordinate: Coordinate) => void): void;
@@ -49,6 +54,14 @@ export interface GameRenderer {
    * over -- hover never reaches React.
    */
   setMovement(movement: Movement | null): void;
+  /**
+   * Light the tiles a unit at `around` may turn to look at, or clear them.
+   *
+   * Takes the centre rather than the four tiles because the grid's bounds live
+   * here: a unit on the top row simply has three choices, and nothing outside
+   * the renderer needs to know that.
+   */
+  setFacingChoices(around: Coordinate | null): void;
   /** Animates what the authority says happened. Resolves when done. */
   playEvents(events: GameEvent[]): Promise<void>;
   /**
@@ -144,6 +157,14 @@ export async function createGameRenderer(
     color: ROUTE_COLOR,
     alpha: ROUTE_ALPHA,
     height: ROUTE_HEIGHT,
+    gridWidth,
+    gridHeight,
+  });
+  const facingOverlay = createTileOverlay(scene, {
+    name: 'facing-choices',
+    color: FACING_COLOR,
+    alpha: FACING_ALPHA,
+    height: FACING_HEIGHT,
     gridWidth,
     gridHeight,
   });
@@ -251,6 +272,23 @@ export async function createGameRenderer(
     },
     setSelectedTile(coordinate) {
       setHighlightTile(selectedHighlight, coordinate, SELECTED_HEIGHT, gridWidth, gridHeight);
+    },
+    setFacingChoices(around) {
+      if (!around) {
+        facingOverlay.setTiles([]);
+        return;
+      }
+      const neighbours = [
+        { col: around.col, row: around.row + 1 },
+        { col: around.col, row: around.row - 1 },
+        { col: around.col + 1, row: around.row },
+        { col: around.col - 1, row: around.row },
+      ];
+      facingOverlay.setTiles(
+        neighbours.filter(
+          ({ col, row }) => col >= 0 && row >= 0 && col < gridWidth && row < gridHeight,
+        ),
+      );
     },
     setMovement(next) {
       movement = next;

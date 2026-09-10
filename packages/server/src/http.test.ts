@@ -78,6 +78,7 @@ async function newMatch(): Promise<MatchSummary> {
 // actually sends -- validatePath walks every step in 6c.
 const legalMove: Command = {
   type: 'move',
+  facing: 'north',
   unitId: 'blue-1',
   path: route({ col: 0, row: 0 }, { col: 0, row: 2 }),
 };
@@ -225,6 +226,7 @@ describe('POST /api/matches/:id/commands', () => {
     // this testing the rulebook rather than the path checker 6c adds.
     const outOfRange: Command = {
       type: 'move',
+      facing: 'north',
       unitId: 'blue-1',
       path: route({ col: 0, row: 0 }, { col: 7, row: 7 }),
     };

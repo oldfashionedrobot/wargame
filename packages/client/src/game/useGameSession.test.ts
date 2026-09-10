@@ -22,12 +22,18 @@ const at = (col: number, row: number): Coordinate => ({ col, row });
 // b1 can act; its position and infantry's range of 3 make (1,3) a legal move target.
 const board = makeState(7, [{ id: 'b1', col: 1, row: 1 }]);
 
-const moved = (): GameEvent => ({ type: 'unitMoved', unitId: 'b1', path: [at(1, 1), at(1, 3)] });
+const moved = (): GameEvent => ({
+  type: 'unitMoved',
+  unitId: 'b1',
+  facing: 'north',
+  path: [at(1, 1), at(1, 3)],
+});
 
 /** One move event covering `tiles` steps -- what the animation gate budgets in. */
 const walk = (tiles: number): GameEvent => ({
   type: 'unitMoved',
   unitId: 'b1',
+  facing: 'north',
   path: Array.from({ length: tiles + 1 }, (_, step) => at(1, step)),
 });
 
@@ -294,7 +300,11 @@ describe('useGameSession', () => {
     });
   });
 
-  it('pins a destination on click, and submits only once Wait is chosen', async () => {
+  // (1,3) is the destination throughout, so (1,4) is the tile north of it --
+  // clicking that is how a facing gets chosen and the move committed.
+  const FACE_NORTH = at(1, 4);
+
+  it('pins on click, offers directions on Wait, and submits on a direction', async () => {
     const fake = fakeServer(board);
     const { result } = renderSession(fake, callbacks());
     await act(async () => {}); // settle the initial batch, which would drop a pin
@@ -306,13 +316,31 @@ describe('useGameSession', () => {
     expect(result.current.selection).toMatchObject({ phase: 'destinationChosen', unitId: 'b1' });
     expect(fake.submissions).toEqual([]); // the whole point: nothing has left yet
 
+    act(() => result.current.confirmWait());
+    expect(result.current.selection).toMatchObject({ phase: 'choosingFacing', unitId: 'b1' });
+    expect(fake.submissions).toEqual([]); // Wait alone still sends nothing
+
     fake.respond({ ok: true, seq: 1, events: [], state: board });
-    await act(async () => result.current.confirmWait());
+    await act(async () => result.current.clickTile(FACE_NORTH));
     expect(fake.submissions).toEqual([
-      { type: 'move', unitId: 'b1', path: route(at(1, 1), at(1, 3)) },
+      { type: 'move', unitId: 'b1', path: route(at(1, 1), at(1, 3)), facing: 'north' },
     ]);
     // Cleared the moment the command left, not when the server answered.
     expect(result.current.selection).toEqual({ phase: 'idle' });
+  });
+
+  it('ignores a facing click that is not beside the unit', async () => {
+    const fake = fakeServer(board);
+    const { result } = renderSession(fake, callbacks());
+    await act(async () => {}); // settle the initial batch, which would drop a pin
+
+    act(() => result.current.clickTile(at(1, 1)));
+    act(() => result.current.clickTile(at(1, 3)));
+    act(() => result.current.confirmWait());
+
+    await act(async () => result.current.clickTile(at(5, 5)));
+    expect(fake.submissions).toEqual([]);
+    expect(result.current.selection.phase).toBe('choosingFacing');
   });
 
   // 7d's contract, and the reason the menu waits: while the ghost walks, the
@@ -372,8 +400,9 @@ describe('useGameSession', () => {
     await act(async () => result.current.clickTile(at(1, 3)));
     vi.mocked(cb.onPreview).mockClear();
 
+    act(() => result.current.confirmWait());
     fake.respond({ ok: true, seq: 1, events: [], state: board });
-    await act(async () => result.current.confirmWait());
+    await act(async () => result.current.clickTile(at(1, 4)));
     expect(cb.onPreview).not.toHaveBeenCalled();
   });
 
@@ -387,8 +416,9 @@ describe('useGameSession', () => {
 
     act(() => result.current.clickTile(at(1, 1)));
     await act(async () => result.current.clickTile(at(1, 3)));
+    act(() => result.current.confirmWait());
     fake.respond({ ok: false, reason: 'illegal move' });
-    await act(async () => result.current.confirmWait());
+    await act(async () => result.current.clickTile(FACE_NORTH));
 
     expect(cb.onPreview).toHaveBeenLastCalledWith(null);
   });
@@ -477,8 +507,9 @@ describe('useGameSession', () => {
 
     act(() => result.current.clickTile(at(1, 1)));
     act(() => result.current.clickTile(at(1, 3)));
+    act(() => result.current.confirmWait());
     fake.respond({ ok: false, reason: 'illegal move' });
-    await act(async () => result.current.confirmWait());
+    await act(async () => result.current.clickTile(FACE_NORTH));
 
     expect(result.current.rejection).toBe('illegal move');
     // Handing back the pin would invite the player to confirm the very move
@@ -546,10 +577,11 @@ describe('useGameSession', () => {
     await act(async () => {}); // settle the initial batch, which would drop a pin
     act(() => result.current.clickTile(at(1, 1)));
     act(() => result.current.clickTile(at(1, 3)));
+    act(() => result.current.confirmWait());
     let release!: (result: CommandResult) => void;
     fake.respond(new Promise<CommandResult>((res) => (release = res)));
 
-    await act(async () => result.current.confirmWait()); // in flight now
+    await act(async () => result.current.clickTile(FACE_NORTH)); // in flight now
     const during = result.current.selection;
     act(() => result.current.clickTile(at(1, 1))); // swallowed by the guard
     expect(fake.submissions).toHaveLength(1);
