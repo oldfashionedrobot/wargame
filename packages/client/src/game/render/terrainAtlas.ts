@@ -27,7 +27,7 @@ const INSET_V = 0.5 / SHEET_HEIGHT;
  * straight off the sheet. A tile's top edge is *north*, because `tileToWorld`
  * maps a rising row to a rising z.
  */
-export function tileUvs(index: number): number[] {
+export function tileUvs(index: number, turns = 0): number[] {
   const col = index % ATLAS_COLUMNS;
   const row = Math.floor(index / ATLAS_COLUMNS);
 
@@ -37,12 +37,18 @@ export function tileUvs(index: number): number[] {
   const vSouth = ((row + 1) * TILE_PX) / SHEET_HEIGHT - INSET_V;
 
   // prettier-ignore
-  return [
-    u0, vSouth,   // south-west
-    u1, vSouth,   // south-east
-    u1, vNorth,   // north-east
-    u0, vNorth,   // north-west
+  const corners = [
+    [u0, vSouth],   // south-west
+    [u1, vSouth],   // south-east
+    [u1, vNorth],   // north-east
+    [u0, vNorth],   // north-west
   ];
+
+  // Turning the sprite is cycling which of its corners each of the quad's
+  // corners samples. Cheap, and it is what lets one drawn channel serve both
+  // axes rather than needing the sheet to carry the same tile twice.
+  const shift = ((turns % 4) + 4) % 4;
+  return [...corners.slice(shift), ...corners.slice(0, shift)].flat();
 }
 
 /**

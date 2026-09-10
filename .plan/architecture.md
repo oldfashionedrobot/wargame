@@ -517,8 +517,23 @@ cancelPreview()           toggleInspector()          dispose()
   load; `invertY` is off, so the sheet sits as it does on disk and `v = 0` is
   its top row. Half a texel is inset off every edge, since a UV landing exactly
   on a boundary can round into a neighbour the unpadded sheet cannot spare.
-  ⬜ Which atlas index a tile gets is not decided yet — every cell currently
-  draws one probe tile pending the autotiler. Grid lines are a `LineSystem`. Two
+  `composeTerrain.ts` decides which index each cell gets, purely: a 4-bit
+  neighbour mask (`N=1, E=2, S=4, W=8`) indexes a table per family. A bridge
+  belongs to **both** families — it is water with a road over it — so a river
+  is not broken by its own crossing. Off-board counts as water for water, so a
+  river runs off the edge, and as land for roads, so a road ends.
+- Overlays (trees, peaks) are a second mesh just above the ground, alpha-tested
+  rather than blended, drawing only the cells that have one. Grass picks among
+  three variants by a deterministic hash of the coordinate.
+- Four things the mask alone cannot answer, all covered by tests: an **inner
+  corner** needs a diagonal, so mask 15 with exactly one land diagonal takes a
+  corner tile; **bridge orientation** is read from strictly-road neighbours,
+  because a two-lane crossing gives its decks masks 7 and 13 rather than 5 and
+  10; the **east–west deck overhangs**, so the water south of one draws its
+  underside in a second pass; and the sheet has **no horizontal channel**, the
+  commonest river shape of all, so the vertical one is turned a quarter turn.
+  A pond with no water neighbours has no art either and falls back to open
+  water — a hard-edged square, visibly so rather than silently. Grid lines are a `LineSystem`. Two
   `createTileOverlay` meshes draw the reachable range and the route through it,
   at different heights so the route reads on top.
 - A highlight follows the pointer, moved from `POINTERMOVE` inside the

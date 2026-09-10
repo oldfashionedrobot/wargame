@@ -346,11 +346,12 @@ cannot answer this — it is uniform, and renders identically under either flip.
 - **7.5b** `composeTerrain` and the mask tables: roads, bridges, water, inner
   corners. The bulk of the work, and all of it testable.
 
-  Worth a coverage test here, once `neighbourMask` is real: assert that the
-  shipped maps between them still produce every mask, both bridge orientations,
-  an inner corner and a skirt. They do today — road `0`, a lone stub in a field,
-  is the only gap, and it belongs in a synthetic grid rather than in content
-  anyone would author. A test turns *checked once* into *stays true*.
+  ⚠️ The coverage test this step wanted — asserting the shipped maps still
+  produce every mask — **cannot be written**: the maps live in `server` and the
+  tiler in `client`, and neither may import the other. Moving `neighbourMask`
+  into `shared` would make it possible and would be worse, since a sprite mask
+  is not a rule. The composer is tested against inline grids instead, one per
+  shape, which is where a table error would show anyway.
 - **7.5c** Grass weighting and the forest/mountain overlays.
 
 ### 8 — Combat: the smallest thing you can win
