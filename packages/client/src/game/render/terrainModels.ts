@@ -178,7 +178,6 @@ const FOLIAGE = { name: 'foliage', color: new Color3(0.63, 0.97, 0.5) };
 const RECOLOUR: Record<string, Record<string, { name: string; color: Color3 }>> = {
   rock_: {
     dirt: { name: 'mesaStone', color: new Color3(0.58, 0.64, 0.66) },
-    dirtDark: { name: 'mesaStoneDark', color: new Color3(0.44, 0.49, 0.51) },
   },
   ground_path: {
     dirt: { name: 'roadSurface', color: new Color3(0.62, 0.62, 0.6) },

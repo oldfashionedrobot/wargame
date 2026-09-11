@@ -558,8 +558,12 @@ cancelPreview()           toggleInspector()          dispose()
   deliberate — a deck rests *on* its banks — and is recorded here so nobody
   later "corrects" it.
 - Terrain is built from **glTF models**, one per tile, and then **merged by
-  material** — grouping every tile's meshes by material leaves about eight draw
-  calls for a board, against roughly thirty instanced. Merging is right because
+  material** — grouping every tile's meshes by material leaves about fourteen
+  draw calls for a board, against several hundred as loose copies. ⚠️ That
+  number grows with the *palette*, not the board: it was eight before scenery,
+  a mesa and six kinds of tree arrived, and each genuinely new colour costs one.
+  Which is why a doodad painted in a material the board already has is free and
+  a flower is not. Merging is right because
   terrain is made once and never moves. `terrainModels.ts` loads the set and
   shares one material per name across all of them, which is what makes the
   grouping work. ⚠️ Three families are recoloured, all for the same reason — the
