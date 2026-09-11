@@ -581,6 +581,12 @@ cancelPreview()           toggleInspector()          dispose()
   shapes in `dirt`, the exact brown of every road and riverbank. All the stone
   models share one material with the pad, so a six-stone scatter costs geometry
   and not a draw call.
+- Grid lines are **a square per tile, each at that tile's own surface** — not
+  four long spans, which is what they were before tiles had height and which
+  run straight through a mountain's pad. Where neighbours differ in height the
+  two outlines separate and draw the step. ⚠️ They are white at 16%, a lifted
+  seam rather than the near-black rule they used to be: a grid here says where
+  a tile ends, and anything heavier reads as a cage over the board.
 - A highlight follows the pointer, moved from `POINTERMOVE` inside the
   renderer. React never hears about hover.
 - **The route preview is computed here, not in React.** `setMovement` hands the

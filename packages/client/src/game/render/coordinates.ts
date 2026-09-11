@@ -26,22 +26,3 @@ export function worldToTile(
     row: Math.round((z + offsetZ) / TILE_SIZE),
   };
 }
-
-export interface GridBounds {
-  minX: number;
-  maxX: number;
-  minZ: number;
-  maxZ: number;
-}
-
-export function gridBounds(gridWidth: number, gridHeight: number): GridBounds {
-  const offsetX = ((gridWidth - 1) * TILE_SIZE) / 2;
-  const offsetZ = ((gridHeight - 1) * TILE_SIZE) / 2;
-  const half = TILE_SIZE / 2;
-  return {
-    minX: -offsetX - half,
-    maxX: offsetX + half,
-    minZ: -offsetZ - half,
-    maxZ: offsetZ + half,
-  };
-}

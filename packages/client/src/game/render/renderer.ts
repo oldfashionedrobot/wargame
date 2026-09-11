@@ -213,7 +213,7 @@ export async function createGameRenderer(
   warnIfTooTall(cells, terrainModels);
 
   createTerrainMesh(scene, initialState.grid, terrainModels, cells);
-  createGridLines(scene, gridWidth, gridHeight);
+  createGridLines(scene, surfaceAt, gridWidth, gridHeight);
   const hoverHighlight = createTileHighlight(scene, 'hover-highlight', HOVER_COLOR, HOVER_ALPHA);
   const selectedHighlight = createTileHighlight(
     scene,
