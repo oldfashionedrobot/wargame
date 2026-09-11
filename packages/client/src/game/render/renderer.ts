@@ -22,6 +22,10 @@ import { animateUnitAlongPath, createUnitMesh, getUnitFacing, setUnitFacing } fr
 import { loadUnitModels } from './unitModels';
 
 const ORTHO_ZOOM_PADDING = 0.7;
+// How far the wheel may take you either way, and how fast it gets there.
+const MIN_ZOOM = 0.45;
+const MAX_ZOOM = 3;
+const ZOOM_PER_NOTCH = 1.12;
 
 const HOVER_COLOR = new Color3(1, 1, 1);
 const HOVER_ALPHA = 0.6;
@@ -123,15 +127,38 @@ export async function createGameRenderer(
   camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
   camera.attachControl(canvas, true);
 
+  // ⚠️ An orthographic camera's apparent size comes entirely from its ortho
+  // bounds; `radius` changes nothing you can see. So the wheel's default job --
+  // moving the camera along its radius -- is not zoom here, it is walking the
+  // camera into the board until the near plane starts eating it. Take the
+  // input away and drive the bounds instead.
+  camera.inputs.removeByType('ArcRotateCameraMouseWheelInput');
+  // Pinned, so nothing else can drift it, and far enough out that orbiting
+  // never brings a corner of the board through the near plane.
+  camera.lowerRadiusLimit = camera.radius;
+  camera.upperRadiusLimit = camera.radius;
+  camera.minZ = 0.1;
+
+  // 1 fits the whole board; larger fills more of the viewport with less of it.
+  let zoom = 1;
+
   const applyOrthoBounds = (): void => {
-    const zoom = Math.max(gridWidth, gridHeight) * ORTHO_ZOOM_PADDING;
+    const extent = (Math.max(gridWidth, gridHeight) * ORTHO_ZOOM_PADDING) / zoom;
     const aspect = canvas.clientWidth / canvas.clientHeight;
-    camera.orthoLeft = -zoom * aspect;
-    camera.orthoRight = zoom * aspect;
-    camera.orthoTop = zoom;
-    camera.orthoBottom = -zoom;
+    camera.orthoLeft = -extent * aspect;
+    camera.orthoRight = extent * aspect;
+    camera.orthoTop = extent;
+    camera.orthoBottom = -extent;
   };
   applyOrthoBounds();
+
+  const handleWheel = (event: WheelEvent): void => {
+    event.preventDefault();
+    const scale = event.deltaY < 0 ? ZOOM_PER_NOTCH : 1 / ZOOM_PER_NOTCH;
+    zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * scale));
+    applyOrthoBounds();
+  };
+  canvas.addEventListener('wheel', handleWheel, { passive: false });
 
   const light = new HemisphericLight('light', new Vector3(0, 1, 0.3), scene);
   light.intensity = 0.9;
@@ -375,6 +402,7 @@ export async function createGameRenderer(
     },
     dispose() {
       window.removeEventListener('resize', handleResize);
+      canvas.removeEventListener('wheel', handleWheel);
       engine.dispose();
     },
   };

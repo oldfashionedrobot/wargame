@@ -506,9 +506,14 @@ cancelPreview()           toggleInspector()          dispose()
 ```
 
 - **Camera:** `ArcRotateCamera` in `ORTHOGRAPHIC_CAMERA` mode, starting at a
-  fixed isometric angle. Orbit and wheel zoom stay attached and both work. The
-  ortho bounds are recomputed from the grid size on construction and on window
-  resize; the `resize` listener is removed in `dispose()`.
+  fixed isometric angle. Orbit stays on the default input; **wheel zoom does
+  not**. An orthographic camera's apparent size comes entirely from its ortho
+  bounds, so moving along `radius` changes nothing visible and only walks the
+  camera toward the board until the near plane clips it. The wheel input is
+  removed, `radius` is pinned by matching limits, and a listener on the canvas
+  scales a zoom factor that the ortho bounds divide by — clamped, and removed in
+  `dispose()` alongside the `resize` listener. Bounds are recomputed from grid
+  size, aspect and zoom.
 - **Tile lookup is math, not mesh-picking** — `screenToTile` intersects a camera
   ray with the `y = 0` plane, so terrain must stay flat.
 - Terrain is built from **glTF models**, one per tile, and then **merged by
