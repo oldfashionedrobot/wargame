@@ -210,149 +210,104 @@ option, and both cost a few lines against a table's seeding machinery.
 
 ## Remaining phases
 
-### 7.5 — Tile textures
+### 7.9 — Terrain in three dimensions
 
-A detour, not a phase: terrain stops being six flat colours and starts being
-pixel art. Nothing outside the renderer moves — `TileType[][]`,
-`parseTerrainGrid` and `entryCost` are untouched, and the server never learns a
-sprite exists.
+Flat quads with sprites on them become actual models. A detour again, and a
+bigger one: it replaces 7.5's renderer while keeping its reasoning.
 
-⬜ **Not started.**
+⬜ **Not started.** Scope settled, step split not.
 
 #### The art
 
-[Kenney's Tiny Battle](https://kenney.nl/assets/tiny-battle), CC0 — no
-attribution required, though crediting is the decent thing. 198 tiles at 16×16,
-shipped as individual PNGs and as `tilemap_packed.png` (288×176, no padding) and
-`tilemap.png` (1px gaps). Indices below are row-major over 18 columns, which is
-how the individual files are numbered.
+[Kenney's Nature Kit](https://kenney.nl/assets/nature-kit), CC0. 329 models
+shipped as **GLB**, which is the loader already wired for units. Measured, not
+assumed:
 
-The packed sheet is in the repo as `public/textures/terrain-atlas.png`, beside
-Kenney's licence, and served by URL the way `public/models/` already is.
+- Ground tiles are **exactly 1×1 in x and z**, centred on the origin — which is
+  `TILE_SIZE` and where `tileToWorld` already puts them.
+- They are **flat-topped at `y = 0`**. `ground_grass` is a zero-thickness plane;
+  river tiles are carved down to `-0.05`. So **`screenToTile` needs no change**,
+  and the movement overlays keep their heights.
+- **No textures.** Flat material colours, the same "paint me" property the unit
+  models have.
+- Every model's `__root__` carries scaling `(1, 1, -1)` — the loader's
+  handedness conversion — so instances get parented to a node of ours exactly
+  as units already are.
+- Models are multi-mesh, split by material: a river tile is four meshes across
+  `grass`, `water`, `dirt`, `dirtDark`. Around eight distinct materials serve
+  the whole set.
 
-| | |
-|---|---|
-| grass | `0` plain · `1` tufts · `2` flowers |
-| water | the 3×3 nine-slice at `18-20 / 36-38 / 54-56`, open water `37`, plus inner corners, a waterfall at `73`, and pond variants |
-| road | exactly sixteen: `108-111`, `126-129`, `144-147`, `162-165` |
-| bridge | `166` north–south · `130` east–west · `148` the water beneath an east–west deck |
-| overlays | trees `94` / `112`, mountain `5` |
-| HUD | digits `180-189`, ammo `191`, heart `195` — useful to **8f**, which needs to draw health and has no design yet |
+#### What survives from 7.5, and what does not
 
-#### The composer
+`composeTerrain`'s mask arithmetic and all sixteen of its tests survive: the
+neighbourhood question is unchanged, only the answer's shape moves from an atlas
+index to a model and a quarter turn. So do the maps, and so do the two rules
+that were genuinely earned — **a bridge counts as water**, or rivers dead-end at
+their own crossings, and **bridge orientation comes from strictly-road
+neighbours**, or a two-lane crossing reads its own second lane as a turn.
 
-A pure function, and pure is the point: the renderer has no test coverage
-because it is WebGL, but a mask table is exactly the sort of thing that is
-subtly wrong in one corner of one map and impossible to spot by eye.
+`terrainAtlas.ts`, `tileUvs` and the sprite tables go, and with them two
+workarounds that turn out to have been symptoms of the medium:
 
-```ts
-neighbourMask(grid, col, row, family)  → 0..15
-composeTerrain(grid: TileType[][])     → { ground: number; overlay?: number }[][]
-```
+- The **horizontal channel** was a rotated sprite because the sheet had no
+  horizontal one. Rotation is native here.
+- The **east–west bridge underside** was a second pass because the deck sprite
+  overhung its tile. A bridge is now a model standing on a water tile, so the
+  pass disappears.
 
-**Computing the mask is split from choosing the sprite**, because the two fail
-differently and one must not hide the other. The mask is where an orientation
-bug lives, and it is testable in bit values with no sprite index in sight — *"a
-water cell in a horizontal band has bit 4 clear"* — a test that survives
-swapping tilesets. The table is where index bugs live, and those are tested by
-asserting numbers.
+The **one-tile pond** stops being a hard blue square: `ground_riverTile` is
+exactly that shape, drawn.
 
-**Roads, bridges and water are chosen by a 4-bit neighbour mask** — `N=1, E=2,
-S=4, W=8`, set when the neighbour is the same family. The sixteen values are the
-nine-slice: `15` open, `14/7/13/11` the four edges, `6/12/3/9` the four outer
-corners, `10/5` the straights, `1/2/4/8` end caps, `0` isolated. The road set
-being *exactly sixteen tiles* is the tell that the art was drawn for this.
+#### Rotation collapses the tables
 
-- `same` is `road || bridge` for roads, `river` for water.
-- **Off-board counts as same for water** and different for road, so a river runs
-  cleanly off the map edge while a road ends.
-- **Bridge orientation falls out of the same mask**: `5` (road N and S) → `166`,
-  `10` (road E and W) → `130`.
+Sixteen masks become six models, because a quarter turn is free in three
+dimensions:
 
-⚠️ **Two rules the mask alone cannot express, and they are different in kind.**
+| mask | land on | model |
+|---|---|---|
+| 15 | nothing | `riverOpen` |
+| 14 / 7 / 13 / 11 | one side | `riverSide` |
+| 6 / 12 / 3 / 9 | two adjacent sides | `riverCorner` |
+| 10 / 5 | two opposite sides | `riverStraight` |
+| 1 / 2 / 4 / 8 | three sides | `riverEnd` |
+| 0 | all four | `riverTile` |
+| 15 + one land diagonal | — | `riverCornerSmall` |
 
-**Inner corners are a refinement, not an exception.** A water cell with water on
-all four sides but *land on a diagonal* is mask `15`, yet wants a land nub. The
-cell has everything it needs — it is looking at eight neighbours rather than
-four — so this lives **inside the water lookup**: when the mask is `15`, check
-the diagonals, and exactly one land diagonal picks that corner's tile. Two or
-more has no art in this pack; fall back to open water. Pulling it into a later
-pass would only mean recomputing the mask to find out the cell was `15`.
+Every mask is covered, with no fallbacks — which the sprite sheet could not
+manage. `ground_path*` carries the same shapes for roads.
 
-**The east–west bridge overhang is a genuine second pass.** Its deck is drawn a
-tile and a half tall, so the water cell *south of* one renders as `148` — a
-*water* cell's sprite decided by a *bridge* cell's orientation, which is a
-neighbour's decision reaching in. So:
+⬜ **Open, and the one thing worth getting wrong cheaply first: the kit has
+*two* water vocabularies and a 4-bit mask cannot tell them apart.** The table
+above is the *body* set, and it renders a lake correctly. The kit also has
+`Bend`, `Cross` and `Split` — a *channel* set, for a river one tile wide. A cell
+with water north and east is a lake's corner if its north-east diagonal is water
+and a channel's bend if that diagonal is land, so the discriminator is a
+diagonal, exactly as inner corners already are. Start with the body set alone,
+look at a one-tile river bending, and add the diagonal test only if it reads
+wrong.
 
-```ts
-const base = mapGrid(grid, (_, col, row) => baseCell(grid, col, row));
-return mapGrid(base, (cell, col, row) => bridgeSkirt(grid, col, row) ?? cell);
-```
+#### Drawing it
 
-Pure, no mutation, and the override is one named function returning `null` for
-nearly every cell. It carries an implicit precedence — the skirt beats the water
-mask, and nothing may then beat the skirt — worth writing down now rather than
-discovering it when a second override wants the same cell.
+⚠️ **Merge by material; do not instance.** Terrain is built once and never
+moves, which is the case merging is for. Grouping every tile's submeshes by
+material gives roughly **eight draw calls for the whole board**, against about
+thirty-three for `InstancedMesh` and four hundred for plain clones. Instancing
+earns its keep when things move or need individual control, and neither is true
+here. At 144 tiles all three would perform fine — this is about the simplest
+thing that is also the fastest, not about need.
 
-`classic.ts` runs its road north–south, so the skirt never fires on the only map
-that exists. It needs a test rather than a look.
+Trees, rocks and bridges stop being flat sprites and become models standing on
+the ground, which is what they always wanted to be.
 
-Grass picks among `0/1/2` by a **deterministic hash of the coordinate**, weighted
-(roughly 70/20/10). Deterministic because the alternative reshuffles the field
-every time the mesh rebuilds.
+#### Out of scope: elevation
 
-⚠️ **There are two independent flips, and each can be wrong.** `row` increases
-north and `tileToWorld` maps row to +z, so a sprite's top edge must point north;
-and `Texture`'s `invertY` decides whether `v = 0` is the top or the bottom of the
-PNG, while sheets are indexed from the top. One wrong mirrors every shoreline.
-*Both* wrong looks right again, for the wrong reason, which is the case that
-costs a day.
-
-Settle it with a **digit**. Tiles `180-189` are the numerals, so drawing `184`
-on every cell answers both axes at once and unambiguously: a readable "4" means
-both are right, and upside down or mirrored says exactly which is not. Grass
-cannot answer this — it is uniform, and renders identically under either flip.
-
-#### The mesh
-
-- Per-tile UVs into the atlas, in place of the vertex colours
-  `createTerrainMesh` uses today.
-- `Texture.NEAREST_SAMPLINGMODE`, or 16×16 upscaled four times is mush.
-- **No mipmaps, or inset UVs by half a texel.** `tilemap_packed.png` has zero
-  padding, so mipmapping bleeds neighbouring tiles into each other.
-- Overlays (trees, mountains) are a second set of quads above the ground, since
-  only some cells have one. **Flat on the ground plane, not billboarded** — this
-  is a texture pass, and a forest tile is a sprite over a grass tile, exactly as
-  the art is drawn.
-- **Alpha test, not alpha blend.** The overlays have hard-edged binary
-  transparency, so `MATERIAL_ALPHATEST` with a 0.5 cut-off keeps the edges crisp
-  and sidesteps transparency sorting entirely.
-- Overlays sit just above the ground and **below the movement overlays** — those
-  are at 0.015 / 0.018 / 0.02, so a tree around 0.005 leaves the range tint
-  drawing over the forest rather than under it, which is what reads correctly.
-
-#### Steps
-
-- **7.5a** The atlas, UV plumbing, and **a digit on every tile** — nearest
-  sampling, no bleeding, both flips settled, before any mask logic exists.
-  `TILE_COLORS` goes with it: keeping flat colours as a fallback would let a
-  failed atlas load render a plausible board rather than an obviously broken
-  one. Grid lines stay for now and get judged against real tiles.
-
-  ⬜ Watch the lighting. The hemispheric light will shade the ground, so the
-  tiles will not match the source art exactly. If that reads badly, the fix is
-  `emissiveTexture` with `disableLighting`, which is how flat pixel art usually
-  wants to be drawn — but it is worth looking at before deciding.
-- **7.5b** `composeTerrain` and the mask tables: roads, bridges, water, inner
-  corners. The bulk of the work, and all of it testable.
-
-  ⚠️ The coverage test this step wanted — asserting the shipped maps still
-  produce every mask — **cannot be written**: the maps live in `server` and the
-  tiler in `client`, and neither may import the other. Moving `neighbourMask`
-  into `shared` would make it possible and would be worse, since a sprite mask
-  is not a rule. The composer is tested against inline grids instead, one per
-  shape, which is where a table error would show anyway.
-- **7.5c** Grass weighting and the forest/mountain overlays.
+⚠️ `cliff_block` is a full 1×1×1 cube and the kit has slopes, steps and corners
+for a raised board. **Not here.** Standing terrain up breaks three things at
+once: `screenToTile` intersects `y = 0` so a click on a peak selects the tile
+behind it; the range and route overlays draw at `y` 0.015–0.02 and would sit
+inside a raised tile; and `animateUnitAlongPath` interpolates at fixed `y`, so a
+unit would walk through the cliff rather than over it. Each is tractable and
+none is free. The models will keep.
 
 ### 8 — Combat: the smallest thing you can win
 
