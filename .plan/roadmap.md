@@ -165,7 +165,7 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 | **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | Phase 10 — match lifecycle and, eventually, notification. Not new mechanics |
 | **Ruleset versioning** | None | Stamp a ruleset id on the match so old logs replay under the rules they were played with |
 | **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Fine at one map | A `maps` table once there are enough to select among — see below |
-| **Elevation is visual only, and capped at 0.5** | Height is a look, never data. A mesa and a bridge deck raise where a unit *stands*, but `shared/` has no idea: there is no height on a tile, `entryCost` never asks about one, and no rule reads one. ⚠️ Both halves of the old technical objection are now gone — `screenToTile` tries every surface height tallest-first, so a click finds a peak where it is drawn, and `surfaceAt` is a lookup that knows each tile's height. What caps height now is the *camera*: at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and past about half a tile it occupies its neighbour | ⚠️ **Not queued work — an open design question**, and it was previously written here as though it were waiting on machinery. It is not. Adding height as a *rule* means a second modifier axis over terrain, which already encodes most of what it would say: a mountain is `defense: 4` and costs a horse 4, which is "high ground is worth holding and dear to reach" under another name. Decide whether the game wants it before building any of it — see **Elevation as a rule** below |
+| **Elevation is visual only, and capped at 0.5** | Height is a look, never data. A mesa and a bridge deck raise where a unit *stands*, but `shared/` has no idea: there is no height on a tile, `entryCost` never asks about one, and no rule reads one. ⚠️ Both halves of the old technical objection are now gone — `screenToTile` tries every surface height tallest-first, so a click finds a peak where it is drawn, and `surfaceAt` is a lookup that knows each tile's height. What caps height now is the *camera*: at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and past about half a tile it occupies its neighbour | ⚠️ **Nothing — this is where it stays.** It was once written here as waiting on machinery, which stopped being true when picking learned about height, and elevation as a *rule* is now declined for v1 rather than queued. Mesas are enough at this board size. The reasons, and the two findings worth keeping if it is ever reopened, are in *Out of scope for v1* |
 | **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
 | **`shared/`'s test files are not typechecked** | Nothing imports them, so they never enter a program `tsc -b` builds. Verified both ways: a deliberate type error in a `shared` test passes the typecheck, the same error in a source file fails it. They are verified by running instead | `bun:test` types in a `shared` program, which today means `@types/bun` as a dependency of the package whose defining property is having none — and that would also let `import … from 'bun'` typecheck inside the rulebook. Either a hand-written minimal declaration plus a lint rule closing the purity hole, or leave it |
 | **Migrations run at boot** | `migrate()` on startup, fine for one instance and ~0.4 ms once nothing is pending. Drizzle lists runtime migration as a first-class flow for monoliths, so this is a choice rather than a shortcut | `bun run db:migrate` as a deploy step, once there is more than one instance, a rolling deploy, or a reason to deny the runtime DDL rights |
@@ -200,66 +200,14 @@ treat **map ids as immutable**: a changed map gets a new id, and the old one
 stays as it was played. Stamping the map rows onto the match row is the other
 option, and both cost a few lines against a table's seeding machinery.
 
-## Elevation as a rule ⬜ — undecided
-
-⚠️ **Nothing here is agreed.** This records what the change would touch and what
-has to be decided first, so the question can be answered once rather than
-rediscovered. Height today is presentation only: `surfaceAt` lifts a unit onto a
-mesa and `screenToTile` finds it there, but `shared/` has no height on a tile
-and no rule reads one.
-
-**Final Fantasy Tactics is the reference**, because Advance Wars has no
-elevation at all and so offers nothing to copy. What FFT actually does, with the
-transferable idea first:
-
-- ⚠️ **It separates moving from targeting.** `Jump` caps the height difference a
-  unit may climb in one step; `Vertical` caps how far above or below a unit an
-  ability may reach. Two numbers, because "can I get there" and "can I hit that"
-  are different questions and one number answers them badly.
-- Climbing is **binary, not priced** — within `Jump` or impossible. Falling is
-  allowed further than climbing.
-- Height shifts **accuracy**, and archers gain arc and reach from it.
-- The camera rotates in 90° steps, which is not decoration: height occludes, and
-  a fixed camera would hide units behind terrain.
-
-### What it would touch
-
-| Layer | Change |
-|---|---|
-| **Map** | A second grid beside `rows` — digit rows of the same shape, parsed and dimension-checked like the terrain one. |
-| **State** | Height per tile, reachable from `GameState`, still JSON-serializable. |
-| **Unit types** | A `climb` limit, FFT's `Jump`. Later a `verticalRange` for ranged. |
-| ⚠️ **Movement** | **`entryCost` becomes a property of the *step*, not the tile.** It takes a destination today; it would need origin and destination both. That ripples into `exploreMovement` and `validatePath` — and the fact that those are its *only* two callers is exactly what makes the change safe. Invariant 10 survives; its shape does not. |
-| **Combat** | A factor in `computeDamage` beside terrain and the planned directional one — never a branch, same as facing. |
-| **Render** | ⚠️ **Transitions.** Every tile is flat-topped now, so a height step needs a cliff face between tiles — an autotiler again, over height differences rather than terrain types. The kit ships the pieces. `MAX_STAND_HEIGHT` also has to rise, which is the camera question. |
-
-### What has to be decided first
-
-1. ⚠️ **Does height duplicate terrain?** `mountain` is already `defense: 4` and
-   costs a horse 4 — "high ground is worth holding and dear to reach" under
-   another name. A height *defence* bonus would tune the same dial twice. A
-   height **attack** bonus would not: rewarding the attacker for being above is
-   an axis terrain does not express. If elevation enters combat at all, that is
-   the likeliest door.
-2. ⚠️ **Sequencing.** Combat does not exist yet, and charge and facing are
-   already two original mechanics with untuned numbers. Elevation would make
-   three interacting unknowns tuned at once — the exact trap this document
-   already warns about for charge and facing. It wants to come *after* phase 8
-   produces a number, not before.
-3. **The camera.** Multi-level terrain is unreadable at 38.6° above the
-   horizontal, where a surface at height `h` draws `1.25h` tiles up-screen. FFT
-   answers this with a lower camera and 90° rotation, and pays for it with a
-   slower game. This is the first decision, not the last, because it caps how
-   much height is worth modelling.
-4. **Pace.** Advance Wars is fast and many-unit; FFT is slow and one-unit. "Can
-   I get up there" becomes a question on *every* move. That is a change to what
-   the game feels like, not only to what it computes.
-
 ## Out of scope for v1
 
 - **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
 - **Buildings / capture points.** A terrain type with attached `{ owner, captureProgress }`, not a separate object layered on a tile.
 - **Graying out acted units.** The mechanical restriction is in scope; the visual is a later UI pass — but note phase 8 asks for a "units that can still act" indicator, which is the same thing under another name. Whichever phase draws it, it should be one treatment, not two.
+- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — `mountain` is `defense: 4` and costs a horse 4, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Combat does not exist yet**, and charge and facing are already two original mechanics with untuned numbers; a third interacting axis is the trap this document warns about elsewhere. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
+
+  ⚠️ Two findings worth keeping if it is ever reopened. `entryCost` takes a *destination*; height would make it take a **step**, which is a real signature change but a contained one — `exploreMovement` and `validatePath` are its only callers, and invariant 10 is what guarantees that. And if height ever did enter combat, the door is an **attack** bonus for striking downhill rather than a defence bonus for standing high, because terrain does not express the former and already expresses the latter.
 - **Manual routing.** Dragging out a deliberately non-optimal path. Unblocked by the protocol carrying a path and the server validating it — purely a matter of building the UI for it.
 - **A blocky / voxel art style.** Tried on a branch with [KayKit's Block Bits](https://kaylousberg.itch.io/block-bits) and rejected — recorded so it is not re-litigated from the screenshots alone. It works: every terrain maps onto a block, and **the autotiler turns out not to be load-bearing** — a cube has no shoreline, so a one-tile river bends through a right angle with no mask arithmetic at all, and `composeTerrain` drops from ~250 lines to ~60. What killed it is the camera. The style lives on block *sides*, a near-top-down board shows only tops, and stepping by whole blocks to expose the sides is the elevation problem above. So it is a real option, but only alongside a different camera — not a swap.
 
