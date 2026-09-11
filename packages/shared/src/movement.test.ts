@@ -113,6 +113,28 @@ describe('exploreMovement: terrain costs', () => {
     expect(has(explore(state, 'b1', 4, 'wheels').reachable, 1, 1)).toBe(false);
   });
 
+  // Expensive and impassable are different answers, and the mountain is where
+  // that difference is tuned. Written against cavalry's real range, because
+  // what decides anything is the ratio of the climb to the budget, not the 4.
+  it('lets a horse onto a mountain, but only from close by', () => {
+    const HORSE_RANGE = 5;
+    // One peak on an open row, approached from the west end. Only its distance
+    // changes between the cases.
+    const climbs = (row: string) => {
+      const state = makeState([row], [{ id: 'b1', col: 0, row: 0 }]);
+      return has(explore(state, 'b1', HORSE_RANGE, 'horse').reachable, row.indexOf('^'), 0);
+    };
+
+    expect(climbs('.^..')).toBe(true); // alongside already: the climb is 4 of 5
+    expect(climbs('..^.')).toBe(true); // one step of approach: 1 + 4 exactly
+    expect(climbs('...^')).toBe(false); // two steps: 2 + 4 is over the budget
+
+    // Wheels are still refused outright, at any distance and any budget --
+    // costly and impassable did not collapse into the same thing.
+    const beside = makeState(['.^..'], [{ id: 'b1', col: 0, row: 0 }]);
+    expect(has(explore(beside, 'b1', 99, 'wheels').reachable, 1, 0)).toBe(false);
+  });
+
   it('takes the cheap way round rather than the short way through', () => {
     // Two forests sit between the unit and its target on the top row. For
     // wheels the direct line costs 3+3+1 = 7 across three steps; the road

@@ -193,7 +193,10 @@ terrain cost table; `movementRange` is the budget that column is spent against.
 **`terrain.ts`** — `{ char, defense, cost }` per terrain. `char` is the symbol a
 map is drawn with; `defense` is stars of cover, read by nothing yet; `cost` is
 movement points to *enter*, one per movement type, with `null` for impassable —
-which is what makes a river a wall to wheels and a toll to boots.
+which is what makes a river a wall to wheels and a toll to boots. ⚠️ Costly and
+impassable are deliberately different answers, and a mountain is where that is
+tuned: 4 against a cavalry's range of 5 puts a peak within reach only from close
+by, while `null` for wheels shuts it outright.
 
 `getUnitType` and `getTerrain` throw on an unknown id.
 

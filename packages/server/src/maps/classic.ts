@@ -6,8 +6,9 @@ import type { GameMap } from './types';
  *
  * The terrain is doing work rather than decorating: infantry can ford the
  * river at a cost, cavalry and artillery cannot and must take the bridge; the
- * mountains are closed to anything but foot; the road down the middle is the
- * only ground artillery crosses cheaply.
+ * mountains are cheap on foot, most of a turn on a horse and shut to
+ * artillery; the road down the middle is the only ground artillery crosses
+ * cheaply.
  */
 export const classic: GameMap = {
   id: 'classic',

@@ -39,10 +39,13 @@ export const TERRAIN: Record<TileType, Terrain> = {
   bridge: { char: '=', defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
   plains: { char: '.', defense: 1, cost: { foot: 1, horse: 1, wheels: 2 } },
   forest: { char: 'f', defense: 2, cost: { foot: 1, horse: 2, wheels: 3 } },
-  // Rough ground: passable on foot at a price, closed to anything mounted or
-  // wheeled. This is what makes cavalry fast in the open rather than fast
-  // everywhere.
-  mountain: { char: '^', defense: 4, cost: { foot: 2, horse: null, wheels: null } },
+  // Rough ground, and the best cover on the board. A man climbs it at a price
+  // and a horse can be led up it -- but 4 against cavalry's range of 5 means
+  // the climb is four fifths of a turn. A cavalry reaches a peak only from
+  // close by, at most one step of approach, and never takes one in passing.
+  // That is the shape of the decision: cavalry is fast *in the open*, not fast
+  // everywhere. A gun carriage does not go up a rock face at any price.
+  mountain: { char: '^', defense: 4, cost: { foot: 2, horse: 4, wheels: null } },
   river: { char: '~', defense: 0, cost: { foot: 2, horse: null, wheels: null } },
 };
 
