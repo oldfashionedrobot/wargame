@@ -176,6 +176,15 @@ function recolour(model: TerrainModel, materialName: string) {
  * white. Taking the albedo onto a plain matte `StandardMaterial` also puts
  * terrain and units in the same lighting model, which is the other half of why
  * they used to look like different substances.
+ *
+ * ⚠️ **This carries a colour and nothing else**, which is only safe because
+ * every model in this kit paints itself with flat colours. A *textured* model
+ * dropped in here loses its texture and takes `albedoColor` instead — and a
+ * glTF that paints by texture usually has no `baseColorFactor` at all, so the
+ * colour is white and the board goes blank. That is the same symptom as the
+ * metallic bug above and a different cause, which is exactly why it is worth
+ * saying out loud rather than diagnosing twice. Established on a spike that
+ * swapped in a texture-atlas kit, not imagined.
  */
 function shareMaterial(
   scene: Scene,
@@ -200,6 +209,14 @@ function shareMaterial(
     override?.color ??
     (source instanceof PBRMaterial ? source.albedoColor.clone() : new Color3(1, 1, 1));
   flat.specularColor = new Color3(0, 0, 0);
+  // Says so rather than rendering a mystery. Nothing in this kit is textured,
+  // so reaching here means a model arrived that does not belong to it.
+  if (source instanceof PBRMaterial && source.albedoTexture && !override) {
+    console.error(
+      `terrain: ${model}'s "${source.name}" is textured, and this keeps only a ` +
+        `colour — it will draw flat, and blank if the material has no base colour`,
+    );
+  }
   // Keyed by the name merging will group on, which is why an override has to
   // supply one: two colours under one name would merge into whichever won.
   shared.set(key, flat);
