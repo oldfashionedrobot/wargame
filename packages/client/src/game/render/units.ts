@@ -26,12 +26,26 @@ const FACING_ROTATION: Record<Facing, number> = {
   west: -Math.PI / 2,
 };
 
+// Chosen to read against the board rather than to be canonical blue and red:
+// the ground is a bright saturated teal, so the old darker colours sank into
+// it. Green is deliberately pushed toward lime -- a true green sits almost on
+// top of the grass, which matters the day there are four players.
 const PLAYER_COLORS: Record<PlayerColor, Color3> = {
-  blue: new Color3(0.2, 0.4, 0.9),
-  red: new Color3(0.85, 0.2, 0.2),
-  green: new Color3(0.2, 0.7, 0.3),
-  yellow: new Color3(0.9, 0.8, 0.2),
+  blue: new Color3(0.35, 0.6, 1),
+  red: new Color3(1, 0.33, 0.3),
+  green: new Color3(0.6, 0.92, 0.25),
+  yellow: new Color3(1, 0.85, 0.25),
 };
+
+/**
+ * How much of its own colour a unit gives off regardless of the light.
+ *
+ * Units are mostly vertical -- soldiers, horses, a gun carriage -- and the only
+ * light is hemispheric from above, so their sides fall into shadow exactly
+ * where the silhouette needs to read. A floor of self-illumination keeps them
+ * legible from any angle without flattening the shading that gives them shape.
+ */
+const UNIT_GLOW = 0.28;
 
 /**
  * One material per player colour, not per unit -- the models arrive untextured
@@ -46,6 +60,7 @@ function unitMaterial(scene: Scene, color: PlayerColor): StandardMaterial {
 
   const material = new StandardMaterial(name, scene);
   material.diffuseColor = PLAYER_COLORS[color];
+  material.emissiveColor = PLAYER_COLORS[color].scale(UNIT_GLOW);
   // Matte, like the ground. Terrain kills its own specular and the kit's
   // materials define only a diffuse colour, so a unit left at the default white
   // highlight reads as being made of a different substance from the board it

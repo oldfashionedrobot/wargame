@@ -559,8 +559,13 @@ cancelPreview()           toggleInspector()          dispose()
   rotation set on that node would compose with the flip and turn the unit the
   wrong way. Models face `+Z`, which is north here, so there is no offset.
 - One `StandardMaterial` per player colour, looked up by name so the scene is
-  the cache. The models arrive untextured and near-white, so a flat diffuse
-  colour is the whole of a side's identity.
+  the cache. The models arrive untextured and near-white, so colour is the whole
+  of a side's identity. Matte like the terrain — specular is zeroed — plus a
+  floor of `emissiveColor` at 28% of the diffuse: units are mostly vertical and
+  the only light is hemispheric from above, so their sides fall into shadow
+  exactly where the silhouette has to read. Colours are picked to sit against
+  the board rather than to be canonical, and green leans to lime because a true
+  green sits almost on the grass.
 - Model origins are at the base, so a unit's `y` is 0 rather than half its
   height.
 - Unit meshes are built once at startup; there is no add or remove.
