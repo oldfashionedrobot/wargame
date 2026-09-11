@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { parseTerrainGrid } from '@vod/shared';
-import { KEEP_CLEAR, MAX_STAND_HEIGHT, QUARTER_TURN, composeTerrain } from './composeTerrain';
+import {
+  KEEP_CLEAR,
+  MAX_STAND_HEIGHT,
+  QUARTER_TURN,
+  RUBBLE_MAX_REACH,
+  RUBBLE_MAX_SCALE,
+  composeTerrain,
+} from './composeTerrain';
 
 // The pure half of the tiler: a grid of terrain in, a grid of atlas indices
 // out. No Babylon, so the mask arithmetic and the tables are testable even
@@ -252,12 +259,22 @@ describe('ground cover', () => {
   // rock is obvious. Measured off the art rather than guessed; see RUBBLE.
   const WIDEST_STONE = 0.43;
 
+  // ⚠️ The *worst case*, which is the only one that counts and the one a
+  // sampled board will not find: reaching it needs the furthest placement, the
+  // largest scale and an axis-aligned angle drawn together. A spread of 0.07
+  // put this sum at 0.502 — over — and every sampled assertion below still
+  // passed, because no board is big enough to roll three extremes at once.
+  it('solves the ring so even the widest stone cannot leave its tile', () => {
+    expect(RUBBLE_MAX_REACH + (WIDEST_STONE / 2) * RUBBLE_MAX_SCALE).toBeLessThanOrEqual(0.5);
+  });
+
+  // And that the scatter actually respects the constants it is solved from.
   it('keeps every stone on its own tile', () => {
     const cells = compose(...Array.from({ length: 12 }, () => '^^^^^^^^^^^^'));
     for (const cell of cells.flat()) {
       for (const prop of cell.props) {
-        const reach = Math.max(Math.abs(prop.x), Math.abs(prop.z));
-        expect(reach + (WIDEST_STONE / 2) * prop.scale).toBeLessThanOrEqual(0.5);
+        expect(Math.hypot(prop.x, prop.z)).toBeLessThanOrEqual(RUBBLE_MAX_REACH);
+        expect(prop.scale).toBeLessThanOrEqual(RUBBLE_MAX_SCALE);
       }
     }
   });

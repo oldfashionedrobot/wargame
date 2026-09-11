@@ -2,7 +2,7 @@ import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import type { Material } from '@babylonjs/core/Materials/material';
 import type { Scene } from '@babylonjs/core/scene';
-import type { TileType } from '@vod/shared';
+
 import { tileToWorld } from './coordinates';
 import { QUARTER_TURN } from './composeTerrain';
 import type { TerrainCell } from './composeTerrain';
@@ -24,12 +24,15 @@ import type { TerrainModels } from './terrainModels';
  */
 export function createTerrainMesh(
   scene: Scene,
-  grid: TileType[][],
   models: TerrainModels,
   cells: TerrainCell[][],
 ): Mesh {
-  const gridHeight = grid.length;
-  const gridWidth = grid[0]?.length ?? 0;
+  // ⚠️ Sized from `cells` and not from the grid it was composed out of. Taking
+  // the bounds from one and indexing the other is a hazard for nothing: they
+  // agree today only because nobody has passed a mismatched pair, and the
+  // failure would be reading `undefined.ground` rather than anything legible.
+  const gridHeight = cells.length;
+  const gridWidth = cells[0]?.length ?? 0;
 
   const built: AbstractMesh[] = [];
 
@@ -87,7 +90,7 @@ function mergeByMaterial(scene: Scene, meshes: AbstractMesh[]): Mesh {
     // what lets one mesh hold tiles that were rotated differently.
     const merged = Mesh.MergeMeshes(group, true, true);
     if (!merged) continue;
-    merged.name = `terrain-${name}`;
+    merged.name = name; // already `terrain-<material>`, from terrainModels
     // Re-applied by hand: the sources are disposed as part of merging, and the
     // merged mesh does not reliably inherit their material -- which shows up as
     // a board that has exactly the right shape and no colour at all.

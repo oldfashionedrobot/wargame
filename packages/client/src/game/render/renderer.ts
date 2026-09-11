@@ -20,7 +20,7 @@ import { createTerrainMesh } from './terrain';
 import { MAX_STAND_HEIGHT, composeTerrain } from './composeTerrain';
 import type { TerrainCell } from './composeTerrain';
 import { loadTerrainModels } from './terrainModels';
-import type { TerrainModels } from './terrainModels';
+import type { TerrainModel } from './terrainModels';
 import { animateUnitAlongPath, createUnitMesh, getUnitFacing, setUnitFacing } from './units';
 import { loadUnitModels } from './unitModels';
 
@@ -110,25 +110,34 @@ async function toggleInspector(scene: Scene): Promise<void> {
 }
 
 /**
- * Shouts if a ground model is taller than picking can absorb.
+ * Shouts if any tile's walkable surface is higher than picking can absorb.
  *
- * ⚠️ The way `MAX_STAND_HEIGHT` gets breached is a model swap — the kit has a
- * half-height cliff sitting right beside the quarter-height one this uses — and
- * the symptom is not a raised tile but *clicks landing on the neighbour*, which
- * nobody would trace back to the art. Heights are measured at load, so this is
- * the earliest point anything can know. A warning rather than a throw: the
- * board still draws, and the browser is this renderer's only check anyway.
+ * ⚠️ Checks the **surface**, not the ground model, because that is what
+ * `MAX_STAND_HEIGHT` governs. Testing `topOf` alone and `standOn` alone passes
+ * a cell that breaches the ceiling on their sum — a deck on a raised pad is
+ * only ever one map away, and each half would look innocent.
+ *
+ * The way this gets breached is a model swap — the kit has a half-height cliff
+ * sitting right beside the quarter-height one — and the symptom is not a raised
+ * tile but *clicks landing on the neighbour*, which nobody would trace back to
+ * the art. Heights are measured at load, so this is the earliest point anything
+ * can know. A warning rather than a throw: the board still draws, and the
+ * browser is this renderer's only check anyway.
  */
-function warnIfTooTall(cells: TerrainCell[][], models: TerrainModels): void {
-  const tall = new Set(
-    cells
-      .flat()
-      .map((cell) => cell.ground)
-      .filter((ground) => models.topOf(ground) > MAX_STAND_HEIGHT),
+function warnIfTooTall(cells: TerrainCell[][], surfaceAt: (at: Coordinate) => number): void {
+  // One complaint per offending ground, not per tile: a range of mountains
+  // would otherwise say the same thing thirty times.
+  const tall = new Map<TerrainModel, number>();
+  cells.forEach((cellRow, row) =>
+    cellRow.forEach((cell, col) => {
+      const surface = surfaceAt({ col, row });
+      if (surface > MAX_STAND_HEIGHT) tall.set(cell.ground, surface);
+    }),
   );
-  for (const ground of tall) {
+
+  for (const [ground, surface] of tall) {
     console.error(
-      `terrain: ${ground} stands at ${models.topOf(ground).toFixed(2)}, over the ` +
+      `terrain: a ${ground} tile stands at ${surface.toFixed(2)}, over the ` +
         `${MAX_STAND_HEIGHT} a tile may be before clicks land on the wrong one`,
     );
   }
@@ -210,9 +219,9 @@ export async function createGameRenderer(
     return terrainModels.topOf(cell.ground) + (cell.standOn ?? 0);
   };
 
-  warnIfTooTall(cells, terrainModels);
+  warnIfTooTall(cells, surfaceAt);
 
-  createTerrainMesh(scene, initialState.grid, terrainModels, cells);
+  createTerrainMesh(scene, terrainModels, cells);
   createGridLines(scene, surfaceAt, gridWidth, gridHeight);
   const hoverHighlight = createTileHighlight(scene, 'hover-highlight', HOVER_COLOR, HOVER_ALPHA);
   const selectedHighlight = createTileHighlight(

@@ -1,7 +1,7 @@
 import type { TileType } from '@vod/shared';
 import type { TerrainModel } from './terrainModels';
 
-/** A quarter turn about y — the unit ground models are oriented in. */
+/** A quarter turn about y — the increment every ground model is turned by. */
 export const QUARTER_TURN = Math.PI / 2;
 
 /**
@@ -56,9 +56,11 @@ export interface TerrainCell {
  * tiles away from the tile it belongs to. At 0.25 that is a third of a tile and
  * goes unnoticed; at 0.5 it is a click landing on the neighbour.
  *
- * Binds both halves of a surface: what a cell *declares* in `standOn`, tested
- * here, and how tall the ground model *measures*, which only the renderer can
- * know — `warnIfTooTall` checks that half once the models are loaded.
+ * ⚠️ Binds the **surface** — `topOf(ground) + standOn` — and not either half on
+ * its own, which is why `warnIfTooTall` checks it there rather than here: only
+ * the renderer knows what a model measures. The half a cell *declares* is
+ * tested here too, but passing both halves separately is not the same as
+ * passing their sum.
  */
 export const MAX_STAND_HEIGHT = 0.25;
 
@@ -99,19 +101,29 @@ const RUBBLE_COUNT = 6;
  *
  * ⚠️ These four numbers are squeezed between two edges and there is not much
  * room between them. Outward: a stone must stay *on its own tile*, or it hangs
- * over the rim and floats at pad height above the grass beyond — 0.33 plus the
- * widest stone's half-extent of 0.43/2 scaled to 0.8 lands at 0.50 exactly, the
- * tile's half-width. Inward: `KEEP_CLEAR`, because a unit stands at the centre.
+ * over the rim and floats at pad height above the grass beyond. Inward:
+ * `KEEP_CLEAR`, because a unit stands at the centre.
+ *
+ * ⚠️ The outward bound has to hold at the **worst case, not the likely one**.
+ * `RING + SPREAD` is the furthest a stone's centre goes and `SCALE + GROWTH`
+ * the largest it is drawn, so the binding sum is `0.32 + 0.43/2 × 0.8 = 0.492`
+ * against a half-width of 0.5. An earlier 0.07 spread put that sum at 0.502 —
+ * over — and the test still passed, because hitting it needs three independent
+ * draws at their extremes at once and no board is big enough to roll that.
  *
  * The inward edge is the softer of the two. These are ground clutter a fifth of
  * a tile tall, so a horse standing among them still reads — unlike a tree,
  * which is why that one is pushed to a corner rather than ringed.
  */
 const RUBBLE_RING = 0.26;
-const RUBBLE_SPREAD = 0.07;
+const RUBBLE_SPREAD = 0.06;
 const RUBBLE_SCALE = 0.5;
 const RUBBLE_GROWTH = 0.3;
 export const KEEP_CLEAR = 0.24;
+
+/** The furthest from centre a stone is ever placed, and the largest it is drawn. */
+export const RUBBLE_MAX_REACH = RUBBLE_RING + RUBBLE_SPREAD;
+export const RUBBLE_MAX_SCALE = RUBBLE_SCALE + RUBBLE_GROWTH;
 
 // --- the kit, by the shape of a neighbourhood -------------------------------
 //

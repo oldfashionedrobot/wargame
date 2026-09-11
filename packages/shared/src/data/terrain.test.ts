@@ -52,6 +52,25 @@ describe('the terrain table', () => {
       expect(tiles.some((tile) => TERRAIN[tile].cost[movementType] !== null)).toBe(true);
     }
   });
+
+  // ⚠️ `null` and a large number are meant to be different answers -- shut
+  // outright versus expensive -- and a cost above every relevant unit's range
+  // collapses them without saying so. A mountain is the live case: it charges a
+  // horse 4 against a cavalry's 5, so tuning that range down to 3 would make
+  // peaks impassable to cavalry while the table still claimed otherwise.
+  //
+  // A range check rather than a value check, so this survives balancing.
+  it('never charges more to enter a tile than any unit that could enter it can pay', () => {
+    for (const tile of tiles) {
+      for (const [movementType, cost] of Object.entries(TERRAIN[tile].cost)) {
+        if (cost === null) continue;
+        const budgets = Object.values(UNIT_TYPES)
+          .filter((unitType) => unitType.movementType === movementType)
+          .map((unitType) => unitType.movementRange);
+        expect(Math.max(...budgets)).toBeGreaterThanOrEqual(cost);
+      }
+    }
+  });
 });
 
 describe('getTerrain', () => {
