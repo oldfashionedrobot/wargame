@@ -313,11 +313,6 @@ turn eight draw calls into thirty. One material per name, shared.
 side. That is deliberate — a deck should rest *on* its banks — and it is
 recorded here so nobody later "corrects" it by scaling it down.
 
-⬜ **Accepted for now: the range tint floats over open water.** `riverOpen` and
-`pathOpen` are flat at `y = -0.05`, so an overlay at 0.015 sits 0.065 above
-them. Six per cent of a tile, at a tilted camera. If it reads badly the fix is a
-per-cell overlay height, which is the machinery elevation would want anyway.
-
 **Roads take the channel vocabulary, water takes the body one**, and that
 sidesteps the ambiguity above for half the problem: a road is always a
 connector, so `pathCross`, `pathSplit`, `pathBend`, `pathStraight`, `pathEnd`
