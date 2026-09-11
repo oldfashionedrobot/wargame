@@ -46,6 +46,11 @@ function unitMaterial(scene: Scene, color: PlayerColor): StandardMaterial {
 
   const material = new StandardMaterial(name, scene);
   material.diffuseColor = PLAYER_COLORS[color];
+  // Matte, like the ground. Terrain kills its own specular and the kit's
+  // materials define only a diffuse colour, so a unit left at the default white
+  // highlight reads as being made of a different substance from the board it
+  // stands on.
+  material.specularColor = new Color3(0, 0, 0);
   return material;
 }
 

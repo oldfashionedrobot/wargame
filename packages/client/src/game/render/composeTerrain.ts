@@ -1,83 +1,103 @@
 import type { TileType } from '@vod/shared';
+import type { TerrainModel } from './terrainModels';
 
 /**
- * What to draw on one tile: a ground sprite, optionally turned, and optionally
- * something standing on it.
+ * What to draw on one tile: a ground model, turned to suit its neighbours, and
+ * optionally something standing on it.
  */
 export interface TerrainCell {
-  ground: number;
-  /** Quarter turns applied to the ground sprite's UVs. */
+  ground: TerrainModel;
+  /** Quarter turns about y, applied to the ground model. */
   turns: number;
-  overlay?: number;
+  overlay?: TerrainModel;
+  /** Quarter turns for the overlay, where it has an orientation of its own. */
+  overlayTurns?: number;
 }
 
-// --- the atlas, by role -----------------------------------------------------
+// --- the kit, by the shape of a neighbourhood -------------------------------
+//
+// A quarter turn is free in three dimensions, so sixteen masks need six models
+// rather than sixteen sprites. Each entry is the model plus how many turns take
+// it from the orientation it was drawn in to the one this mask wants.
+//
+// ⚠️ Base orientations are measured, not guessed -- see the rotation probe in
+// the commit that introduced this. Getting one wrong turns a shoreline inland.
 
-const GRASS = [0, 1, 2] as const; // plain, tufts, flowers
-const OPEN_WATER = 37;
-const TREES = 112;
-const MOUNTAIN = 5;
+interface Turned {
+  model: TerrainModel;
+  turns: number;
+}
 
-// Deck sprites. A bridge is drawn as road over water, so it takes its own
-// tile rather than a masked road one.
-const BRIDGE_NORTH_SOUTH = 166;
-const BRIDGE_EAST_WEST = 130;
-/** The underside an east-west deck overhangs into the water south of it. */
-const BRIDGE_UNDERSIDE = 148;
+// A turn about y carries north to east, east to south, and so on, so a model's
+// entries are one cycle of whatever it was drawn as. The base orientations
+// below were **measured** off the geometry, not guessed: `riverStraight` runs
+// north-south at rest, `riverSide` banks to the south, `riverCorner` opens
+// north and west, `riverEnd` enters from the north. Guessing them the first
+// time produced a river in disconnected segments.
 
 /**
- * Road by neighbour mask, and the sheet's own 4x4 layout is the reason this is
- * trustworthy rather than sixteen guesses: its rows encode the north/south
- * bits (none, S, N+S, N) and its columns the east/west ones (none, E, E+W, W),
- * so every entry below is `108 + row*18 + col` for exactly one mask.
+ * Water as a **body**: the mask counts water neighbours, so a model is named
+ * for where the *land* is. All sixteen covered, with nothing to fall back on --
+ * which the sprite sheet could not manage.
  */
-const ROAD: Record<number, number> = {
-  0: 108,
-  2: 109,
-  10: 110,
-  8: 111,
-  4: 126,
-  6: 127,
-  14: 128,
-  12: 129,
-  5: 144,
-  7: 145,
-  15: 146,
-  13: 147,
-  1: 162,
-  3: 163,
-  11: 164,
-  9: 165,
+const WATER: Record<number, Turned> = {
+  15: { model: 'ground_riverOpen', turns: 0 }, // no land at all
+  0: { model: 'ground_riverTile', turns: 0 }, // a pond, land on every side
+
+  11: { model: 'ground_riverSide', turns: 0 }, // land south
+  7: { model: 'ground_riverSide', turns: 1 }, // land west
+  14: { model: 'ground_riverSide', turns: 2 }, // land north
+  13: { model: 'ground_riverSide', turns: 3 }, // land east
+
+  9: { model: 'ground_riverCorner', turns: 0 }, // land east and south
+  3: { model: 'ground_riverCorner', turns: 1 }, // land south and west
+  6: { model: 'ground_riverCorner', turns: 2 }, // land west and north
+  12: { model: 'ground_riverCorner', turns: 3 }, // land north and east
+
+  5: { model: 'ground_riverStraight', turns: 0 }, // land east and west
+  10: { model: 'ground_riverStraight', turns: 1 }, // land north and south
+
+  1: { model: 'ground_riverEnd', turns: 0 }, // water only to the north
+  2: { model: 'ground_riverEnd', turns: 1 },
+  4: { model: 'ground_riverEnd', turns: 2 },
+  8: { model: 'ground_riverEnd', turns: 3 },
 };
 
 /**
- * Water by neighbour mask. The nine-slice is laid out spatially on the sheet —
- * 18/19/20 over 36/37/38 over 54/55/56 — so these read straight off it.
- *
- * ⚠️ Only twelve of the sixteen exist. The four stubs (a water cell with one
- * water neighbour, ending a river in open ground) have no art, and neither has
- * `0`, a pond with no water neighbours at all. Those fall back to open water,
- * which is a hard-edged blue square — visible, and deliberately so.
+ * Roads as **connectors**, which is the only thing a road ever is -- so unlike
+ * water there is no second reading of a neighbourhood to disambiguate. Same
+ * rotation structure, measured the same way.
  */
-const WATER: Record<number, { tile: number; turns: number }> = {
-  6: { tile: 18, turns: 0 }, // land north and west
-  14: { tile: 19, turns: 0 }, // land north
-  12: { tile: 20, turns: 0 }, // land north and east
-  7: { tile: 36, turns: 0 }, // land west
-  15: { tile: 37, turns: 0 }, // open
-  13: { tile: 38, turns: 0 }, // land east
-  3: { tile: 54, turns: 0 }, // land south and west
-  11: { tile: 55, turns: 0 }, // land south
-  9: { tile: 56, turns: 0 }, // land south and east
-  5: { tile: 57, turns: 0 }, // a channel running north to south
-  // ⚠️ No horizontal channel was drawn, and it is the commonest shape of all --
-  // every tile of a river crossing the board is this. Turning the vertical one
-  // is what fills the gap; water detail carries a quarter turn without complaint.
-  10: { tile: 57, turns: 1 },
+const ROAD: Record<number, Turned> = {
+  15: { model: 'ground_pathCross', turns: 0 },
+  0: { model: 'ground_pathTile', turns: 0 },
+
+  11: { model: 'ground_pathSplit', turns: 0 }, // no road south
+  7: { model: 'ground_pathSplit', turns: 1 }, // no road west
+  14: { model: 'ground_pathSplit', turns: 2 }, // no road north
+  13: { model: 'ground_pathSplit', turns: 3 }, // no road east
+
+  9: { model: 'ground_pathBend', turns: 0 }, // north and west
+  3: { model: 'ground_pathBend', turns: 1 }, // north and east
+  6: { model: 'ground_pathBend', turns: 2 }, // south and east
+  12: { model: 'ground_pathBend', turns: 3 }, // south and west
+
+  5: { model: 'ground_pathStraight', turns: 0 }, // north to south
+  10: { model: 'ground_pathStraight', turns: 1 }, // east to west
+
+  1: { model: 'ground_pathEnd', turns: 0 }, // road only to the north
+  2: { model: 'ground_pathEnd', turns: 1 },
+  4: { model: 'ground_pathEnd', turns: 2 },
+  8: { model: 'ground_pathEnd', turns: 3 },
 };
 
 /** Water on all four sides but land on one diagonal, by which diagonal. */
-const INNER_CORNER = { nw: 90, ne: 91, se: 92, sw: 93 } as const;
+const INNER_CORNER: Record<'nw' | 'ne' | 'se' | 'sw', number> = {
+  ne: 0, // where the nub is drawn
+  se: 1,
+  sw: 2,
+  nw: 3,
+};
 
 // --- neighbourhoods ---------------------------------------------------------
 
@@ -118,35 +138,12 @@ export function neighbourMask(
   );
 }
 
-/**
- * Which way a bridge runs.
- *
- * ⚠️ Not read off the road mask, which would seem to be the same question and
- * is not: a road two tiles wide gives its bridge cells masks 7 and 13 rather
- * than 5 and 10, because each lane sees the other beside it. Asking only about
- * *strictly* road neighbours ignores the lane next door and answers correctly
- * however wide the crossing is.
- */
-function bridgeTile(grid: TileType[][], col: number, row: number): number {
-  const road = (c: number, r: number): boolean => at(grid, c, r) === 'road';
-  const northSouth = road(col, row + 1) || road(col, row - 1);
-  return northSouth ? BRIDGE_NORTH_SOUTH : BRIDGE_EAST_WEST;
-}
-
-/** Deterministic, so the field does not reshuffle whenever the mesh rebuilds. */
-function grassTile(col: number, row: number): number {
-  const hash = (col * 73856093) ^ (row * 19349663);
-  const weighted = Math.abs(hash) % 100;
-  if (weighted < 70) return GRASS[0];
-  return weighted < 90 ? GRASS[1] : GRASS[2];
-}
-
 function waterCell(grid: TileType[][], col: number, row: number): TerrainCell {
   const mask = neighbourMask(grid, col, row, isWater, true);
 
   // Water on every side: the only thing left that can distinguish this cell is
-  // a diagonal, and exactly one land diagonal is a corner the sheet has drawn.
-  // Two or more has no art, so it stays open water.
+  // a diagonal, and exactly one land diagonal is a corner the kit has drawn.
+  // Two or more has no model, so it stays open water.
   if (mask === 15) {
     const land = (
       [
@@ -159,11 +156,42 @@ function waterCell(grid: TileType[][], col: number, row: number): TerrainCell {
       const tile = at(grid, col + dc, row + dr);
       return tile !== undefined && !isWater(tile);
     });
-    if (land.length === 1) return { ground: INNER_CORNER[land[0][0]], turns: 0 };
+    if (land.length === 1) {
+      return { ground: 'ground_riverCornerSmall', turns: INNER_CORNER[land[0][0]] };
+    }
   }
 
   const chosen = WATER[mask];
-  return chosen ? { ground: chosen.tile, turns: chosen.turns } : { ground: OPEN_WATER, turns: 0 };
+  return { ground: chosen.model, turns: chosen.turns };
+}
+
+/**
+ * Which way a bridge runs.
+ *
+ * ⚠️ Not read off the road mask, which would seem to be the same question and
+ * is not: a road two tiles wide gives its bridge cells masks 7 and 13 rather
+ * than 5 and 10, because each lane sees the other beside it. Asking only about
+ * *strictly* road neighbours ignores the lane next door and answers correctly
+ * however wide the crossing is.
+ */
+function bridgeTurns(grid: TileType[][], col: number, row: number): number {
+  const road = (c: number, r: number): boolean => at(grid, c, r) === 'road';
+  const northSouth = road(col, row + 1) || road(col, row - 1);
+  return northSouth ? 0 : 1;
+}
+
+/**
+ * Deterministic, so nothing reshuffles whenever the scene rebuilds.
+ *
+ * ⚠️ Mixed rather than a bare XOR of two multiples. `col * a ^ row * b` cancels
+ * to zero wherever the two products agree in the low bits, which on a diagonal
+ * put every prop in the same corner -- a test caught it, and only because it
+ * sampled a diagonal.
+ */
+function hash(col: number, row: number): number {
+  let h = (col * 374761393 + row * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return Math.abs(h ^ (h >>> 16));
 }
 
 function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
@@ -172,40 +200,48 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
   switch (tile) {
     case 'river':
       return waterCell(grid, col, row);
+    // A bridge is a deck standing on water, so the ground beneath it is
+    // whatever the river would have been -- which is why the underside the
+    // sprite sheet needed a second pass for simply does not arise here.
     case 'bridge':
-      return { ground: bridgeTile(grid, col, row), turns: 0 };
-    case 'road':
-      return { ground: ROAD[neighbourMask(grid, col, row, isRoad, false)], turns: 0 };
+      return {
+        ...waterCell(grid, col, row),
+        overlay: 'bridge_wood',
+        overlayTurns: bridgeTurns(grid, col, row),
+      };
+    case 'road': {
+      const chosen = ROAD[neighbourMask(grid, col, row, isRoad, false)];
+      return { ground: chosen.model, turns: chosen.turns };
+    }
     case 'forest':
-      return { ground: grassTile(col, row), turns: 0, overlay: TREES };
+      return { ground: 'ground_grass', turns: 0, overlay: 'tree_default' };
     case 'mountain':
-      return { ground: grassTile(col, row), turns: 0, overlay: MOUNTAIN };
+      return { ground: 'ground_grass', turns: 0, overlay: 'rock_largeA' };
     default:
-      return { ground: grassTile(col, row), turns: 0 };
+      return { ground: 'ground_grass', turns: 0 };
   }
 }
 
-/**
- * The east–west deck is drawn a tile and a half tall, so the water beneath one
- * shows its underside rather than its own shoreline.
- *
- * A second pass because this is the one rule where a *neighbour's* decision
- * reaches into this cell — everything else a tile needs, it can see for itself.
- * Precedence, while there is only one of these: the underside beats the water
- * mask, and nothing beats the underside.
- */
-function bridgeUnderside(grid: TileType[][], col: number, row: number): TerrainCell | null {
-  if (at(grid, col, row) !== 'river') return null;
-  if (at(grid, col, row + 1) !== 'bridge') return null;
-
-  return bridgeTile(grid, col, row + 1) === BRIDGE_EAST_WEST
-    ? { ground: BRIDGE_UNDERSIDE, turns: 0 }
-    : null;
+/** Every cell's models, worked out once -- terrain does not change in a match. */
+export function composeTerrain(grid: TileType[][]): TerrainCell[][] {
+  return grid.map((cells, row) => cells.map((_, col) => baseCell(grid, col, row)));
 }
 
-/** Every cell's sprite, worked out once — terrain does not change in a match. */
-export function composeTerrain(grid: TileType[][]): TerrainCell[][] {
-  return grid.map((cells, row) =>
-    cells.map((_, col) => bridgeUnderside(grid, col, row) ?? baseCell(grid, col, row)),
-  );
+/**
+ * Where a prop stands within its tile.
+ *
+ * ⚠️ Never the middle: a unit stands there, and a tree planted in the centre is
+ * a tree wearing a soldier. Pushed toward a corner by the same hash that picks
+ * grass, so the scatter is varied but never moves between renders.
+ */
+export function propOffset(col: number, row: number): { x: number; z: number } {
+  const h = hash(col, row);
+  const corner = h % 4;
+  const jitter = ((h >> 3) % 5) / 100; // a hair off the diagonal, so rows do not line up
+  const d = 0.28 + jitter;
+
+  return {
+    x: corner === 0 || corner === 3 ? -d : d,
+    z: corner === 0 || corner === 1 ? -d : d,
+  };
 }

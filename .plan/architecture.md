@@ -511,31 +511,35 @@ cancelPreview()           toggleInspector()          dispose()
   resize; the `resize` listener is removed in `dispose()`.
 - **Tile lookup is math, not mesh-picking** — `screenToTile` intersects a camera
   ray with the `y = 0` plane, so terrain must stay flat.
-- Terrain is one merged mesh, UV-mapped per tile into a 16px sprite atlas
-  (`public/textures/terrain-atlas.png`, 18×11, no padding) loaded with nearest
-  sampling and no mipmaps. `terrainAtlas.ts` owns the UV arithmetic and the
-  load; `invertY` is off, so the sheet sits as it does on disk and `v = 0` is
-  its top row. Half a texel is inset off every edge, since a UV landing exactly
-  on a boundary can round into a neighbour the unpadded sheet cannot spare.
-  `composeTerrain.ts` decides which index each cell gets, purely: a 4-bit
-  neighbour mask (`N=1, E=2, S=4, W=8`) indexes a table per family. A bridge
-  belongs to **both** families — it is water with a road over it — so a river
-  is not broken by its own crossing. Off-board counts as water for water, so a
-  river runs off the edge, and as land for roads, so a road ends.
-- Overlays (trees, peaks) are a second mesh just above the ground, alpha-tested
-  rather than blended, drawing only the cells that have one. Grass picks among
-  three variants by a deterministic hash of the coordinate.
-- Four things the mask alone cannot answer, all covered by tests: an **inner
-  corner** needs a diagonal, so mask 15 with exactly one land diagonal takes a
-  corner tile; **bridge orientation** is read from strictly-road neighbours,
-  because a two-lane crossing gives its decks masks 7 and 13 rather than 5 and
-  10; the **east–west deck overhangs**, so the water south of one draws its
-  underside in a second pass; and the sheet has **no horizontal channel**, the
-  commonest river shape of all, so the vertical one is turned a quarter turn.
-  A pond with no water neighbours has no art either and falls back to open
-  water — a hard-edged square, visibly so rather than silently. Grid lines are a `LineSystem`. Two
-  `createTileOverlay` meshes draw the reachable range and the route through it,
-  at different heights so the route reads on top.
+- Terrain is built from **glTF models**, one per tile, and then **merged by
+  material** — grouping every tile's meshes by material leaves about eight draw
+  calls for a board, against roughly thirty instanced. Merging is right because
+  terrain is made once and never moves. `terrainModels.ts` loads the set and
+  shares one material per name across all of them, which is what makes the
+  grouping work.
+- ⚠️ The loaded PBR materials are **replaced** with flat `StandardMaterial`s
+  carrying their albedo. The kit ships `metallicFactor: 1`, and a fully metallic
+  surface has no diffuse response — with no environment map to reflect, the
+  whole board renders blank white. Flattening also puts terrain and units in one
+  lighting model, both matte.
+- `composeTerrain.ts` decides each cell's model and quarter turns, purely: a
+  4-bit neighbour mask (`N=1, E=2, S=4, W=8`) indexes a table per family. A
+  bridge belongs to **both** families — it is water with a road over it — so a
+  river is not broken by its own crossing. Off-board counts as water for water,
+  so a river runs off the edge, and as land for roads, so a road ends.
+- **A quarter turn replaces twelve of the sixteen sprites a tileset would need.**
+  Base orientations are measured off the geometry, not assumed: `riverStraight`
+  runs north–south at rest, `riverSide` banks south, `riverCorner` opens north
+  and west. Water uses the *body* vocabulary and roads the *connector* one,
+  since a road is never a body of anything.
+- Three things the mask alone cannot answer: an **inner corner** needs a
+  diagonal, so mask 15 with exactly one land diagonal takes a corner model;
+  **bridge orientation** comes from strictly-road neighbours, because a two-lane
+  crossing gives its decks masks 7 and 13 rather than 5 and 10; and a bridge is
+  a model standing *on* water rather than ground of its own.
+- Trees and rocks stand on the ground as models, pushed to the edge of their
+  tile by a deterministic hash — a unit stands in the middle, and a prop planted
+  there would swallow it.
 - A highlight follows the pointer, moved from `POINTERMOVE` inside the
   renderer. React never hears about hover.
 - **The route preview is computed here, not in React.** `setMovement` hands the

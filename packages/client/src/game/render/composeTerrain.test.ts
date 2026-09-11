@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseTerrainGrid } from '@vod/shared';
-import { composeTerrain } from './composeTerrain';
+import { composeTerrain, propOffset } from './composeTerrain';
 
 // The pure half of the tiler: a grid of terrain in, a grid of atlas indices
 // out. No Babylon, so the mask arithmetic and the tables are testable even
@@ -9,8 +9,7 @@ import { composeTerrain } from './composeTerrain';
 // ⚠️ `rows[0]` is the row nearest the camera, so these fixtures read bottom-up
 // exactly as a map file does.
 const compose = (...rows: string[]) => composeTerrain(parseTerrainGrid(rows));
-const groundAt = (cells: ReturnType<typeof compose>, col: number, row: number) =>
-  cells[row][col].ground;
+const cellAt = (cells: ReturnType<typeof compose>, col: number, row: number) => cells[row][col];
 
 describe('roads', () => {
   // The sheet's 4x4 is structured -- rows carry the north/south bits, columns
@@ -22,11 +21,11 @@ describe('roads', () => {
       '.---.', // 1
       '..-..', // 2
     );
-    expect(groundAt(cells, 2, 1)).toBe(146); // crossroads: road on all four
-    expect(groundAt(cells, 1, 1)).toBe(109); // road only to the east
-    expect(groundAt(cells, 3, 1)).toBe(111); // road only to the west
-    expect(groundAt(cells, 2, 0)).toBe(162); // road only to the north
-    expect(groundAt(cells, 2, 2)).toBe(126); // road only to the south
+    expect(cells[1][2].ground).toBe('ground_pathCross'); // crossroads: road on all four
+    expect(cells[1][1].ground).toBe('ground_pathEnd'); // road only to the east
+    expect(cells[1][3].ground).toBe('ground_pathEnd'); // road only to the west
+    expect(cells[0][2].ground).toBe('ground_pathEnd'); // road only to the north
+    expect(cells[2][2].ground).toBe('ground_pathEnd'); // road only to the south
   });
 
   it('draws a corner where a road turns, and a straight where it does not', () => {
@@ -34,15 +33,15 @@ describe('roads', () => {
       '.--', // 0
       '.-.', // 1
     );
-    expect(groundAt(cells, 1, 0)).toBe(163); // north and east: a corner
-    expect(groundAt(cells, 2, 0)).toBe(111); // west only: an end
-    expect(groundAt(cells, 1, 1)).toBe(126); // south only: an end
+    expect(cells[0][1].ground).toBe('ground_pathBend'); // north and east: a corner
+    expect(cells[0][2].ground).toBe('ground_pathEnd'); // west only: an end
+    expect(cells[1][1].ground).toBe('ground_pathEnd'); // south only: an end
   });
 
   // The board's edge is *not* road, so a road running to it stops rather than
   // trailing off -- the opposite of what water does.
   it('ends a road at the edge of the board', () => {
-    expect(groundAt(compose('--'), 0, 0)).toBe(109); // east only
+    expect(compose('--')[0][0].ground).toBe('ground_pathEnd'); // east only
   });
 });
 
@@ -56,8 +55,8 @@ describe('water', () => {
       '...', // 2  land
     );
     // Land north and south, water east and west: a channel across the board.
-    expect(groundAt(cells, 1, 1)).toBe(57);
-    expect(cells[1][1].turns).toBe(1); // the only channel drawn runs the other way
+    // The model is drawn running north-south, so this one is turned.
+    expect(cellAt(cells, 1, 1)).toMatchObject({ ground: 'ground_riverStraight', turns: 1 });
   });
 
   it('runs off the edge of the board rather than growing a shore along it', () => {
@@ -68,7 +67,7 @@ describe('water', () => {
     );
     // The west end is the board edge, which counts as more water, so this is
     // the same tile as the middle rather than an end cap.
-    expect(groundAt(cells, 0, 1)).toBe(groundAt(cells, 1, 1));
+    expect(cellAt(cells, 0, 1)).toEqual(cellAt(cells, 1, 1));
   });
 
   it('wraps a lake in its nine-slice', () => {
@@ -79,12 +78,16 @@ describe('water', () => {
       '.~~~.', // 3
       '.....', // 4
     );
-    expect(groundAt(cells, 2, 2)).toBe(37); // open water in the middle
-    expect(groundAt(cells, 1, 3)).toBe(18); // land north and west
-    expect(groundAt(cells, 2, 3)).toBe(19); // land north
-    expect(groundAt(cells, 3, 3)).toBe(20); // land north and east
-    expect(groundAt(cells, 1, 1)).toBe(54); // land south and west
-    expect(groundAt(cells, 3, 1)).toBe(56); // land south and east
+    expect(cellAt(cells, 2, 2).ground).toBe('ground_riverOpen'); // no land at all
+    // One model, four turns -- which is the whole reason this is cheaper in
+    // three dimensions than it was as sprites.
+    // The model banks to the south at rest, so each edge is one more turn.
+    expect(cellAt(cells, 2, 1)).toMatchObject({ ground: 'ground_riverSide', turns: 0 }); // land south
+    expect(cellAt(cells, 1, 2)).toMatchObject({ ground: 'ground_riverSide', turns: 1 }); // land west
+    expect(cellAt(cells, 2, 3)).toMatchObject({ ground: 'ground_riverSide', turns: 2 }); // land north
+    expect(cellAt(cells, 3, 2)).toMatchObject({ ground: 'ground_riverSide', turns: 3 }); // land east
+    expect(cellAt(cells, 1, 3)).toMatchObject({ ground: 'ground_riverCorner', turns: 2 }); // land west and north
+    expect(cellAt(cells, 3, 3)).toMatchObject({ ground: 'ground_riverCorner', turns: 3 }); // land north and east
   });
 
   // An island: water on all four sides of its neighbours, land on one
@@ -101,19 +104,32 @@ describe('water', () => {
       '.~~~~~.', // 5
       '.......', // 6
     );
-    expect(groundAt(cells, 2, 4)).toBe(92); // island on its south-east diagonal
-    expect(groundAt(cells, 4, 4)).toBe(93); // island south-west
-    expect(groundAt(cells, 2, 2)).toBe(91); // island north-east
-    expect(groundAt(cells, 4, 2)).toBe(90); // island north-west
+    for (const [col, row] of [
+      [2, 4],
+      [4, 4],
+      [2, 2],
+      [4, 2],
+    ]) {
+      expect(cellAt(cells, col, row).ground).toBe('ground_riverCornerSmall');
+    }
+    // All four, and each turned differently -- one model covers the lot.
+    expect(
+      new Set([
+        cellAt(cells, 2, 4).turns,
+        cellAt(cells, 4, 4).turns,
+        cellAt(cells, 2, 2).turns,
+        cellAt(cells, 4, 2).turns,
+      ]).size,
+    ).toBe(4);
     // Straight out from the island is *not* a corner: the island is an
     // orthogonal neighbour there, so those cells take a shoreline instead.
-    expect(groundAt(cells, 3, 2)).toBe(19); // island to its north
+    expect(cellAt(cells, 3, 2).ground).toBe('ground_riverSide');
   });
 
-  // Nothing was drawn for a pond with no water neighbours, so it falls back to
-  // open water: a hard-edged square, and visibly so rather than silently.
-  it('falls back to open water where the sheet has no tile', () => {
-    expect(groundAt(compose('...', '.~.', '...'), 1, 1)).toBe(37);
+  // The sprite sheet had nothing for this and fell back to a hard blue square.
+  // The kit draws it.
+  it('draws a pond with no water neighbours at all', () => {
+    expect(compose('...', '.~.', '...')[1][1].ground).toBe('ground_riverTile');
   });
 });
 
@@ -127,16 +143,23 @@ describe('bridges', () => {
       '..-..', // 2
     );
     // The water either side reads as a continuous channel, not as two stubs.
-    expect(groundAt(cells, 1, 1)).toBe(57);
-    expect(groundAt(cells, 3, 1)).toBe(57);
+    expect(cellAt(cells, 1, 1).ground).toBe('ground_riverStraight');
+    expect(cellAt(cells, 3, 1).ground).toBe('ground_riverStraight');
   });
 
-  it('runs the deck the way the road does', () => {
+  // The deck stands *on* the water, so the ground beneath it is still river --
+  // which is why the underside the sprite sheet needed a second pass for does
+  // not arise at all here.
+  it('stands a deck on the water, turned the way the road runs', () => {
     const northSouth = compose('..-..', '~~=~~', '..-..');
-    expect(groundAt(northSouth, 2, 1)).toBe(166);
+    expect(cellAt(northSouth, 2, 1)).toMatchObject({
+      ground: 'ground_riverStraight',
+      overlay: 'bridge_wood',
+      overlayTurns: 0, // the deck is drawn running north to south
+    });
 
     const eastWest = compose('..~..', '.-=-.', '..~..');
-    expect(groundAt(eastWest, 2, 1)).toBe(130);
+    expect(cellAt(eastWest, 2, 1)).toMatchObject({ overlay: 'bridge_wood', overlayTurns: 1 });
   });
 
   // A two-lane crossing gives its bridge cells masks 7 and 13 rather than 5
@@ -148,48 +171,44 @@ describe('bridges', () => {
       '~~==~~', // 1
       '..--..', // 2
     );
-    expect(groundAt(cells, 2, 1)).toBe(166);
-    expect(groundAt(cells, 3, 1)).toBe(166);
-  });
-
-  // The east-west deck is drawn a tile and a half tall, so it overhangs the
-  // water below it. The only rule where a neighbour's decision reaches in.
-  it('shows the underside of an east-west deck in the water beneath it', () => {
-    const cells = compose(
-      '..~..', // 0  <- beneath the deck
-      '.-=-.', // 1
-      '..~..', // 2
-    );
-    expect(groundAt(cells, 2, 0)).toBe(148);
-    // And not above it, which sees only its own shoreline.
-    expect(groundAt(cells, 2, 2)).not.toBe(148);
-  });
-
-  it('leaves the water alone under a north-south deck', () => {
-    const cells = compose('..-..', '~~=~~', '..-..');
-    expect(groundAt(cells, 2, 0)).not.toBe(148);
+    expect(cellAt(cells, 2, 1).overlayTurns).toBe(0);
+    expect(cellAt(cells, 3, 1).overlayTurns).toBe(0);
   });
 });
 
 describe('ground cover', () => {
-  it('stands trees and peaks on grass rather than replacing it', () => {
+  it('stands trees and rocks on grass rather than replacing it', () => {
     const cells = compose('f^.');
-    expect(cells[0][0].overlay).toBe(112);
-    expect(cells[0][1].overlay).toBe(5);
+    expect(cells[0][0].overlay).toBe('tree_default');
+    expect(cells[0][1].overlay).toBe('rock_largeA');
     expect(cells[0][2].overlay).toBeUndefined();
     // All three are grass underneath, whatever is standing on them.
-    for (const cell of cells[0]) expect(cell.ground).toBeLessThan(3);
+    for (const cell of cells[0]) expect(cell.ground).toBe('ground_grass');
   });
 
-  // Deterministic, or the field reshuffles every time the mesh rebuilds.
-  it('picks the same grass for the same tile every time', () => {
-    const rows = ['....', '....', '....'];
-    expect(compose(...rows)).toEqual(compose(...rows));
+  // ⚠️ A unit stands in the middle of its tile, so a prop planted there is a
+  // prop wearing a soldier.
+  it('keeps props clear of the middle of the tile', () => {
+    for (let col = 0; col < 8; col++) {
+      for (let row = 0; row < 8; row++) {
+        const { x, z } = propOffset(col, row);
+        expect(Math.abs(x)).toBeGreaterThan(0.25);
+        expect(Math.abs(z)).toBeGreaterThan(0.25);
+      }
+    }
   });
 
-  it('does not make every tile the same grass', () => {
-    const cells = compose('.'.repeat(20), '.'.repeat(20), '.'.repeat(20));
-    const used = new Set(cells.flat().map((cell) => cell.ground));
-    expect(used.size).toBeGreaterThan(1);
+  it('puts the same prop in the same place every time', () => {
+    expect(propOffset(3, 4)).toEqual(propOffset(3, 4));
+  });
+
+  it('does not stack every prop in the same corner', () => {
+    const corners = new Set(
+      Array.from({ length: 8 }, (_, i) => {
+        const { x, z } = propOffset(i, i * 3);
+        return `${Math.sign(x)},${Math.sign(z)}`;
+      }),
+    );
+    expect(corners.size).toBeGreaterThan(1);
   });
 });
