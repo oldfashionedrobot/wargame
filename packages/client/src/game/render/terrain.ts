@@ -4,13 +4,14 @@ import type { Material } from '@babylonjs/core/Materials/material';
 import type { Scene } from '@babylonjs/core/scene';
 import type { TileType } from '@vod/shared';
 import { tileToWorld } from './coordinates';
-import { composeTerrain, propOffset } from './composeTerrain';
+import { propOffset } from './composeTerrain';
+import type { TerrainCell } from './composeTerrain';
 import type { TerrainModel, TerrainModels } from './terrainModels';
 
-// Terrain stays flat, and not only for now: screenToTile intersects the y=0
-// plane rather than picking meshes, so a mountain with real height would have
-// you click its peak and select the tile behind it. Every ground model in the
-// kit is flat-topped at y = 0, which is what keeps that true.
+// Height here is a *look*, never data: the map has no elevation, movement costs
+// nothing extra to climb, and screenToTile still answers by intersecting y = 0
+// rather than picking a mesh. What that buys is a hard ceiling on how tall
+// anything walkable may be -- see `topOf` -- not a rule that everything is flat.
 
 const QUARTER_TURN = Math.PI / 2;
 
@@ -34,10 +35,14 @@ const PROP_SCALE: Partial<Record<TerrainModel, number>> = {
  * instanced and four hundred as loose copies. At this size any of them would
  * do -- this is the simplest option that also happens to be the fastest.
  */
-export function createTerrainMesh(scene: Scene, grid: TileType[][], models: TerrainModels): Mesh {
+export function createTerrainMesh(
+  scene: Scene,
+  grid: TileType[][],
+  models: TerrainModels,
+  cells: TerrainCell[][],
+): Mesh {
   const gridHeight = grid.length;
   const gridWidth = grid[0]?.length ?? 0;
-  const cells = composeTerrain(grid);
 
   const built: AbstractMesh[] = [];
 
@@ -57,7 +62,9 @@ export function createTerrainMesh(scene: Scene, grid: TileType[][], models: Terr
       // A bridge spans its tile and belongs in the middle of it. Anything else
       // is scenery, and goes to the edge where it cannot swallow a unit.
       const offset = cell.overlayTurns === undefined ? propOffset(col, row) : { x: 0, z: 0 };
-      prop.position.set(center.x + offset.x, 0, center.z + offset.z);
+      // On top of whatever the ground turned out to be, so a spire stands on
+      // its pad rather than inside it.
+      prop.position.set(center.x + offset.x, models.topOf(cell.ground), center.z + offset.z);
       prop.rotation.y = (cell.overlayTurns ?? 0) * QUARTER_TURN;
       const scale = PROP_SCALE[cell.overlay];
       if (scale !== undefined) prop.scaling.setAll(scale);

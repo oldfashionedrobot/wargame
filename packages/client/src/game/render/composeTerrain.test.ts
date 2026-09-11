@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseTerrainGrid } from '@vod/shared';
-import { composeTerrain, propOffset } from './composeTerrain';
+import { MAX_STAND_HEIGHT, composeTerrain, propOffset } from './composeTerrain';
 
 // The pure half of the tiler: a grid of terrain in, a grid of atlas indices
 // out. No Babylon, so the mask arithmetic and the tables are testable even
@@ -177,13 +177,36 @@ describe('bridges', () => {
 });
 
 describe('ground cover', () => {
-  it('stands trees and spires on grass rather than replacing it', () => {
+  it('stands a tree on grass and a spire on a stone pad', () => {
     const cells = compose('f^.');
-    expect(cells[0][0].overlay).toBe('tree_default');
-    expect(cells[0][1].overlay).toBe('stone_tallI');
+    expect(cells[0][0]).toMatchObject({ ground: 'ground_grass', overlay: 'tree_default' });
+    // A mountain raises its own ground, so how high a unit stands on it is
+    // measured off that model rather than stated anywhere.
+    expect(cells[0][1]).toMatchObject({
+      ground: 'cliff_blockQuarter_stone',
+      overlay: 'stone_tallI',
+    });
+    expect(cells[0][1].standOn).toBeUndefined();
     expect(cells[0][2].overlay).toBeUndefined();
-    // All three are grass underneath, whatever is standing on them.
-    for (const cell of cells[0]) expect(cell.ground).toBe('ground_grass');
+  });
+
+  // The only height in the renderer that is stated rather than measured, and
+  // the reason is that a bridge's own top is its handrail.
+  it('stands a unit on the bridge deck, not on the water under it', () => {
+    const cells = compose('..-..', '~~=~~', '..-..');
+    expect(cells[1][2].standOn).toBeGreaterThan(0);
+    expect(cells[1][1].standOn).toBeUndefined(); // the water beside it is not walked on
+  });
+
+  // The ceiling binds whatever is stated here just as it binds the models --
+  // see terrainHeights.test.ts for the other half.
+  it('never stands a unit higher than picking can absorb', () => {
+    const cells = compose('f^-~=', '.~^-.', '=-~^f');
+    for (const row of cells) {
+      for (const cell of row) {
+        expect(cell.standOn ?? 0).toBeLessThanOrEqual(MAX_STAND_HEIGHT);
+      }
+    }
   });
 
   // ⚠️ A unit stands in the middle of its tile, so a prop planted there is a

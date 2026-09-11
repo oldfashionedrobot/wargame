@@ -18,14 +18,17 @@ export interface TileOverlayOptions {
   name: string;
   color: Color3;
   alpha: number;
-  /** Draw height. Overlays that can share a tile must not share a height. */
+  /** Draw height *above the tile's own surface*. Overlays that can share a
+   *  tile must not share a height. */
   height: number;
+  /** How high the ground is under a given tile. */
+  surfaceAt: (coordinate: Coordinate) => number;
   gridWidth: number;
   gridHeight: number;
 }
 
 export function createTileOverlay(scene: Scene, options: TileOverlayOptions): TileOverlay {
-  const { name, color, alpha, height, gridWidth, gridHeight } = options;
+  const { name, color, alpha, height, surfaceAt, gridWidth, gridHeight } = options;
 
   const mesh = new Mesh(name, scene);
   const material = new StandardMaterial(`${name}-material`, scene);
@@ -50,15 +53,16 @@ export function createTileOverlay(scene: Scene, options: TileOverlayOptions): Ti
 
       coordinates.forEach((coordinate, i) => {
         const center = tileToWorld(coordinate, gridWidth, gridHeight);
+        const y = surfaceAt(coordinate) + height;
         const base = i * 4;
 
         // One vertex per line; flattening into a column loses the shape.
         // prettier-ignore
         positions.push(
-          center.x - half, height, center.z - half,
-          center.x + half, height, center.z - half,
-          center.x + half, height, center.z + half,
-          center.x - half, height, center.z + half,
+          center.x - half, y, center.z - half,
+          center.x + half, y, center.z - half,
+          center.x + half, y, center.z + half,
+          center.x - half, y, center.z + half,
         )
         for (let v = 0; v < 4; v++) normals.push(0, 1, 0);
         indices.push(base, base + 2, base + 1, base, base + 3, base + 2);

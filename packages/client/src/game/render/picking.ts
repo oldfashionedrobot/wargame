@@ -13,6 +13,10 @@ import { worldToTile } from './coordinates';
 // ground plane (y = 0) directly, rather than raycasting against scene meshes.
 // This makes tile lookup independent of what's actually rendered on the
 // ground and avoids Babylon's mesh-picking performance gates entirely.
+//
+// ⚠️ That independence is also the constraint on how tall the board may get:
+// anything drawn above this plane is picked where it *would* fall onto it, not
+// where it appears. `MAX_STAND_HEIGHT` is where that stops being unnoticeable.
 export function screenToTile(
   scene: Scene,
   camera: Camera,

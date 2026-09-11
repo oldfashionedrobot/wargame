@@ -74,6 +74,7 @@ export function createUnitMesh(
   models: UnitModels,
   unit: Unit,
   color: PlayerColor,
+  surfaceAt: (coordinate: Coordinate) => number,
   gridWidth: number,
   gridHeight: number,
 ): TransformNode {
@@ -85,7 +86,7 @@ export function createUnitMesh(
   // The models' origin is their base, so they stand on the board rather than
   // being lifted by half their height the way a centre-origin cylinder was.
   const center = tileToWorld(unit.position, gridWidth, gridHeight);
-  node.position.set(center.x, 0, center.z);
+  node.position.set(center.x, surfaceAt(unit.position), center.z);
   setUnitFacing(node, unit.facing);
   return node;
 }
@@ -132,6 +133,7 @@ function animateSegment(mesh: TransformNode, scene: Scene, target: Vector3): Pro
 export async function animateUnitAlongPath(
   mesh: TransformNode,
   path: Coordinate[],
+  surfaceAt: (coordinate: Coordinate) => number,
   gridWidth: number,
   gridHeight: number,
   scene: Scene,
@@ -144,7 +146,9 @@ export async function animateUnitAlongPath(
     if (heading) setUnitFacing(mesh, heading);
 
     const target = tileToWorld(coordinate, gridWidth, gridHeight);
-    target.y = mesh.position.y;
+    // Carried between surfaces rather than pinned, so a unit is seen to climb
+    // onto a plateau or step up onto a bridge instead of gliding through it.
+    target.y = surfaceAt(coordinate);
     await animateSegment(mesh, scene, target);
   }
 }

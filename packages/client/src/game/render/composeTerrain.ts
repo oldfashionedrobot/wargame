@@ -12,7 +12,37 @@ export interface TerrainCell {
   overlay?: TerrainModel;
   /** Quarter turns for the overlay, where it has an orientation of its own. */
   overlayTurns?: number;
+  /**
+   * Extra height a unit stands at, *above* the ground model's own top.
+   *
+   * Nearly always absent: a unit stands on the ground, and how high the ground
+   * is gets measured from the model rather than stated here. This exists for
+   * the one case where you stand on something that is not ground -- a bridge
+   * deck, a walkable surface partway up a prop.
+   */
+  standOn?: number;
 }
+
+/**
+ * How high anything a unit stands on may be.
+ *
+ * ⚠️ `screenToTile` intersects `y = 0` rather than picking a mesh, while the
+ * camera looks down at 38.6 degrees — so a surface at height `h` draws `1.25h`
+ * tiles away from the tile it belongs to. At 0.25 that is a third of a tile and
+ * goes unnoticed; at 0.5 it is a click landing on the neighbour.
+ *
+ * Binds both halves of a surface: what a cell *declares* in `standOn`, tested
+ * here, and how tall the ground model *measures*, which only the renderer can
+ * know — `warnIfTooTall` checks that half once the models are loaded.
+ */
+export const MAX_STAND_HEIGHT = 0.25;
+
+/**
+ * Where a bridge's planking sits, measured up from the ground it stands on --
+ * the same frame `standOn` is in. The model's railings reach 0.35 in that
+ * frame, which is why its own top is no use as a standing height.
+ */
+const BRIDGE_DECK = 0.15;
 
 // --- the kit, by the shape of a neighbourhood -------------------------------
 //
@@ -212,6 +242,10 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
         ...waterCell(grid, col, row),
         overlay: 'bridge_wood',
         overlayTurns: bridgeTurns(grid, col, row),
+        // The deck, not the railings. The model's own top is the handrail, and
+        // nobody walks on that -- so this is the one height in the renderer
+        // read off the art by eye rather than measured from it.
+        standOn: BRIDGE_DECK,
       };
     case 'road': {
       const chosen = ROAD[neighbourMask(grid, col, row, isRoad, false)];
@@ -219,8 +253,10 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
     }
     case 'forest':
       return { ground: 'ground_grass', turns: 0, overlay: 'tree_default' };
+    // A stone pad with a spire on it, rather than a spire in a field. The pad
+    // is ground, so how high a unit stands on it is measured, not stated.
     case 'mountain':
-      return { ground: 'ground_grass', turns: 0, overlay: 'stone_tallI' };
+      return { ground: 'cliff_blockQuarter_stone', turns: 0, overlay: 'stone_tallI' };
     default:
       return { ground: 'ground_grass', turns: 0 };
   }

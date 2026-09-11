@@ -17,7 +17,10 @@ import { createTileHighlight, setHighlightTile } from './highlight';
 import { createTileOverlay } from './tileOverlay';
 import { screenToTile } from './picking';
 import { createTerrainMesh } from './terrain';
+import { MAX_STAND_HEIGHT, composeTerrain } from './composeTerrain';
+import type { TerrainCell } from './composeTerrain';
 import { loadTerrainModels } from './terrainModels';
+import type { TerrainModels } from './terrainModels';
 import { animateUnitAlongPath, createUnitMesh, getUnitFacing, setUnitFacing } from './units';
 import { loadUnitModels } from './unitModels';
 
@@ -106,6 +109,31 @@ async function toggleInspector(scene: Scene): Promise<void> {
   await scene.debugLayer.show({ embedMode: true });
 }
 
+/**
+ * Shouts if a ground model is taller than picking can absorb.
+ *
+ * ⚠️ The way `MAX_STAND_HEIGHT` gets breached is a model swap — the kit has a
+ * half-height cliff sitting right beside the quarter-height one this uses — and
+ * the symptom is not a raised tile but *clicks landing on the neighbour*, which
+ * nobody would trace back to the art. Heights are measured at load, so this is
+ * the earliest point anything can know. A warning rather than a throw: the
+ * board still draws, and the browser is this renderer's only check anyway.
+ */
+function warnIfTooTall(cells: TerrainCell[][], models: TerrainModels): void {
+  const tall = new Set(
+    cells
+      .flat()
+      .map((cell) => cell.ground)
+      .filter((ground) => models.topOf(ground) > MAX_STAND_HEIGHT),
+  );
+  for (const ground of tall) {
+    console.error(
+      `terrain: ${ground} stands at ${models.topOf(ground).toFixed(2)}, over the ` +
+        `${MAX_STAND_HEIGHT} a tile may be before clicks land on the wrong one`,
+    );
+  }
+}
+
 export async function createGameRenderer(
   canvas: HTMLCanvasElement,
   initialState: GameState,
@@ -166,7 +194,25 @@ export async function createGameRenderer(
   // Awaited alongside the unit models: a board that pops into existence a frame
   // late is a frame nobody needs to see.
   const terrainModels = await loadTerrainModels(scene);
-  createTerrainMesh(scene, initialState.grid, terrainModels);
+  const cells = composeTerrain(initialState.grid);
+
+  /**
+   * How high a unit stands on a tile — **the only answer to that question**.
+   *
+   * Terrain, props, units, the walk animation and all five overlays go through
+   * here, so there is no second way to ask and nothing to drift. The ground's
+   * share is measured off the model rather than declared; `standOn` adds the
+   * one case where you stand on a prop instead, a bridge deck.
+   */
+  const surfaceAt = ({ col, row }: Coordinate): number => {
+    const cell = cells[row]?.[col];
+    if (!cell) return 0;
+    return terrainModels.topOf(cell.ground) + (cell.standOn ?? 0);
+  };
+
+  warnIfTooTall(cells, terrainModels);
+
+  createTerrainMesh(scene, initialState.grid, terrainModels, cells);
   createGridLines(scene, gridWidth, gridHeight);
   const hoverHighlight = createTileHighlight(scene, 'hover-highlight', HOVER_COLOR, HOVER_ALPHA);
   const selectedHighlight = createTileHighlight(
@@ -180,6 +226,7 @@ export async function createGameRenderer(
     color: RANGE_COLOR,
     alpha: RANGE_ALPHA,
     height: RANGE_HEIGHT,
+    surfaceAt,
     gridWidth,
     gridHeight,
   });
@@ -188,6 +235,7 @@ export async function createGameRenderer(
     color: ROUTE_COLOR,
     alpha: ROUTE_ALPHA,
     height: ROUTE_HEIGHT,
+    surfaceAt,
     gridWidth,
     gridHeight,
   });
@@ -196,6 +244,7 @@ export async function createGameRenderer(
     color: FACING_COLOR,
     alpha: FACING_ALPHA,
     height: FACING_HEIGHT,
+    surfaceAt,
     gridWidth,
     gridHeight,
   });
@@ -210,7 +259,7 @@ export async function createGameRenderer(
     if (!owner) throw new Error(`unit ${unit.id} has unknown owner ${unit.owner}`);
     unitMeshes.set(
       unit.id,
-      createUnitMesh(scene, models, unit, owner.color, gridWidth, gridHeight),
+      createUnitMesh(scene, models, unit, owner.color, surfaceAt, gridWidth, gridHeight),
     );
   }
 
@@ -278,7 +327,7 @@ export async function createGameRenderer(
   scene.onPointerObservable.add((pointerInfo) => {
     if (pointerInfo.type === PointerEventTypes.POINTERMOVE) {
       const coordinate = hoveredCoordinate();
-      setHighlightTile(hoverHighlight, coordinate, HOVER_HEIGHT, gridWidth, gridHeight);
+      setHighlightTile(hoverHighlight, coordinate, HOVER_HEIGHT, surfaceAt, gridWidth, gridHeight);
 
       const key = coordinate ? `${coordinate.col},${coordinate.row}` : null;
       if (key !== hoveredKey) {
@@ -309,7 +358,14 @@ export async function createGameRenderer(
       clickHandler = handler;
     },
     setSelectedTile(coordinate) {
-      setHighlightTile(selectedHighlight, coordinate, SELECTED_HEIGHT, gridWidth, gridHeight);
+      setHighlightTile(
+        selectedHighlight,
+        coordinate,
+        SELECTED_HEIGHT,
+        surfaceAt,
+        gridWidth,
+        gridHeight,
+      );
     },
     setFacingChoices(around) {
       if (!around) {
@@ -349,7 +405,7 @@ export async function createGameRenderer(
         const destination = event.path[event.path.length - 1];
         if (isStandingOn(mesh, destination)) continue;
 
-        await animateUnitAlongPath(mesh, event.path, gridWidth, gridHeight, scene);
+        await animateUnitAlongPath(mesh, event.path, surfaceAt, gridWidth, gridHeight, scene);
       }
     },
     previewMove(unitId, path) {
@@ -361,7 +417,7 @@ export async function createGameRenderer(
       const settled = new Promise<void>((resolve) => (settle = resolve));
       preview = { unitId, origin: path[0], facing: getUnitFacing(mesh), settle };
 
-      void animateUnitAlongPath(mesh, path, gridWidth, gridHeight, scene).then(() => {
+      void animateUnitAlongPath(mesh, path, surfaceAt, gridWidth, gridHeight, scene).then(() => {
         // Only if this preview is still the live one -- a cancel or a snap
         // may have ended it while the walk was running.
         if (preview?.settle === settle) arrivePreview();
@@ -378,7 +434,7 @@ export async function createGameRenderer(
         // positions, exactly as a snap does.
         scene.stopAnimation(mesh);
         const home = tileToWorld(previewed.origin, gridWidth, gridHeight);
-        mesh.position.set(home.x, mesh.position.y, home.z);
+        mesh.position.set(home.x, surfaceAt(previewed.origin), home.z);
         setUnitFacing(mesh, previewed.facing);
       }
       endPreview();
@@ -393,7 +449,7 @@ export async function createGameRenderer(
         // Stop first: a snap must win over any tween still writing positions.
         scene.stopAnimation(mesh);
         const target = tileToWorld(unit.position, gridWidth, gridHeight);
-        mesh.position.set(target.x, mesh.position.y, target.z);
+        mesh.position.set(target.x, surfaceAt(unit.position), target.z);
         setUnitFacing(mesh, unit.facing);
       }
     },

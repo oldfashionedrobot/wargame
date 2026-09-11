@@ -9,10 +9,17 @@ import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import type { Scene } from '@babylonjs/core/scene';
 
-// Kenney's Nature Kit, CC0. Every ground model is exactly 1x1 in x and z and
-// flat-topped at y = 0, which is TILE_SIZE and the plane screenToTile already
-// intersects -- so a flat board needs no picking change. See the licence
-// alongside them in public/models/terrain/.
+// Kenney's Nature Kit, CC0. Every ground model is exactly 1x1 in x and z, which
+// is TILE_SIZE, so the board needs no scaling. Their tops are *not* all level
+// and nothing here assumes they are: grass and every riverbank sit at -0.05,
+// open water at -0.10 with no bank to speak of, and a stone pad at 0.20. That
+// is what `topOf` is for.
+//
+// ⚠️ Those numbers do not match the position accessors, because every model in
+// the kit hangs under a node translated -0.05 in y. Reading the raw geometry
+// gives answers a uniform 0.05 too high -- which is exactly the kind of thing
+// measuring the loaded meshes gets right for free and a transcribed table does
+// not. See the licence alongside them in public/models/terrain/.
 const MODEL_DIR = '/models/terrain';
 
 /** Every model the tiler can ask for. A name not in here is a compile error. */
@@ -34,6 +41,10 @@ export const TERRAIN_MODELS = [
   'ground_pathStraight',
   'ground_pathEnd',
   'ground_pathTile',
+  // A stone pad, the only ground that stands above the rest of the board. It
+  // measures 0.20 against a MAX_STAND_HEIGHT of 0.25, so the kit's half-height
+  // cliff beside it is *not* a drop-in -- see `topOf`.
+  'cliff_blockQuarter_stone',
   // Things that stand on the ground rather than being it.
   'bridge_wood',
   'tree_default',
@@ -46,6 +57,18 @@ export const TERRAIN_MODELS = [
 export type TerrainModel = (typeof TERRAIN_MODELS)[number];
 
 export interface TerrainModels {
+  /**
+   * How high the top of a ground model sits, measured from its geometry.
+   *
+   * ⚠️ **Measured, never declared.** A tile's walkable surface *is* the top of
+   * the model drawn there, so deriving it means there is no second number to
+   * drift out of step with the art -- swap the model and the height follows.
+   * The same discipline as `entryCost` being the only cost model.
+   *
+   * ⚠️ Bounded by `MAX_STAND_HEIGHT`, which explains why; `warnIfTooTall` is
+   * what checks it, since the answer is not knowable until these are loaded.
+   */
+  topOf(model: TerrainModel): number;
   /**
    * A fresh copy of one model, parented to a node of ours.
    *
@@ -71,9 +94,21 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
   );
 
   const byModel = new Map(TERRAIN_MODELS.map((model, i) => [model, containers[i]]));
+
+  const tops = new Map<TerrainModel, number>(
+    TERRAIN_MODELS.map((model, i) => {
+      const ys = containers[i].meshes
+        .filter((mesh) => mesh.getTotalVertices() > 0)
+        .map((mesh) => mesh.getBoundingInfo().boundingBox.maximumWorld.y);
+      return [model, ys.length > 0 ? Math.max(...ys) : 0];
+    }),
+  );
   const sharedMaterials = new Map<string, StandardMaterial>();
 
   return {
+    topOf(model) {
+      return tops.get(model) ?? 0;
+    },
     instantiate(model, name) {
       const container = byModel.get(model);
       if (!container) throw new Error(`no terrain model: ${model}`);

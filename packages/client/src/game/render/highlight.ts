@@ -25,7 +25,9 @@ export function createTileHighlight(
 export function setHighlightTile(
   mesh: Mesh,
   coordinate: Coordinate | null,
+  /** Above the tile's own surface, so highlights stack without fighting. */
   height: number,
+  surfaceAt: (coordinate: Coordinate) => number,
   gridWidth: number,
   gridHeight: number,
 ): void {
@@ -35,6 +37,6 @@ export function setHighlightTile(
   }
 
   const center = tileToWorld(coordinate, gridWidth, gridHeight);
-  mesh.position.set(center.x, height, center.z);
+  mesh.position.set(center.x, surfaceAt(coordinate) + height, center.z);
   mesh.setEnabled(true);
 }

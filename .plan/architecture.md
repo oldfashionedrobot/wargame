@@ -515,7 +515,25 @@ cancelPreview()           toggleInspector()          dispose()
   `dispose()` alongside the `resize` listener. Bounds are recomputed from grid
   size, aspect and zoom.
 - **Tile lookup is math, not mesh-picking** — `screenToTile` intersects a camera
-  ray with the `y = 0` plane, so terrain must stay flat.
+  ray with the `y = 0` plane. Nothing pickable moves off it: terrain meshes are
+  `isPickable = false`, and the board plane is where a click is answered.
+- **Elevation is visual only; the map data has no height.** A tile's walkable
+  surface is `surfaceAt(coordinate)` in `renderer.ts`, the one place any `y` is
+  decided — terrain props, units, the walk tween, `snapUnits`, `cancelPreview`
+  and every overlay read it, so a raised tile cannot be raised for some of them
+  and not others. It is `topOf(ground) + (standOn ?? 0)`:
+  - `terrainModels.topOf` **measures** each model's bounding box at load, so
+    ground height is derived from the art rather than stated beside it — swap a
+    model and the height follows. A mountain is a quarter-height stone pad
+    (`cliff_blockQuarter_stone`) with a spire on it, and is raised because the
+    pad is, not because anything says `0.25`.
+  - `TerrainCell.standOn` is the only *declared* height, and exists for the one
+    case measurement gets wrong: a bridge, whose own top is its handrail. The
+    deck is 0.15 on a model that reaches 0.35.
+  - ⚠️ **0.25 is the ceiling.** Since picking intersects `y = 0` while the
+    camera looks down at 38.6°, a surface at height `h` appears `1.25h` tiles
+    from the tile it belongs to. A third of a tile goes unnoticed; half a tile
+    is a click landing on the neighbour.
 - Terrain is built from **glTF models**, one per tile, and then **merged by
   material** — grouping every tile's meshes by material leaves about eight draw
   calls for a board, against roughly thirty instanced. Merging is right because
@@ -544,10 +562,12 @@ cancelPreview()           toggleInspector()          dispose()
   diagonal, so mask 15 with exactly one land diagonal takes a corner model;
   **bridge orientation** comes from strictly-road neighbours, because a two-lane
   crossing gives its decks masks 7 and 13 rather than 5 and 10; and a bridge is
-  a model standing *on* water rather than ground of its own.
+  a model standing *on* water rather than ground of its own, which is why it
+  carries the one `standOn` in the renderer.
 - Trees and rocks stand on the ground as models, pushed to the edge of their
   tile by a deterministic hash — a unit stands in the middle, and a prop planted
-  there would swallow it.
+  there would swallow it. That is also what makes a mountain's pad usable: the
+  spire is at the rim, so the unit has the top of the pad to itself.
 - A highlight follows the pointer, moved from `POINTERMOVE` inside the
   renderer. React never hears about hover.
 - **The route preview is computed here, not in React.** `setMovement` hands the
@@ -569,8 +589,8 @@ cancelPreview()           toggleInspector()          dispose()
   exactly where the silhouette has to read. Colours are picked to sit against
   the board rather than to be canonical, and green leans to lime because a true
   green sits almost on the grass.
-- Model origins are at the base, so a unit's `y` is 0 rather than half its
-  height.
+- Model origins are at the base, so a unit's `y` is the surface it stands on
+  rather than half its own height.
 - Unit meshes are built once at startup; there is no add or remove.
 - `playEvents` walks `unitMoved` paths one tween per tile, 0.15s each
   (`FRAMES_PER_TILE` over `FRAME_RATE` in `units.ts` — one dial for every
@@ -638,6 +658,15 @@ Every package is tested. `bun test` runs `shared` and `server`, Vitest runs
   click; `MatchRoute` covers both failure branches, Retry, and disposal
   including a connection that resolves after teardown; `StartScreen` covers
   each of its states and create-and-navigate.
+
+- `composeTerrain` is the one piece of the renderer that is pure, and it is
+  tested like any other pure module — including that no cell declares a
+  `standOn` above the picking ceiling. The other half of that ceiling is how
+  tall a *model* measures, which nothing can know without loading it, so
+  `warnIfTooTall` checks it at startup instead. ⚠️ An asset test would need
+  `node:fs`, and `client/src` is deliberately a browser-only program with no
+  Node types — the same boundary that makes a stray `import 'react'` in
+  `server/` a resolution error.
 
 **Not covered:** the renderer itself, which is WebGL — a browser is its only
 check, and the `/run-app` skill drives the app headlessly for that. `App.tsx` is
