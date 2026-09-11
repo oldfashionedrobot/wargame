@@ -177,10 +177,10 @@ describe('bridges', () => {
 });
 
 describe('ground cover', () => {
-  it('stands trees and rocks on grass rather than replacing it', () => {
+  it('stands trees and spires on grass rather than replacing it', () => {
     const cells = compose('f^.');
     expect(cells[0][0].overlay).toBe('tree_default');
-    expect(cells[0][1].overlay).toBe('rock_largeA');
+    expect(cells[0][1].overlay).toBe('stone_tallI');
     expect(cells[0][2].overlay).toBeUndefined();
     // All three are grass underneath, whatever is standing on them.
     for (const cell of cells[0]) expect(cell.ground).toBe('ground_grass');

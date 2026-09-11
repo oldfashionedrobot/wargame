@@ -37,7 +37,10 @@ export const TERRAIN_MODELS = [
   // Things that stand on the ground rather than being it.
   'bridge_wood',
   'tree_default',
-  'rock_largeA',
+  // A spire rather than a boulder, and *stone* rather than rock: the rock
+  // variants are made of `dirt`, the same brown as every road and riverbank,
+  // which is precisely the thing a mountain needs to not look like.
+  'stone_tallI',
 ] as const;
 
 export type TerrainModel = (typeof TERRAIN_MODELS)[number];

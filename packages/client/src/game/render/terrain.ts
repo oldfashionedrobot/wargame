@@ -5,7 +5,7 @@ import type { Scene } from '@babylonjs/core/scene';
 import type { TileType } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 import { composeTerrain, propOffset } from './composeTerrain';
-import type { TerrainModels } from './terrainModels';
+import type { TerrainModel, TerrainModels } from './terrainModels';
 
 // Terrain stays flat, and not only for now: screenToTile intersects the y=0
 // plane rather than picking meshes, so a mountain with real height would have
@@ -13,6 +13,17 @@ import type { TerrainModels } from './terrainModels';
 // kit is flat-topped at y = 0, which is what keeps that true.
 
 const QUARTER_TURN = Math.PI / 2;
+
+/**
+ * Props that are drawn smaller than they need to read as terrain.
+ *
+ * The spire is 0.81 tall against a tree's 1.71, which at natural size makes a
+ * mountain the shortest thing on its own board. Scaled up it stands over the
+ * woods, which is what four stars of cover ought to look like.
+ */
+const PROP_SCALE: Partial<Record<TerrainModel, number>> = {
+  stone_tallI: 1.7,
+};
 
 /**
  * Builds the board out of models, then merges what it built.
@@ -48,6 +59,8 @@ export function createTerrainMesh(scene: Scene, grid: TileType[][], models: Terr
       const offset = cell.overlayTurns === undefined ? propOffset(col, row) : { x: 0, z: 0 };
       prop.position.set(center.x + offset.x, 0, center.z + offset.z);
       prop.rotation.y = (cell.overlayTurns ?? 0) * QUARTER_TURN;
+      const scale = PROP_SCALE[cell.overlay];
+      if (scale !== undefined) prop.scaling.setAll(scale);
       built.push(...prop.getChildMeshes());
     }
   }

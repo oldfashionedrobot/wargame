@@ -216,7 +216,7 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
     case 'forest':
       return { ground: 'ground_grass', turns: 0, overlay: 'tree_default' };
     case 'mountain':
-      return { ground: 'ground_grass', turns: 0, overlay: 'rock_largeA' };
+      return { ground: 'ground_grass', turns: 0, overlay: 'stone_tallI' };
     default:
       return { ground: 'ground_grass', turns: 0 };
   }
