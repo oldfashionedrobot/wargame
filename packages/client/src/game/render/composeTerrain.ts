@@ -177,7 +177,11 @@ function waterCell(grid: TileType[][], col: number, row: number): TerrainCell {
 function bridgeTurns(grid: TileType[][], col: number, row: number): number {
   const road = (c: number, r: number): boolean => at(grid, c, r) === 'road';
   const northSouth = road(col, row + 1) || road(col, row - 1);
-  return northSouth ? 0 : 1;
+  // The deck is drawn spanning east to west, so a road running north to south
+  // is the one that turns it. Unlike the ground models this could not be read
+  // off a bounding box -- a bridge is near enough square -- so it is settled by
+  // looking at the board.
+  return northSouth ? 1 : 0;
 }
 
 /**

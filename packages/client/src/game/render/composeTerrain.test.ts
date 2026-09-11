@@ -155,11 +155,11 @@ describe('bridges', () => {
     expect(cellAt(northSouth, 2, 1)).toMatchObject({
       ground: 'ground_riverStraight',
       overlay: 'bridge_wood',
-      overlayTurns: 0, // the deck is drawn running north to south
+      overlayTurns: 1, // the deck is drawn spanning east to west
     });
 
     const eastWest = compose('..~..', '.-=-.', '..~..');
-    expect(cellAt(eastWest, 2, 1)).toMatchObject({ overlay: 'bridge_wood', overlayTurns: 1 });
+    expect(cellAt(eastWest, 2, 1)).toMatchObject({ overlay: 'bridge_wood', overlayTurns: 0 });
   });
 
   // A two-lane crossing gives its bridge cells masks 7 and 13 rather than 5
@@ -171,8 +171,8 @@ describe('bridges', () => {
       '~~==~~', // 1
       '..--..', // 2
     );
-    expect(cellAt(cells, 2, 1).overlayTurns).toBe(0);
-    expect(cellAt(cells, 3, 1).overlayTurns).toBe(0);
+    expect(cellAt(cells, 2, 1).overlayTurns).toBe(1);
+    expect(cellAt(cells, 3, 1).overlayTurns).toBe(1);
   });
 });
 
