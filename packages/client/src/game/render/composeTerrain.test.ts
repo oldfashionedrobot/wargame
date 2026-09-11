@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { parseTerrainGrid } from '@vod/shared';
 import {
+  DOODAD_MAX_REACH,
+  DOODAD_OVERHANG,
+  DOODAD_MAX_SCALE,
   KEEP_CLEAR,
   MAX_STAND_HEIGHT,
   QUARTER_TURN,
-  RUBBLE_MAX_REACH,
-  RUBBLE_MAX_SCALE,
   composeTerrain,
 } from './composeTerrain';
 
@@ -187,38 +188,33 @@ describe('bridges', () => {
 });
 
 describe('ground cover', () => {
-  it('stands a tree on grass and strews a stone pad with rubble', () => {
+  it('stands a tree on grass and a mesa on a mountain', () => {
     const cells = compose('f^.');
     expect(cells[0][0].ground).toBe('ground_grass');
-    expect(cells[0][0].props.map((p) => p.model)).toEqual(['tree_default']);
+    // One tree, and which one is the tile's own business -- see the variety
+    // tests below.
+    expect(cells[0][0].props).toHaveLength(1);
+    expect(cells[0][0].props[0].model.startsWith('tree_')).toBe(true);
 
-    // A mountain raises its own ground, so how high a unit stands on it is
-    // measured off that model rather than stated anywhere.
-    expect(cells[0][1].ground).toBe('cliff_blockQuarter_stone');
-    expect(cells[0][1].standOn).toBeUndefined();
-    // Several small stones, not one large thing: the pad says *raised* and
-    // these only have to say *rocky*.
-    expect(cells[0][1].props.length).toBeGreaterThan(1);
-    expect(cells[0][1].props.every((p) => p.model.startsWith('stone_small'))).toBe(true);
+    // ⚠️ A mountain does **not** raise its ground: the tile stays flat grass
+    // and a rock stands on it, which is the whole shape of the thing. How high
+    // a unit ends up is the rock's own top, so it is pointed at rather than
+    // stated -- `standOnProp`, never `standOn`.
+    const peak = cells[0][1];
+    expect(peak.ground).toBe('ground_grass');
+    expect(peak.props).toHaveLength(1);
+    expect(peak.standOnProp).toBe(0);
+    expect(peak.standOn).toBeUndefined();
+    // Centred, unlike everything else that stands on a tile, because a unit
+    // stands on top of it.
+    expect({ x: peak.props[0].x, z: peak.props[0].z }).toEqual({ x: 0, z: 0 });
 
-    expect(cells[0][2].props).toEqual([]);
-  });
-
-  // Merging groups by material, so a scatter of six costs the geometry and
-  // none of the draw calls -- but only while they all share the pad's stone.
-  it('scatters a peak with more than one kind of stone', () => {
-    const kinds = new Set(
-      compose('^')
-        .flat()[0]
-        .props.map((p) => p.model),
-    );
-    expect(kinds.size).toBeGreaterThan(1);
-  });
-
-  it('turns and sizes each stone differently', () => {
-    const props = compose('^').flat()[0].props;
-    expect(new Set(props.map((p) => p.rotation)).size).toBeGreaterThan(1);
-    expect(new Set(props.map((p) => p.scale)).size).toBeGreaterThan(1);
+    // ⚠️ Plains are no longer bare -- they carry scenery. What they never carry
+    // is a tree or a stone, because both of those say something about the tile
+    // and scenery says nothing.
+    const onPlains = cells[0][2].props.map((prop) => prop.model);
+    expect(onPlains).not.toContain('tree_default');
+    expect(onPlains.some((model) => model.startsWith('stone_'))).toBe(false);
   });
 
   // The only height in the renderer that is stated rather than measured, and
@@ -241,42 +237,33 @@ describe('ground cover', () => {
   });
 
   // ⚠️ A unit stands in the middle of its tile, so a prop planted there is a
-  // prop wearing a soldier. Checked over a whole board of peaks and woods,
-  // because the scatter is the thing that could drift inward and it differs
-  // per tile.
+  // prop wearing a soldier. Checked over a board carrying every kind of
+  // scatter there is -- peaks, woods and open ground -- because each is placed
+  // by different arithmetic and any of them could drift inward.
   it('keeps every prop clear of the middle of the tile', () => {
-    const cells = compose(...Array.from({ length: 12 }, () => '^f^f^f^f^f^f'));
+    const cells = compose(...Array.from({ length: 12 }, () => '^f.^f.^f.^f.'));
     for (const cell of cells.flat()) {
-      for (const prop of cell.props) {
+      cell.props.forEach((prop, i) => {
+        // ⚠️ Except the one a unit stands *on top of*. A mesa is centred
+        // precisely because the unit ends up above it rather than beside it,
+        // and holding it to the keep-clear would be holding it to the opposite
+        // of what it is for.
+        if (i === cell.standOnProp) return;
         expect(Math.hypot(prop.x, prop.z)).toBeGreaterThanOrEqual(KEEP_CLEAR);
-      }
+      });
     }
   });
 
-  // ⚠️ The other edge the scatter is squeezed against. A peak's pad ends at the
-  // tile boundary, so a stone that reaches past it hangs in the air over
-  // whatever is next door -- at pad height, which is exactly where a floating
-  // rock is obvious. Measured off the art rather than guessed; see RUBBLE.
-  const WIDEST_STONE = 0.43;
+  // ⚠️ A bound, but a loose one: plains are flat, so a tuft leaning onto the
+  // tile beside it has no drop to float over. It still has to be a bound,
+  // because "a bit over the edge" and "halfway onto next door" are different
+  // things. Solved from the constants, not sampled.
+  const WIDEST_DOODAD = 0.41;
 
-  // ⚠️ The *worst case*, which is the only one that counts and the one a
-  // sampled board will not find: reaching it needs the furthest placement, the
-  // largest scale and an axis-aligned angle drawn together. A spread of 0.07
-  // put this sum at 0.502 — over — and every sampled assertion below still
-  // passed, because no board is big enough to roll three extremes at once.
-  it('solves the ring so even the widest stone cannot leave its tile', () => {
-    expect(RUBBLE_MAX_REACH + (WIDEST_STONE / 2) * RUBBLE_MAX_SCALE).toBeLessThanOrEqual(0.5);
-  });
-
-  // And that the scatter actually respects the constants it is solved from.
-  it('keeps every stone on its own tile', () => {
-    const cells = compose(...Array.from({ length: 12 }, () => '^^^^^^^^^^^^'));
-    for (const cell of cells.flat()) {
-      for (const prop of cell.props) {
-        expect(Math.hypot(prop.x, prop.z)).toBeLessThanOrEqual(RUBBLE_MAX_REACH);
-        expect(prop.scale).toBeLessThanOrEqual(RUBBLE_MAX_SCALE);
-      }
-    }
+  it('lets a doodad lean over its edge, but only barely', () => {
+    const reach = DOODAD_MAX_REACH + (WIDEST_DOODAD / 2) * DOODAD_MAX_SCALE;
+    expect(reach).toBeLessThanOrEqual(0.5 + DOODAD_OVERHANG);
+    expect(reach).toBeGreaterThan(0.5); // or the allowance is dead and should go
   });
 
   // A bridge is the exception, and deliberately so: it spans its tile, and a
@@ -293,10 +280,62 @@ describe('ground cover', () => {
 
   it('does not lay every tile out identically', () => {
     // Same terrain, different coordinates -- so anything shared between these
-    // came from the tile's position and not from the terrain type.
-    const row = compose('^^^^^^^^');
+    // came from the tile's position and not from the terrain type. Woodland
+    // rather than peaks: a mesa is one centred rock and has only its turn to
+    // vary, while a tree varies in shape, place, turn and size.
+    const row = compose('ffffffff');
     const layouts = new Set(row[0].map((cell) => JSON.stringify(cell.props)));
     expect(layouts.size).toBe(8);
+  });
+
+  // ⚠️ *Light* is the brief and the thing that could quietly stop being true.
+  // Every tile carrying something reads as a feature rather than as scenery,
+  // and a bare board is what this was added to fix -- so both ends are held.
+  it('scatters open ground thinly, leaving most of it bare', () => {
+    const plains = compose(...Array.from({ length: 14 }, () => '..............')).flat();
+    const carrying = plains.filter((cell) => cell.props.length > 0).length;
+    const share = carrying / plains.length;
+
+    expect(share).toBeGreaterThan(0.15);
+    expect(share).toBeLessThan(0.55);
+  });
+
+  it('puts at most one doodad on a tile', () => {
+    const plains = compose(...Array.from({ length: 10 }, () => '..........')).flat();
+    expect(Math.max(...plains.map((cell) => cell.props.length))).toBe(1);
+  });
+
+  it('uses more than one kind, and turns and sizes them differently', () => {
+    const props = compose(...Array.from({ length: 10 }, () => '..........'))
+      .flat()
+      .flatMap((cell) => cell.props);
+
+    expect(new Set(props.map((p) => p.model)).size).toBeGreaterThan(1);
+    expect(new Set(props.map((p) => p.rotation)).size).toBeGreaterThan(1);
+    expect(new Set(props.map((p) => p.scale)).size).toBeGreaterThan(1);
+  });
+
+  // Scenery, not terrain: a tile with a flower on it plays exactly like one
+  // without, so nothing about the cell may differ but its props.
+  it('leaves a decorated tile otherwise identical to a bare one', () => {
+    const plains = compose(...Array.from({ length: 8 }, () => '........')).flat();
+    const bare = plains.find((cell) => cell.props.length === 0);
+    const decorated = plains.find((cell) => cell.props.length > 0);
+
+    expect({ ...bare, props: [] }).toEqual({ ...decorated, props: [] });
+  });
+
+  // A wood used to be one shape stamped repeatedly. Six shapes, each turned and
+  // sized, is what stops a forest reading as wallpaper.
+  it('draws a wood out of more than one kind of tree', () => {
+    const trees = compose(...Array.from({ length: 8 }, () => 'ffffffff'))
+      .flat()
+      .flatMap((cell) => cell.props);
+
+    expect(new Set(trees.map((t) => t.model)).size).toBeGreaterThan(1);
+    expect(new Set(trees.map((t) => t.rotation)).size).toBeGreaterThan(1);
+    expect(new Set(trees.map((t) => t.scale)).size).toBeGreaterThan(1);
+    expect(trees.every((t) => t.model.startsWith('tree_'))).toBe(true);
   });
 
   it('does not stack every tree in the same corner', () => {

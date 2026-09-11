@@ -40,21 +40,38 @@ export interface TerrainCell {
   /**
    * Extra height a unit stands at, *above* the ground model's own top.
    *
-   * Nearly always absent: a unit stands on the ground, and how high the ground
-   * is gets measured from the model rather than stated here. This exists for
-   * the one case where you stand on something that is not ground -- a bridge
-   * deck, a walkable surface partway up a prop.
+   * For when you stand **partway up** a prop rather than on it: a bridge deck,
+   * with the railings carrying on above. Declared, because no measurement can
+   * find a surface that is not the model's top.
    */
   standOn?: number;
+  /**
+   * The prop a unit stands on **top of**, by index.
+   *
+   * ⚠️ Preferred over `standOn` wherever it applies, and for the usual reason:
+   * the height comes out of the model rather than out of a number beside it, so
+   * swapping the art moves the unit with it. A mesa is exactly this -- a rock on
+   * an ordinary tile, and its top is where you stand.
+   *
+   * At most one of these two means anything for a given cell.
+   */
+  standOnProp?: number;
 }
 
 /**
  * How high anything a unit stands on may be.
  *
- * ⚠️ `screenToTile` intersects `y = 0` rather than picking a mesh, while the
- * camera looks down at 38.6 degrees — so a surface at height `h` draws `1.25h`
- * tiles away from the tile it belongs to. At 0.25 that is a third of a tile and
- * goes unnoticed; at 0.5 it is a click landing on the neighbour.
+ * ⚠️ **This used to be a picking limit and is now a legibility one**, which is
+ * the more interesting constraint and the one that binds sooner. `screenToTile`
+ * tries every surface height the board has rather than a single ground plane,
+ * so a click on a peak finds the peak however tall it is — that is no longer
+ * what caps this.
+ *
+ * What caps it is the camera. At 38.6 degrees above the horizontal a surface at
+ * height `h` *draws* `1.25h` tiles up-screen of the tile it belongs to, and past
+ * about half a tile it starts visually occupying its neighbour whether or not
+ * the click lands right. A block spike put this at a full tile and tile identity
+ * fell apart on sight; half of that is comfortable.
  *
  * ⚠️ Binds the **surface** — `topOf(ground) + standOn` — and not either half on
  * its own, which is why `warnIfTooTall` checks it there rather than here: only
@@ -62,7 +79,7 @@ export interface TerrainCell {
  * tested here too, but passing both halves separately is not the same as
  * passing their sum.
  */
-export const MAX_STAND_HEIGHT = 0.25;
+export const MAX_STAND_HEIGHT = 0.5;
 
 /**
  * Where a bridge's planking sits, measured up from the ground it stands on --
@@ -71,59 +88,99 @@ export const MAX_STAND_HEIGHT = 0.25;
  */
 const BRIDGE_DECK = 0.15;
 
-// --- what a peak is strewn with ---------------------------------------------
+// --- woodland ---------------------------------------------------------------
 
 /**
- * The loose stone scattered over a mountain tile.
- *
- * ⚠️ `stone_*` and not `rock_*`, which are the same shapes in `dirt` -- the
- * exact brown of every road and riverbank on the board. And small ones: the
- * pad underneath is what says *raised*, so these only have to say *rocky*.
- * They are all one `stone` material, the pad's own, so however many are
- * scattered they merge into a group that already exists. The count buys
- * geometry and never a draw call.
+ * ⚠️ Six shapes rather than one, and they cost nothing: every entry is painted
+ * `woodBark` and `leafsGreen`, the two materials a single tree already brought,
+ * so they merge into groups the board has. The kit's pines would each add two
+ * more, which is why none is here.
  */
-// ⚠️ None wider than 0.43, which is what `RUBBLE_RING` is solved against. Add
-// a broader one and the scatter starts hanging off the rim.
-const RUBBLE: TerrainModel[] = [
-  'stone_smallA',
-  'stone_smallB',
-  'stone_smallC',
-  'stone_smallE',
-  'stone_smallI',
-  'stone_smallFlatB',
+const TREES: TerrainModel[] = [
+  'tree_default',
+  'tree_oak',
+  'tree_tall',
+  'tree_fat',
+  'tree_thin',
+  'tree_cone',
 ];
 
-const RUBBLE_COUNT = 6;
+/** One tree, in the corner its tile's hash sends it to, turned and sized. */
+function tree(col: number, row: number): Prop {
+  const next = seeded(col, row);
+
+  return {
+    model: TREES[Math.floor(next() * TREES.length)],
+    ...propOffset(col, row),
+    // Free variety: a tree has no front, so a turn costs nothing and stops a
+    // wood reading as the same shape stamped repeatedly.
+    rotation: next() * 2 * Math.PI,
+    scale: 0.85 + next() * 0.3,
+  };
+}
+
+// --- peaks -----------------------------------------------------------------
 
 /**
- * The ring the scatter sits on, and how small each stone is drawn.
+ * A mountain is a **mesa standing on an ordinary tile**, not raised ground.
  *
- * ⚠️ These four numbers are squeezed between two edges and there is not much
- * room between them. Outward: a stone must stay *on its own tile*, or it hangs
- * over the rim and floats at pad height above the grass beyond. Inward:
- * `KEEP_CLEAR`, because a unit stands at the centre.
- *
- * ⚠️ The outward bound has to hold at the **worst case, not the likely one**.
- * `RING + SPREAD` is the furthest a stone's centre goes and `SCALE + GROWTH`
- * the largest it is drawn, so the binding sum is `0.32 + 0.43/2 × 0.8 = 0.492`
- * against a half-width of 0.5. An earlier 0.07 spread put that sum at 0.502 —
- * over — and the test still passed, because hitting it needs three independent
- * draws at their extremes at once and no board is big enough to roll that.
- *
- * The inward edge is the softer of the two. These are ground clutter a fifth of
- * a tile tall, so a horse standing among them still reads — unlike a tree,
- * which is why that one is pushed to a corner rather than ringed.
+ * ⚠️ Which means the tile under it stays flat grass and only the rock rises.
+ * That is the difference between this and the elevated block it replaced, and
+ * it is the better trade: a block fills its square and so keeps every overlay
+ * flush, but it reads as masonry. A rock does not fill a square -- the hover
+ * and range tints sit at the mesa's height and float past its sloping edges --
+ * and it reads as terrain, which is worth more.
  */
-const RUBBLE_RING = 0.26;
-const RUBBLE_SPREAD = 0.06;
-const RUBBLE_SCALE = 0.5;
-const RUBBLE_GROWTH = 0.3;
+const MESA: TerrainModel = 'rock_largeF';
+
+// --- what grows on open ground ----------------------------------------------
+
+/**
+ * Scattered over plains, thinly, so a field of them is not one flat green.
+ *
+ * ⚠️ Nothing here is terrain and none of it means anything — a tile with a
+ * flower on it plays exactly like one without. That is the whole brief, and it
+ * is why the scatter is **light**: a doodad on every tile would read as a
+ * feature and invite someone to wonder what it does.
+ *
+ * ⚠️ None wider than 0.41, which is what `DOODAD_RING` is solved against.
+ */
+const DOODADS: TerrainModel[] = [
+  'grass',
+  'grass_large',
+  'grass_leafs',
+  'plant_bushSmall',
+  'flower_purpleA',
+];
+
+/** Roughly a third of open tiles carry one. The rest stay bare on purpose. */
+const DOODAD_CHANCE = 0.35;
+
+/**
+ * `KEEP_CLEAR` holds the inward side: a unit stands at the tile's centre.
+ *
+ * ⚠️ The outward side is deliberately loose. Plains sit at the board's own
+ * level, so a tuft leaning a few hundredths onto the flat tile next door is
+ * what grass does -- there is no drop for it to float over. `DOODAD_OVERHANG`
+ * is how far that may go, and it exists to let these be drawn big enough to
+ * read, which at the size they started was the whole problem.
+ */
+/**
+ * How close to a tile's centre a prop may stand.
+ *
+ * ⚠️ Binds anything a unit shares its tile with, and **not** anything a unit
+ * stands on top of -- a mesa sits dead centre on purpose, as does a bridge.
+ */
 export const KEEP_CLEAR = 0.24;
 
-/** The furthest from centre a stone is ever placed, and the largest it is drawn. */
-export const RUBBLE_MAX_REACH = RUBBLE_RING + RUBBLE_SPREAD;
-export const RUBBLE_MAX_SCALE = RUBBLE_SCALE + RUBBLE_GROWTH;
+const DOODAD_RING = 0.25;
+const DOODAD_SPREAD = 0.05;
+const DOODAD_SCALE = 0.95;
+const DOODAD_GROWTH = 0.35;
+export const DOODAD_OVERHANG = 0.08;
+
+export const DOODAD_MAX_REACH = DOODAD_RING + DOODAD_SPREAD;
+export const DOODAD_MAX_SCALE = DOODAD_SCALE + DOODAD_GROWTH;
 
 // --- the kit, by the shape of a neighbourhood -------------------------------
 //
@@ -327,28 +384,31 @@ function seeded(col: number, row: number): () => number {
 }
 
 /**
- * Loose stone around the rim of a peak, in a ring rather than at a corner.
+ * Nothing, or one small thing, on open ground.
  *
- * A ring is what makes it read as ground the tile is *made of* instead of one
- * object sitting on it -- and it keeps the middle clear for a unit without
- * having to reason about which corner is free. Spaced by index and then nudged,
- * so the stones neither sit at even intervals nor pile up on one side.
+ * ⚠️ The roll comes off the *same* stream that then places it, so a tile that
+ * draws a blank consumes only one value. That is deliberate and worth not
+ * "tidying": it means changing `DOODAD_CHANCE` reshuffles which tiles carry
+ * something without also reshuffling what the survivors carry.
  */
-function rubble(col: number, row: number): Prop[] {
+function doodad(col: number, row: number): Prop[] {
   const next = seeded(col, row);
+  if (next() > DOODAD_CHANCE) return [];
 
-  return Array.from({ length: RUBBLE_COUNT }, (_, i) => {
-    const angle = ((i + next() * 0.7) / RUBBLE_COUNT) * 2 * Math.PI;
-    const radius = RUBBLE_RING + next() * RUBBLE_SPREAD;
+  // A free angle rather than a ring: there is only one of these, so it has
+  // nothing to space itself against.
+  const angle = next() * 2 * Math.PI;
+  const radius = DOODAD_RING + next() * DOODAD_SPREAD;
 
-    return {
-      model: RUBBLE[Math.floor(next() * RUBBLE.length)],
+  return [
+    {
+      model: DOODADS[Math.floor(next() * DOODADS.length)],
       x: Math.cos(angle) * radius,
       z: Math.sin(angle) * radius,
       rotation: next() * 2 * Math.PI,
-      scale: RUBBLE_SCALE + next() * RUBBLE_GROWTH,
-    };
-  });
+      scale: DOODAD_SCALE + next() * DOODAD_GROWTH,
+    },
+  ];
 }
 
 function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
@@ -384,19 +444,21 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
       return { ground: chosen.model, turns: chosen.turns, props: [] };
     }
     case 'forest':
+      return { ground: 'ground_grass', turns: 0, props: [tree(col, row)] };
+    case 'mountain':
       return {
         ground: 'ground_grass',
         turns: 0,
-        props: [{ model: 'tree_default', ...propOffset(col, row), rotation: 0, scale: 1 }],
+        // Centred, because a unit stands on top of it -- the one prop besides a
+        // bridge with somewhere it must be. Turned for variety; a rock has no
+        // front.
+        props: [
+          { model: MESA, x: 0, z: 0, rotation: (hash(col, row) % 4) * QUARTER_TURN, scale: 1 },
+        ],
+        standOnProp: 0,
       };
-    // A stone pad strewn with loose stone, rather than one boulder in a field.
-    // The pad is ground, so how high a unit stands on it is measured off the
-    // model rather than stated; the rubble is only there to say what the
-    // ground is made of.
-    case 'mountain':
-      return { ground: 'cliff_blockQuarter_stone', turns: 0, props: rubble(col, row) };
     default:
-      return { ground: 'ground_grass', turns: 0, props: [] };
+      return { ground: 'ground_grass', turns: 0, props: doodad(col, row) };
   }
 }
 
@@ -409,9 +471,9 @@ export function composeTerrain(grid: TileType[][]): TerrainCell[][] {
  * Where a single tall prop stands within its tile — a tree, and only a tree.
  *
  * ⚠️ Never the middle: a unit stands there, and a tree planted in the centre is
- * a tree wearing a soldier. Pushed toward a corner rather than ringed the way
- * rubble is, because one object cannot make a ring and a tree is tall enough
- * that the half of the tile it occupies has to be a half the unit is not in.
+ * a tree wearing a soldier. A corner rather than anywhere nearer, because a
+ * tree is tall enough that the half of the tile it occupies has to be a half
+ * the unit is not in.
  */
 function propOffset(col: number, row: number): { x: number; z: number } {
   const h = hash(col, row);

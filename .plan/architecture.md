@@ -517,26 +517,35 @@ cancelPreview()           toggleInspector()          dispose()
   scales a zoom factor that the ortho bounds divide by — clamped, and removed in
   `dispose()` alongside the `resize` listener. Bounds are recomputed from grid
   size, aspect and zoom.
-- **Tile lookup is math, not mesh-picking** — `screenToTile` intersects a camera
-  ray with the `y = 0` plane. Nothing pickable moves off it: terrain meshes are
-  `isPickable = false`, and the board plane is where a click is answered.
+- **Tile lookup is math, not mesh-picking** — but no longer against *one* plane.
+  `screenToTile` tries each distinct surface height the board has, **tallest
+  first**, and takes the first answer that agrees with itself: the tile found at
+  height `h` must be a tile whose surface is at `h`. Tallest first is what lets
+  a peak win over the plains it occludes. Cheap, because a board has two or
+  three distinct heights. Terrain meshes stay `isPickable = false` and Babylon's
+  mesh picking stays out of it. ⚠️ Clicking the *side* of a raised tile agrees
+  with nothing, so the flat reading is kept as a fallback.
 - **Elevation is visual only; the map data has no height.** A tile's walkable
   surface is `surfaceAt(coordinate)` in `renderer.ts`, the one place any `y` is
-  decided — terrain props, units, the walk tween, `snapUnits`, `cancelPreview`
-  and every overlay read it, so a raised tile cannot be raised for some of them
-  and not others. It is `topOf(ground) + (standOn ?? 0)`:
-  - `terrainModels.topOf` **measures** each model's bounding box at load, so
-    ground height is derived from the art rather than stated beside it — swap a
-    model and the height follows. A mountain is a quarter-height stone pad
-    (`cliff_blockQuarter_stone`, measuring 0.20), and it is raised because the
-    pad is, not because anything says so.
-  - `TerrainCell.standOn` is the only *declared* height, and exists for the one
-    case measurement gets wrong: a bridge, whose own top is its handrail. The
-    deck is 0.15 on a model that reaches 0.35.
-  - ⚠️ **0.25 is the ceiling.** Since picking intersects `y = 0` while the
-    camera looks down at 38.6°, a surface at height `h` appears `1.25h` tiles
-    from the tile it belongs to. A third of a tile goes unnoticed; half a tile
-    is a click landing on the neighbour.
+  decided — terrain props, units, the walk tween, `snapUnits`, `cancelPreview`,
+  every overlay and now picking read it, so a raised tile cannot be raised for
+  some of them and not others. Three ways a cell can say how high it is, in
+  order of preference:
+  - Nothing at all, and `terrainModels.topOf` **measures** the ground model's
+    bounding box at load. Derived from the art, so swapping a model moves the
+    surface with it.
+  - `TerrainCell.standOnProp` — the index of a prop a unit stands **on top of**,
+    whose height is likewise measured. A mountain is this: an ordinary grass
+    tile with a mesa standing on it.
+  - `TerrainCell.standOn` — a *declared* offset, for the one case measurement
+    gets wrong: standing **partway up** a prop. A bridge deck is 0.15 on a model
+    that reaches 0.35, because its own top is the handrail.
+  - ⚠️ **`MAX_STAND_HEIGHT` is 0.5, and it is a legibility limit rather than a
+    picking one.** Picking now finds a peak however tall it is. What binds is
+    the camera: at 38.6° a surface at height `h` *draws* `1.25h` tiles up-screen
+    of its own tile, and past about half a tile it visually occupies its
+    neighbour whether or not the click lands right. A voxel spike put this at a
+    full tile and tile identity fell apart on sight.
 - The models are [Kenney's Nature Kit](https://kenney.nl/assets/nature-kit),
   CC0, as GLB — the loader units already use. What the code relies on, measured
   rather than assumed: ground tiles are **exactly 1×1 in x and z**, which is
@@ -553,10 +562,14 @@ cancelPreview()           toggleInspector()          dispose()
   calls for a board, against roughly thirty instanced. Merging is right because
   terrain is made once and never moves. `terrainModels.ts` loads the set and
   shares one material per name across all of them, which is what makes the
-  grouping work. ⚠️ Roads are the one exception: the kit paints a path and a
-  riverbank with the same `dirt` and `dirtDark`, so `ground_path*` remaps both
-  to a grey gravel of its own. An override supplies a *name* as well as a
-  colour, since the name is what merging groups on.
+  grouping work. ⚠️ Three families are recoloured, all for the same reason — the
+  kit reuses a handful of materials and it twice made two kinds of tile the same
+  object. A **road** shares `dirt`/`dirtDark` with a riverbank and gets grey
+  gravel; a **mesa** shares the same warm orange and gets grey stone, keeping
+  its grass cap; and **scenery on grass** is painted the exact green of the
+  ground it stands on, which makes a tuft invisible by construction, so it gets
+  a warmer, lighter green. An override supplies a *name* as well as a colour,
+  since the name is what merging groups on.
 - ⚠️ The loaded PBR materials are **replaced** with flat `StandardMaterial`s
   carrying their albedo. The kit ships `metallicFactor: 1`, and a fully metallic
   surface has no diffuse response — with no environment map to reflect, the
@@ -591,22 +604,30 @@ cancelPreview()           toggleInspector()          dispose()
   tiler fills in all of it — model, offset, free rotation, scale. `terrain.ts`
   obeys and decides nothing, which is what keeps *where a tree goes* out of the
   drawing code and in the one module that is pure and tested.
-- ⚠️ **Never the middle of a tile**, since a unit stands there. A tree is tall
-  enough to swallow one, so it goes to a corner; a peak's loose stone is low
-  and there is a lot of it, so it rings the rim at `KEEP_CLEAR` or further out
-  — which also leaves the pad's top clear without having to reason about which
-  corner is free. Both are placed from a deterministic per-tile value stream,
-  so the board never reshuffles between scene builds.
-- The scatter is *stone* and not *rock*: the kit's rock variants are the same
-  shapes in `dirt`, the exact brown of every road and riverbank. All the stone
-  models share one material with the pad, so a six-stone scatter costs geometry
-  and not a draw call.
-- Grid lines are **a square per tile, each at that tile's own surface** — not
-  four long spans, which is what they were before tiles had height and which
-  run straight through a mountain's pad. Where neighbours differ in height the
-  two outlines separate and draw the step. ⚠️ They are white at 16%, a lifted
-  seam rather than the near-black rule they used to be: a grid here says where
-  a tile ends, and anything heavier reads as a cage over the board.
+- ⚠️ **Never the middle of a tile**, since a unit stands there — that is
+  `KEEP_CLEAR`, and it binds anything a unit shares its tile with. The two props
+  it does *not* bind are the ones a unit stands **on**: a bridge deck and a
+  mesa, both dead centre on purpose. Everything is placed from a deterministic
+  per-tile value stream, so the board never reshuffles between scene builds.
+- A **mountain is a mesa on an ordinary tile**, not raised ground. The trade is
+  deliberate: a block fills its square and keeps every overlay flush but reads
+  as masonry, while a rock does not fill a square — the hover and range tints
+  sit at the mesa's height and float past its sloping edges — and reads as
+  terrain, which is worth more.
+- **Woodland is six tree shapes**, each turned and scaled, because one shape
+  stamped repeatedly reads as wallpaper. Free: every one is painted `woodBark`
+  and `leafsGreen`, which a single tree already brought. The kit's pines each
+  carry two more materials, which is why none is used.
+- **Open ground carries light scenery** — grass tufts, a small bush, the odd
+  flower, on about a third of plains tiles. ⚠️ None of it means anything: a tile
+  with a flower plays exactly like one without, and the scatter stays thin
+  precisely so it does not read as a feature worth asking about.
+- Grid lines are **one flat grid at the board's floor**, mid grey at 7%. Flat
+  is correct rather than a compromise: a mountain raises a *rock*, not its
+  ground, so every tile's floor is the same plane. ⚠️ They were briefly a square
+  per tile at each tile's own surface, for a raised-ground design that no longer
+  exists — and long spans are better anyway, since each interior edge is drawn
+  once rather than by both its tiles, so the alpha means what it says.
 - A highlight follows the pointer, moved from `POINTERMOVE` inside the
   renderer. React never hears about hover.
 - **The route preview is computed here, not in React.** `setMovement` hands the

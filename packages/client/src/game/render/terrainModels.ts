@@ -41,23 +41,33 @@ export const TERRAIN_MODELS = [
   'ground_pathStraight',
   'ground_pathEnd',
   'ground_pathTile',
-  // A stone pad, the only ground that stands above the rest of the board. It
-  // measures 0.20 against a MAX_STAND_HEIGHT of 0.25, so the kit's half-height
-  // cliff beside it is *not* a drop-in -- see `topOf`.
-  'cliff_blockQuarter_stone',
+  // A mesa: a flat-topped outcrop with a grass cap, which a unit stands on top
+  // of. ⚠️ It is a **prop**, never ground -- a rock's silhouette does not fill a
+  // square, and used as ground it left the board see-through at the corners.
+  // `rock_largeF` and not `rock_largeD`, which is the same family but a domed
+  // mound whose grass sits in a dish you cannot see from overhead.
+  'rock_largeF',
   // Things that stand on the ground rather than being it.
   'bridge_wood',
+  // Woodland, varied. ⚠️ All of these are painted `woodBark` and `leafsGreen`,
+  // the two a single tree already brought, so the variety is free -- the pines
+  // are not, carrying `woodBarkDark` and `leafsDark` of their own.
   'tree_default',
-  // Loose stone, scattered over a peak. Ground clutter and nothing taller --
-  // the pad is what makes a mountain read as raised, so these only have to
-  // make it read as rocky. All `stone`, so they merge into the pad's own
-  // material however many end up on a tile.
-  'stone_smallA',
-  'stone_smallB',
-  'stone_smallC',
-  'stone_smallE',
-  'stone_smallI',
-  'stone_smallFlatB',
+  'tree_oak',
+  'tree_tall',
+  'tree_fat',
+  'tree_thin',
+  'tree_cone',
+  // Scattered thinly over open ground, so a field of plains is not one flat
+  // green. ⚠️ The first four are painted `grass` and cost nothing at all --
+  // they merge into a group the board already has. `flower_purpleA` brings
+  // `colorPurple` with it and is the one doodad that adds a draw call, which
+  // is what buys the only spot of colour out there.
+  'grass',
+  'grass_large',
+  'grass_leafs',
+  'plant_bushSmall',
+  'flower_purpleA',
 ] as const;
 
 export type TerrainModel = (typeof TERRAIN_MODELS)[number];
@@ -144,20 +154,41 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
  * - **Roads** are painted `dirt`/`dirtDark`, the same two a riverbank is, which
  *   left a road and a river near enough identical — one just had water down the
  *   middle. A cool grey gravel separates it from the warm bank.
- * - **A peak's pad** is topped with `grass`, so a mountain read as a lawn with
- *   pebbles on it: the same green as the plains beside it, distinguishable only
- *   by the rubble. A dark slate makes the tile itself say *rock*, and it is
- *   darker than the pale `stone` of the rubble and the pad's own sides on
- *   purpose — that is the contrast the scatter reads against.
+ * - ⚠️ **A peak's top is deliberately left alone**, and used not to be. While
+ *   it sat flush with the board a grassy top made a mountain read as a lawn
+ *   with pebbles on it, so it was painted slate. Standing the block up says
+ *   *raised* far better than a colour ever did, and with height doing that work
+ *   the grass is worth having back — it is what makes the tile an outcrop
+ *   rather than a kerbstone.
+ * - **A mesa's body** is `dirt`, the same warm orange as every riverbank, which
+ *   made a peak read as a clay mound rather than as rock. Grey stone says rock
+ *   and leaves the grass cap alone -- the cap is the half that should stay
+ *   green, because it is what a unit stands on.
+ * - **Scenery on open ground** is painted the *exact* green of the ground it
+ *   stands on, which makes a grass tuft on grass invisible by construction.
+ *   ⚠️ It does not render dark, whatever it looks like: measured against the
+ *   board it comes out between `#17725f` and `#24b499` where the ground is
+ *   `#27c0a4` — the same hue, merely shaded, which reads as a smudge rather
+ *   than a plant. Lighting was not the problem and lighting could not fix it;
+ *   a warmer, lighter green is what separates a thing growing on the ground
+ *   from the ground.
  */
+const FOLIAGE = { name: 'foliage', color: new Color3(0.63, 0.97, 0.5) };
+
 const RECOLOUR: Record<string, Record<string, { name: string; color: Color3 }>> = {
+  rock_: {
+    dirt: { name: 'mesaStone', color: new Color3(0.58, 0.64, 0.66) },
+    dirtDark: { name: 'mesaStoneDark', color: new Color3(0.44, 0.49, 0.51) },
+  },
   ground_path: {
     dirt: { name: 'roadSurface', color: new Color3(0.62, 0.62, 0.6) },
     dirtDark: { name: 'roadEdge', color: new Color3(0.47, 0.47, 0.46) },
   },
-  cliff_: {
-    grass: { name: 'cliffTop', color: new Color3(0.44, 0.52, 0.56) },
-  },
+  // ⚠️ Safe as prefixes only because no *ground* model begins with any of
+  // them -- the board's own grass is `ground_grass`.
+  grass: { grass: FOLIAGE },
+  plant_: { grass: FOLIAGE },
+  flower_: { grass: FOLIAGE },
 };
 
 function recolour(model: TerrainModel, materialName: string) {

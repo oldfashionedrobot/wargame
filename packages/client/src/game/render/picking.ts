@@ -9,14 +9,29 @@ import type { Coordinate } from '@vod/shared';
 
 import { worldToTile } from './coordinates';
 
-// Casts a ray from screen space through the camera and intersects it with the
-// ground plane (y = 0) directly, rather than raycasting against scene meshes.
-// This makes tile lookup independent of what's actually rendered on the
-// ground and avoids Babylon's mesh-picking performance gates entirely.
-//
-// ⚠️ That independence is also the constraint on how tall the board may get:
-// anything drawn above this plane is picked where it *would* fall onto it, not
-// where it appears. `MAX_STAND_HEIGHT` is where that stops being unnoticeable.
+/**
+ * Which tile is under a point on screen.
+ *
+ * Still plane arithmetic rather than mesh-picking -- tile lookup stays
+ * independent of what is actually drawn, and Babylon's picking performance
+ * gates stay out of it. What changed is that there is no longer **one** plane.
+ *
+ * ⚠️ A single plane at `y = 0` is only right for a flat board. Raise a tile and
+ * it draws up-screen of where it sits, so a click on a peak lands on the tile
+ * *behind* it -- which is why height used to be capped at a quarter of a tile.
+ * Instead this tries each distinct surface height the board has, **tallest
+ * first**, and takes the first answer that agrees with itself: the tile found
+ * at height `h` must actually be a tile whose surface is at `h`. Tallest first
+ * is what makes a peak win over the plains it occludes, which is the same order
+ * the renderer draws them in.
+ *
+ * Cheap because a board has two or three distinct heights, not hundreds.
+ *
+ * Clicking the *side* of a raised tile agrees with nothing -- the cliff face
+ * belongs to a surface that is neither its top nor the ground -- so the flat
+ * answer is kept as a fallback and returned when no level is consistent. That
+ * is exactly what this did before, for every click.
+ */
 export function screenToTile(
   scene: Scene,
   camera: Camera,
@@ -24,15 +39,31 @@ export function screenToTile(
   screenY: number,
   gridWidth: number,
   gridHeight: number,
+  surfaceAt: (coordinate: Coordinate) => number,
+  levels: readonly number[],
 ): Coordinate | null {
   const ray = scene.createPickingRay(screenX, screenY, Matrix.Identity(), camera);
   if (Math.abs(ray.direction.y) < 1e-6) return null;
 
-  const distance = -ray.origin.y / ray.direction.y;
-  if (distance < 0) return null;
+  let fallback: Coordinate | null = null;
 
-  const x = ray.origin.x + ray.direction.x * distance;
-  const z = ray.origin.z + ray.direction.z * distance;
-  const coordinate = worldToTile(x, z, gridWidth, gridHeight);
-  return isWithinGrid(coordinate, gridWidth, gridHeight) ? coordinate : null;
+  for (const level of levels) {
+    const distance = (level - ray.origin.y) / ray.direction.y;
+    if (distance < 0) continue;
+
+    const coordinate = worldToTile(
+      ray.origin.x + ray.direction.x * distance,
+      ray.origin.z + ray.direction.z * distance,
+      gridWidth,
+      gridHeight,
+    );
+    if (!isWithinGrid(coordinate, gridWidth, gridHeight)) continue;
+
+    if (surfaceAt(coordinate) === level) return coordinate;
+    // Levels arrive tallest first, so the last one standing is the flattest
+    // reading -- the answer a single ground plane would have given.
+    fallback = coordinate;
+  }
+
+  return fallback;
 }

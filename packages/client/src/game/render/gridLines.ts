@@ -2,61 +2,63 @@ import { Color4 } from '@babylonjs/core/Maths/math.color';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { CreateLineSystem } from '@babylonjs/core/Meshes/Builders/linesBuilder';
 import type { LinesMesh } from '@babylonjs/core/Meshes/linesMesh';
-import type { Coordinate } from '@vod/shared';
 import type { Scene } from '@babylonjs/core/scene';
 import { tileToWorld, TILE_SIZE } from './coordinates';
 
 const LINE_HEIGHT = 0.012;
 
 /**
- * ⚠️ Light, not dark. These were near-black at 35%, which put a hard rule
- * between every pair of tiles and read as a wireframe laid over the board
- * rather than as part of it. White at a low alpha lifts the seam instead of
- * cutting it — the same thing a highlight does, which is what a grid is for
- * here: saying where one tile ends, not drawing a cage.
+ * ⚠️ A mid grey, very faintly. These started near-black at 35%, which drew a
+ * hard rule between every pair of tiles and read as a wireframe laid over the
+ * board. White was tried next and overcorrected -- a bright seam is still a
+ * seam. Grey at 7% neither cuts the board nor lights it: the eye finds a
+ * boundary when it goes looking for one and otherwise sees terrain, which is
+ * the whole job of a grid here.
  */
-const LINE_COLOR = new Color4(1, 1, 1, 1);
-// ⚠️ Reads at roughly double this over the interior of the board: an edge
-// between two tiles is drawn by both of them. See the note on `createGridLines`.
-const LINE_ALPHA = 0.1;
+const LINE_COLOR = new Color4(0.35, 0.36, 0.36, 1);
+const LINE_ALPHA = 0.07;
 
 /**
- * A square per tile, each at the height that tile's surface actually is.
+ * One flat grid across the whole board, at the height of the ground.
  *
- * ⚠️ Not four long spans across the board, which is what this was before there
- * were raised tiles: a line pinned at one `y` runs *through* a mountain's pad
- * rather than around it. Outlining each tile separately is what lets every
- * segment sit on its own ground, and where two tiles differ in height the two
- * lines separate and draw the step.
+ * ⚠️ This was briefly a square per tile at each tile's *own* surface, because a
+ * raised tile would otherwise have the line running through it. That is no
+ * longer a case that arises: a mountain is a mesa standing on an ordinary tile,
+ * so the **ground is flat everywhere** and only props rise above it. The grid
+ * marks the board's floor, and the floor is one plane.
  *
- * The cost is that an interior edge belongs to both its tiles and is therefore
- * drawn twice, compositing to roughly twice the alpha. That is uniform across
- * the whole interior, so it reads as one weight; only the board's outer rim is
- * lighter, and that edge is against the background rather than against another
- * tile anyway.
+ * Flat also means long spans rather than per-tile outlines, which means every
+ * interior edge is drawn **once** instead of by both of its tiles — so the
+ * alpha is the alpha, rather than roughly double it over the interior.
+ *
+ * Nothing here touches the overlays. A hover or range tint sits at
+ * `surfaceAt`, which is the top of whatever you would stand on, so hovering a
+ * mesa lights the mesa rather than the floor hidden underneath it.
  */
 export function createGridLines(
   scene: Scene,
-  surfaceAt: (coordinate: Coordinate) => number,
+  groundLevel: number,
   gridWidth: number,
   gridHeight: number,
 ): LinesMesh {
   const half = TILE_SIZE / 2;
+  const y = groundLevel + LINE_HEIGHT;
+
+  const southWest = tileToWorld({ col: 0, row: 0 }, gridWidth, gridHeight);
+  const northEast = tileToWorld({ col: gridWidth - 1, row: gridHeight - 1 }, gridWidth, gridHeight);
+  const minX = southWest.x - half;
+  const maxX = northEast.x + half;
+  const minZ = southWest.z - half;
+  const maxZ = northEast.z + half;
+
   const lines: Vector3[][] = [];
-
-  for (let row = 0; row < gridHeight; row++) {
-    for (let col = 0; col < gridWidth; col++) {
-      const { x, z } = tileToWorld({ col, row }, gridWidth, gridHeight);
-      const y = surfaceAt({ col, row }) + LINE_HEIGHT;
-
-      lines.push([
-        new Vector3(x - half, y, z - half),
-        new Vector3(x + half, y, z - half),
-        new Vector3(x + half, y, z + half),
-        new Vector3(x - half, y, z + half),
-        new Vector3(x - half, y, z - half),
-      ]);
-    }
+  for (let col = 0; col <= gridWidth; col++) {
+    const x = minX + col * TILE_SIZE;
+    lines.push([new Vector3(x, y, minZ), new Vector3(x, y, maxZ)]);
+  }
+  for (let row = 0; row <= gridHeight; row++) {
+    const z = minZ + row * TILE_SIZE;
+    lines.push([new Vector3(minX, y, z), new Vector3(maxX, y, z)]);
   }
 
   const colors = lines.map((line) => line.map(() => LINE_COLOR));

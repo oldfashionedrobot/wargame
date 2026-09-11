@@ -199,6 +199,12 @@ export async function createGameRenderer(
 
   const light = new HemisphericLight('light', new Vector3(0, 1, 0.3), scene);
   light.intensity = 0.9;
+  // ⚠️ Not the default black. `groundColor` is what a surface facing *away*
+  // from the light receives, and at zero anything vertical goes to nothing.
+  // That was invisible while the board was flat-topped tiles; it is not once
+  // things stand up on them -- a grass blade turned away rendered at #23361c
+  // against ground at #27bea2, which reads as dirt rather than as a plant.
+  light.groundColor = new Color3(0.42, 0.44, 0.42);
 
   // Awaited alongside the unit models: a board that pops into existence a frame
   // late is a frame nobody needs to see.
@@ -216,13 +222,34 @@ export async function createGameRenderer(
   const surfaceAt = ({ col, row }: Coordinate): number => {
     const cell = cells[row]?.[col];
     if (!cell) return 0;
-    return terrainModels.topOf(cell.ground) + (cell.standOn ?? 0);
+
+    const ground = terrainModels.topOf(cell.ground);
+    // Standing on top of a prop measures the prop; standing partway up one has
+    // to be told. Scale multiplies the measurement, since the prop carries it.
+    const onProp = cell.standOnProp === undefined ? undefined : cell.props[cell.standOnProp];
+    if (onProp) return ground + terrainModels.topOf(onProp.model) * onProp.scale;
+
+    return ground + (cell.standOn ?? 0);
   };
+
+  /**
+   * Every distinct height a tile's surface sits at, tallest first.
+   *
+   * This is what lets `screenToTile` find a raised tile where it is *drawn*
+   * rather than where it would fall onto a flat board. Worked out once: terrain
+   * does not change during a match, and a board has two or three of these.
+   */
+  const levels = [
+    ...new Set(cells.flatMap((cellRow, row) => cellRow.map((_, col) => surfaceAt({ col, row })))),
+  ].sort((a, b) => b - a);
 
   warnIfTooTall(cells, surfaceAt);
 
   createTerrainMesh(scene, terrainModels, cells);
-  createGridLines(scene, surfaceAt, gridWidth, gridHeight);
+  // The board's floor, which every tile shares -- a mountain raises a rock, not
+  // its ground. Taken from the models rather than assumed to be zero.
+  const groundLevel = Math.max(...cells.flat().map((cell) => terrainModels.topOf(cell.ground)));
+  createGridLines(scene, groundLevel, gridWidth, gridHeight);
   const hoverHighlight = createTileHighlight(scene, 'hover-highlight', HOVER_COLOR, HOVER_ALPHA);
   const selectedHighlight = createTileHighlight(
     scene,
@@ -314,7 +341,16 @@ export async function createGameRenderer(
   };
 
   const hoveredCoordinate = (): Coordinate | null =>
-    screenToTile(scene, camera, scene.pointerX, scene.pointerY, gridWidth, gridHeight);
+    screenToTile(
+      scene,
+      camera,
+      scene.pointerX,
+      scene.pointerY,
+      gridWidth,
+      gridHeight,
+      surfaceAt,
+      levels,
+    );
 
   // The route is recomputed only when the pointer crosses into a different
   // tile, not on every mouse event.
