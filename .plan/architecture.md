@@ -567,10 +567,20 @@ cancelPreview()           toggleInspector()          dispose()
   crossing gives its decks masks 7 and 13 rather than 5 and 10; and a bridge is
   a model standing *on* water rather than ground of its own, which is why it
   carries the one `standOn` in the renderer.
-- Trees and rocks stand on the ground as models, pushed to the edge of their
-  tile by a deterministic hash — a unit stands in the middle, and a prop planted
-  there would swallow it. That is also what makes a mountain's pad usable: the
-  spire is at the rim, so the unit has the top of the pad to itself.
+- Anything standing on a tile rather than being it is a **`Prop`**, and the
+  tiler fills in all of it — model, offset, free rotation, scale. `terrain.ts`
+  obeys and decides nothing, which is what keeps *where a tree goes* out of the
+  drawing code and in the one module that is pure and tested.
+- ⚠️ **Never the middle of a tile**, since a unit stands there. A tree is tall
+  enough to swallow one, so it goes to a corner; a peak's loose stone is low
+  and there is a lot of it, so it rings the rim at `KEEP_CLEAR` or further out
+  — which also leaves the pad's top clear without having to reason about which
+  corner is free. Both are placed from a deterministic per-tile value stream,
+  so the board never reshuffles between scene builds.
+- The scatter is *stone* and not *rock*: the kit's rock variants are the same
+  shapes in `dirt`, the exact brown of every road and riverbank. All the stone
+  models share one material with the pad, so a six-stone scatter costs geometry
+  and not a draw call.
 - A highlight follows the pointer, moved from `POINTERMOVE` inside the
   renderer. React never hears about hover.
 - **The route preview is computed here, not in React.** `setMovement` hands the

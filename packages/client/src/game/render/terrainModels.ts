@@ -48,10 +48,16 @@ export const TERRAIN_MODELS = [
   // Things that stand on the ground rather than being it.
   'bridge_wood',
   'tree_default',
-  // A spire rather than a boulder, and *stone* rather than rock: the rock
-  // variants are made of `dirt`, the same brown as every road and riverbank,
-  // which is precisely the thing a mountain needs to not look like.
-  'stone_tallI',
+  // Loose stone, scattered over a peak. Ground clutter and nothing taller --
+  // the pad is what makes a mountain read as raised, so these only have to
+  // make it read as rocky. All `stone`, so they merge into the pad's own
+  // material however many end up on a tile.
+  'stone_smallA',
+  'stone_smallB',
+  'stone_smallC',
+  'stone_smallE',
+  'stone_smallI',
+  'stone_smallFlatB',
 ] as const;
 
 export type TerrainModel = (typeof TERRAIN_MODELS)[number];
@@ -126,22 +132,39 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
 }
 
 /**
- * Roads get their own earth, rather than the riverbanks'.
+ * Repaints, by the prefix of the models they apply to and the material they
+ * replace. The kit reuses a handful of materials across everything it ships,
+ * which twice now has made two kinds of tile the same object on the board.
+ * Recolouring is the answer both times: the *shapes* were never the problem.
  *
- * ⚠️ The kit paints a path and a riverbank with the same two materials, `dirt`
- * and `dirtDark`, which left a road and a river almost the same object on the
- * board -- one just had water down the middle. The shapes were never the
- * problem, so this recolours rather than re-models: a cool grey gravel reads as
- * a road, separates from the warm bank, and does not collide with the mountain
- * spires, which are much paler and stand up.
+ * ⚠️ An entry supplies a **name** as well as a colour, because merging groups
+ * meshes by material name. Two colours sharing one name would merge into
+ * whichever happened to win.
+ *
+ * - **Roads** are painted `dirt`/`dirtDark`, the same two a riverbank is, which
+ *   left a road and a river near enough identical — one just had water down the
+ *   middle. A cool grey gravel separates it from the warm bank.
+ * - **A peak's pad** is topped with `grass`, so a mountain read as a lawn with
+ *   pebbles on it: the same green as the plains beside it, distinguishable only
+ *   by the rubble. A dark slate makes the tile itself say *rock*, and it is
+ *   darker than the pale `stone` of the rubble and the pad's own sides on
+ *   purpose — that is the contrast the scatter reads against.
  */
-const ROAD_SURFACE: Record<string, { name: string; color: Color3 }> = {
-  dirt: { name: 'roadSurface', color: new Color3(0.62, 0.62, 0.6) },
-  dirtDark: { name: 'roadEdge', color: new Color3(0.47, 0.47, 0.46) },
+const RECOLOUR: Record<string, Record<string, { name: string; color: Color3 }>> = {
+  ground_path: {
+    dirt: { name: 'roadSurface', color: new Color3(0.62, 0.62, 0.6) },
+    dirtDark: { name: 'roadEdge', color: new Color3(0.47, 0.47, 0.46) },
+  },
+  cliff_: {
+    grass: { name: 'cliffTop', color: new Color3(0.44, 0.52, 0.56) },
+  },
 };
 
-function roadRecolour(model: TerrainModel, materialName: string) {
-  return model.startsWith('ground_path') ? ROAD_SURFACE[materialName] : undefined;
+function recolour(model: TerrainModel, materialName: string) {
+  for (const prefix in RECOLOUR) {
+    if (model.startsWith(prefix)) return RECOLOUR[prefix][materialName];
+  }
+  return undefined;
 }
 
 /**
@@ -163,7 +186,7 @@ function shareMaterial(
   const source = mesh.material;
   if (!source) return;
 
-  const override = roadRecolour(model, source.name);
+  const override = recolour(model, source.name);
   const key = override?.name ?? source.name;
 
   const existing = shared.get(key);

@@ -4,27 +4,14 @@ import type { Material } from '@babylonjs/core/Materials/material';
 import type { Scene } from '@babylonjs/core/scene';
 import type { TileType } from '@vod/shared';
 import { tileToWorld } from './coordinates';
-import { propOffset } from './composeTerrain';
+import { QUARTER_TURN } from './composeTerrain';
 import type { TerrainCell } from './composeTerrain';
-import type { TerrainModel, TerrainModels } from './terrainModels';
+import type { TerrainModels } from './terrainModels';
 
 // Height here is a *look*, never data: the map has no elevation, movement costs
 // nothing extra to climb, and screenToTile still answers by intersecting y = 0
 // rather than picking a mesh. What that buys is a hard ceiling on how tall
 // anything walkable may be -- see `topOf` -- not a rule that everything is flat.
-
-const QUARTER_TURN = Math.PI / 2;
-
-/**
- * Props that are drawn smaller than they need to read as terrain.
- *
- * The spire is 0.81 tall against a tree's 1.71, which at natural size makes a
- * mountain the shortest thing on its own board. Scaled up it stands over the
- * woods, which is what four stars of cover ought to look like.
- */
-const PROP_SCALE: Partial<Record<TerrainModel, number>> = {
-  stone_tallI: 1.7,
-};
 
 /**
  * Builds the board out of models, then merges what it built.
@@ -56,19 +43,16 @@ export function createTerrainMesh(
       ground.rotation.y = cell.turns * QUARTER_TURN;
       built.push(...ground.getChildMeshes());
 
-      if (cell.overlay === undefined) continue;
-
-      const prop = models.instantiate(cell.overlay, `prop-${col}-${row}`);
-      // A bridge spans its tile and belongs in the middle of it. Anything else
-      // is scenery, and goes to the edge where it cannot swallow a unit.
-      const offset = cell.overlayTurns === undefined ? propOffset(col, row) : { x: 0, z: 0 };
-      // On top of whatever the ground turned out to be, so a spire stands on
-      // its pad rather than inside it.
-      prop.position.set(center.x + offset.x, models.topOf(cell.ground), center.z + offset.z);
-      prop.rotation.y = (cell.overlayTurns ?? 0) * QUARTER_TURN;
-      const scale = PROP_SCALE[cell.overlay];
-      if (scale !== undefined) prop.scaling.setAll(scale);
-      built.push(...prop.getChildMeshes());
+      // Placement is entirely the tiler's call -- this only obeys it. On top
+      // of whatever the ground turned out to be, so stone sits on its pad
+      // rather than inside it.
+      cell.props.forEach((prop, i) => {
+        const node = models.instantiate(prop.model, `prop-${col}-${row}-${i}`);
+        node.position.set(center.x + prop.x, models.topOf(cell.ground), center.z + prop.z);
+        node.rotation.y = prop.rotation;
+        node.scaling.setAll(prop.scale);
+        built.push(...node.getChildMeshes());
+      });
     }
   }
 

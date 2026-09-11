@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseTerrainGrid } from '@vod/shared';
-import { MAX_STAND_HEIGHT, composeTerrain, propOffset } from './composeTerrain';
+import { KEEP_CLEAR, MAX_STAND_HEIGHT, QUARTER_TURN, composeTerrain } from './composeTerrain';
 
 // The pure half of the tiler: a grid of terrain in, a grid of atlas indices
 // out. No Babylon, so the mask arithmetic and the tables are testable even
@@ -152,14 +152,17 @@ describe('bridges', () => {
   // not arise at all here.
   it('stands a deck on the water, turned the way the road runs', () => {
     const northSouth = compose('..-..', '~~=~~', '..-..');
-    expect(cellAt(northSouth, 2, 1)).toMatchObject({
-      ground: 'ground_riverStraight',
-      overlay: 'bridge_wood',
-      overlayTurns: 1, // the deck is drawn spanning east to west
-    });
+    expect(cellAt(northSouth, 2, 1).ground).toBe('ground_riverStraight');
+    expect(cellAt(northSouth, 2, 1).props).toEqual([
+      // The deck is drawn spanning east to west, so a north-south road turns it.
+      { model: 'bridge_wood', x: 0, z: 0, rotation: QUARTER_TURN, scale: 1 },
+    ]);
 
     const eastWest = compose('..~..', '.-=-.', '..~..');
-    expect(cellAt(eastWest, 2, 1)).toMatchObject({ overlay: 'bridge_wood', overlayTurns: 0 });
+    expect(cellAt(eastWest, 2, 1).props[0]).toMatchObject({
+      model: 'bridge_wood',
+      rotation: 0,
+    });
   });
 
   // A two-lane crossing gives its bridge cells masks 7 and 13 rather than 5
@@ -171,23 +174,44 @@ describe('bridges', () => {
       '~~==~~', // 1
       '..--..', // 2
     );
-    expect(cellAt(cells, 2, 1).overlayTurns).toBe(1);
-    expect(cellAt(cells, 3, 1).overlayTurns).toBe(1);
+    expect(cellAt(cells, 2, 1).props[0].rotation).toBe(QUARTER_TURN);
+    expect(cellAt(cells, 3, 1).props[0].rotation).toBe(QUARTER_TURN);
   });
 });
 
 describe('ground cover', () => {
-  it('stands a tree on grass and a spire on a stone pad', () => {
+  it('stands a tree on grass and strews a stone pad with rubble', () => {
     const cells = compose('f^.');
-    expect(cells[0][0]).toMatchObject({ ground: 'ground_grass', overlay: 'tree_default' });
+    expect(cells[0][0].ground).toBe('ground_grass');
+    expect(cells[0][0].props.map((p) => p.model)).toEqual(['tree_default']);
+
     // A mountain raises its own ground, so how high a unit stands on it is
     // measured off that model rather than stated anywhere.
-    expect(cells[0][1]).toMatchObject({
-      ground: 'cliff_blockQuarter_stone',
-      overlay: 'stone_tallI',
-    });
+    expect(cells[0][1].ground).toBe('cliff_blockQuarter_stone');
     expect(cells[0][1].standOn).toBeUndefined();
-    expect(cells[0][2].overlay).toBeUndefined();
+    // Several small stones, not one large thing: the pad says *raised* and
+    // these only have to say *rocky*.
+    expect(cells[0][1].props.length).toBeGreaterThan(1);
+    expect(cells[0][1].props.every((p) => p.model.startsWith('stone_small'))).toBe(true);
+
+    expect(cells[0][2].props).toEqual([]);
+  });
+
+  // Merging groups by material, so a scatter of six costs the geometry and
+  // none of the draw calls -- but only while they all share the pad's stone.
+  it('scatters a peak with more than one kind of stone', () => {
+    const kinds = new Set(
+      compose('^')
+        .flat()[0]
+        .props.map((p) => p.model),
+    );
+    expect(kinds.size).toBeGreaterThan(1);
+  });
+
+  it('turns and sizes each stone differently', () => {
+    const props = compose('^').flat()[0].props;
+    expect(new Set(props.map((p) => p.rotation)).size).toBeGreaterThan(1);
+    expect(new Set(props.map((p) => p.scale)).size).toBeGreaterThan(1);
   });
 
   // The only height in the renderer that is stated rather than measured, and
@@ -210,27 +234,59 @@ describe('ground cover', () => {
   });
 
   // ⚠️ A unit stands in the middle of its tile, so a prop planted there is a
-  // prop wearing a soldier.
-  it('keeps props clear of the middle of the tile', () => {
-    for (let col = 0; col < 8; col++) {
-      for (let row = 0; row < 8; row++) {
-        const { x, z } = propOffset(col, row);
-        expect(Math.abs(x)).toBeGreaterThan(0.25);
-        expect(Math.abs(z)).toBeGreaterThan(0.25);
+  // prop wearing a soldier. Checked over a whole board of peaks and woods,
+  // because the scatter is the thing that could drift inward and it differs
+  // per tile.
+  it('keeps every prop clear of the middle of the tile', () => {
+    const cells = compose(...Array.from({ length: 12 }, () => '^f^f^f^f^f^f'));
+    for (const cell of cells.flat()) {
+      for (const prop of cell.props) {
+        expect(Math.hypot(prop.x, prop.z)).toBeGreaterThanOrEqual(KEEP_CLEAR);
       }
     }
   });
 
-  it('puts the same prop in the same place every time', () => {
-    expect(propOffset(3, 4)).toEqual(propOffset(3, 4));
+  // ⚠️ The other edge the scatter is squeezed against. A peak's pad ends at the
+  // tile boundary, so a stone that reaches past it hangs in the air over
+  // whatever is next door -- at pad height, which is exactly where a floating
+  // rock is obvious. Measured off the art rather than guessed; see RUBBLE.
+  const WIDEST_STONE = 0.43;
+
+  it('keeps every stone on its own tile', () => {
+    const cells = compose(...Array.from({ length: 12 }, () => '^^^^^^^^^^^^'));
+    for (const cell of cells.flat()) {
+      for (const prop of cell.props) {
+        const reach = Math.max(Math.abs(prop.x), Math.abs(prop.z));
+        expect(reach + (WIDEST_STONE / 2) * prop.scale).toBeLessThanOrEqual(0.5);
+      }
+    }
   });
 
-  it('does not stack every prop in the same corner', () => {
+  // A bridge is the exception, and deliberately so: it spans its tile, and a
+  // unit stands on its deck rather than beside it.
+  it('centres a bridge instead', () => {
+    const deck = compose('..-..', '~~=~~', '..-..')[1][2].props[0];
+    expect({ x: deck.x, z: deck.z }).toEqual({ x: 0, z: 0 });
+  });
+
+  it('puts the same props in the same places every time', () => {
+    expect(compose('^')).toEqual(compose('^'));
+    expect(compose('.f.')[0][1].props).toEqual(compose('.f.')[0][1].props);
+  });
+
+  it('does not lay every tile out identically', () => {
+    // Same terrain, different coordinates -- so anything shared between these
+    // came from the tile's position and not from the terrain type.
+    const row = compose('^^^^^^^^');
+    const layouts = new Set(row[0].map((cell) => JSON.stringify(cell.props)));
+    expect(layouts.size).toBe(8);
+  });
+
+  it('does not stack every tree in the same corner', () => {
     const corners = new Set(
-      Array.from({ length: 8 }, (_, i) => {
-        const { x, z } = propOffset(i, i * 3);
-        return `${Math.sign(x)},${Math.sign(z)}`;
-      }),
+      compose('ffffffff', 'ffffffff')
+        .flat()
+        .map(({ props }) => `${Math.sign(props[0].x)},${Math.sign(props[0].z)}`),
     );
     expect(corners.size).toBeGreaterThan(1);
   });

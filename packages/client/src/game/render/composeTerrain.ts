@@ -1,17 +1,42 @@
 import type { TileType } from '@vod/shared';
 import type { TerrainModel } from './terrainModels';
 
+/** A quarter turn about y — the unit ground models are oriented in. */
+export const QUARTER_TURN = Math.PI / 2;
+
+/**
+ * Something standing *on* a tile rather than being it, placed relative to the
+ * tile's centre.
+ *
+ * Every field is filled in by the tiler rather than looked up when drawing.
+ * That is the point: where a thing stands, which way it faces and how big it
+ * is are all decisions about the *board*, and keeping them here leaves the
+ * drawing code with nothing to decide and no table of its own to consult.
+ */
+export interface Prop {
+  model: TerrainModel;
+  /** Offset from the tile centre, in tile widths. */
+  x: number;
+  z: number;
+  /**
+   * Rotation about y, in radians — free rather than quarter turns. A boulder
+   * has no grain, and scatter that snaps to the axes reads as a grid.
+   */
+  rotation: number;
+  /** Uniform scale. */
+  scale: number;
+}
+
 /**
  * What to draw on one tile: a ground model, turned to suit its neighbours, and
- * optionally something standing on it.
+ * whatever stands on it.
  */
 export interface TerrainCell {
   ground: TerrainModel;
   /** Quarter turns about y, applied to the ground model. */
   turns: number;
-  overlay?: TerrainModel;
-  /** Quarter turns for the overlay, where it has an orientation of its own. */
-  overlayTurns?: number;
+  /** Often empty; a peak carries a whole scatter of them. */
+  props: Prop[];
   /**
    * Extra height a unit stands at, *above* the ground model's own top.
    *
@@ -43,6 +68,50 @@ export const MAX_STAND_HEIGHT = 0.25;
  * frame, which is why its own top is no use as a standing height.
  */
 const BRIDGE_DECK = 0.15;
+
+// --- what a peak is strewn with ---------------------------------------------
+
+/**
+ * The loose stone scattered over a mountain tile.
+ *
+ * ⚠️ `stone_*` and not `rock_*`, which are the same shapes in `dirt` -- the
+ * exact brown of every road and riverbank on the board. And small ones: the
+ * pad underneath is what says *raised*, so these only have to say *rocky*.
+ * They are all one `stone` material, the pad's own, so however many are
+ * scattered they merge into a group that already exists. The count buys
+ * geometry and never a draw call.
+ */
+// ⚠️ None wider than 0.43, which is what `RUBBLE_RING` is solved against. Add
+// a broader one and the scatter starts hanging off the rim.
+const RUBBLE: TerrainModel[] = [
+  'stone_smallA',
+  'stone_smallB',
+  'stone_smallC',
+  'stone_smallE',
+  'stone_smallI',
+  'stone_smallFlatB',
+];
+
+const RUBBLE_COUNT = 6;
+
+/**
+ * The ring the scatter sits on, and how small each stone is drawn.
+ *
+ * ⚠️ These four numbers are squeezed between two edges and there is not much
+ * room between them. Outward: a stone must stay *on its own tile*, or it hangs
+ * over the rim and floats at pad height above the grass beyond — 0.33 plus the
+ * widest stone's half-extent of 0.43/2 scaled to 0.8 lands at 0.50 exactly, the
+ * tile's half-width. Inward: `KEEP_CLEAR`, because a unit stands at the centre.
+ *
+ * The inward edge is the softer of the two. These are ground clutter a fifth of
+ * a tile tall, so a horse standing among them still reads — unlike a tree,
+ * which is why that one is pushed to a corner rather than ringed.
+ */
+const RUBBLE_RING = 0.26;
+const RUBBLE_SPREAD = 0.07;
+const RUBBLE_SCALE = 0.5;
+const RUBBLE_GROWTH = 0.3;
+export const KEEP_CLEAR = 0.24;
 
 // --- the kit, by the shape of a neighbourhood -------------------------------
 //
@@ -187,12 +256,12 @@ function waterCell(grid: TileType[][], col: number, row: number): TerrainCell {
       return tile !== undefined && !isWater(tile);
     });
     if (land.length === 1) {
-      return { ground: 'ground_riverCornerSmall', turns: INNER_CORNER[land[0][0]] };
+      return { ground: 'ground_riverCornerSmall', turns: INNER_CORNER[land[0][0]], props: [] };
     }
   }
 
   const chosen = WATER[mask];
-  return { ground: chosen.model, turns: chosen.turns };
+  return { ground: chosen.model, turns: chosen.turns, props: [] };
 }
 
 /**
@@ -228,6 +297,48 @@ function hash(col: number, row: number): number {
   return Math.abs(h ^ (h >>> 16));
 }
 
+/**
+ * A deterministic stream of values in `[0, 1)` for one tile.
+ *
+ * One `hash` answers one question, and a scatter asks six per stone. Same tile,
+ * same stream, every time — terrain is composed fresh on every scene build, so
+ * anything drawn from this has to come out identical or the board reshuffles
+ * itself whenever the canvas remounts.
+ */
+function seeded(col: number, row: number): () => number {
+  let state = hash(col, row) | 1;
+  return () => {
+    state = Math.imul(state ^ (state >>> 15), 2246822519);
+    state = (state + 0x6d2b79f5) | 0;
+    return ((state >>> 8) & 0xffffff) / 0x1000000;
+  };
+}
+
+/**
+ * Loose stone around the rim of a peak, in a ring rather than at a corner.
+ *
+ * A ring is what makes it read as ground the tile is *made of* instead of one
+ * object sitting on it -- and it keeps the middle clear for a unit without
+ * having to reason about which corner is free. Spaced by index and then nudged,
+ * so the stones neither sit at even intervals nor pile up on one side.
+ */
+function rubble(col: number, row: number): Prop[] {
+  const next = seeded(col, row);
+
+  return Array.from({ length: RUBBLE_COUNT }, (_, i) => {
+    const angle = ((i + next() * 0.7) / RUBBLE_COUNT) * 2 * Math.PI;
+    const radius = RUBBLE_RING + next() * RUBBLE_SPREAD;
+
+    return {
+      model: RUBBLE[Math.floor(next() * RUBBLE.length)],
+      x: Math.cos(angle) * radius,
+      z: Math.sin(angle) * radius,
+      rotation: next() * 2 * Math.PI,
+      scale: RUBBLE_SCALE + next() * RUBBLE_GROWTH,
+    };
+  });
+}
+
 function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
   const tile = at(grid, col, row);
 
@@ -240,8 +351,17 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
     case 'bridge':
       return {
         ...waterCell(grid, col, row),
-        overlay: 'bridge_wood',
-        overlayTurns: bridgeTurns(grid, col, row),
+        // Centred and square to the road, unlike everything else that stands
+        // on a tile -- a bridge is the one prop that has somewhere it must be.
+        props: [
+          {
+            model: 'bridge_wood',
+            x: 0,
+            z: 0,
+            rotation: bridgeTurns(grid, col, row) * QUARTER_TURN,
+            scale: 1,
+          },
+        ],
         // The deck, not the railings. The model's own top is the handrail, and
         // nobody walks on that -- so this is the one height in the renderer
         // read off the art by eye rather than measured from it.
@@ -249,16 +369,22 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
       };
     case 'road': {
       const chosen = ROAD[neighbourMask(grid, col, row, isRoad, false)];
-      return { ground: chosen.model, turns: chosen.turns };
+      return { ground: chosen.model, turns: chosen.turns, props: [] };
     }
     case 'forest':
-      return { ground: 'ground_grass', turns: 0, overlay: 'tree_default' };
-    // A stone pad with a spire on it, rather than a spire in a field. The pad
-    // is ground, so how high a unit stands on it is measured, not stated.
+      return {
+        ground: 'ground_grass',
+        turns: 0,
+        props: [{ model: 'tree_default', ...propOffset(col, row), rotation: 0, scale: 1 }],
+      };
+    // A stone pad strewn with loose stone, rather than one boulder in a field.
+    // The pad is ground, so how high a unit stands on it is measured off the
+    // model rather than stated; the rubble is only there to say what the
+    // ground is made of.
     case 'mountain':
-      return { ground: 'cliff_blockQuarter_stone', turns: 0, overlay: 'stone_tallI' };
+      return { ground: 'cliff_blockQuarter_stone', turns: 0, props: rubble(col, row) };
     default:
-      return { ground: 'ground_grass', turns: 0 };
+      return { ground: 'ground_grass', turns: 0, props: [] };
   }
 }
 
@@ -268,13 +394,14 @@ export function composeTerrain(grid: TileType[][]): TerrainCell[][] {
 }
 
 /**
- * Where a prop stands within its tile.
+ * Where a single tall prop stands within its tile — a tree, and only a tree.
  *
  * ⚠️ Never the middle: a unit stands there, and a tree planted in the centre is
- * a tree wearing a soldier. Pushed toward a corner by the same hash that picks
- * grass, so the scatter is varied but never moves between renders.
+ * a tree wearing a soldier. Pushed toward a corner rather than ringed the way
+ * rubble is, because one object cannot make a ring and a tree is tall enough
+ * that the half of the tile it occupies has to be a half the unit is not in.
  */
-export function propOffset(col: number, row: number): { x: number; z: number } {
+function propOffset(col: number, row: number): { x: number; z: number } {
   const h = hash(col, row);
   const corner = h % 4;
   const jitter = ((h >> 3) % 5) / 100; // a hair off the diagonal, so rows do not line up
