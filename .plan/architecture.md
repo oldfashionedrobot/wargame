@@ -528,8 +528,8 @@ cancelPreview()           toggleInspector()          dispose()
   - `terrainModels.topOf` **measures** each model's bounding box at load, so
     ground height is derived from the art rather than stated beside it — swap a
     model and the height follows. A mountain is a quarter-height stone pad
-    (`cliff_blockQuarter_stone`) with a spire on it, and is raised because the
-    pad is, not because anything says `0.25`.
+    (`cliff_blockQuarter_stone`, measuring 0.20), and it is raised because the
+    pad is, not because anything says so.
   - `TerrainCell.standOn` is the only *declared* height, and exists for the one
     case measurement gets wrong: a bridge, whose own top is its handrail. The
     deck is 0.15 on a model that reaches 0.35.
@@ -537,6 +537,17 @@ cancelPreview()           toggleInspector()          dispose()
     camera looks down at 38.6°, a surface at height `h` appears `1.25h` tiles
     from the tile it belongs to. A third of a tile goes unnoticed; half a tile
     is a click landing on the neighbour.
+- The models are [Kenney's Nature Kit](https://kenney.nl/assets/nature-kit),
+  CC0, as GLB — the loader units already use. What the code relies on, measured
+  rather than assumed: ground tiles are **exactly 1×1 in x and z**, which is
+  `TILE_SIZE`, so nothing is scaled; they carry no textures, only flat material
+  colours; they are multi-mesh **split by material**, with about eight materials
+  serving the whole set, which is what makes merging by material worth doing;
+  and every model hangs under a node translated **−0.05 in y**, so reading the
+  position accessors gives heights a uniform 0.05 too high. ⚠️ `bridge_wood` is
+  1.04 square rather than 1.00 and so overhangs its tile by 2% a side. That is
+  deliberate — a deck rests *on* its banks — and is recorded here so nobody
+  later "corrects" it.
 - Terrain is built from **glTF models**, one per tile, and then **merged by
   material** — grouping every tile's meshes by material leaves about eight draw
   calls for a board, against roughly thirty instanced. Merging is right because
@@ -561,6 +572,15 @@ cancelPreview()           toggleInspector()          dispose()
   runs north–south at rest, `riverSide` banks south, `riverCorner` opens north
   and west. Water uses the *body* vocabulary and roads the *connector* one,
   since a road is never a body of anything.
+- The kit ships **two** water vocabularies — a body set for lakes and a channel
+  set (`Bend`, `Cross`, `Split`) for one-tile rivers — and a 4-bit mask cannot
+  tell which a cell wants: water north and east is a lake's corner if the
+  north-east diagonal is water and a channel's bend if it is land. **The body
+  set alone is used, and it is enough.** A one-tile river bending was the case
+  that would have forced the diagonal test, and it reads correctly on `Two
+  Bridges` — at one tile wide a rounded lake corner and a channel bend are near
+  enough the same shape. The discriminator stays unwritten until something
+  actually reads wrong.
 - Three things the mask alone cannot answer: an **inner corner** needs a
   diagonal, so mask 15 with exactly one land diagonal takes a corner model;
   **bridge orientation** comes from strictly-road neighbours, because a two-lane
