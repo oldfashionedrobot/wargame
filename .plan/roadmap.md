@@ -299,6 +299,42 @@ thing that is also the fastest, not about need.
 Trees, rocks and bridges stop being flat sprites and become models standing on
 the ground, which is what they always wanted to be.
 
+⚠️ **Decoration goes to the edge of its tile, never the middle.** A unit stands
+in the centre, so a tree planted there is a tree wearing a soldier. Offset each
+prop toward a corner by a deterministic hash of the coordinate, the same way
+grass variants are picked — scattered, but never in the way, and never moving
+between renders.
+
+**Dedupe materials by name as they load.** `grass` appears in `ground_grass`,
+`ground_riverSide` and `rock_largeA`, and a separate instance per file would
+turn eight draw calls into thirty. One material per name, shared.
+
+`bridge_wood` is 1.04 square rather than 1.00, so it overhangs its tile by 2% a
+side. That is deliberate — a deck should rest *on* its banks — and it is
+recorded here so nobody later "corrects" it by scaling it down.
+
+⬜ **Accepted for now: the range tint floats over open water.** `riverOpen` and
+`pathOpen` are flat at `y = -0.05`, so an overlay at 0.015 sits 0.065 above
+them. Six per cent of a tile, at a tilted camera. If it reads badly the fix is a
+per-cell overlay height, which is the machinery elevation would want anyway.
+
+**Roads take the channel vocabulary, water takes the body one**, and that
+sidesteps the ambiguity above for half the problem: a road is always a
+connector, so `pathCross`, `pathSplit`, `pathBend`, `pathStraight`, `pathEnd`
+and `pathTile` map onto the sixteen masks with no diagonal test needed at all.
+Only water can be either.
+
+#### While we are in here: unit materials
+
+`unitMaterial` sets `diffuseColor` and nothing else, so `specularColor` stays at
+its default **white** and units come out glossy while terrain explicitly kills
+its own specular. Against a matte board that reads as units being made of a
+different substance. One line, and it is the whole of the mismatch — the kit's
+materials define only a diffuse colour, so they are lit exactly as ours are.
+
+Player colours stay saturated. Units are *meant* to stand out from terrain; that
+is a gameplay property rather than a style accident.
+
 #### Out of scope: elevation
 
 ⚠️ `cliff_block` is a full 1×1×1 cube and the kit has slopes, steps and corners
