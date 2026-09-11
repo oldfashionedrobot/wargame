@@ -82,10 +82,31 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
       const entries = container.instantiateModelsToScene((source) => `${name}-${source}`, false);
       for (const root of entries.rootNodes) root.parent = holder;
 
-      for (const mesh of holder.getChildMeshes()) shareMaterial(scene, mesh, sharedMaterials);
+      for (const mesh of holder.getChildMeshes()) {
+        shareMaterial(scene, model, mesh, sharedMaterials);
+      }
       return holder;
     },
   };
+}
+
+/**
+ * Roads get their own earth, rather than the riverbanks'.
+ *
+ * ⚠️ The kit paints a path and a riverbank with the same two materials, `dirt`
+ * and `dirtDark`, which left a road and a river almost the same object on the
+ * board -- one just had water down the middle. The shapes were never the
+ * problem, so this recolours rather than re-models: a cool grey gravel reads as
+ * a road, separates from the warm bank, and does not collide with the mountain
+ * spires, which are much paler and stand up.
+ */
+const ROAD_SURFACE: Record<string, { name: string; color: Color3 }> = {
+  dirt: { name: 'roadSurface', color: new Color3(0.62, 0.62, 0.6) },
+  dirtDark: { name: 'roadEdge', color: new Color3(0.47, 0.47, 0.46) },
+};
+
+function roadRecolour(model: TerrainModel, materialName: string) {
+  return model.startsWith('ground_path') ? ROAD_SURFACE[materialName] : undefined;
 }
 
 /**
@@ -100,23 +121,29 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
  */
 function shareMaterial(
   scene: Scene,
+  model: TerrainModel,
   mesh: AbstractMesh,
   shared: Map<string, StandardMaterial>,
 ): void {
   const source = mesh.material;
   if (!source) return;
 
-  const existing = shared.get(source.name);
+  const override = roadRecolour(model, source.name);
+  const key = override?.name ?? source.name;
+
+  const existing = shared.get(key);
   if (existing) {
     mesh.material = existing;
     return;
   }
 
-  const flat = new StandardMaterial(`terrain-${source.name}`, scene);
+  const flat = new StandardMaterial(`terrain-${key}`, scene);
   flat.diffuseColor =
-    source instanceof PBRMaterial ? source.albedoColor.clone() : new Color3(1, 1, 1);
+    override?.color ??
+    (source instanceof PBRMaterial ? source.albedoColor.clone() : new Color3(1, 1, 1));
   flat.specularColor = new Color3(0, 0, 0);
-  // Named for the source, so merging can still group by it.
-  shared.set(source.name, flat);
+  // Keyed by the name merging will group on, which is why an override has to
+  // supply one: two colours under one name would merge into whichever won.
+  shared.set(key, flat);
   mesh.material = flat;
 }

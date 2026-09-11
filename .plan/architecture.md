@@ -521,7 +521,10 @@ cancelPreview()           toggleInspector()          dispose()
   calls for a board, against roughly thirty instanced. Merging is right because
   terrain is made once and never moves. `terrainModels.ts` loads the set and
   shares one material per name across all of them, which is what makes the
-  grouping work.
+  grouping work. ⚠️ Roads are the one exception: the kit paints a path and a
+  riverbank with the same `dirt` and `dirtDark`, so `ground_path*` remaps both
+  to a grey gravel of its own. An override supplies a *name* as well as a
+  colour, since the name is what merging groups on.
 - ⚠️ The loaded PBR materials are **replaced** with flat `StandardMaterial`s
   carrying their albedo. The kit ships `metallicFactor: 1`, and a fully metallic
   surface has no diffuse response — with no environment map to reflect, the
