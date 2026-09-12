@@ -294,8 +294,24 @@ be swallowed. Harmless, and the alternative is special-casing the guard.
 #### Still to decide
 
 - **Whether a click outside the options should cancel**, retiring the Cancel
-  button too. Tempting for symmetry once attack tiles exist, and deliberately
-  not part of this pass.
+  button too. ⚠️ Note what already exists: a dead click *does* clear from
+  `unitSelected`, and stops there — `handleTileClick` returns the selection
+  untouched once a destination is pinned, because "the menu owns the decision".
+  Extending it means making that early return conditional.
+
+  ⚠️ And the ambiguity that seemed to block this **does not exist**.
+  `entryCost` refuses a tile "held by an enemy" outright, so an enemy tile is
+  never in `reachable`, while an attack target is enemy-occupied by definition:
+  **reachable and attackable are disjoint by construction.** So the range can
+  stay lit and the vocabulary is still complete and unambiguous — the
+  destination is *Wait*, another reachable tile re-pins, an enemy in range is an
+  attack, anything else cancels. Taking the range down was never what made that
+  work.
+
+  ⚠️ Re-pinning by click is the one part with a real cost: it walks a second
+  preview while the first may still be running, and `previewMove` does not stop
+  the in-flight animation the way `cancelPreview` does. Worth checking before
+  relying on it.
 - **Whether the destination needs its own colour.** It already carries
   `SELECTED_COLOR`, and with the unit standing on it the highlight reads as
   "this unit, here" rather than "click to confirm".
