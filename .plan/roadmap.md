@@ -88,8 +88,10 @@ That ordering existed so the game would never ask for a decision that does
 nothing. **Phase 7 took that cost deliberately**: the confirmation step had to be
 built for the move/attack menu whatever happened to facing, and once the player
 is already confirming, offering the direction is nearly free. So the choice
-arrives a phase before the mechanic that reads it — and only on *Wait*, which is
-the branch with nothing else to derive an answer from.
+arrives a phase before the mechanic that reads it — and only on the *Wait*
+branch, which is the one with nothing else to derive an answer from. ⚠️ That
+branch survives 7.999; only its trigger moves, from a button to a click on the
+destination tile.
 
 ⚠️ **Tune charge head-on before layering direction onto it.** Charge is already the one mechanic with no reference behaviour, an untuned threshold table and an untuned failure-damage function; rear-charge bonuses put a *second* untuned original mechanic in the same expression. Get charge behaving sensibly front-on first, then add the directional term — otherwise every observation is adjusting two unknowns at once.
 
@@ -213,6 +215,114 @@ option, and both cost a few lines against a table's seeding machinery.
 
 
 ## Remaining phases
+
+### 7.999 — the whole move in one gesture
+
+The move/confirm interaction moves entirely onto the canvas. No *Wait* button,
+no *Cancel* button, and — the part that matters — **no local preview of the
+move**. A translucent ghost stands at the destination while the real unit stays
+put, and the unit only animates once the server says it moved.
+
+⚠️ **Subtractive, which is why it can land before combat.** Nothing here is UI
+built for a mechanic that does not exist yet; it removes machinery and moves a
+decision from a button to a click. The attack branch is designed in below but
+ships with **8e**.
+
+#### The four states
+
+The union in `interaction/selection.ts` does **not change**. What changes is
+what each state lights and what a click means in it.
+
+| State | Lit | A click means |
+|---|---|---|
+| `idle` | nothing | a selectable unit selects it; anything else, nothing |
+| `unitSelected` | movement range, route following the pointer | a reachable tile — or the unit's **own** tile — pins a destination; another selectable unit switches to it; anything else clears |
+| `destinationChosen` | ⚠️ range comes **down**; ghost at the destination; the route frozen to it; the destination lit as *wait*; attack tiles lit (8e) | the destination → choose facing; an attack tile → the attack flow (8e); **anything else → cancel**, back to `unitSelected` |
+| `choosingFacing` | the four tiles around the ghost | one of the four → **submit**; anything else → cancel |
+
+⚠️ **Taking the movement range down at `destinationChosen` is what makes this
+work**, and it is one condition in `showSelection` — today the range stays lit
+through that phase and only drops at `choosingFacing`. With it lit, a click on
+an adjacent tile could mean re-pin, face, or attack all at once. With it down,
+the lit options are disjoint and "anything else" is well defined. The cost is
+that re-pinning takes two clicks instead of one; accepted.
+
+#### The ghost
+
+A translucent copy of the unit model at the destination, with the real unit left
+where it stands. ⚠️ **This is the honest version of what the old preview walk
+was faking.** Invariant 8 says the client never resolves outcomes, and moving
+the authoritative mesh for something that had not happened was the one place it
+quietly did. The ghost says the true thing: the unit is *here*, and this is
+where it *would* go.
+
+The commit round-trip is one local POST, not a poll: `submit` returns
+`{ ok, seq, events, state }` and `subscribe` deduplicates by `seq`, so the real
+walk starts as soon as the response lands. `playEvents` animates it from the
+server's facts — the only animation of a real unit there is.
+
+#### What it deletes
+
+The reason to do this, more than the click count:
+
+- `previewMove` and `cancelPreview`, and the settle-promise machinery with them
+  — the part whose own comment concedes `stopAnimation` does not fire an
+  animation's end callback, so the promise had to be resolved by hand or the
+  menu would hang forever.
+- `walking`, and the rule that *Wait* is present but inert until the walk
+  arrives.
+- ⚠️ **`isStandingOn`, `TILE_EPSILON`, and the skip in `playEvents`.** That
+  reconciliation exists *only* because the preview moved the real mesh: "if the
+  mesh is where the event says it ends, the move has been seen." With nothing
+  moved locally there is nothing to reconcile.
+- The rejection special case. A rejected submit advances no `seq`, so no update
+  arrives, so `snapUnits` never runs — which is why the rejection branch has to
+  cancel the preview itself today. A ghost just gets cleared.
+- `confirmWait`, `cancelDestination`, and both buttons. *End Turn* stays: it has
+  no canvas representation.
+
+`snapUnits` stays — it is still the correction for catch-up batches that snap
+without animating.
+
+#### `resolveClick`
+
+⚠️ **`handleTileClick` starts returning a command, and the rule it breaks is one
+whose justification inverted.** The old comment reads: *"every command's
+accompanying selection is a constant the caller already knows, so pairing them
+in one return value carried no information."* That held **because only a button
+could commit** — `handleTileClick` bailed out of the committed phases entirely,
+so the two functions could not disagree.
+
+With a click as the only input, both would need the full phase dispatch: two
+places that must independently agree what a click means, which is duplication
+with a drift hazard rather than separation. One function decides it once, and
+the pairing now carries exactly the information at issue — which reading of the
+click won.
+
+```ts
+const { selection: next, command } = resolveClick(state, selection, coordinate);
+setSelection(next);
+if (command) void submit(command);
+```
+
+#### Settled while designing this
+
+- **Hover in `destinationChosen`** does nothing but the ordinary tile highlight.
+  A route preview is a movement affordance and movement is over. Pinning a
+  destination pins the hovered path with it, so the route stays drawn to the
+  ghost rather than following the pointer — `setRoute(path | null)`, already
+  anticipated under phase 8.
+- **Another friendly unit from `destinationChosen`** cancels only. Selecting it
+  in the same click is fewer clicks and less predictable; "everything outside is
+  cancel" is worth more.
+- **Facing keeps its own step.** Only its trigger moves, from the *Wait* button
+  to a click on the destination tile.
+- ⚠️ **A double-click on a reachable tile pins and then confirms**, since the
+  second click lands on the destination. That is a misfire risk and a
+  power-user shortcut at the same time. Left as-is deliberately.
+- **Discoverability** goes down with the buttons, since nothing will say "click
+  the tile again". Keep a hint line in the DOM — there is already one for the
+  facing step — and drop only the buttons.
 
 ### 8 — Combat: the smallest thing you can win
 
