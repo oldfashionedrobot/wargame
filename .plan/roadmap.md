@@ -251,6 +251,20 @@ inventing a mechanism.
 changes it."* Today's `choosingFacing` demands a direction every single move.
 Here the default is one click on the unit and a direction is an override.
 
+#### Three things that fall out free
+
+- ⚠️ **`facingChoiceAt` already returns `null` for the destination itself** —
+  `directionBetween(d, d)` fails its one-step test. So the branch needs no
+  ordering care: the destination means *keep travelling*, a non-null facing
+  means that direction, and anything else means neither.
+- **The preview walk already leaves the unit facing the way it travelled**,
+  because `animateUnitAlongPath` sets facing per step. So "click the unit to
+  keep this facing" is literally "click the thing it is already looking along",
+  which is what the existing comment in `selection.ts` claims and now becomes
+  the default rather than one of four choices.
+- **`showSelection` shrinks.** All three of its conditions branch on
+  `choosingFacing`; with the merge they collapse onto `destinationChosen`.
+
 #### Why it costs almost nothing to draw
 
 `showSelection` already takes the range down and lights the four tiles — at
@@ -275,14 +289,26 @@ can no longer commit by accident.
   phase dispatch was never in it, and a canvas click already commits a command
   there.
 - `confirmWait` and the *Wait* button go. *Cancel* and *End Turn* stay.
-- ⚠️ **The `walking` guard moves and must stay intact.** `confirmWait` refuses
-  while the preview walks because `playEvents` skips a move only once its mesh
-  has arrived — confirming early replays the committed move from halfway along
-  the path. With the button gone, `disabled` carries none of that.
+- ⚠️ **The `walking` guard moves, widens, and must stay intact.** `confirmWait`
+  refuses while the preview walks because `playEvents` skips a move only once
+  its mesh has arrived — confirming early replays the committed move from
+  halfway along the path. It now gates the *whole* pinned branch rather than one
+  button, and `disabled` carries none of it.
+  ⚠️ **And `clickTile` does not currently close over `walking`.** Its deps are
+  `[server, selection, submitCommand]`; `confirmWait` carries `[selection,
+  walking]` for exactly this reason. Reading a stale `walking` would let a click
+  through mid-walk — the bug the guard exists to stop.
 - ⚠️ **"The way it travelled" has no answer for a single-tile path.**
   `directionBetween` returns null for a zero-length step, so acting without
-  moving must fall back to the unit's *current* facing. Easy to miss, because
-  every other path has a last step.
+  moving falls back to the unit's *current* facing. That means the helper needs
+  `GameState` to look the unit up, unlike `facingChoiceAt` which is pure on the
+  selection — a small asymmetry, and `handleTileClick` already takes state.
+- Two guards sit far from the rest and are easy to miss: the animation queue
+  unpins a plan when new authority arrives, and `cancelDestination` — both name
+  the two phases and become one.
+- `GameCanvas` loses its `choosingFacing` boolean; `pinned` already covers
+  everything it gated, *End Turn* included. The hint line needs rewriting to
+  name both affordances rather than only the four directions.
 
 #### What 8e inherits
 
@@ -332,6 +358,11 @@ the unit's own tile is a destination like any other, and the destination is the
   `unitSelected` and stops there: `handleTileClick` returns the selection
   untouched once a destination is pinned, so extending it means making one
   early return conditional.
+- **Whether the menu appears on pin or on arrival.** Lit immediately means the
+  tiles are visible but inert while the unit walks; the buttons chose exactly
+  that, "rather than appearing on arrival: a 0.15s-a-tile walk is too short to
+  justify the controls jumping into the layout under the pointer". Tiles do not
+  move any layout, so either works and the precedent says lit immediately.
 - **Whether the destination needs a colour of its own.** It carries
   `SELECTED_COLOR` and the four carry `FACING_COLOR` — both warm, and now
   adjacent on screen meaning different things (default versus override).
