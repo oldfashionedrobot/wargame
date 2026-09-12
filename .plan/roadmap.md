@@ -216,190 +216,89 @@ option, and both cost a few lines against a table's seeding machinery.
 
 ## Remaining phases
 
-### 7.999 — the whole move in one gesture
+### 7.999 — *Wait* becomes a click
 
-The move/confirm interaction moves entirely onto the canvas. No *Wait* button,
-no *Cancel* button, and — the part that matters — **no local preview of the
-move**. The unit stays where it stands until the server says it moved; a pinned
-destination is shown by the highlight and the route alone.
+One interaction moves off the DOM and onto the canvas: **clicking the tile the
+previewed unit is standing on means *Wait***, and the button goes away. Nothing
+else changes.
 
-⚠️ **Subtractive, which is why it can land before combat.** Nothing here is UI
-built for a mechanic that does not exist yet; it removes machinery and moves a
-decision from a button to a click. The attack branch is designed in below but
-ships with **8e**.
+The point is not the click count. It is that `destinationChosen` gains a
+vocabulary of canvas clicks, which is where **8e**'s attack selection slots in
+without inventing anything — an attack tile becomes another click in a state
+that already reads them.
 
-#### The four states
+#### The whole change
 
-The union in `interaction/selection.ts` does **not change**. What changes is
-what each state lights and what a click means in it.
+⚠️ **A canvas click already commits a command**, and that is what makes this
+small. `clickTile` dispatches on phase *above* `handleTileClick`: a click during
+`choosingFacing` resolves a direction and submits, because "the direction *is*
+the last decision". Wait is the same shape one phase earlier.
 
-| State | Lit | A click means |
-|---|---|---|
-| `idle` | nothing | a selectable unit selects it; anything else, nothing |
-| `unitSelected` | movement range; the unit's tile; route following the pointer | a reachable tile — or the unit's **own** tile — pins a destination; another selectable unit switches to it; anything else clears |
-| `destinationChosen` | ⚠️ range comes **down**; the *destination* takes the highlight; the route frozen to it; attack tiles lit (8e) | the destination → choose facing; an attack tile → the attack flow (8e); **anything else → cancel**, back to `unitSelected` |
-| `choosingFacing` | the four tiles around the destination; ⚠️ the route **stays** frozen | one of the four → **submit**; anything else → cancel |
-
-⚠️ **Taking the movement range down at `destinationChosen` is what makes this
-work.** With it lit, a click on an adjacent tile could mean re-pin, face, or
-attack all at once. With it down, the lit options are disjoint and "anything
-else" is well defined. The cost is that re-pinning takes two clicks instead of
-one; accepted.
-
-#### The route and the range are one switch, and have to stop being
-
-⚠️ **This is not the one-line change it looks like.** `setMovement(next)` does
-two jobs: it draws the range *and* stores the `Movement` that `showRouteTo`
-needs, and `showRouteTo` bails on its first line when that is null. So
-`setMovement(null)` takes the range down **and kills the route with it** —
-there would be no frozen route to freeze.
-
-The smallest fix is one more renderer method and a guard, ~10 lines:
+So `selection.ts` gains one pure predicate, mirroring `facingChoiceAt`:
 
 ```ts
-let frozenRoute: Coordinate[] | null = null;
-
-const showRouteTo = (coordinate) => {
-  if (frozenRoute) return;          // pinned: the pointer no longer moves it
-  ...unchanged...
-};
-
-setRoute(path) {
-  frozenRoute = path;
-  routeOverlay.setTiles(path ?? []);
-  if (!path) showRouteTo(hoveredCoordinate());   // hand control back to hover
-}
+/** Wait: a click on the tile the unit has been previewed onto. */
+export function isWaitAt(selection: DestinationChosen, coordinate: Coordinate): boolean
 ```
 
-The guard is what makes this safe rather than fragile: without it, whether
-`setMovement(null)` wipes the frozen route depends on the order
-`showSelection` happens to call them in. With it, the order stops mattering.
-Range and route become the separate concerns they always were semantically.
+and `clickTile` gains a branch beside the `choosingFacing` one, which calls the
+`chooseFacing` that already exists. `handleTileClick` is **not touched** — it
+keeps returning a selection and nothing else, because the phase dispatch was
+never in it.
 
-#### No preview, and no ghost either
+⚠️ **The `walking` guard moves, and it is load-bearing.** `confirmWait` refuses
+while the preview is still walking, and its comment says why: `playEvents` skips
+a move whose mesh already stands at the destination, which is true only once it
+has arrived, so confirming early makes the committed move replay from halfway
+along the path. That check has to move to the click branch intact — with a
+button gone, `disabled` is no longer carrying any of it.
 
-The unit does not move locally at any point. On commit, `playEvents` animates it
-from where it actually stands — the same path already used for every move the
-player did not make.
+#### What deliberately does not change
 
-⚠️ **This is the honest version of what the preview walk was faking.** Invariant
-8 says the client never resolves outcomes, and walking the authoritative mesh
-for something that had not happened was the one place it quietly did.
+⚠️ A larger version of this was designed and dropped, and the list is here so it
+is not re-proposed from scratch. **The client preview walk stays.** With it stay
+`previewMove`, `cancelPreview`, `walking`, `isStandingOn`, the skip in
+`playEvents`, the rejection branch's `onPreview(null)`, and the `onPreview`
+callback itself.
 
-⚠️ **And it is a feedback regression, deliberately taken.** Today you watch the
-unit walk to the destination before deciding; afterwards you get a highlighted
-tile and a route line. A translucent **ghost** at the destination would restore
-it and was designed for this phase, then cut — it would be the first mesh
-created and destroyed at runtime, and `architecture.md` currently states that
-unit meshes are built once with no add or remove. **8c brings that lifecycle
-anyway** for `syncUnits`, so the ghost is deferred rather than abandoned: it is
-cheap to add once dynamic meshes exist, and it needs `unit-ghost-<color>`
-materials with a lower emissive floor than `UNIT_GLOW`, since translucent *and*
-self-lit reads as a bug.
+The larger version replaced the preview with a translucent **ghost** so the real
+unit never moved locally, which would have deleted all of the above. It was
+dropped for compounding reasons rather than one: the ghost would be the first
+mesh created and destroyed at runtime, which `architecture.md` says does not
+happen until **8c**; without the ghost the deletions still stood but the
+feedback did not, since `choosingFacing` would light four tiles around an empty
+destination and facing is precisely about where a unit points; and taking the
+movement range down at `destinationChosen` turned out to need a new renderer
+primitive, because `setMovement` both draws the range and holds the `Movement`
+that the route is computed from, so `setMovement(null)` would kill both.
 
-⚠️ Until **8e** lights attack tiles, `destinationChosen` is visually thin — a
-yellow tile and a route, with the range gone. The hint line matters more here,
-not less.
+None of that is wrong, and none of it is needed to move one button. If the
+preview ever does go, that analysis is in the history of this section.
 
-⚠️ **`choosingFacing` is the case this hurts most, and it needs a change.**
-Today the range comes down there and the route with it, which was fine because
-the unit had walked to the destination and the four tiles visibly surrounded it.
-With no preview they would surround an empty tile — and facing is *about* where
-a unit is pointing, so an unanchored ring of four is close to meaningless. The
-frozen route therefore stays drawn through `choosingFacing` as well, so the path
-still leads to the tile the four are around. That is the strongest argument for
-adding the ghost back at 8c.
+So also unchanged: the movement range stays lit through `destinationChosen`,
+the route keeps following the pointer, `showSelection` is untouched, and
+**Cancel stays a DOM button** — only *Wait* moves.
 
-#### What it deletes
+#### The subtle case
 
-The reason to do this, more than the click count. ⚠️ None of it depends on the
-ghost: these all follow from removing the **preview walk**.
+Acting without moving is three clicks on the *same tile*, each meaning something
+different: select the unit, pin its own tile as the destination, then wait.
+It follows from rules that are each reasonable — the unit's own tile is a
+destination like any other, and the destination is the *Wait* target — but it is
+worth knowing before someone reports it as a bug.
 
-- `previewMove` and `cancelPreview`, and the settle-promise machinery with them
-  — the part whose own comment concedes `stopAnimation` does not fire an
-  animation's end callback, so the promise had to be resolved by hand or the
-  menu would hang forever.
-- `walking`, and the rule that *Wait* is present but inert until the walk
-  arrives. ⚠️ That rule was load-bearing, not cosmetic: confirming mid-walk made
-  the committed move replay from halfway along the path, because `playEvents`
-  skipped it only once the mesh had arrived. With nothing walking, a confirm
-  cannot be early.
-- ⚠️ **`isStandingOn`, `TILE_EPSILON`, and the skip in `playEvents`.** That
-  reconciliation exists *only* because the preview moved the real mesh: "if the
-  mesh is where the event says it ends, the move has been seen." With nothing
-  moved locally there is nothing to reconcile.
-- The rejection special case. A rejected submit advances no `seq`, so no update
-  arrives, so `snapUnits` never runs — which is why the rejection branch has to
-  call `onPreview(null)` itself today. With nothing moved, nothing to restore.
-- **The `onPreview` callback entirely.** The hook goes from three render
-  callbacks to two.
-- `confirmWait`, `cancelDestination`, and both buttons. *End Turn* stays: it has
-  no canvas representation.
-
-`snapUnits` stays — it is still the correction for catch-up batches that snap
-without animating.
-
-#### `resolveClick`
-
-⚠️ **`handleTileClick` starts returning a command, and the rule it breaks is one
-whose justification inverted.** The old comment reads: *"every command's
-accompanying selection is a constant the caller already knows, so pairing them
-in one return value carried no information."* That held **because only a button
-could commit** — `handleTileClick` bailed out of the committed phases entirely,
-so the two functions could not disagree.
-
-With a click as the only input, both would need the full phase dispatch: two
-places that must independently agree what a click means, which is duplication
-with a drift hazard rather than separation. One function decides it once, and
-the pairing now carries exactly the information at issue — which reading of the
-click won.
-
-```ts
-const { selection: next, command } = resolveClick(state, selection, coordinate);
-setSelection(next);
-if (command) void submit(command);
-```
-
-⚠️ Keep `handleTileClick`'s existing special case for the unit's **own tile** —
-a single-element path, cost 0, which `validatePath` already allows because the
-mover is exempt from its own occupancy check. That is the "act without moving"
-branch, and it is easy to drop in a rewrite.
-
-#### Settled while designing this
-
-- **Hover in `destinationChosen`** does nothing but the ordinary tile highlight.
-  A route preview is a movement affordance and movement is over.
-- **Another friendly unit from `destinationChosen`** cancels only. Selecting it
-  in the same click is fewer clicks and less predictable; "everything outside is
-  cancel" is worth more.
-- **Facing keeps its own step.** Only its trigger moves, from the *Wait* button
-  to a click on the destination tile.
-- ⚠️ **A double-click on a reachable tile pins and then confirms**, since the
-  second click lands on the destination. A misfire risk and a power-user
-  shortcut at once. Left as-is deliberately.
-- **Discoverability** goes down with the buttons, since nothing will say "click
-  the tile again". Keep a hint line in the DOM — there is already one for the
-  facing step — and drop only the buttons.
+⚠️ A zero-length path resolves its preview almost immediately, so `walking` is
+true only for a moment; a very fast second click could still land inside it and
+be swallowed. Harmless, and the alternative is special-casing the guard.
 
 #### Still to decide
 
-- **The rollback target on rejection.** `submitCommand` deliberately does not
-  hand back a pinned destination the server refused, "because handing back a
-  pinned destination the server just rejected invites the player to confirm it
-  again". The commit now comes from `choosingFacing`, so pick the target —
-  `unitSelected` looks right, and that reasoning should survive the rewrite.
-- **Whether the destination needs its own colour.** `setSelectedTile` already
-  lights it with `SELECTED_COLOR`; reuse is free, a distinct "confirm" colour is
-  clearer about being clickable.
-
-#### Not free
-
-Roughly **27 assertions** across `GameCanvas.test.tsx`, `useGameSession.test.ts`
-and `selection.test.ts` name *Wait*, *Cancel*, `walking` or `previewMove`, and
-the canvas file exists largely to cover the chrome that goes away. The hook's
-public shape shrinks by three members, which `architecture.md` documents in four
-places plus the renderer interface listing and its opening summary of what plays
-today.
+- **Whether a click outside the options should cancel**, retiring the Cancel
+  button too. Tempting for symmetry once attack tiles exist, and deliberately
+  not part of this pass.
+- **Whether the destination needs its own colour.** It already carries
+  `SELECTED_COLOR`, and with the unit standing on it the highlight reads as
+  "this unit, here" rather than "click to confirm".
 
 ### 8 — Combat: the smallest thing you can win
 
