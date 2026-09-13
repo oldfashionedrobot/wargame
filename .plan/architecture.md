@@ -572,8 +572,8 @@ cancelPreview()           toggleInspector()          dispose()
   CC0, as GLB — the loader units already use. What the code relies on, measured
   rather than assumed: ground tiles are **exactly 1×1 in x and z**, which is
   `TILE_SIZE`, so nothing is scaled; they carry no textures, only flat material
-  colours; they are multi-mesh **split by material**, with about eight materials
-  serving the whole set, which is what makes merging by material worth doing;
+  colours; they are multi-mesh **split by material**, with ten materials across
+  the whole set, which is what makes merging by material worth doing;
   and every model hangs under a node translated **−0.05 in y**, so reading the
   position accessors gives heights a uniform 0.05 too high. ⚠️ `bridge_wood` is
   1.04 square rather than 1.00 and so overhangs its tile by 2% a side. That is
@@ -747,9 +747,9 @@ Every package is tested. `bun test` runs `shared` and `server`, Vitest runs
 
 - `composeTerrain` is the one piece of the renderer that is pure, and it is
   tested like any other pure module — including that no cell declares a
-  `standOn` above the picking ceiling. The other half of that ceiling is how
-  tall a *model* measures, which nothing can know without loading it, so
-  `warnIfTooTall` checks it at startup instead. ⚠️ An asset test would need
+  `standOn` above `MAX_STAND_HEIGHT`. The other half of that ceiling is how tall
+  a *model* measures, which nothing can know without loading it, so
+  `warnIfTooTall` checks the whole surface at startup instead. ⚠️ An asset test would need
   `node:fs`, and `client/src` is deliberately a browser-only program with no
   Node types — the same boundary that makes a stray `import 'react'` in
   `server/` a resolution error.

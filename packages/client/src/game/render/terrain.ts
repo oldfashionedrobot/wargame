@@ -8,19 +8,22 @@ import { QUARTER_TURN } from './composeTerrain';
 import type { TerrainCell } from './composeTerrain';
 import type { TerrainModels } from './terrainModels';
 
-// Height here is a *look*, never data: the map has no elevation, movement costs
-// nothing extra to climb, and screenToTile still answers by intersecting y = 0
-// rather than picking a mesh. What that buys is a hard ceiling on how tall
-// anything walkable may be -- see `topOf` -- not a rule that everything is flat.
+// Height here is a *look*, never data: the map carries no elevation and
+// climbing costs nothing extra. Picking is not what limits it -- screenToTile
+// tries every surface height the board has, so a click finds a peak where it is
+// drawn. `MAX_STAND_HEIGHT` is what limits it, and for a different reason: past
+// about half a tile a raised surface draws far enough up-screen to occupy its
+// neighbour.
 
 /**
  * Builds the board out of models, then merges what it built.
  *
  * Merging rather than instancing because terrain is made once and never moves,
  * which is the case merging is for: grouping every tile's meshes by material
- * leaves about eight draw calls for a whole board, against roughly thirty
- * instanced and four hundred as loose copies. At this size any of them would
- * do -- this is the simplest option that also happens to be the fastest.
+ * leaves about fourteen draw calls for a whole board, against hundreds as loose
+ * copies. ⚠️ That count follows the *palette*, not the board -- it was eight
+ * before scenery, a mesa and six kinds of tree brought colours of their own. At
+ * this size any approach would do; this is the simplest that is also fastest.
  */
 export function createTerrainMesh(
   scene: Scene,
@@ -46,9 +49,9 @@ export function createTerrainMesh(
       ground.rotation.y = cell.turns * QUARTER_TURN;
       built.push(...ground.getChildMeshes());
 
-      // Placement is entirely the tiler's call -- this only obeys it. On top
-      // of whatever the ground turned out to be, so stone sits on its pad
-      // rather than inside it.
+      // Placement is entirely the tiler's call -- this only obeys it. Sat on
+      // whatever the ground turned out to be, so a tree stands on the grass
+      // rather than sunk into it.
       cell.props.forEach((prop, i) => {
         const node = models.instantiate(prop.model, `prop-${col}-${row}-${i}`);
         node.position.set(center.x + prop.x, models.topOf(cell.ground), center.z + prop.z);

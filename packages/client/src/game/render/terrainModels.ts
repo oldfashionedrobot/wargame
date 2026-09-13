@@ -11,9 +11,10 @@ import type { Scene } from '@babylonjs/core/scene';
 
 // Kenney's Nature Kit, CC0. Every ground model is exactly 1x1 in x and z, which
 // is TILE_SIZE, so the board needs no scaling. Their tops are *not* all level
-// and nothing here assumes they are: grass and every riverbank sit at -0.05,
-// open water at -0.10 with no bank to speak of, and a stone pad at 0.20. That
-// is what `topOf` is for.
+// and nothing here assumes they are: grass and every riverbank sit at -0.05 and
+// open water at -0.10, with no bank to speak of. That is what `topOf` is for --
+// and it measures props too, since a mountain is a mesa standing on grass and
+// what a unit stands on there is the rock's own top.
 //
 // ⚠️ Those numbers do not match the position accessors, because every model in
 // the kit hangs under a node translated -0.05 in y. Reading the raw geometry
@@ -74,12 +75,15 @@ export type TerrainModel = (typeof TERRAIN_MODELS)[number];
 
 export interface TerrainModels {
   /**
-   * How high the top of a ground model sits, measured from its geometry.
+   * How high the top of a model sits, measured from its geometry.
    *
    * ⚠️ **Measured, never declared.** A tile's walkable surface *is* the top of
-   * the model drawn there, so deriving it means there is no second number to
+   * something drawn there, so deriving it means there is no second number to
    * drift out of step with the art -- swap the model and the height follows.
    * The same discipline as `entryCost` being the only cost model.
+   *
+   * Asked about props as well as ground: a mountain is a mesa standing on
+   * grass, and what a unit stands on there is the rock's own top.
    *
    * ⚠️ Bounded by `MAX_STAND_HEIGHT`, which explains why; `warnIfTooTall` is
    * what checks it, since the answer is not knowable until these are loaded.
@@ -100,9 +104,9 @@ export interface TerrainModels {
  * Loads every terrain model once, sharing materials by name across all of them.
  *
  * The sharing is the point: `grass` appears in `ground_grass`, `ground_riverSide`
- * and `rock_largeA`, and a separate instance per file would defeat merging by
- * material later -- the difference between about eight draw calls for a board
- * and about thirty.
+ * and half the scenery, and a separate instance per file would defeat merging by
+ * material later -- the difference between about fourteen draw calls for a board
+ * and one per model per tile.
  */
 export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
   const containers = await Promise.all(
@@ -154,12 +158,6 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
  * - **Roads** are painted `dirt`/`dirtDark`, the same two a riverbank is, which
  *   left a road and a river near enough identical — one just had water down the
  *   middle. A cool grey gravel separates it from the warm bank.
- * - ⚠️ **A peak's top is deliberately left alone**, and used not to be. While
- *   it sat flush with the board a grassy top made a mountain read as a lawn
- *   with pebbles on it, so it was painted slate. Standing the block up says
- *   *raised* far better than a colour ever did, and with height doing that work
- *   the grass is worth having back — it is what makes the tile an outcrop
- *   rather than a kerbstone.
  * - **A mesa's body** is `dirt`, the same warm orange as every riverbank, which
  *   made a peak read as a clay mound rather than as rock. Grey stone says rock
  *   and leaves the grass cap alone -- the cap is the half that should stay
