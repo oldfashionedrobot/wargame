@@ -441,17 +441,18 @@ snap is caught and logged; the commit always happens.
 
 ```ts
 handleTileClick(state, selection, coordinate) → SelectionState
-chooseFacing(pinned)                          → SelectionState
-facingChoiceOrigin(choosing)                  → Coordinate
-facingChoiceAt(choosing, coordinate)          → Facing | null
-unpinDestination(pinned | choosing)           → SelectionState
-moveCommandFor(choosing, facing)              → Command
+facingChoiceOrigin(pinned)                    → Coordinate
+facingChoiceAt(pinned, coordinate)            → Facing | null
+waitFacing(state, pinned)                     → Facing | null
+unpinDestination(pinned)                      → SelectionState
+moveCommandFor(pinned, facing)                → Command
 ```
 
-`handleTileClick` **never produces a command**. A click picks a destination and
-the menu commits one, so the two are separate functions: every command's
-accompanying selection is a constant the caller already knows, which left the
-old paired return carrying no information.
+`handleTileClick` **never produces a command** — it picks a destination, and
+nothing more. ⚠️ A click *can* commit, but the phase dispatch that decides so
+lives in `clickTile` above it, which is why this stayed selection-only: every
+command's accompanying selection is a constant the caller already knows, so a
+paired return would carry no information.
 
 ```ts
 | { phase: 'idle' }
@@ -739,8 +740,8 @@ Every package is tested. `bun test` runs `shared` and `server`, Vitest runs
   the async form.
 
 - React components are tested with the renderer mocked, so Babylon never
-  loads: `GameCanvas` covers the chrome, the renderer lifecycle and the tile
-  click; `MatchRoute` covers both failure branches, Retry, and disposal
+  loads: `GameCanvas` covers the chrome, the renderer lifecycle, the tile click
+  and what a pinned destination projects at each stage of the walk; `MatchRoute` covers both failure branches, Retry, and disposal
   including a connection that resolves after teardown; `StartScreen` covers
   each of its states and create-and-navigate.
 

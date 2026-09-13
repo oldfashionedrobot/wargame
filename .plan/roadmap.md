@@ -85,16 +85,13 @@ That default is what makes this affordable. Three units a turn over a forty-turn
 - **8d makes it mechanical** — the command carries it and `computeDamage` reads it as a factor.
 
 That ordering existed so the game would never ask for a decision that does
-nothing. **Phase 7 took that cost deliberately**: the confirmation step had to be
-built for the move/attack menu whatever happened to facing, and once the player
-is already confirming, offering the direction is nearly free. So the choice
-arrives a phase before the mechanic that reads it — and only on the *Wait*
-branch, which is the one with nothing else to derive an answer from.
-
-⚠️ **The paragraph above is built.** Phase 7 shipped facing as a demanded step;
-7.999 merged `choosingFacing` into `destinationChosen`, making the travelled
-direction the default — one click on the unit — and a direction an override. The
-*Wait* branch did not move, it dissolved.
+nothing, and phase 7 took the cost deliberately: the confirmation step had to be
+built whatever happened to facing, so offering the direction there was nearly
+free. ⚠️ **All of that is built and lives in `architecture.md` now** — 7.999
+finished it by making the travelled direction the default and a direction an
+override, which is what "chosen, but never demanded" above actually asked for.
+**8d is the only part left**, and it needs no interaction work at all: the
+command already carries `facing`, and nothing reads it.
 
 ⚠️ **Tune charge head-on before layering direction onto it.** Charge is already the one mechanic with no reference behaviour, an untuned threshold table and an untuned failure-damage function; rear-charge bonuses put a *second* untuned original mechanic in the same expression. Get charge behaving sensibly front-on first, then add the directional term — otherwise every observation is adjusting two unknowns at once.
 
@@ -231,11 +228,13 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   ⚠️ **Invariant 9 constrains the events.** `unitAttacked` must carry the target's *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client can compute from the state preceding the event. And a successful charge emits `unitDied` **plus** `unitMoved`, two independently-applicable events, not one compound event carrying both effects.
 
   ⚠️ One nuance the client will hit here, parked by 5b with its answer attached: in a multi-resolution catch-up batch, "the state preceding event *k*" is the pre-batch replica folded through events 1..k−1 — a second hit on the same unit computes its damage number from the intermediate HP, not the pre-batch one. If the animation needs that, thread a **locally** folded state through the animation walk (`applyEvents` as a plain helper inside the queue task) — never per-event React commits, never a callback-signature change. Large batches snap without animating anyway (5b's threshold), so this only matters for small ones.
-- **8e** ⚠️ **Mostly built.** Phase 7 delivered the destination-and-action interaction — pinning, the client-side walk, the *Wait* / *Cancel* menu, the facing choice, and `destinationChosen`. **What remains for 8e is the *Attack* branch**: the option appearing on the menu only when something is in range from the pinned tile, a `choosingTarget` member beside the two phase 7 added, and an attack-range overlay. The paragraphs below are what still applies.
+- **8e** ⚠️ **Mostly built, and smaller than it was.** Phases 7 and 7.999 delivered the whole destination-and-action interaction: pinning, the client-side walk, and a `destinationChosen` whose lit tiles *are* the menu — the unit itself waits, a tile beside it faces that way, anything else cancels. **What remains is one more reading of a click already being read**: an enemy this unit can attack from the pinned tile. ⚠️ **No `choosingTarget` member** — that was the old plan and it is explicitly dropped; a target is a click in the state that exists, not a state of its own. What it does need is an attack-range overlay in a **reddish** tint, so a target is told from a facing choice by colour rather than by a rule.
 
-  Follow phase 7's shape: a click while choosing a target means a target, the way a click while choosing a facing already means a direction, and the pure decision belongs in `interaction/selection.ts` rather than in the hook.
+  ⚠️ **"An adjacent enemy means attack" is shorthand that breaks artillery.** A `min > 1` unit cannot hit an adjacent enemy at all and its targets sit two or three tiles out, so this lights **two sets** and the predicate is "an enemy *this unit can attack from here*". The colouring carries it: an adjacent enemy an artillery piece cannot reach simply stays the neutral facing colour. Undecided is only whether that reads oddly in the melee case, where one tile is both a facing choice and a target.
 
-  **The renderer may want `setRoute(path | null)`** — `null` follows the pointer, an array shows that route and ignores hover — if the route should stay drawn while a target is picked. Phase 7 did not need it, since the walk itself shows the route.
+  Follow the shape already there: `facingChoiceAt` and `waitFacing` each read a click and answer `Facing | null`, so a third predicate answering `Unit | null` sits beside them, and the hook picks whichever answers. ⚠️ The pure decision belongs in `interaction/selection.ts`; the *dispatch* stays in `clickTile`, which is what has kept `handleTileClick` selection-only through two reworks.
+
+  Nothing is needed from the renderer but the overlay. The route question that used to sit here is closed: the range and the route both come down when the menu lights, and the unit standing at the destination is what anchors the tiles around it.
 - **8f** ⬜ **Health has to be visible**, and was missing from this phase entirely. 8b puts `health` in the model and 8d makes it change, but nothing draws it — a unit at 40 reads identically to one at 100, which makes combat unplayable by eye and unverifiable in the browser, the only check the renderer has. Smallest thing that works: a billboarded bar or a scaled emissive band on the unit mesh, driven from `syncUnits` since that already runs per commit with the state in hand. It belongs before 8g, because tuning a matchup table you cannot see the results of is guesswork.
 - **8g** ⬜ **The damage preview** — specified under Combat as "the sharp edge of invariant 8" and, until now, scheduled nowhere. The client computes the same formula with the luck term omitted and shows it on the target before the click commits. This is the step where *deterministic preview, yes; random resolution, no* stops being a slogan and becomes code, so it is worth its own commit rather than riding inside 8e.
 - **8h** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
