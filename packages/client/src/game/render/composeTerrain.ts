@@ -105,18 +105,66 @@ const TREES: TerrainModel[] = [
   'tree_cone',
 ];
 
-/** One tree, in the corner its tile's hash sends it to, turned and sized. */
-function tree(col: number, row: number): Prop {
-  const next = seeded(col, row);
+const TREES_PER_WOOD = 5;
 
-  return {
-    model: TREES[Math.floor(next() * TREES.length)],
-    ...propOffset(col, row),
-    // Free variety: a tree has no front, so a turn costs nothing and stops a
-    // wood reading as the same shape stamped repeatedly.
-    rotation: next() * 2 * Math.PI,
-    scale: 0.85 + next() * 0.3,
-  };
+/**
+ * Where the trees stand, and how big.
+ *
+ * ⚠️ **`TREE_SCALE` is the number this whole pass turns on.** Measured from the
+ * kit, a tree model is 1.15--1.71 tall while a unit is 0.39--0.64, so at the
+ * scale these were first drawn a wood stood **two to four times higher than the
+ * army walking through it**. That is the "landscape units stand inside" read,
+ * and it is arithmetic rather than taste.
+ *
+ * ⚠️ A second thing falls out of the same number and was never measured: at
+ * 38.6 degrees a prop of height `h` draws `1.25h` tiles up-screen, so a tree at
+ * the old scale hid **two and a half tiles** behind it. `MAX_STAND_HEIGHT` did
+ * not catch it, because that bound governs surfaces a unit stands *on* and
+ * nobody stands on a tree.
+ *
+ * `TREE_RING` stays outside `KEEP_CLEAR` at its tightest, which is what keeps
+ * the middle free without the two constants having to know about each other.
+ */
+const TREE_RING = 0.32;
+const TREE_RING_JITTER = 0.05;
+const TREE_ANGLE_JITTER = 0.5; // as a fraction of the spacing between spokes
+const TREE_SCALE = 0.34;
+const TREE_SCALE_VARIANCE = 0.12;
+
+/**
+ * A wood: several small trees ringing the tile, middle left for whatever stands
+ * there.
+ *
+ * ⚠️ **The piece reads by standing taller than these, not by being given room.**
+ * That is the Advance Wars answer and it is why this is a ring of small trees
+ * rather than one large one pushed aside -- a wood should look like a wood from
+ * every angle, and the unit should look like it is in front of it.
+ *
+ * A ring rather than a corner for a reason the camera decides: it orbits, so no
+ * angle is the front, and anything placed relative to one would be placed wrong
+ * from the other three.
+ */
+function trees(col: number, row: number): Prop[] {
+  const next = seeded(col, row);
+  // The whole wood is turned by one angle, so neighbouring tiles do not line
+  // their trees up into spokes the eye reads as planting.
+  const turn = next() * 2 * Math.PI;
+  const spacing = (2 * Math.PI) / TREES_PER_WOOD;
+
+  return Array.from({ length: TREES_PER_WOOD }, (_, i) => {
+    const angle = turn + (i + (next() - 0.5) * TREE_ANGLE_JITTER) * spacing;
+    const radius = TREE_RING + (next() - 0.5) * 2 * TREE_RING_JITTER;
+
+    return {
+      model: TREES[Math.floor(next() * TREES.length)],
+      x: Math.cos(angle) * radius,
+      z: Math.sin(angle) * radius,
+      // Free variety: a tree has no front, so a turn costs nothing and stops a
+      // wood reading as the same shape stamped repeatedly.
+      rotation: next() * 2 * Math.PI,
+      scale: TREE_SCALE + next() * TREE_SCALE_VARIANCE,
+    };
+  });
 }
 
 // --- peaks -----------------------------------------------------------------
@@ -444,7 +492,7 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
       return { ground: chosen.model, turns: chosen.turns, props: [] };
     }
     case 'forest':
-      return { ground: 'ground_grass', turns: 0, props: [tree(col, row)] };
+      return { ground: 'ground_grass', turns: 0, props: trees(col, row) };
     case 'mountain':
       return {
         ground: 'ground_grass',
@@ -475,14 +523,3 @@ export function composeTerrain(grid: TileType[][]): TerrainCell[][] {
  * tree is tall enough that the half of the tile it occupies has to be a half
  * the unit is not in.
  */
-function propOffset(col: number, row: number): { x: number; z: number } {
-  const h = hash(col, row);
-  const corner = h % 4;
-  const jitter = ((h >> 3) % 5) / 100; // a hair off the diagonal, so rows do not line up
-  const d = 0.28 + jitter;
-
-  return {
-    x: corner === 0 || corner === 3 ? -d : d,
-    z: corner === 0 || corner === 1 ? -d : d,
-  };
-}

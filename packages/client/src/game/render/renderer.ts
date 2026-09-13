@@ -17,6 +17,7 @@ import { createTileHighlight, setHighlightTile } from './highlight';
 import { createTileOverlay } from './tileOverlay';
 import { screenToTile } from './picking';
 import { createTerrainMesh } from './terrain';
+import { createBoardBase } from './boardBase';
 import { MAX_STAND_HEIGHT, composeTerrain } from './composeTerrain';
 import type { TerrainCell } from './composeTerrain';
 import { loadTerrainModels } from './terrainModels';
@@ -29,6 +30,37 @@ const ORTHO_ZOOM_PADDING = 0.7;
 const MIN_ZOOM = 0.45;
 const MAX_ZOOM = 3;
 const ZOOM_PER_NOTCH = 1.12;
+
+/**
+ * How far the camera may tilt, and what the band costs at each end.
+ *
+ * Orbit stays free in `alpha` — facing and flanking are mechanics here, and a
+ * unit's rear is only a target you can aim at if you can go round and look at
+ * it. Only `beta` is clamped, and until this existed it had **no limits at all**:
+ * a drag could take the camera anywhere, including angles no constant on the
+ * board had been chosen against.
+ *
+ * ⚠️ **The shallow end is a judgement, not arithmetic** — worth saying plainly,
+ * because it reads like arithmetic. A surface of height `h` draws `h / tan θ`
+ * tiles up-screen, so the mesa (0.479, the tallest thing a unit stands on)
+ * covers 0.60 of the tile behind it at the starting angle and **0.83 at 30°**.
+ * That is the whole price. It is not a *picking* price: `screenToTile` searches
+ * every surface height tallest-first, so a click finds a peak wherever it is
+ * drawn however shallow the view. What degrades is only how much board a raised
+ * tile hides, and that is a thing to look at rather than solve.
+ *
+ * ⚠️ There is more room here than there looks, and the reason is the trees. The
+ * bound was first drawn at 38.66° against `MAX_STAND_HEIGHT`, while the tallest
+ * thing actually on the board was a tree at **1.96** — occluding two and a half
+ * tiles and governed by nothing. At today's scale the tallest is 0.79, so the
+ * shallow view costs less now than the steep one used to.
+ *
+ * The top-down end stays free of all this: tilting *up* only ever shortens what
+ * a prop covers, so 60° is a view limit rather than a legibility one.
+ */
+const CAMERA_BETA = Math.PI / 3.5; // start: 38.57° above the horizon
+const CAMERA_BETA_TOPDOWN = Math.PI / 6; // 60° above the horizon — nearly overhead
+const CAMERA_BETA_SHALLOW = Math.PI / 3; // 30° above the horizon
 
 const HOVER_COLOR = new Color3(1, 1, 1);
 const HOVER_ALPHA = 0.6;
@@ -156,7 +188,7 @@ export async function createGameRenderer(
   const camera = new ArcRotateCamera(
     'camera',
     -Math.PI / 2,
-    Math.PI / 3.5,
+    CAMERA_BETA,
     Math.max(gridWidth, gridHeight),
     Vector3.Zero(),
     scene,
@@ -174,6 +206,11 @@ export async function createGameRenderer(
   // never brings a corner of the board through the near plane.
   camera.lowerRadiusLimit = camera.radius;
   camera.upperRadiusLimit = camera.radius;
+  // Rotation stays free; only the tilt is bounded. The camera starts partway up
+  // its own band rather than at an end of it — see CAMERA_BETA above for what
+  // each end costs.
+  camera.lowerBetaLimit = CAMERA_BETA_TOPDOWN;
+  camera.upperBetaLimit = CAMERA_BETA_SHALLOW;
   camera.minZ = 0.1;
 
   // 1 fits the whole board; larger fills more of the viewport with less of it.
@@ -250,6 +287,16 @@ export async function createGameRenderer(
   // its ground. Taken from the models rather than assumed to be zero.
   const groundLevel = Math.max(...cells.flat().map((cell) => terrainModels.topOf(cell.ground)));
   createGridLines(scene, groundLevel, gridWidth, gridHeight);
+  // Under the floor, so the board is an object rather than geometry that stops.
+  // Nothing reads it: it is not pickable and `surfaceAt` does not know it.
+  //
+  // ⚠️ `bottomOf`, not `topOf`. The grid lines take the highest *top* because
+  // they go over everything; a slab has to clear the lowest *geometry*, which
+  // is a different question -- a river is a channel cut into its tile, so its
+  // top is the bank at 0.00 while the water it has to stay under is at -0.05.
+  // Measuring the top here hangs the slab through every river on the board.
+  const boardFloor = Math.min(...cells.flat().map((cell) => terrainModels.bottomOf(cell.ground)));
+  createBoardBase(scene, boardFloor, gridWidth, gridHeight);
   const hoverHighlight = createTileHighlight(scene, 'hover-highlight', HOVER_COLOR, HOVER_ALPHA);
   const selectedHighlight = createTileHighlight(
     scene,

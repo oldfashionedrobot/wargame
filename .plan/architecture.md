@@ -539,6 +539,14 @@ cancelPreview()           toggleInspector()          dispose()
   scales a zoom factor that the ortho bounds divide by — clamped, and removed in
   `dispose()` alongside the `resize` listener. Bounds are recomputed from grid
   size, aspect and zoom.
+
+  ⚠️ **Rotation is free; tilt is not.** `alpha` spins without limit, because
+  facing and flanking mean a unit's rear has to be somewhere the player can go
+  and look at. `beta` is clamped to a band — **30° to 60° above the horizon,
+  starting at 38.6°** — where before it had no limits at all. The shallow end is
+  a *legibility* bound rather than a picking one: `screenToTile` searches every
+  surface height, so a click stays right however low the camera gets, and what
+  degrades is only how much board a raised tile hides.
 - **Tile lookup is math, not mesh-picking** — but no longer against *one* plane.
   `screenToTile` tries each distinct surface height the board has, **tallest
   first**, and takes the first answer that agrees with itself: the tile found at
@@ -555,7 +563,9 @@ cancelPreview()           toggleInspector()          dispose()
   order of preference:
   - Nothing at all, and `terrainModels.topOf` **measures** the ground model's
     bounding box at load. Derived from the art, so swapping a model moves the
-    surface with it.
+    surface with it. ⚠️ `bottomOf` is its counterpart and answers a genuinely
+    different question — how far a tile reaches *down* — which only anything
+    positioning itself under the board has any use for.
   - `TerrainCell.standOnProp` — the index of a prop a unit stands **on top of**,
     whose height is likewise measured. A mountain is this: an ordinary grass
     tile with a mesa standing on it.
@@ -564,9 +574,11 @@ cancelPreview()           toggleInspector()          dispose()
     that reaches 0.35, because its own top is the handrail.
   - ⚠️ **`MAX_STAND_HEIGHT` is 0.5, and it is a legibility limit rather than a
     picking one.** Picking now finds a peak however tall it is. What binds is
-    the camera: at 38.6° a surface at height `h` *draws* `1.25h` tiles up-screen
-    of its own tile, and past about half a tile it visually occupies its
-    neighbour whether or not the click lands right. A voxel spike put this at a
+    the camera: a surface at height `h` *draws* `h / tan θ` tiles up-screen of
+    its own tile — `1.25h` at the starting angle, `1.73h` at the shallow end of
+    the band — and past about half a tile it visually occupies its neighbour
+    whether or not the click lands right. So the mesa covers 0.60 of the tile
+    behind it at rest and 0.83 tilted right down. A voxel spike put this at a
     full tile and tile identity fell apart on sight.
 - The models are [Kenney's Nature Kit](https://kenney.nl/assets/nature-kit),
   CC0, as GLB — the loader units already use. What the code relies on, measured
@@ -640,10 +652,16 @@ cancelPreview()           toggleInspector()          dispose()
   as masonry, while a rock does not fill a square — the hover and range tints
   sit at the mesa's height and float past its sloping edges — and reads as
   terrain, which is worth more.
-- **Woodland is six tree shapes**, each turned and scaled, because one shape
-  stamped repeatedly reads as wallpaper. Free: every one is painted `woodBark`
-  and `leafsGreen`, which a single tree already brought. The kit's pines each
-  carry two more materials, which is why none is used.
+- **Woodland is five trees on a jittered ring**, drawn from six shapes, each
+  turned and scaled, because one shape stamped repeatedly reads as wallpaper.
+  Free: every one is painted `woodBark` and `leafsGreen`, so a denser wood costs
+  no draw call — the kit's pines each carry two more materials, which is why
+  none is used. ⚠️ **They are scaled to about a third, and the pieces set that
+  number rather than the trees.** A tree model is 1.15–1.71 tall against a
+  unit's 0.39–0.64, so at the size they are drawn a wood stands two to four
+  times higher than the army walking through it, and a piece reads by standing
+  *over* the wood rather than by being given room in it. A ring rather than a
+  cluster behind the unit, because the camera orbits and no angle is the front.
 - **Open ground carries light scenery** — grass tufts, a small bush, the odd
   flower, on about a third of plains tiles. ⚠️ None of it means anything: a tile
   with a flower plays exactly like one without, and the scatter stays thin
@@ -654,6 +672,18 @@ cancelPreview()           toggleInspector()          dispose()
   per tile at each tile's own surface, for a raised-ground design that no longer
   exists — and long spans are better anyway, since each interior edge is drawn
   once rather than by both its tiles, so the alpha means what it says.
+- **A slab under the board** — `boardBase.ts`, sized to the grid exactly, 0.45
+  thick, not pickable and unknown to `surfaceAt`. It is what makes the board an
+  object rather than geometry that stops. ⚠️ It hangs off `bottomOf` — the
+  **lowest geometry** on the board — where the grid lines take the highest
+  *top*. The two ask different questions, and the reason is that **a tile is not
+  flat**: a river is a channel cut *down* into its tile, banks at 0.00 and water
+  at −0.05, and a road is recessed the same way. A slab placed by `topOf` is
+  therefore drawn straight through both, and the board's water and gravel come
+  out slab-coloured — which is not a subtle failure but does look like a
+  deliberate palette until someone asks where the blue went. A further 0.01 sink
+  clears the ground plane, which has no thickness of its own and would otherwise
+  depth-fight a coplanar face in bands that move with the camera.
 - A highlight follows the pointer, moved from `POINTERMOVE` inside the
   renderer. React never hears about hover.
 - **The route preview is computed here, not in React.** `setMovement` hands the
@@ -676,7 +706,19 @@ cancelPreview()           toggleInspector()          dispose()
   the board rather than to be canonical, and green leans to lime because a true
   green sits almost on the grass.
 - Model origins are at the base, so a unit's `y` is the surface it stands on
-  rather than half its own height.
+  rather than half its own height — and so scaling a piece grows it upward off
+  that surface rather than sinking it through one.
+- ⚠️ **Pieces are not at terrain scale, deliberately.** `PIECE_SCALE` in
+  `units.ts` is a `Record` per unit type: a unit is a formation rather than a
+  man, so no size makes it and a tree both correct, and a piece is sized to read
+  on its tile. A table rather than one dial because the models disagree too much
+  for a multiplier to close — infantry is 0.48 at its deepest and 0.57 tall,
+  cavalry 0.68 and 0.64, artillery **0.80 and 0.39**. Infantry and cavalry are
+  scaled to a common height of 0.85; artillery meets its footprint first and
+  stays low, which is what lets a gun carriage tell itself apart from the other
+  two at a glance. ⚠️ Keyed on `UnitTypeId`, so the key is `artillery` — the
+  model file is `cannon.gltf` and the mismatch silently scales a mesh by
+  `undefined`.
 - Unit meshes are built once at startup; there is no add or remove.
 - `playEvents` walks `unitMoved` paths one tween per tile, 0.15s each
   (`FRAMES_PER_TILE` over `FRAME_RATE` in `units.ts` — one dial for every

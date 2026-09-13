@@ -191,10 +191,11 @@ describe('ground cover', () => {
   it('stands a tree on grass and a mesa on a mountain', () => {
     const cells = compose('f^.');
     expect(cells[0][0].ground).toBe('ground_grass');
-    // One tree, and which one is the tile's own business -- see the variety
-    // tests below.
-    expect(cells[0][0].props).toHaveLength(1);
-    expect(cells[0][0].props[0].model.startsWith('tree_')).toBe(true);
+    // A wood is several trees now, and which ones is the tile's own business --
+    // see the variety tests below. The count is deliberately not pinned: what
+    // matters is that a wood is more than one thing and all of it is trees.
+    expect(cells[0][0].props.length).toBeGreaterThan(1);
+    expect(cells[0][0].props.every((prop) => prop.model.startsWith('tree_'))).toBe(true);
 
     // ⚠️ A mountain does **not** raise its ground: the tile stays flat grass
     // and a rock stands on it, which is the whole shape of the thing. How high

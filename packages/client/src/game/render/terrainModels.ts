@@ -90,6 +90,17 @@ export interface TerrainModels {
    */
   topOf(model: TerrainModel): number;
   /**
+   * How low a model reaches, measured the same way `topOf` measures up.
+   *
+   * ⚠️ **A tile is not flat, and `topOf` cannot tell you so.** A river is a
+   * channel cut *down* into its tile: the banks measure 0.00 and the water sits
+   * at -0.05, so the top reports the bank and says nothing about the surface a
+   * player actually sees. Anything positioning itself *under* the board has to
+   * ask this instead -- `boardBase` does, and hanging it off `topOf` put the
+   * slab straight through every river on the map.
+   */
+  bottomOf(model: TerrainModel): number;
+  /**
    * A fresh copy of one model, parented to a node of ours.
    *
    * The caller owns the returned node's transform. The loader's own `__root__`
@@ -123,11 +134,22 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
       return [model, ys.length > 0 ? Math.max(...ys) : 0];
     }),
   );
+  const bottoms = new Map<TerrainModel, number>(
+    TERRAIN_MODELS.map((model, i) => {
+      const ys = containers[i].meshes
+        .filter((mesh) => mesh.getTotalVertices() > 0)
+        .map((mesh) => mesh.getBoundingInfo().boundingBox.minimumWorld.y);
+      return [model, ys.length > 0 ? Math.min(...ys) : 0];
+    }),
+  );
   const sharedMaterials = new Map<string, StandardMaterial>();
 
   return {
     topOf(model) {
       return tops.get(model) ?? 0;
+    },
+    bottomOf(model) {
+      return bottoms.get(model) ?? 0;
     },
     instantiate(model, name) {
       const container = byModel.get(model);

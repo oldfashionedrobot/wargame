@@ -7,7 +7,7 @@ import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Scene } from '@babylonjs/core/scene';
 import { directionBetween } from '@vod/shared';
-import type { Coordinate, Facing, PlayerColor, Unit } from '@vod/shared';
+import type { Coordinate, Facing, PlayerColor, Unit, UnitTypeId } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 import type { UnitModels } from './unitModels';
 
@@ -16,6 +16,40 @@ const FRAME_RATE = 60;
 // no per-type speed, so this is the single dial for how long a move takes: a
 // three-tile move is 3x this. 9/60 = 0.15s.
 const FRAMES_PER_TILE = 9;
+
+/**
+ * How large each piece is drawn, against a tile of `TILE_SIZE`.
+ *
+ * ⚠️ **Units and terrain are not in the same scale system, on purpose.** A unit
+ * is a formation rather than a man, so there was never a size at which it and a
+ * tree were both correct -- and once that is said, "the piece is too big for its
+ * tile" stops being a defect and becomes the point. A piece is sized to read on
+ * its tile; the board is sized to be a board.
+ *
+ * ⚠️ **A table rather than one dial, because the models disagree too much for a
+ * multiplier to fix.** Measured from the art: infantry is 0.48 at its deepest
+ * and 0.57 tall, cavalry 0.68 and 0.64, a cannon **0.80 and 0.39**. One global
+ * scale preserves that spread rather than closing it -- at 1.25 the cannon
+ * already fills its tile while infantry is still a 0.60-deep speck, and there is
+ * no single number that fixes the second without pushing the first into the
+ * square next door.
+ *
+ * So the target is **height**, which is what makes a piece read over the trees
+ * it stands among, capped by whatever keeps it inside its own tile. Infantry and
+ * cavalry reach a common 0.85; the cannon hits the footprint cap first and stays
+ * low, which is honest -- a gun carriage *is* low and wide, and that silhouette
+ * is how you tell it from the other two at a glance.
+ */
+const PIECE_SCALE: Record<UnitTypeId, number> = {
+  infantry: 1.5,
+  cavalry: 1.34,
+  // ⚠️ `artillery`, not `cannon` -- the model file is cannon.gltf but the unit
+  // type is artillery, and a Record keyed on the wrong one is how this first
+  // went in. Capped by its own footprint rather than chosen: raising it to match
+  // the others on height would take a gun carriage to 1.75 deep, most of two
+  // tiles.
+  artillery: 1.2,
+};
 
 // The models face +Z, which is what north is here: tileToWorld maps a rising
 // row to a rising z. So zero rotation is zero correction.
@@ -82,6 +116,12 @@ export function createUnitMesh(
 
   const material = unitMaterial(scene, color);
   for (const mesh of node.getChildMeshes()) mesh.material = material;
+
+  // Uniform, and on our own node rather than the loader's `__root__` -- same
+  // reason the facing rotation goes here. Safe to compose with that rotation:
+  // the origin is the model's base, so scaling grows the piece upward off the
+  // surface it stands on rather than sinking it into one.
+  node.scaling.setAll(PIECE_SCALE[unit.unitTypeId]);
 
   // The models' origin is their base, so they stand on the board rather than
   // being lifted by half their height the way a centre-origin cylinder was.
