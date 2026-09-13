@@ -183,7 +183,9 @@ describe('GameCanvas', () => {
   // The menu is present but inert until the unit arrives: confirming mid-walk
   // would leave the mesh short of the destination, and the committed move
   // would then replay from wherever it had got to.
-  it('holds Wait and Cancel shut until the previewed unit arrives', async () => {
+  // ⚠️ The menu is tiles now, so "shut" means unlit rather than disabled: an
+  // inert lit tile invites a click that does nothing.
+  it('holds the menu back until the previewed unit arrives', async () => {
     let arrive!: () => void;
     vi.mocked(renderer.previewMove).mockReturnValue(
       new Promise<void>((resolve) => {
@@ -196,10 +198,15 @@ describe('GameCanvas', () => {
     await act(async () => clickTile({ col: 1, row: 3 }));
 
     expect(renderer.previewMove).toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Wait' })).toHaveProperty('disabled', true);
+    // Still walking: the range is the context, and no directions are offered.
+    expect(renderer.setFacingChoices).toHaveBeenLastCalledWith(null);
+    expect(renderer.setMovement).toHaveBeenLastCalledWith(expect.anything());
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveProperty('disabled', true);
 
     await act(async () => arrive());
-    expect(screen.getByRole('button', { name: 'Wait' })).toHaveProperty('disabled', false);
+    expect(renderer.setFacingChoices).toHaveBeenLastCalledWith({ col: 1, row: 3 });
+    expect(renderer.setMovement).toHaveBeenLastCalledWith(null);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveProperty('disabled', false);
   });
 
   it('clears the overlays when the selection is dropped', async () => {
@@ -212,18 +219,28 @@ describe('GameCanvas', () => {
 
   // The menu is DOM like every other control -- the canvas draws the game and
   // nothing else -- so it is here rather than in the renderer.
-  it('offers Wait and Cancel once a destination is pinned, and locks End Turn', async () => {
+  it('offers Cancel once a destination is pinned, and locks End Turn', async () => {
     await renderCanvas(fakeServer());
-    expect(screen.queryByRole('button', { name: 'Wait' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
 
     await act(async () => clickTile({ col: 1, row: 1 })); // select
     await act(async () => clickTile({ col: 1, row: 3 })); // pin
 
-    expect(screen.getByRole('button', { name: 'Wait' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'End Turn' })).toHaveProperty('disabled', true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.queryByRole('button', { name: 'Wait' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
     expect(screen.getByRole('button', { name: 'End Turn' })).toHaveProperty('disabled', false);
+  });
+
+  // The buttons were the only thing naming the gestures; with Wait gone, the
+  // hint is all that is left saying a click on a tile means anything.
+  it('tells the player what a click means, once the unit has arrived', async () => {
+    await renderCanvas(fakeServer());
+    await act(async () => clickTile({ col: 1, row: 1 }));
+    await act(async () => clickTile({ col: 1, row: 3 }));
+
+    expect(screen.getByText(/click the unit to wait/i)).toBeTruthy();
   });
 });

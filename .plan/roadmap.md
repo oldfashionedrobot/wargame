@@ -91,12 +91,10 @@ is already confirming, offering the direction is nearly free. So the choice
 arrives a phase before the mechanic that reads it — and only on the *Wait*
 branch, which is the one with nothing else to derive an answer from.
 
-⚠️ **7.999 is what finally delivers the paragraph above.** Phase 7 shipped
-facing as a demanded step: every move ends by clicking one of four directions.
-The merge of `choosingFacing` into `destinationChosen` makes the travelled
-direction the default — one click on the unit — and a direction an override, so
-"confirm accepts the default; a rotate gesture changes it" stops being
-aspirational. The *Wait* branch does not move, it dissolves.
+⚠️ **The paragraph above is built.** Phase 7 shipped facing as a demanded step;
+7.999 merged `choosingFacing` into `destinationChosen`, making the travelled
+direction the default — one click on the unit — and a direction an override. The
+*Wait* branch did not move, it dissolved.
 
 ⚠️ **Tune charge head-on before layering direction onto it.** Charge is already the one mechanic with no reference behaviour, an untuned threshold table and an untuned failure-damage function; rear-charge bonuses put a *second* untuned original mechanic in the same expression. Get charge behaving sensibly front-on first, then add the directional term — otherwise every observation is adjusting two unknowns at once.
 
@@ -220,152 +218,6 @@ option, and both cost a few lines against a table's seeding machinery.
 
 
 ## Remaining phases
-
-### 7.999 — the destination *is* the menu
-
-⚠️ **This deletes a state rather than moving a button.** `choosingFacing` exists
-only to ask a question `destinationChosen` can ask directly, so the two merge:
-once a destination is pinned and the preview has walked, the tiles around the
-unit are the menu. The union goes from four members to three.
-
-```
-idle → unitSelected → destinationChosen → (commit)
-```
-
-The point is not the click count — though it loses one. It is that
-`destinationChosen` becomes a place where **every** end-of-move decision is a
-click on a tile, which is where **8e**'s attack targets slot in without
-inventing a mechanism.
-
-#### What a click means once a destination is pinned
-
-| Click | Means |
-|---|---|
-| the destination tile — the unit itself | **wait**, facing the way it travelled |
-| an adjacent empty tile | **wait**, facing that way |
-| an adjacent enemy (8e) | **attack** it; facing is implied by the target |
-| anything else | nothing yet — *Cancel* is still a button |
-
-⚠️ **Facing stops being demanded**, which is what the design asked for all along:
-*"chosen, but never demanded — confirm accepts the default; a rotate gesture
-changes it."* Today's `choosingFacing` demands a direction every single move.
-Here the default is one click on the unit and a direction is an override.
-
-#### Three things that fall out free
-
-- ⚠️ **`facingChoiceAt` already returns `null` for the destination itself** —
-  `directionBetween(d, d)` fails its one-step test. So the branch needs no
-  ordering care: the destination means *keep travelling*, a non-null facing
-  means that direction, and anything else means neither.
-- **The preview walk already leaves the unit facing the way it travelled**,
-  because `animateUnitAlongPath` sets facing per step. So "click the unit to
-  keep this facing" is literally "click the thing it is already looking along",
-  which is what the existing comment in `selection.ts` claims and now becomes
-  the default rather than one of four choices.
-- **`showSelection` shrinks.** All three of its conditions branch on
-  `choosingFacing`; with the merge they collapse onto `destinationChosen`.
-
-#### Why it costs almost nothing to draw
-
-`showSelection` already takes the range down and lights the four tiles — at
-`choosingFacing`. Merging means `destinationChosen` adopts that projection
-verbatim, so two of its three conditions collapse rather than grow. ⚠️ **No new
-renderer primitive.** An earlier draft of this phase needed a `setRoute(path)`
-because it wanted the range down *and* the route kept; here the route clears
-with the range exactly as it does today one state later, and that is fine
-because the preview walk leaves the unit visibly standing in the middle of the
-four.
-
-It also kills a hazard the earlier draft had: the committing click must land on
-a **different** tile from the destination, so double-tapping a reachable tile
-can no longer commit by accident.
-
-#### The pieces
-
-- `SelectionState` loses `choosingFacing`; `chooseFacing` goes with it.
-  `facingChoiceAt` and `facingChoiceOrigin` retarget to `DestinationChosen`.
-- `clickTile`'s `choosingFacing` branch becomes the `destinationChosen` branch,
-  plus the destination-tile case. `handleTileClick` is **not touched** — the
-  phase dispatch was never in it, and a canvas click already commits a command
-  there.
-- `confirmWait` and the *Wait* button go. *Cancel* and *End Turn* stay.
-- ⚠️ **The `walking` guard moves, widens, and must stay intact.** `confirmWait`
-  refuses while the preview walks because `playEvents` skips a move only once
-  its mesh has arrived — confirming early replays the committed move from
-  halfway along the path. It now gates the *whole* pinned branch rather than one
-  button, and `disabled` carries none of it.
-  ⚠️ **And `clickTile` does not currently close over `walking`.** Its deps are
-  `[server, selection, submitCommand]`; `confirmWait` carries `[selection,
-  walking]` for exactly this reason. Reading a stale `walking` would let a click
-  through mid-walk — the bug the guard exists to stop.
-- ⚠️ **"The way it travelled" has no answer for a single-tile path.**
-  `directionBetween` returns null for a zero-length step, so acting without
-  moving falls back to the unit's *current* facing. That means the helper needs
-  `GameState` to look the unit up, unlike `facingChoiceAt` which is pure on the
-  selection — a small asymmetry, and `handleTileClick` already takes state.
-- Two guards sit far from the rest and are easy to miss: the animation queue
-  unpins a plan when new authority arrives, and `cancelDestination` — both name
-  the two phases and become one.
-- `GameCanvas` loses its `choosingFacing` boolean; `pinned` already covers
-  everything it gated, *End Turn* included. The hint line needs rewriting to
-  name both affordances rather than only the four directions.
-
-#### What 8e inherits
-
-Attack targets are lit in the same state, in a **reddish** tint against the
-neutral one the wait/facing tiles carry, so the two readings are told apart by
-colour rather than by a rule.
-
-⚠️ **"Adjacent with an enemy means attack" is shorthand that breaks artillery.**
-A `min > 1` unit *cannot* hit an adjacent enemy, and its targets sit two or
-three tiles out — so 8e lights **two sets**, and the real predicate is "an enemy
-*this unit can attack from here*", never "an enemy adjacent". The colouring
-handles it: an adjacent enemy an artillery piece cannot hit simply stays the
-neutral wait colour. Left undecided is only whether that looks odd in the melee
-case, where the same tile is both a facing choice and a target.
-
-#### Considered and dropped
-
-A much larger version was designed first and is recorded so it is not
-re-proposed from scratch: replace the preview walk with a translucent **ghost**
-so the real unit never moves locally, deleting `previewMove`, `cancelPreview`,
-`walking`, `isStandingOn`, the skip in `playEvents`, the rejection branch's
-`onPreview(null)`, and the `onPreview` callback itself.
-
-It was dropped for reasons that compound rather than reduce to one. The ghost
-would be the first mesh created and destroyed at runtime, which
-`architecture.md` says does not happen until **8c**. Without the ghost the
-deletions still held but the feedback did not — the tiles around a destination
-would surround an *empty* tile, and facing is precisely about where a unit
-points. And taking the range down then needed a new renderer primitive, because
-`setMovement` both draws the range and holds the `Movement` the route is
-computed from.
-
-None of it was wrong, and none of it is needed here. The preview walk stays.
-
-#### The subtle case
-
-Acting without moving is three clicks on the **same tile**: select the unit, pin
-its own tile as the destination, then wait. Each rule is reasonable on its own —
-the unit's own tile is a destination like any other, and the destination is the
-"keep travelling direction" affordance — but someone will report it as a bug.
-
-#### Still to decide
-
-- **Whether a click outside should cancel**, retiring the *Cancel* button. Now
-  trivially unambiguous, since the range is down and only five tiles are lit.
-  Deliberately not part of this pass. ⚠️ Note a dead click already clears from
-  `unitSelected` and stops there: `handleTileClick` returns the selection
-  untouched once a destination is pinned, so extending it means making one
-  early return conditional.
-- **Whether the menu appears on pin or on arrival.** Lit immediately means the
-  tiles are visible but inert while the unit walks; the buttons chose exactly
-  that, "rather than appearing on arrival: a 0.15s-a-tile walk is too short to
-  justify the controls jumping into the layout under the pointer". Tiles do not
-  move any layout, so either works and the precedent says lit immediately.
-- **Whether the destination needs a colour of its own.** It carries
-  `SELECTED_COLOR` and the four carry `FACING_COLOR` — both warm, and now
-  adjacent on screen meaning different things (default versus override).
 
 ### 8 — Combat: the smallest thing you can win
 

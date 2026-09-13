@@ -10,8 +10,8 @@ import {
 import type { Command, Coordinate, Facing, GameState, Movement } from '@vod/shared';
 
 // A discriminated union rather than nullable fields: "reachable tiles with no
-// selected unit" was representable and meaningless. Phase 8 adds
-// `choosingTarget` -- a member, not a conversion.
+// selected unit" was representable and meaningless. Phase 8 adds an attack
+// target to `destinationChosen` -- a click it already reads, not a new member.
 //
 // Everything on a selected member is a snapshot taken at selection time --
 // `position` exactly as `reachableTiles` always was. That is what lets the
@@ -20,21 +20,22 @@ import type { Command, Coordinate, Facing, GameState, Movement } from '@vod/shar
 export type SelectionState =
   | { phase: 'idle' }
   | { phase: 'unitSelected'; unitId: string; position: Coordinate; movement: Movement }
-  // A destination is pinned and the menu is open. Nothing has been sent: this
-  // is a plan, and Cancel discards it without the server ever hearing about it.
-  // `path[0]` is where the unit still stands, so unpinning needs no extra field.
-  | { phase: 'destinationChosen'; unitId: string; path: Coordinate[]; movement: Movement }
-  // Wait was chosen and the unit is picking which way to look. Clicking one of
-  // the four tiles around the destination commits the move facing that way --
-  // the unit is already standing in its travelled direction, so keeping it is
-  // a click on the tile it is looking at.
-  | { phase: 'choosingFacing'; unitId: string; path: Coordinate[]; movement: Movement };
+  // A destination is pinned and the tiles around it are the menu. Nothing has
+  // been sent: this is a plan, and Cancel discards it without the server ever
+  // hearing about it. `path[0]` is where the unit really stands, so unpinning
+  // needs no extra field.
+  //
+  // ⚠️ This is *also* the facing choice, which used to be a phase of its own.
+  // A click on the destination keeps the direction travelled, a click on one of
+  // the four tiles around it overrides that, and phase 8 adds an enemy in range
+  // as a third reading of the same gesture. Facing stops being demanded, which
+  // is what the design always asked for.
+  | { phase: 'destinationChosen'; unitId: string; path: Coordinate[]; movement: Movement };
 
 export type DestinationChosen = Extract<SelectionState, { phase: 'destinationChosen' }>;
-export type ChoosingFacing = Extract<SelectionState, { phase: 'choosingFacing' }>;
 
-/** Where a pinned or facing-choosing unit is standing, really or in preview. */
-function destinationOf(selection: DestinationChosen | ChoosingFacing): Coordinate {
+/** Where a pinned unit is standing, really or in preview. */
+function destinationOf(selection: DestinationChosen): Coordinate {
   return selection.path[selection.path.length - 1];
 }
 
@@ -70,13 +71,11 @@ export function handleTileClick(
   selection: SelectionState,
   coordinate: Coordinate,
 ): SelectionState {
-  // The menu owns the decision once a destination is pinned, and while a
-  // facing is being picked a click means a direction rather than a tile --
-  // `facingChoiceAt` answers that one. Returning the same object rather than
-  // an equal one keeps a stray click from re-rendering.
-  if (selection.phase === 'destinationChosen' || selection.phase === 'choosingFacing') {
-    return selection;
-  }
+  // Once a destination is pinned a click means a direction or a target rather
+  // than a tile, and the caller answers it with `waitFacing` and
+  // `facingChoiceAt` before ever reaching here. Returning the same object
+  // rather than an equal one keeps a stray click from re-rendering.
+  if (selection.phase === 'destinationChosen') return selection;
 
   const selectedUnit =
     selection.phase === 'unitSelected' ? getUnit(state, selection.unitId) : undefined;
@@ -118,24 +117,46 @@ export function handleTileClick(
   return trySelect(state, coordinate);
 }
 
-/** Wait: stop offering the menu and start offering the four directions. */
-export function chooseFacing(selection: DestinationChosen): SelectionState {
-  return { ...selection, phase: 'choosingFacing' };
-}
-
 /**
  * Where the unit is standing while it chooses -- the renderer lights the four
  * tiles around this, clipping to the board itself, since the grid's bounds are
  * its business. A unit on the top row simply has three choices, and facing off
  * the board would be a strictly worse one anyway.
  */
-export function facingChoiceOrigin(selection: ChoosingFacing): Coordinate {
+export function facingChoiceOrigin(selection: DestinationChosen): Coordinate {
   return destinationOf(selection);
 }
 
-/** Which way this click means, or null if it was not one of the four. */
-export function facingChoiceAt(selection: ChoosingFacing, coordinate: Coordinate): Facing | null {
+/**
+ * Which way this click means, or null if it was not one of the four.
+ *
+ * ⚠️ Answers `null` for the destination *itself*, since `directionBetween`
+ * wants a step of exactly one tile. That is what lets the caller tell "keep the
+ * direction travelled" from "face this way" without ordering the two by hand.
+ */
+export function facingChoiceAt(
+  selection: DestinationChosen,
+  coordinate: Coordinate,
+): Facing | null {
   return directionBetween(destinationOf(selection), coordinate);
+}
+
+/**
+ * The facing a click on the destination itself means: the way the unit
+ * travelled, which it is already standing in after the preview walk.
+ *
+ * ⚠️ Takes state, unlike the rest of this module, for one case: a path of one
+ * tile is acting *without moving*, and there is no last step to read a
+ * direction from. The unit keeps the facing it already had.
+ *
+ * `null` like `facingChoiceAt`, and for the same reason -- the selected unit
+ * can vanish from state under a stale selection, and "no answer" is a reading
+ * the caller already refuses to commit.
+ */
+export function waitFacing(state: GameState, selection: DestinationChosen): Facing | null {
+  const previous = selection.path.at(-2);
+  const travelled = previous ? directionBetween(previous, destinationOf(selection)) : null;
+  return travelled ?? getUnit(state, selection.unitId)?.facing ?? null;
 }
 
 /**
@@ -144,7 +165,7 @@ export function facingChoiceAt(selection: ChoosingFacing, coordinate: Coordinate
  * Deliberately not `idle` -- the player picked a destination and changed their
  * mind, so the useful next thing is picking another one, not selecting again.
  */
-export function unpinDestination(selection: DestinationChosen | ChoosingFacing): SelectionState {
+export function unpinDestination(selection: DestinationChosen): SelectionState {
   return {
     phase: 'unitSelected',
     unitId: selection.unitId,
@@ -154,6 +175,6 @@ export function unpinDestination(selection: DestinationChosen | ChoosingFacing):
 }
 
 /** Commit the pinned move, looking the way the player chose. */
-export function moveCommandFor(selection: ChoosingFacing, facing: Facing): Command {
+export function moveCommandFor(selection: DestinationChosen, facing: Facing): Command {
   return { type: 'move', unitId: selection.unitId, path: selection.path, facing };
 }

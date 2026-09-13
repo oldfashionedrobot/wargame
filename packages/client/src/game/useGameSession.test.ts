@@ -316,10 +316,6 @@ describe('useGameSession', () => {
     expect(result.current.selection).toMatchObject({ phase: 'destinationChosen', unitId: 'b1' });
     expect(fake.submissions).toEqual([]); // the whole point: nothing has left yet
 
-    act(() => result.current.confirmWait());
-    expect(result.current.selection).toMatchObject({ phase: 'choosingFacing', unitId: 'b1' });
-    expect(fake.submissions).toEqual([]); // Wait alone still sends nothing
-
     fake.respond({ ok: true, seq: 1, events: [], state: board });
     await act(async () => result.current.clickTile(FACE_NORTH));
     expect(fake.submissions).toEqual([
@@ -348,12 +344,13 @@ describe('useGameSession', () => {
     await act(async () => result.current.clickTile(at(1, 3)));
     expect(result.current.walking).toBe(true);
 
-    act(() => result.current.confirmWait());
-    expect(result.current.selection.phase).toBe('destinationChosen'); // not yet
+    await act(async () => result.current.clickTile(FACE_NORTH));
+    expect(fake.submissions).toEqual([]); // refused: the mesh is still short
+    expect(result.current.selection.phase).toBe('destinationChosen');
 
     await act(async () => arrive());
-    act(() => result.current.confirmWait());
-    expect(result.current.selection.phase).toBe('choosingFacing');
+    await act(async () => result.current.clickTile(FACE_NORTH));
+    expect(fake.submissions).toHaveLength(1);
   });
 
   it('ignores a facing click that is not beside the unit', async () => {
@@ -363,11 +360,10 @@ describe('useGameSession', () => {
 
     act(() => result.current.clickTile(at(1, 1)));
     await act(async () => result.current.clickTile(at(1, 3)));
-    act(() => result.current.confirmWait());
 
     await act(async () => result.current.clickTile(at(5, 5)));
     expect(fake.submissions).toEqual([]);
-    expect(result.current.selection.phase).toBe('choosingFacing');
+    expect(result.current.selection.phase).toBe('destinationChosen');
   });
 
   // 7d's contract, and the reason the menu waits: while the ghost walks, the
@@ -410,7 +406,9 @@ describe('useGameSession', () => {
     await act(async () => result.current.clickTile(at(1, 3)));
     expect(cb.onPreview).toHaveBeenCalledTimes(1);
 
-    await act(async () => result.current.clickTile(at(1, 2)));
+    // ⚠️ Two tiles away, not one: a tile *beside* the destination is a facing
+    // and commits. Only a click that means nothing leaves the pin alone.
+    await act(async () => result.current.clickTile(at(3, 3)));
     expect(cb.onPreview).toHaveBeenCalledTimes(1);
   });
 
@@ -427,7 +425,6 @@ describe('useGameSession', () => {
     await act(async () => result.current.clickTile(at(1, 3)));
     vi.mocked(cb.onPreview).mockClear();
 
-    act(() => result.current.confirmWait());
     fake.respond({ ok: true, seq: 1, events: [], state: board });
     await act(async () => result.current.clickTile(at(1, 4)));
     expect(cb.onPreview).not.toHaveBeenCalled();
@@ -443,7 +440,6 @@ describe('useGameSession', () => {
 
     act(() => result.current.clickTile(at(1, 1)));
     await act(async () => result.current.clickTile(at(1, 3)));
-    act(() => result.current.confirmWait());
     fake.respond({ ok: false, reason: 'illegal move' });
     await act(async () => result.current.clickTile(FACE_NORTH));
 
@@ -486,7 +482,7 @@ describe('useGameSession', () => {
     });
   });
 
-  it('ignores tile clicks while the menu is open', async () => {
+  it('ignores a tile click that means neither a facing nor a wait', async () => {
     const fake = fakeServer(board);
     const { result } = renderSession(fake, callbacks());
     await act(async () => {}); // settle the initial batch, which would drop a pin
@@ -495,9 +491,26 @@ describe('useGameSession', () => {
     await act(async () => result.current.clickTile(at(1, 3)));
     const pinned = result.current.selection;
 
-    act(() => result.current.clickTile(at(1, 2))); // another reachable tile
+    // Reachable, but neither the destination nor beside it.
+    act(() => result.current.clickTile(at(3, 3)));
     expect(result.current.selection).toBe(pinned);
     expect(fake.submissions).toEqual([]);
+  });
+
+  // The gesture the merge is for: the destination itself keeps the direction
+  // travelled, so the common move is one click rather than a menu and a click.
+  it('commits on the destination itself, facing the way it travelled', async () => {
+    const fake = fakeServer(board);
+    const { result } = renderSession(fake, callbacks());
+    await act(async () => {}); // settle the initial batch, which would drop a pin
+
+    act(() => result.current.clickTile(at(1, 1)));
+    await act(async () => result.current.clickTile(at(1, 3)));
+    await act(async () => result.current.clickTile(at(1, 3)));
+
+    expect(fake.submissions).toEqual([
+      { type: 'move', unitId: 'b1', path: route(at(1, 1), at(1, 3)), facing: 'north' },
+    ]);
   });
 
   // Invariant 1, and the one place it can be observed: the replica lags on
@@ -534,7 +547,6 @@ describe('useGameSession', () => {
 
     act(() => result.current.clickTile(at(1, 1)));
     await act(async () => result.current.clickTile(at(1, 3)));
-    act(() => result.current.confirmWait());
     fake.respond({ ok: false, reason: 'illegal move' });
     await act(async () => result.current.clickTile(FACE_NORTH));
 
@@ -604,7 +616,6 @@ describe('useGameSession', () => {
     await act(async () => {}); // settle the initial batch, which would drop a pin
     act(() => result.current.clickTile(at(1, 1)));
     await act(async () => result.current.clickTile(at(1, 3)));
-    act(() => result.current.confirmWait());
     let release!: (result: CommandResult) => void;
     fake.respond(new Promise<CommandResult>((res) => (release = res)));
 

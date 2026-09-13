@@ -8,8 +8,9 @@ is planned but unbuilt lives in [`roadmap.md`](roadmap.md).
 
 **What plays today:** hot-seat against a real server process. Select a unit, see
 the tiles it can reach across terrain, hover to preview the route, click a
-destination to pin it, then *Wait* and click a tile beside the unit to choose
-which way it ends up looking, or *Cancel* to think again — end turn. Two players, one infantry, cavalry and artillery each, on an 8×8 map split
+destination and watch the unit walk to it — then click the unit to stop there,
+or a tile beside it to end up looking that way, or *Cancel* to think again —
+end turn. Two players, one infantry, cavalry and artillery each, on an 8×8 map split
 by a river with a single bridge. No combat.
 
 ## Packages
@@ -397,8 +398,8 @@ the next click see the same value. `pendingRef` stays a ref — it is a mutex
 against a second submit landing before the first resolves, and has to be
 synchronously current rather than rendered.
 
-The menu's two actions are `confirmWait()`, which opens the facing choice rather
-than submitting, and `cancelDestination()`, which works from either pinned phase. A refused
+`cancelDestination()` is the only verb left beside `clickTile` and `endTurn`: a
+pinned plan is committed by a click on the board, not by a button. A refused
 submit rolls back to the unit **selected**, not to the destination the server
 just refused — handing that back would invite confirming the same move again.
 
@@ -408,8 +409,13 @@ is *not* called on are the design — a confirm and an incoming update both end
 with `onSnap` writing an authoritative position over the mesh, so the correction
 the renderer already performs is the instruction, and there is no commit verb. It
 *is* called on a rejection, which is the one ending that produces no update at
-all. `walking` is true until the preview settles, and the whole UI is inert for
-that time.
+all.
+
+⚠️ `walking` is true until the preview settles, and **nothing a pinned selection
+offers is answerable during it** — `playEvents` skips a move only once its mesh
+stands at the destination, so committing early would replay the committed move
+from halfway along the path. That is why `clickTile` closes over `walking`
+rather than reading it from a render that may predate the walk.
 
 Every update runs through a serial promise queue:
 
@@ -449,7 +455,6 @@ old paired return carrying no information.
 | { phase: 'idle' }
 | { phase: 'unitSelected'; unitId; position; movement }
 | { phase: 'destinationChosen'; unitId; path; movement }
-| { phase: 'choosingFacing'; unitId; path; movement }
 ```
 
 `movement` is the whole `exploreMovement` result, snapshotted at selection time.
@@ -460,27 +465,42 @@ Cancel discards it without the server hearing. `path[0]` is where the unit still
 stands, so unpinning needs no extra field, and the selected unit's own tile is a
 destination like any other: that is how acting without moving needs no gesture of
 its own, and a single-element path is legal at cost 0. While a destination is
-pinned, `handleTileClick` returns the **same object** it was given — the menu owns
-the decision, and a re-render for a click that changes nothing is waste.
+pinned, `handleTileClick` returns the **same object** it was given — the caller
+has already read the click as a direction or a wait, and a re-render for a click
+that changes nothing is waste.
 
-`choosingFacing` is what *Wait* leads to. A click on one of the four tiles beside
-the unit means a direction, read by `facingChoiceAt`, and **that click is the one
-that commits** — the direction is the last decision, so there is nothing left to
-confirm. Anything further away is ignored. The unit is already standing in the
-direction it walked, so keeping that facing is a click on the tile it is looking
+⚠️ **`destinationChosen` is also the facing choice**, which used to be a phase of
+its own. Once the preview arrives, the tiles around the unit are the menu: a
+click on the destination keeps the direction travelled (`waitFacing`), a click on
+one of the four beside it overrides that (`facingChoiceAt`), and **either commits**
+— the direction is the last decision, so there is nothing left to confirm.
+Anything further away is ignored. Facing is therefore *offered* rather than
+demanded, which is what the design always asked for.
+
+⚠️ The two answers cannot collide: `facingChoiceAt` returns `null` for the
+destination itself, because `directionBetween` wants a step of exactly one tile.
+`waitFacing` is the only one that needs `GameState`, for the case with no last
+step to read — acting without moving keeps the facing the unit already had. The
+unit is already standing in the direction it walked, so keeping that facing is a
+click on the tile it is looking
 at. The renderer clips the four to the board, which costs nothing: facing off the
 edge is a strictly worse choice than any of the alternatives.
 
 **`game/GameCanvas.tsx`** — the canvas ref, the renderer lifecycle, and the
 chrome around it: the turn label, End Turn, the rejection reason, the
 reconnecting banner, and a Toggle Inspector button under an
-`import.meta.env.DEV` guard, plus the *Wait* / *Cancel* menu shown while a
-destination is pinned, and the prompt shown while a facing is being chosen. The
-menu is DOM like every other control — the canvas draws the game and nothing
-else. End Turn is disabled while pinned, since ending
-the turn there would submit around a plan the player has not answered for, and
-*Wait* and *Cancel* render **disabled until the previewed unit arrives** rather
-than appearing on arrival, so the controls do not jump into the layout.
+`import.meta.env.DEV` guard, plus *Cancel* and a hint line while a destination
+is pinned. End Turn is disabled while pinned, since ending the turn there would
+submit around a plan the player has not answered for, and *Cancel* renders
+**disabled until the previewed unit arrives** rather than appearing on arrival,
+so the controls do not jump into the layout.
+
+⚠️ The tile menu takes the opposite choice and lights **on arrival**: a disabled
+button still reads as "not yet", while an inert lit tile invites a click that
+does nothing. So `showSelection` is a projection of the selection *and*
+`walking` — the range stays lit while the unit walks, as the context the choice
+was made against, and comes down as the menu lights. ⚠️ And the hint line is now
+the only thing naming the gestures, since the buttons used to do that.
 
 Its two callbacks read the renderer ref at call time, so a queue task resolving
 after unmount finds `null` rather than a disposed renderer.

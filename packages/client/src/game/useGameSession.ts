@@ -7,13 +7,14 @@ import type {
   GameServer,
   GameState,
 } from '@vod/shared';
+import { coordinatesEqual } from '@vod/shared';
 import {
-  chooseFacing,
   facingChoiceAt,
   handleTileClick,
   initialSelectionState,
   moveCommandFor,
   unpinDestination,
+  waitFacing,
 } from './interaction/selection';
 import type { SelectionState } from './interaction/selection';
 
@@ -101,7 +102,6 @@ export interface GameSession {
   walking: boolean;
   clickTile: (coordinate: Coordinate) => void;
   /** Menu: stop offering the menu and start offering the four directions. */
-  confirmWait: () => void;
   /** Menu: discard the pinned destination. Nothing was ever sent. */
   cancelDestination: () => void;
   endTurn: () => void;
@@ -215,9 +215,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
         // ghost kept standing until a batch finished animating. An
         // uncommitted plan does not survive the board moving under it.
         setSelection((current) =>
-          current.phase === 'destinationChosen' || current.phase === 'choosingFacing'
-            ? unpinDestination(current)
-            : current,
+          current.phase === 'destinationChosen' ? unpinDestination(current) : current,
         );
         setGameState(state);
       });
@@ -228,11 +226,23 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     (coordinate: Coordinate): void => {
       if (pendingRef.current) return;
 
-      // While a facing is being picked, a click on one of the four tiles round
-      // the unit means a direction rather than a destination -- and it is the
-      // one click that commits, because the direction *is* the last decision.
-      if (selection.phase === 'choosingFacing') {
-        const facing = facingChoiceAt(selection, coordinate);
+      // Once a destination is pinned, the tiles around the unit are the menu
+      // and a click on one of them commits -- the destination itself keeps the
+      // direction travelled, the four beside it override it, and phase 8 adds
+      // an enemy in range as a third reading of the same gesture.
+      if (selection.phase === 'destinationChosen') {
+        // ⚠️ Nothing is answerable until the preview has arrived: `playEvents`
+        // skips a move only once its mesh stands at the destination, so
+        // committing early makes the committed move replay from halfway along
+        // the path. `walking` has to be in this callback's deps for that to be
+        // read fresh rather than from the render that pinned it.
+        if (walking) return;
+
+        const state = server.getState();
+        const facing = coordinatesEqual(coordinate, selection.path[selection.path.length - 1])
+          ? waitFacing(state, selection)
+          : facingChoiceAt(selection, coordinate);
+
         if (facing) {
           void submitCommand(
             moveCommandFor(selection, facing),
@@ -249,8 +259,8 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       const next = handleTileClick(server.getState(), selection, coordinate);
       setSelection(next);
 
-      // Identity, not phase: a click while already pinned returns the very
-      // same object, and only a fresh pin should start a walk.
+      // Identity, not phase: a click that changes nothing returns the very same
+      // object, and only a fresh pin should start a walk.
       if (next === selection || next.phase !== 'destinationChosen') return;
 
       setWalking(true);
@@ -259,21 +269,11 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
         .catch((error: unknown) => console.error('preview failed:', error))
         .finally(() => setWalking(false));
     },
-    [server, selection, submitCommand],
+    [server, selection, submitCommand, walking],
   );
 
-  const confirmWait = useCallback((): void => {
-    // Refused while the preview is still walking, and not only because the
-    // button is disabled: playEvents skips a move whose mesh already stands at
-    // the destination, which is true only once it has arrived. Confirming
-    // early makes the committed move replay from halfway along the path, so
-    // the rule belongs where `walking` lives rather than on a `disabled`.
-    if (walking || selection.phase !== 'destinationChosen') return;
-    setSelection(chooseFacing(selection));
-  }, [selection, walking]);
-
   const cancelDestination = useCallback((): void => {
-    if (selection.phase !== 'destinationChosen' && selection.phase !== 'choosingFacing') return;
+    if (selection.phase !== 'destinationChosen') return;
     void callbacksRef.current.onPreview(null);
     setSelection(unpinDestination(selection));
   }, [selection]);
@@ -288,7 +288,6 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     selection,
     walking,
     clickTile,
-    confirmWait,
     cancelDestination,
     endTurn,
   };

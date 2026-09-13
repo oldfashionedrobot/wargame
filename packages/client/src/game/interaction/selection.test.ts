@@ -1,20 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { makeState, route } from '@vod/shared/testing';
+import { makeState, route, unitAt } from '@vod/shared/testing';
 import type { Coordinate, GameState } from '@vod/shared';
 import {
-  chooseFacing,
   facingChoiceAt,
   facingChoiceOrigin,
   handleTileClick,
   initialSelectionState,
   moveCommandFor,
   unpinDestination,
+  waitFacing,
 } from './selection';
-import type { ChoosingFacing, DestinationChosen, SelectionState } from './selection';
+import type { DestinationChosen, SelectionState } from './selection';
 
 // The pure half of the client: state and a coordinate in, a new selection out.
-// No React, no Babylon, no server. A click never produces a command -- it picks
-// a destination -- so committing is `moveCommandFor` and abandoning is
+// No React, no Babylon, no server. `handleTileClick` never produces a command
+// -- it picks a destination -- so committing is `moveCommandFor` and abandoning
+// is
 // `unpinDestination`, both driven by the menu.
 //
 // Blue to move. b1 is free, b2 has already acted, r1 belongs to the opponent.
@@ -162,13 +163,8 @@ describe('a destination pinned', () => {
     expect(handleTileClick(state, pinned, at(1, 1))).toBe(pinned);
   });
 
-  it('offers the four directions rather than committing straight away', () => {
-    const state = board();
-    const choosing = chooseFacing(withB1Pinned(state, at(1, 3)));
-    expect(choosing.phase).toBe('choosingFacing');
-    if (choosing.phase !== 'choosingFacing') return;
-    // Around the destination, not around where the unit started.
-    expect(facingChoiceOrigin(choosing)).toEqual(at(1, 3));
+  it('lights the four directions around the destination, not the origin', () => {
+    expect(facingChoiceOrigin(withB1Pinned(board(), at(1, 3)))).toEqual(at(1, 3));
   });
 
   // Cancel goes back to a selected unit rather than to idle, so the next click
@@ -184,11 +180,8 @@ describe('a destination pinned', () => {
 });
 
 describe('choosing a facing', () => {
-  const choosing = (destination: Coordinate): ChoosingFacing => {
-    const next = chooseFacing(withB1Pinned(board(), destination));
-    if (next.phase !== 'choosingFacing') throw new Error('expected choosingFacing');
-    return next;
-  };
+  const choosing = (destination: Coordinate): DestinationChosen =>
+    withB1Pinned(board(), destination);
 
   it('reads a click on an adjacent tile as that direction', () => {
     const facing = choosing(at(1, 3));
@@ -200,9 +193,27 @@ describe('choosing a facing', () => {
 
   it('ignores a click that is not one orthogonal step away', () => {
     const facing = choosing(at(1, 3));
-    expect(facingChoiceAt(facing, at(1, 3))).toBeNull(); // the unit's own tile
     expect(facingChoiceAt(facing, at(2, 4))).toBeNull(); // diagonal
     expect(facingChoiceAt(facing, at(1, 5))).toBeNull(); // two away
+  });
+
+  // ⚠️ The destination answers null here rather than a direction, and that is
+  // what lets the caller tell "keep travelling" from "face this way" without
+  // ordering the two by hand. `waitFacing` is what answers it instead.
+  it('answers null for the destination itself, which waitFacing covers', () => {
+    const state = board();
+    const facing = choosing(at(1, 3));
+    expect(facingChoiceAt(facing, at(1, 3))).toBeNull();
+    expect(waitFacing(state, facing)).toBe('north'); // b1 walked 1,1 -> 1,3
+  });
+
+  // Acting without moving has no last step to read a direction off, so the
+  // unit keeps the facing it already had.
+  it('keeps the current facing when the path never left the tile', () => {
+    const state = board();
+    const staying = withB1Pinned(state, at(1, 1));
+    expect(staying.path).toEqual([at(1, 1)]);
+    expect(waitFacing(state, staying)).toBe(unitAt(state, 'b1').facing);
   });
 
   it('still ignores tile clicks as far as the selection goes', () => {

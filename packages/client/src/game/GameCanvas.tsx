@@ -12,14 +12,17 @@ import type { GameRenderer } from './render/renderer';
 // knows how a selection is displayed -- attacking adds a third overlay here.
 // A pure projection of the selection: everything it draws is on the snapshot,
 // so there is no game state to fetch and no question of which copy to read.
-function showSelection(renderer: GameRenderer, selection: SelectionState): void {
-  renderer.setFacingChoices(
-    selection.phase === 'choosingFacing' ? facingChoiceOrigin(selection) : null,
-  );
+// ⚠️ A projection of the selection *and* whether the preview is still walking.
+// It used to be the selection alone; the menu now lights on arrival, so what is
+// drawn depends on both. Still pure, and still no game state fetched.
+function showSelection(renderer: GameRenderer, selection: SelectionState, walking: boolean): void {
+  const pinned = selection.phase === 'destinationChosen';
+  // The tiles around the unit *are* the menu, and they wait for it to arrive:
+  // an inert lit tile invites a click that does nothing.
+  const arrived = pinned && !walking;
 
-  // The pinned destination takes the highlight, and the range stays drawn --
-  // it is the context the player is deciding against, and the unit is still
-  // standing at `path[0]` until the move is committed.
+  renderer.setFacingChoices(arrived ? facingChoiceOrigin(selection) : null);
+
   const highlight =
     selection.phase === 'unitSelected'
       ? selection.position
@@ -28,10 +31,11 @@ function showSelection(renderer: GameRenderer, selection: SelectionState): void 
         : selection.path[selection.path.length - 1];
 
   renderer.setSelectedTile(highlight);
-  // Movement is settled once a direction is being picked, so the range comes
-  // down and only the four choices are lit.
+  // The range stays lit while the unit walks -- it is the context the choice
+  // was made against -- and comes down as the menu lights, so the handover
+  // reads as one moment rather than as a gap.
   renderer.setMovement(
-    selection.phase === 'idle' || selection.phase === 'choosingFacing' ? null : selection.movement,
+    selection.phase === 'unitSelected' || (pinned && walking) ? selection.movement : null,
   );
 }
 
@@ -72,23 +76,13 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
     [],
   );
 
-  const {
-    gameState,
-    rejection,
-    selection,
-    walking,
-    clickTile,
-    confirmWait,
-    cancelDestination,
-    endTurn,
-  } = useGameSession(server, { onEvents, onSnap, onPreview });
+  const { gameState, rejection, selection, walking, clickTile, cancelDestination, endTurn } =
+    useGameSession(server, { onEvents, onSnap, onPreview });
 
-  // DOM, like every other control: the canvas draws the game and nothing else.
-  // The menu waits for the unit to arrive -- confirming mid-walk would leave
+  // The menu waits for the unit to arrive -- committing mid-walk would leave
   // the mesh short of the destination, and the move would then replay from
   // wherever it had got to.
   const pinned = selection.phase === 'destinationChosen';
-  const choosingFacing = selection.phase === 'choosingFacing';
 
   // `clickTile` changes identity whenever the selection does, and the renderer
   // is registered with it exactly once. A stable wrapper over a latest-ref
@@ -133,8 +127,8 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   // a click, and clicks arrive through the renderer.
   useEffect(() => {
     const renderer = rendererRef.current;
-    if (renderer) showSelection(renderer, selection);
-  }, [selection]);
+    if (renderer) showSelection(renderer, selection, walking);
+  }, [selection, walking]);
 
   return (
     <div>
@@ -146,7 +140,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
         <span>{getCurrentPlayer(gameState).name}&apos;s turn</span>{' '}
         {/* Disabled while a destination is pinned: ending the turn there would
             submit around a plan the player has not answered for yet. */}
-        <button type="button" onClick={endTurn} disabled={pinned || choosingFacing}>
+        <button type="button" onClick={endTurn} disabled={pinned}>
           End Turn
         </button>{' '}
         {import.meta.env.DEV && (
@@ -154,22 +148,11 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             Toggle Inspector
           </button>
         )}
-        {choosingFacing && (
-          <>
-            <span>Click a tile beside the unit to face that way.</span>{' '}
-            <button type="button" onClick={cancelDestination}>
-              Cancel
-            </button>{' '}
-          </>
-        )}
         {pinned && (
           <>
-            {/* Present but inert while the unit walks, rather than appearing
-                on arrival: a 0.15s-a-tile walk is too short to justify the
-                controls jumping into the layout under the pointer. */}
-            <button type="button" onClick={confirmWait} disabled={walking}>
-              Wait
-            </button>{' '}
+            {/* The only thing left telling a player what a click means, now
+                that Wait is a tile rather than a button. */}
+            {!walking && <span>Click the unit to wait, or a tile beside it to face that way.</span>}{' '}
             <button type="button" onClick={cancelDestination} disabled={walking}>
               Cancel
             </button>{' '}
