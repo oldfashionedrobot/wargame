@@ -10,8 +10,8 @@ is planned but unbuilt lives in [`roadmap.md`](roadmap.md).
 the tiles it can reach across terrain, hover to preview the route, click a
 destination and watch the unit walk to it — then click the unit to stop there, a
 tile beside it to end up looking that way, or anywhere else to think again —
-end turn. Two players, one infantry, cavalry and artillery each, on an 8×8 map split
-by a river with a single bridge. No combat.
+end turn. Two players, one infantry, cavalry and artillery each, on one of four
+maps chosen when the match is created. No combat.
 
 ## Packages
 

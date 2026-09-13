@@ -166,7 +166,7 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 | **Matches are unowned and unbounded** | Anyone can create any number; no delete, no expiry. `list()` is capped at 50 newest — a bound, not pagination | Phase 10 — scope listing to the player, and add deletion. Until identity exists there's nothing to scope by |
 | **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | Phase 10 — match lifecycle and, eventually, notification. Not new mechanics |
 | **Ruleset versioning** | None | Stamp a ruleset id on the match so old logs replay under the rules they were played with |
-| **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Fine at one map | A `maps` table once there are enough to select among — see below |
+| **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Four of them, picked from at match creation | A `maps` table once maps stop being written by developers. ⚠️ The other condition — enough maps to choose among — has already been met, so this is due a re-read rather than a wait; see below |
 | **Elevation is visual only, and capped at 0.5** | Height is a look, never data. A mesa and a bridge deck raise where a unit *stands*, but `shared/` has no idea: there is no height on a tile, `entryCost` never asks about one, and no rule reads one. ⚠️ Both halves of the old technical objection are now gone — `screenToTile` tries every surface height tallest-first, so a click finds a peak where it is drawn, and `surfaceAt` is a lookup that knows each tile's height. What caps height now is the *camera*: at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and past about half a tile it occupies its neighbour | ⚠️ **Nothing — this is where it stays.** It was once written here as waiting on machinery, which stopped being true when picking learned about height, and elevation as a *rule* is now declined for v1 rather than queued. Mesas are enough at this board size. The reasons, and the two findings worth keeping if it is ever reopened, are in *Out of scope for v1* |
 | **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
 | **`shared/`'s test files are not typechecked** | Nothing imports them, so they never enter a program `tsc -b` builds. Verified both ways: a deliberate type error in a `shared` test passes the typecheck, the same error in a source file fails it. They are verified by running instead | `bun:test` types in a `shared` program, which today means `@types/bun` as a dependency of the package whose defining property is having none — and that would also let `import … from 'bun'` typecheck inside the rulebook. Either a hand-written minimal declaration plus a lint rule closing the purity hole, or leave it |
@@ -175,10 +175,17 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 
 ### Maps in a table
 
-Revisit when there are **enough maps to choose among**, or when they stop being
-written by developers. Random selection, filtering, a picker, or user-authored
-maps all make them a library rather than a constant, and a library of
-selectable rows is what a table is for.
+⚠️ **This condition has already been met, and the decision has not been
+re-taken.** It said *revisit when there are enough maps to choose among* —
+there are now four, and `StartScreen` picks between them, which is the picker
+this section names as what turns maps into a library rather than a constant,
+and a library of selectable rows is what a table is for.
+
+What follows is the argument as it stood at one map. None of it has been
+refuted, and the one real risk it names was closed in the meantime by making
+map ids immutable. What has *not* happened is the other half — maps that stop
+being written by developers, which is what user-authored maps, random selection
+or filtering would bring.
 
 The tempting argument against — *content lives in code, like `terrain.ts` and
 `unitTypes.ts`* — does not actually hold. Those are **fixed global lookups**:
