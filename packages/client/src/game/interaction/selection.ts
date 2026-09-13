@@ -10,7 +10,7 @@ import {
 import type { Command, Coordinate, Facing, GameState, Movement } from '@vod/shared';
 
 // A discriminated union rather than nullable fields: "reachable tiles with no
-// selected unit" was representable and meaningless. Phase 8 adds an attack
+// selected unit" was representable and meaningless. Phase 9 adds an attack
 // target to `destinationChosen` -- a click it already reads, not a new member.
 //
 // Everything on a selected member is a snapshot taken at selection time --
@@ -27,7 +27,7 @@ export type SelectionState =
   //
   // ⚠️ This is *also* the facing choice, which used to be a phase of its own.
   // A click on the destination keeps the direction travelled, a click on one of
-  // the four tiles around it overrides that, and phase 8 adds an enemy in range
+  // the four tiles around it overrides that, and phase 9 adds an enemy in range
   // as a third reading of the same gesture. Facing stops being demanded, which
   // is what the design always asked for.
   | { phase: 'destinationChosen'; unitId: string; path: Coordinate[]; movement: Movement };

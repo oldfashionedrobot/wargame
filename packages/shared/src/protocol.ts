@@ -49,7 +49,7 @@ export interface GameServer {
 /**
  * GET /api/matches -- enough to render a row without loading a board.
  *
- * When the server needs fields the client shouldn't see (ownerId, phase 5),
+ * When the server needs fields the client shouldn't see (ownerId, phase 11),
  * map explicitly rather than extending this. A server type that extends it is
  * structurally assignable to it, so JSON.stringify would ship the extra fields
  * and nothing in the type system would object.
