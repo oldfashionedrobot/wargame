@@ -201,12 +201,12 @@ describe('GameCanvas', () => {
     // Still walking: the range is the context, and no directions are offered.
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith(null);
     expect(renderer.setMovement).toHaveBeenLastCalledWith(expect.anything());
-    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveProperty('disabled', true);
+    expect(screen.queryByText(/click the unit to wait/i)).toBeNull();
 
     await act(async () => arrive());
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith({ col: 1, row: 3 });
     expect(renderer.setMovement).toHaveBeenLastCalledWith(null);
-    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveProperty('disabled', false);
+    expect(screen.getByText(/click the unit to wait/i)).toBeTruthy();
   });
 
   it('clears the overlays when the selection is dropped', async () => {
@@ -219,18 +219,17 @@ describe('GameCanvas', () => {
 
   // The menu is DOM like every other control -- the canvas draws the game and
   // nothing else -- so it is here rather than in the renderer.
-  it('offers Cancel once a destination is pinned, and locks End Turn', async () => {
+  // ⚠️ No buttons left for a pinned destination at all -- every answer is a
+  // tile. End Turn is the only thing the pin still reaches into the DOM for.
+  it('locks End Turn while a destination is pinned, and frees it on cancel', async () => {
     await renderCanvas(fakeServer());
-    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'End Turn' })).toHaveProperty('disabled', false);
 
     await act(async () => clickTile({ col: 1, row: 1 })); // select
     await act(async () => clickTile({ col: 1, row: 3 })); // pin
-
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'End Turn' })).toHaveProperty('disabled', true);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    await act(async () => clickTile({ col: 3, row: 3 })); // neither: back out
     expect(screen.getByRole('button', { name: 'End Turn' })).toHaveProperty('disabled', false);
   });
 

@@ -103,7 +103,6 @@ export interface GameSession {
   clickTile: (coordinate: Coordinate) => void;
   /** Menu: stop offering the menu and start offering the four directions. */
   /** Menu: discard the pinned destination. Nothing was ever sent. */
-  cancelDestination: () => void;
   endTurn: () => void;
 }
 
@@ -249,7 +248,16 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
             initialSelectionState,
             unpinDestination(selection),
           );
+          return;
         }
+
+        // Anything else is a cancel. ⚠️ Which reads because the range is *down*
+        // by now -- only the destination and the tiles beside it are lit, so
+        // "lit does something, dark backs out" is the whole rule. A click off
+        // the board never arrives here at all: the renderer drops a pick that
+        // hits no tile, so the empty space around the board is not a way out.
+        void callbacksRef.current.onPreview(null);
+        setSelection(unpinDestination(selection));
         return;
       }
 
@@ -272,12 +280,6 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     [server, selection, submitCommand, walking],
   );
 
-  const cancelDestination = useCallback((): void => {
-    if (selection.phase !== 'destinationChosen') return;
-    void callbacksRef.current.onPreview(null);
-    setSelection(unpinDestination(selection));
-  }, [selection]);
-
   const endTurn = useCallback((): void => {
     void submitCommand({ type: 'endTurn' }, initialSelectionState);
   }, [submitCommand]);
@@ -288,7 +290,6 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     selection,
     walking,
     clickTile,
-    cancelDestination,
     endTurn,
   };
 }

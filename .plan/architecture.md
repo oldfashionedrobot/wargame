@@ -8,8 +8,8 @@ is planned but unbuilt lives in [`roadmap.md`](roadmap.md).
 
 **What plays today:** hot-seat against a real server process. Select a unit, see
 the tiles it can reach across terrain, hover to preview the route, click a
-destination and watch the unit walk to it — then click the unit to stop there,
-or a tile beside it to end up looking that way, or *Cancel* to think again —
+destination and watch the unit walk to it — then click the unit to stop there, a
+tile beside it to end up looking that way, or anywhere else to think again —
 end turn. Two players, one infantry, cavalry and artillery each, on an 8×8 map split
 by a river with a single bridge. No combat.
 
@@ -398,8 +398,10 @@ the next click see the same value. `pendingRef` stays a ref — it is a mutex
 against a second submit landing before the first resolves, and has to be
 synchronously current rather than rendered.
 
-`cancelDestination()` is the only verb left beside `clickTile` and `endTurn`: a
-pinned plan is committed by a click on the board, not by a button. A refused
+⚠️ `clickTile` and `endTurn` are the only verbs left. A pinned plan is
+committed *and* abandoned by a click on the board — the tiles a pinned
+destination lights are the whole menu, and everything else is the way out. A
+refused
 submit rolls back to the unit **selected**, not to the destination the server
 just refused — handing that back would invite confirming the same move again.
 
@@ -461,7 +463,8 @@ old paired return carrying no information.
 `reachable` decides whether a click pins; `pathTo` builds the path.
 
 A pinned destination is a **plan, not a submission** — nothing has been sent, and
-Cancel discards it without the server hearing. `path[0]` is where the unit still
+a click that means nothing else discards it without the server hearing.
+`path[0]` is where the unit still
 stands, so unpinning needs no extra field, and the selected unit's own tile is a
 destination like any other: that is how acting without moving needs no gesture of
 its own, and a single-element path is legal at cost 0. While a destination is
@@ -489,18 +492,16 @@ edge is a strictly worse choice than any of the alternatives.
 **`game/GameCanvas.tsx`** — the canvas ref, the renderer lifecycle, and the
 chrome around it: the turn label, End Turn, the rejection reason, the
 reconnecting banner, and a Toggle Inspector button under an
-`import.meta.env.DEV` guard, plus *Cancel* and a hint line while a destination
-is pinned. End Turn is disabled while pinned, since ending the turn there would
-submit around a plan the player has not answered for, and *Cancel* renders
-**disabled until the previewed unit arrives** rather than appearing on arrival,
-so the controls do not jump into the layout.
+`import.meta.env.DEV` guard, plus a hint line while a destination is pinned. End
+Turn is disabled while pinned, since ending the turn there would submit around a
+plan the player has not answered for.
 
-⚠️ The tile menu takes the opposite choice and lights **on arrival**: a disabled
-button still reads as "not yet", while an inert lit tile invites a click that
-does nothing. So `showSelection` is a projection of the selection *and*
-`walking` — the range stays lit while the unit walks, as the context the choice
-was made against, and comes down as the menu lights. ⚠️ And the hint line is now
-the only thing naming the gestures, since the buttons used to do that.
+⚠️ The tile menu lights **on arrival** rather than on pin: an inert lit tile
+invites a click that does nothing. So `showSelection` is a projection of the
+selection *and* `walking` — the range stays lit while the unit walks, as the
+context the choice was made against, and comes down as the menu lights. ⚠️ The
+hint line is the only thing naming any of the gestures, since there are no
+buttons left to name them.
 
 Its two callbacks read the renderer ref at call time, so a queue task resolving
 after unmount finds `null` rather than a disposed renderer.
@@ -685,7 +686,7 @@ cancelPreview()           toggleInspector()          dispose()
   every position, so there is no separate commit step.
 - **The preview** is one nullable `{ unitId, origin, facing, settle }`. Arriving
   and ending are separate moments: the walk resolves the promise, but the record
-  outlives it, because a Cancel *after* the unit lands is exactly when something
+  outlives it, because a cancel *after* the unit lands is exactly when something
   needs to know where to put it back. The promise means *the preview settled*,
   which includes a cancel or a snap ending it early — `stopAnimation` fires no
   end callback, so a promise tied to the tween alone would hang and whatever

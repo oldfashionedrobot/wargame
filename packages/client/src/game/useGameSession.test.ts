@@ -353,19 +353,6 @@ describe('useGameSession', () => {
     expect(fake.submissions).toHaveLength(1);
   });
 
-  it('ignores a facing click that is not beside the unit', async () => {
-    const fake = fakeServer(board);
-    const { result } = renderSession(fake, callbacks());
-    await act(async () => {}); // settle the initial batch, which would drop a pin
-
-    act(() => result.current.clickTile(at(1, 1)));
-    await act(async () => result.current.clickTile(at(1, 3)));
-
-    await act(async () => result.current.clickTile(at(5, 5)));
-    expect(fake.submissions).toEqual([]);
-    expect(result.current.selection.phase).toBe('destinationChosen');
-  });
-
   // 7d's contract, and the reason the menu waits: while the ghost walks, the
   // mesh is short of the destination, and a confirm there would replay the
   // move from wherever it had got to.
@@ -407,9 +394,10 @@ describe('useGameSession', () => {
     expect(cb.onPreview).toHaveBeenCalledTimes(1);
 
     // ⚠️ Two tiles away, not one: a tile *beside* the destination is a facing
-    // and commits. Only a click that means nothing leaves the pin alone.
+    // and commits, while this backs out -- and backing out is not re-walking.
     await act(async () => result.current.clickTile(at(3, 3)));
-    expect(cb.onPreview).toHaveBeenCalledTimes(1);
+    expect(cb.onPreview).toHaveBeenLastCalledWith(null);
+    expect(cb.onPreview).toHaveBeenCalledTimes(2);
   });
 
   // The silence is the design: both of these end with onSnap writing an
@@ -470,7 +458,8 @@ describe('useGameSession', () => {
 
     act(() => result.current.clickTile(at(1, 1)));
     await act(async () => result.current.clickTile(at(1, 3)));
-    act(() => result.current.cancelDestination());
+    // Neither the destination nor beside it, so it means back out.
+    await act(async () => result.current.clickTile(at(3, 3)));
 
     expect(fake.submissions).toEqual([]);
     expect(cb.onPreview).toHaveBeenLastCalledWith(null); // and the ghost goes home
@@ -482,18 +471,20 @@ describe('useGameSession', () => {
     });
   });
 
-  it('ignores a tile click that means neither a facing nor a wait', async () => {
+  // ⚠️ Everything lit answers the pin; everything else backs out of it. There
+  // is no third reading, which is what lets the range coming down carry the
+  // whole rule.
+  it('treats a tile click that means neither as a cancel', async () => {
     const fake = fakeServer(board);
     const { result } = renderSession(fake, callbacks());
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
     act(() => result.current.clickTile(at(1, 1)));
     await act(async () => result.current.clickTile(at(1, 3)));
-    const pinned = result.current.selection;
 
     // Reachable, but neither the destination nor beside it.
-    act(() => result.current.clickTile(at(3, 3)));
-    expect(result.current.selection).toBe(pinned);
+    await act(async () => result.current.clickTile(at(3, 3)));
+    expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
     expect(fake.submissions).toEqual([]);
   });
 

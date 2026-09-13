@@ -76,8 +76,11 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
     [],
   );
 
-  const { gameState, rejection, selection, walking, clickTile, cancelDestination, endTurn } =
-    useGameSession(server, { onEvents, onSnap, onPreview });
+  const { gameState, rejection, selection, walking, clickTile, endTurn } = useGameSession(server, {
+    onEvents,
+    onSnap,
+    onPreview,
+  });
 
   // The menu waits for the unit to arrive -- committing mid-walk would leave
   // the mesh short of the destination, and the move would then replay from
@@ -148,15 +151,12 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             Toggle Inspector
           </button>
         )}
-        {pinned && (
-          <>
-            {/* The only thing left telling a player what a click means, now
-                that Wait is a tile rather than a button. */}
-            {!walking && <span>Click the unit to wait, or a tile beside it to face that way.</span>}{' '}
-            <button type="button" onClick={cancelDestination} disabled={walking}>
-              Cancel
-            </button>{' '}
-          </>
+        {/* The only thing telling a player what a click means, now that every
+            answer to a pinned destination is a tile rather than a button. */}
+        {pinned && !walking && (
+          <span>
+            Click the unit to wait, a tile beside it to face that way, or elsewhere to cancel.
+          </span>
         )}
         {rejection && <span style={{ color: '#c0392b' }}> rejected: {rejection}</span>}
         {connection === 'retrying' && <span style={{ color: '#b9770e' }}> reconnecting…</span>}
