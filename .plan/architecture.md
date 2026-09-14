@@ -623,6 +623,14 @@ cancelPreview()           toggleInspector()          dispose()
   runs north–south at rest, `riverSide` banks south, `riverCorner` opens north
   and west. Water uses the *body* vocabulary and roads the *connector* one,
   since a road is never a body of anything.
+
+  ⚠️ **Measured off the *loaded* mesh, not the file** — and the difference is
+  not academic. The glTF loader flips z on its own `__root__`, which leaves a
+  model's bounding box where the raw accessors say it is while putting the
+  *relief* on the far side of it. A piece read out of the file therefore comes
+  out facing backwards with its extents looking correct, so nothing about the
+  numbers gives the mistake away. A probe in the browser settles it in seconds;
+  reading the accessors does not settle it at all.
 - The kit ships **two** water vocabularies — a body set for lakes and a channel
   set (`Bend`, `Cross`, `Split`) for one-tile rivers — and a 4-bit mask cannot
   tell which a cell wants: water north and east is a lake's corner if the
@@ -690,8 +698,12 @@ cancelPreview()           toggleInspector()          dispose()
   per tile at each tile's own surface, for a raised-ground design that no longer
   exists — and long spans are better anyway, since each interior edge is drawn
   once rather than by both its tiles, so the alpha means what it says.
-- **A slab under the board** — `boardBase.ts`, sized to the grid exactly, 0.45
-  thick, not pickable and unknown to `surfaceAt`. It is what makes the board an
+- **A slab under the board** — `boardBase.ts`, sized to the grid exactly, 0.8
+  thick, not pickable and unknown to `surfaceAt`. ⚠️ Plain on purpose: the kit's
+  `cliff_*` faces were fitted round the perimeter to make it read as broken
+  rock, and came out worse than a box. Every face of them is vertical and the
+  only light is hemispheric from above, so the relief takes one shade the whole
+  way round and survives as nothing but a bumpy top edge. It is what makes the board an
   object rather than geometry that stops. ⚠️ It hangs off `bottomOf` — the
   **lowest geometry** on the board — where the grid lines take the highest
   *top*. The two ask different questions, and the reason is that **a tile is not

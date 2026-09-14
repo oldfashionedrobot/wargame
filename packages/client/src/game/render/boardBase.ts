@@ -11,8 +11,15 @@ import { TILE_SIZE } from './coordinates';
  * Deep enough to read as an object from a shallow orbit, shallow enough that it
  * never reaches the camera's near plane. Purely a look -- nothing stands on it,
  * nothing picks against it, and `surfaceAt` does not know it exists.
+ *
+ * ⚠️ **Plain on purpose, and not for want of trying.** The kit's `cliff_*` faces
+ * were fitted round the perimeter to make this read as broken rock, and the
+ * result was worse than a box: every face is vertical and the only light is
+ * hemispheric from above, so the relief takes the same shade all the way round
+ * and survives as nothing but a bumpy top edge. A slab says *board* without
+ * pretending, which is the whole point of the thing sitting on it.
  */
-const BASE_THICKNESS = 0.45;
+const BASE_THICKNESS = 0.8;
 
 /**
  * How far the slab's top sits *below* the floor it hangs under.
