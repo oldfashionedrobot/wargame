@@ -12,6 +12,8 @@ import type {
   StateResponse,
 } from '@vod/shared';
 import { route } from '@vod/shared/testing';
+import { getMap } from './maps';
+import { createMatchState } from './matchState';
 import { createServer } from './http';
 
 // Black box on purpose. Nothing below knows how a URL is dispatched, so the
@@ -73,11 +75,23 @@ async function newMatch(): Promise<MatchSummary> {
   return (await postJson('/api/matches')).json() as Promise<MatchSummary>;
 }
 
-// blue-1 is the artillery on the left end of blue's rank, at (1,0) -- column
-// one because eight units centred on a board of ten leave a column spare each
-// side -- and blue moves first. ⚠️ One tile, because wheels pay 2 to cross
-// plains against a range of 4: these are tests about the HTTP surface, and a
-// route a gun cannot afford fails them for the wrong reason.
+/**
+ * Where blue's left-end gun starts, asked rather than written down.
+ *
+ * ⚠️ **Hardcoding it has broken twice** -- once when the army left the maps and
+ * once when the boards were resized -- because a rank of eight centred on a
+ * board of ten begins at column one and on any other width does not.
+ */
+const BLUE_1 = (() => {
+  const unit = createMatchState(getMap('classic')).units.find(({ id }) => id === 'blue-1');
+  if (!unit) throw new Error('no blue-1 on the starting board');
+  return unit.position;
+})();
+const BLUE_1_STEP = { col: BLUE_1.col, row: BLUE_1.row + 1 };
+
+// ⚠️ One square, because blue-1 is artillery: wheels pay 2 to cross plains
+// against a range of 4. These are tests about the HTTP surface, and a route a
+// gun cannot afford would fail them for the wrong reason.
 //
 // The path is a walkable route rather than two endpoints, which is what a
 // client actually sends -- validatePath walks every step in 6c.
@@ -85,7 +99,7 @@ const legalMove: Command = {
   type: 'move',
   facing: 'north',
   unitId: 'blue-1',
-  path: route({ col: 1, row: 0 }, { col: 1, row: 1 }),
+  path: route(BLUE_1, BLUE_1_STEP),
 };
 
 describe('GET /api/matches', () => {
@@ -206,13 +220,13 @@ describe('GET /api/matches/:id/events', () => {
 
     const body = (await (await get(`/api/matches/${id}/events?since=0`)).json()) as EventsResponse;
     expect(body.seq).toBe(1);
-    expect(body.events).toHaveLength(2); // the move, and the turn it spends
+    expect(body.events).toHaveLength(1); // the move; blue's turn is not over
     // Events never travel without the state they produced -- and the state
     // is the *post*-move one. currentTurn alone would not show that: a move
     // does not end a turn, so the pre-move snapshot has the same value.
     expect(body.state?.units.find((unit) => unit.id === 'blue-1')?.position).toEqual({
-      col: 1,
-      row: 1,
+      col: BLUE_1_STEP.col,
+      row: BLUE_1_STEP.row,
     });
 
     // Asking from the current seq is the steady-state poll: nothing new, and
@@ -246,10 +260,10 @@ describe('POST /api/matches/:id/commands', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.seq).toBe(1);
-    expect(result.events).toHaveLength(2); // the move, and the turn it spends
+    expect(result.events).toHaveLength(1); // the move; blue's turn is not over
     expect(result.state.units.find((unit) => unit.id === 'blue-1')?.position).toEqual({
-      col: 1,
-      row: 1,
+      col: BLUE_1_STEP.col,
+      row: BLUE_1_STEP.row,
     });
   });
 
@@ -263,7 +277,7 @@ describe('POST /api/matches/:id/commands', () => {
       type: 'move',
       facing: 'north',
       unitId: 'blue-1',
-      path: route({ col: 1, row: 0 }, { col: 8, row: 9 }),
+      path: route(BLUE_1, { col: BLUE_1.col + 7, row: BLUE_1.row + 9 }),
     };
 
     const response = await postJson(`/api/matches/${id}/commands`, outOfRange);

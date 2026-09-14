@@ -171,10 +171,21 @@ ErrorResponse     { error }                          // the body of every non-2x
 ```
 
 **A turn is a budget of actions**, `ACTIONS_PER_TURN` in `turns.ts`, and the
-turn ends itself once the budget is spent. At 1 the game is chess — one unit,
-one command, over to you. At the size of a roster it is Advance Wars, where
-every unit acts once and the player picks the order. Everything between is one
-edited line, which is what the constant is for.
+turn ends itself once the budget is spent. It is **`null` — no cap — which is
+Advance Wars**: every unit acts once, the player picks the order, and the turn
+ends when the last of them has gone. A number caps it instead, and at 1 the game
+is chess: one unit, one command, over to you. Everything between is one edited
+line, which is what the constant is for.
+
+⚠️ **`null` rather than `Infinity`, and the reason is JSON.**
+`Math.min(Infinity, roster)` picks the roster for free and needs no branch,
+which is what makes it tempting — but `Infinity` does not survive
+`JSON.stringify`, coming back as `null` anyway. Ruleset versioning is on the
+roadmap, so the day a match records the rules it was played under this becomes
+match data and the value would change meaning in transit. One branch, no
+migration. ⚠️ And the branch tests `=== null`, not `== null`: the loose form
+swallows an explicitly passed `undefined`, which has to keep falling through to
+the default.
 
 ```ts
 actionsTaken(state)    // this player's units with hasActed set

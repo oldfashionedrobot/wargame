@@ -4,6 +4,8 @@ import type { Command } from '@vod/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore } from './match';
 import type { MatchStore } from './match';
+import { getMap } from './maps';
+import { createMatchState } from './matchState';
 
 // Each test gets its own in-memory database: real queries, real migrations, no
 // files to clean up, and no way for one test to see another's rows.
@@ -28,15 +30,33 @@ const move = (unitId: string, to: [number, number], from: [number, number]): Com
   path: route({ col: from[0], row: from[1] }, { col: to[0], row: to[1] }),
 });
 
-// The starting board, from the `classic` map. Only blue-1 at (1,0) and red-1
-// at (8,9) are relied on below; the rest of the roster is free to change.
+/**
+ * Where the two units these tests drive actually start, asked rather than
+ * written down.
+ *
+ * ⚠️ **Hardcoding this has broken twice**: once when the army left the maps,
+ * and once when the boards were resized -- because a rank of eight centred on a
+ * board of ten begins at column one, and on a board of any other width it does
+ * not. Asking `createMatchState` costs nothing and cannot go stale.
+ */
+const START = (() => {
+  const { units } = createMatchState(getMap('classic'));
+  const at = (id: string): [number, number] => {
+    const unit = units.find((candidate) => candidate.id === id);
+    if (!unit) throw new Error(`no ${id} on the starting board`);
+    return [unit.position.col, unit.position.row];
+  };
+  return { blue1: at('blue-1'), red1: at('red-1') };
+})();
+
+// One square forward, toward the other side.
 //
-// ⚠️ Two things about blue-1 that these tests keep tripping over. It is the
-// **artillery** on the rank's left end -- wheels, which pay 2 to cross plains,
-// so the legal move below is one tile and not three. And it stands at column
-// *one*, because a rank of eight centred on a board of ten leaves a column
-// spare each side. These are tests about the store: a route that costs more
-// than a gun carriage has is a movement test failing in the wrong file.
+// ⚠️ blue-1 is the **artillery** on the rank's left end -- wheels, which pay 2
+// to cross plains against a range of 4 -- so a legal move here is one tile and
+// not three. These are tests about the store: a route costing more than a gun
+// carriage has is a movement test failing in the wrong file.
+const BLUE_STEP: [number, number] = [START.blue1[0], START.blue1[1] + 1];
+const RED_STEP: [number, number] = [START.red1[0], START.red1[1] - 1];
 const BLUE = 'player-blue';
 const RED = 'player-red';
 
@@ -112,15 +132,15 @@ describe('snapshot', () => {
 
 describe('since', () => {
   it('returns everything after the cursor, with the current state', async () => {
-    // ⚠️ One command, two events. A move spends the turn's only action at
-    // `ACTIONS_PER_TURN` of 1, so it carries the turn end with it -- there is
-    // no second submit to make here, and blue attempting one would be refused
-    // for the ordinary reason that it is no longer blue's turn.
+    // ⚠️ Two commands. With no cap, one move of eight leaves blue's turn very
+    // much alive, so ending it is something blue still has to ask for -- which
+    // is the whole job End Turn keeps.
     const { id } = await store.create();
-    await store.submit(id, move('blue-1', [1, 1], [1, 0]), BLUE);
+    await store.submit(id, move('blue-1', BLUE_STEP, START.blue1), BLUE);
+    await store.submit(id, { type: 'endTurn' }, BLUE);
 
     const all = await store.since(id, 0);
-    expect(all?.seq).toBe(1);
+    expect(all?.seq).toBe(2);
     expect(all?.events.map((e) => e.type)).toEqual(['unitMoved', 'turnEnded']);
     expect(all?.state?.currentTurn).toBe(RED);
   });
@@ -144,17 +164,20 @@ describe('since', () => {
 describe('submit', () => {
   it('advances seq and returns the resulting state', async () => {
     const { id } = await store.create();
-    const result = await store.submit(id, move('blue-1', [1, 1], [1, 0]), BLUE);
+    const result = await store.submit(id, move('blue-1', BLUE_STEP, START.blue1), BLUE);
     expect(result?.ok).toBe(true);
     if (!result?.ok) return;
     expect(result.seq).toBe(1);
-    expect(result.events).toHaveLength(2); // the move, and the turn it spends
-    expect(result.state.units.find((u) => u.id === 'blue-1')?.position).toEqual({ col: 1, row: 1 });
+    expect(result.events).toHaveLength(1); // the move; blue's turn is not over
+    expect(result.state.units.find((u) => u.id === 'blue-1')?.position).toEqual({
+      col: BLUE_STEP[0],
+      row: BLUE_STEP[1],
+    });
   });
 
   it('refuses a command the rulebook rejects, and writes nothing', async () => {
     const { id } = await store.create();
-    const result = await store.submit(id, move('blue-1', [8, 9], [1, 0]), BLUE);
+    const result = await store.submit(id, move('blue-1', START.red1, START.blue1), BLUE);
     // The refusal, not its wording: the reason belongs to shared/'s rulebook
     // and changes when the rules get more specific, which says nothing about
     // whether the store wrote anything.
@@ -174,7 +197,10 @@ describe('submit', () => {
     const { id } = await store.create();
     // Deliberately malformed: a client cannot construct this, which is the
     // point -- `actor` exists only on Action. Cast through unknown to build it.
-    const smuggled = { ...move('blue-1', [1, 1], [1, 0]), actor: RED } as unknown as Command;
+    const smuggled = {
+      ...move('blue-1', BLUE_STEP, START.blue1),
+      actor: RED,
+    } as unknown as Command;
     expect((await store.submit(id, smuggled, BLUE))?.ok).toBe(true);
     const { rows } = await sql.execute({
       sql: 'SELECT actor, action FROM resolutions WHERE match_id = ?',
@@ -190,7 +216,7 @@ describe('storage guarantees', () => {
   // and impossible conditions should be loud rather than silently overwrite.
   it('refuses two resolutions claiming the same seq', async () => {
     const { id } = await store.create();
-    await store.submit(id, move('blue-1', [1, 1], [1, 0]), BLUE);
+    await store.submit(id, move('blue-1', BLUE_STEP, START.blue1), BLUE);
     const duplicate = sql.execute({
       sql: `INSERT INTO resolutions (match_id, seq, actor, action, events, created_at)
             VALUES (?, 1, ?, '{}', '[]', 0)`,
@@ -238,8 +264,9 @@ describe('storage guarantees', () => {
 
   it('keeps current_state equal to folding the log from initial_state', async () => {
     const { id } = await store.create();
-    await store.submit(id, move('blue-1', [1, 1], [1, 0]), BLUE);
-    await store.submit(id, move('red-1', [8, 8], [8, 9]), RED);
+    await store.submit(id, move('blue-1', BLUE_STEP, START.blue1), BLUE);
+    await store.submit(id, { type: 'endTurn' }, BLUE);
+    await store.submit(id, move('red-1', RED_STEP, START.red1), RED);
 
     const { applyEvents } = await import('@vod/shared');
     const { rows } = await sql.execute({

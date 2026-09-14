@@ -23,6 +23,19 @@ describe('actionsAllowed', () => {
     expect(actionsAllowed(state, 5)).toBe(1);
   });
 
+  // The default, and the only genuinely new behaviour: no cap at all, so the
+  // roster is the budget. ⚠️ `null` rather than `Infinity` so it survives JSON
+  // the day a match records the rules it was played under.
+  it('is the whole roster when there is no cap', () => {
+    const state = makeState(8, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'b2', col: 1, row: 0 },
+      { id: 'b3', col: 2, row: 0 },
+    ]);
+    expect(actionsAllowed(state, null)).toBe(3);
+    expect(actionsAllowed(state)).toBe(3); // and that is the default
+  });
+
   it('is nothing at all for a player with no units left', () => {
     const state = makeState(8, [{ id: 'r1', col: 5, row: 5, owner: 'red' }]);
     expect(actionsAllowed(state, 5)).toBe(0);
@@ -72,6 +85,17 @@ describe('actionEndsTurn', () => {
   // however much budget is nominally left.
   it('is true for a lone unit under a budget it cannot reach', () => {
     expect(actionEndsTurn(makeState(8, [{ id: 'b1', col: 0, row: 0 }]), 5)).toBe(true);
+  });
+
+  it('waits for the last of them when there is no cap', () => {
+    const spent = (n: number) =>
+      makeState(
+        8,
+        [0, 1, 2].map((i) => ({ id: `b${i}`, col: i, row: 0, hasActed: i < n })),
+      );
+    expect(actionEndsTurn(spent(0), null)).toBe(false);
+    expect(actionEndsTurn(spent(1), null)).toBe(false);
+    expect(actionEndsTurn(spent(2), null)).toBe(true); // the third is the last
   });
 });
 

@@ -150,8 +150,11 @@ describe('resolveAction', () => {
   it('ends the turn in the same breath, once the budget is spent', () => {
     // ⚠️ **Two events, not one carrying both effects.** Invariant 9 -- each is
     // independently applicable and absolute -- and the same shape a successful
-    // charge takes in 10c. At `ACTIONS_PER_TURN` of 1 the first action is also
-    // the last, so every move brings the turn with it.
+    // charge takes in 10c.
+    //
+    // ⚠️ The turn ends here because blue's whole roster in this fixture is one
+    // unit, not because of any cap: `actionsAllowed` is the roster when it is
+    // shorter than the budget, and with no cap at all it always is.
     const events = resolveAction(state, accept(state, to(2, 0)));
     expect(events.map((event) => event.type)).toEqual(['unitMoved', 'turnEnded']);
     expect(events[1]).toEqual({ type: 'turnEnded', nextPlayer: 'red' });

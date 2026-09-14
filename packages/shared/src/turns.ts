@@ -1,13 +1,21 @@
 import type { GameState, PlayerId } from './types';
 
 /**
- * How many of their units a player may command before the turn passes.
+ * A cap on how many of their units a player may command before the turn
+ * passes, or `null` for none.
  *
- * ⚠️ **The dial this exists for.** At 1 the game is chess: one unit, one
- * command, over to you. At the size of a roster it is Advance Wars, where every
- * unit acts once and the player decides the order. Everything between is
- * reachable by editing this line, which is the point -- the right value is a
- * thing to find by playing rather than to argue about in advance.
+ * **`null` is the default because Advance Wars is the model**: every unit acts
+ * once, the player decides the order, and the turn ends when the last of them
+ * has gone. The number is the dial -- at 1 the game is chess, one unit and one
+ * command -- and everything between is reachable by editing this line.
+ *
+ * ⚠️ **`null` rather than `Infinity`, and the reason is JSON.**
+ * `Math.min(Infinity, roster)` would pick the roster for free and need no
+ * branch at all, which is what makes it tempting. But `Infinity` does not
+ * survive `JSON.stringify` -- it comes back as `null` -- and ruleset versioning
+ * is already on the roadmap, so the day a match records the rules it was played
+ * under this becomes match data and the value changes meaning in transit. One
+ * branch now, and there is no migration later.
  *
  * ⚠️ It is not a per-unit budget. A unit still acts at most once a turn, which
  * `hasActed` records; this caps how many of them may do so.
@@ -16,9 +24,9 @@ import type { GameState, PlayerId } from './types';
  * module, so the rules around it stay reachable from a test at any value. Baked
  * in, the only budget anything could exercise would be whichever one this line
  * happened to hold -- and the case that matters most, a roster shorter than the
- * budget, is invisible at 1.
+ * cap, is invisible without one.
  */
-export const ACTIONS_PER_TURN = 1;
+export const ACTIONS_PER_TURN: number | null = null;
 
 function ownUnits(state: GameState) {
   return state.units.filter((unit) => unit.owner === state.currentTurn);
@@ -38,8 +46,13 @@ export function actionsTaken(state: GameState): number {
  * never end on its own -- "everyone has acted" has to finish a turn as surely
  * as "the budget is gone", and both are this one line.
  */
-export function actionsAllowed(state: GameState, budget = ACTIONS_PER_TURN): number {
-  return Math.min(budget, ownUnits(state).length);
+export function actionsAllowed(state: GameState, budget: number | null = ACTIONS_PER_TURN): number {
+  const roster = ownUnits(state).length;
+  // ⚠️ `=== null`, not `== null`. The loose form would also swallow an
+  // explicitly passed `undefined`, which has to keep falling through to the
+  // default -- the two readings diverge the moment a caller forwards an
+  // optional argument of its own.
+  return budget === null ? roster : Math.min(budget, roster);
 }
 
 /**
@@ -50,7 +63,10 @@ export function actionsAllowed(state: GameState, budget = ACTIONS_PER_TURN): num
  * one -- resolution can decide without applying its own events to a copy of the
  * state first.
  */
-export function actionEndsTurn(state: GameState, budget = ACTIONS_PER_TURN): boolean {
+export function actionEndsTurn(
+  state: GameState,
+  budget: number | null = ACTIONS_PER_TURN,
+): boolean {
   return actionsTaken(state) + 1 >= actionsAllowed(state, budget);
 }
 

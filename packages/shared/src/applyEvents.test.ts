@@ -135,17 +135,17 @@ describe('a full turn cycle validates, resolves and folds', () => {
 
     // Commands plus the actor the server would stamp. Tests cannot build an
     // Action directly -- that is the brand doing its job.
-    // ⚠️ Alternating, because a turn ends itself once its actions are spent and
-    // `ACTIONS_PER_TURN` is 1 -- so a second move by the same player in a row
-    // is not a fold that goes wrong, it is a command the validator refuses. The
-    // explicit `endTurn` in the middle is red declining to act at all, which is
-    // the one thing the button still does that the auto-end cannot.
+    // ⚠️ Written to cross both ways a turn can end. Blue's two moves spend its
+    // whole roster, so the second carries a `turnEnded` with it and no button
+    // is needed. Red moves once and then stops with r2 still able to act, which
+    // only an explicit `endTurn` can do -- the one job the button keeps.
     const script: [Command, PlayerId][] = [
       [move('b1', pos(0, 0), pos(1, 2)), 'blue'],
+      [move('b2', pos(1, 0), pos(2, 2)), 'blue'], // spends blue's last action
       [move('r1', pos(7, 7), pos(6, 5)), 'red'],
-      [move('b2', pos(1, 0), pos(2, 2)), 'blue'],
-      [{ type: 'endTurn' }, 'red'],
+      [{ type: 'endTurn' }, 'red'], // early, with r2 unmoved
       [move('b1', pos(1, 2), pos(2, 4)), 'blue'],
+      [{ type: 'endTurn' }, 'blue'],
     ];
 
     // Play it exactly the way the server does: validate, resolve, fold.
@@ -160,8 +160,9 @@ describe('a full turn cycle validates, resolves and folds', () => {
       live = applyEvents(live, events);
     }
 
-    // Four moves carrying a turn end apiece, plus the one turn end on its own.
-    expect(log).toHaveLength(9);
+    // Six commands, seven events: five of them produce one apiece, and blue's
+    // second move produces two by finishing the turn as it goes.
+    expect(log).toHaveLength(7);
     expect(applyEvents(initial, log)).toEqual(live);
   });
 
