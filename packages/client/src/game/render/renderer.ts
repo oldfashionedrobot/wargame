@@ -319,23 +319,31 @@ export async function createGameRenderer(
   );
 
   /**
-   * The board as a **volume the camera orbits**, rather than as whatever
-   * silhouette it happens to present from where the camera is standing.
+   * How much room the board needs, worked out **once** and never again.
    *
-   * ⚠️ **Measuring the live silhouette is what makes a camera breathe.** It is
-   * the tighter fit and it is the wrong one: a square board is `half-width`
-   * across when you look down an axis and `half-diagonal` across at 45°, so a
-   * fit that tracks it rescales the whole board as you orbit -- on a 12×12 the
-   * extent swings 4.37 to 5.92, a 35% change in size, for a board that has not
-   * moved. Rotating should spin the board, not zoom it.
+   * ⚠️ **Nothing here may read the camera.** A fit that consults the current
+   * angle rescales the board as the camera moves, which is the camera
+   * breathing, and it is wrong at both ends: a square board is `half-width`
+   * across down an axis and `half-diagonal` across at 45°, and its depth
+   * projects by `cos β`, which changes as you tilt. A mouse drag moves *both*,
+   * so consulting either is enough to make a still board change size while you
+   * look at it.
    *
-   * So the horizontal bound is the **ground-plane half-diagonal**, which is the
-   * worst case over every `alpha` and therefore invariant under all of them.
-   * The price is the board drawing at about three quarters of the size a
-   * live fit gives it head-on, which is the cost of it never changing size.
+   * So both numbers are the worst case over everywhere the camera may go:
+   * `reachX` is the ground-plane half-diagonal, which no `alpha` exceeds, and
+   * `reachY` is measured at `CAMERA_BETA_TOPDOWN`, the most overhead tilt
+   * allowed and so the one that needs the most vertical room.
+   *
+   * ⚠️ The price is dead space at every angle that is not the worst one -- on a
+   * 12×12 the board sits in about three quarters of the height it could fill
+   * looking down an axis. That is what a still image costs, and it is a better
+   * trade than a board that resizes itself whenever the camera turns.
    */
   const boardRadius = Math.max(...boardCorners.map((corner) => Math.hypot(corner.x, corner.z)));
   const boardRise = Math.max(...boardCorners.map((corner) => Math.abs(corner.y)));
+  const reachX = boardRadius;
+  const reachY =
+    boardRadius * Math.cos(CAMERA_BETA_TOPDOWN) + boardRise * Math.sin(CAMERA_BETA_TOPDOWN);
 
   /**
    * Sizes the frustum, then keeps the board under it.
@@ -347,17 +355,9 @@ export async function createGameRenderer(
   const holdTheBoard = (): void => {
     const aspect = canvas.clientWidth / canvas.clientHeight;
 
-    // ⚠️ **Invariant in `alpha`, responsive to `beta`, and that asymmetry is
-    // deliberate.** Orbiting spins a board whose shape on screen never changes,
-    // so rescaling it would be gratuitous. Tilting genuinely changes that shape
-    // -- ground distance projects by `cos β` and height by `sin β` -- so the
-    // framing following it is the camera doing what it is told rather than
-    // fidgeting.
-    const reachX = boardRadius;
-    const reachY = boardRadius * Math.cos(camera.beta) + boardRise * Math.sin(camera.beta);
-
-    // The vertical half-extent at which the whole board just fits, which is
-    // whichever of the two axes runs out of room first.
+    // ⚠️ Only the **window** and the **wheel** get a say. `reachX` and `reachY`
+    // were settled at build time and no camera angle is read here, which is the
+    // whole point: turn the board and it turns, nothing else.
     const extent = (Math.max(reachY, reachX / aspect) * FIT_MARGIN) / zoom;
     camera.orthoLeft = -extent * aspect;
     camera.orthoRight = extent * aspect;
@@ -371,9 +371,9 @@ export async function createGameRenderer(
     // not a rule of its own; it is this clamp at its limit.
     const right = camera.getDirection(Vector3.Right());
     const up = camera.getDirection(Vector3.Up());
-    // ⚠️ Built from the same invariant reach, so the pan limits do not move
-    // when the board spins either. A limit that shrank under rotation would
-    // snap a panned camera back, which is the same fidget in another place.
+    // ⚠️ Built from the same fixed reach, so the pan limits do not move either.
+    // A limit that shrank as the camera turned would snap a panned camera back,
+    // which is the same fidget somewhere else.
     const slackX = Math.max(0, reachX - extent * aspect);
     const slackY = Math.max(0, reachY - extent);
 

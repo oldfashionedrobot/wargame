@@ -642,26 +642,26 @@ cancelPreview()           toggleInspector()          dispose()
   scales a zoom factor that the ortho bounds divide by — clamped, and removed in
   `dispose()` alongside the `resize` listener.
 
-  ⚠️ **The camera cannot be driven anywhere useless, and the bound that stops it
-  is the board as a volume rather than as a silhouette.** `boardRadius` is the
-  ground-plane half-diagonal and `boardRise` the height either side of the
-  target, both measured once off the slab's own bounding box so its overhang is
-  included. From those, each frame: `reachX = boardRadius` and
-  `reachY = boardRadius·cos β + boardRise·sin β`.
+  ⚠️ **How much room the board needs is settled once, at build, and nothing
+  here ever reads the camera.** `boardRadius` is the ground-plane half-diagonal
+  and `boardRise` the height either side of the target, both measured off the
+  slab's own bounding box so its overhang counts. From those: `reachX` is the
+  radius, which no `alpha` exceeds, and `reachY` is taken at
+  `CAMERA_BETA_TOPDOWN` — the most overhead tilt allowed, and so the one
+  needing the most vertical room. Only the **window** and the **wheel** move the
+  extent after that.
 
-  ⚠️ **Invariant in `alpha`, responsive to `beta`, and that asymmetry is the
-  whole point.** Fitting the *live* silhouette is the tighter answer and the
-  wrong one: a square board is half-width across seen down an axis and
-  half-diagonal across at 45°, so a fit that tracks it rescales the board as you
-  orbit. Measured on a 12×12 by counting drawn pixels through a full turn, that
-  came to a **41.8% swing in projected area for a board that had not moved**;
-  against the volume bound it is 2.9%, which is the slab's own sides. Rotating
-  should spin the board, not zoom it. Tilting is different — ground distance
-  projects by `cos β` and height by `sin β`, so the shape on screen genuinely
-  changes and the framing follows it.
+  ⚠️ **A fit that consults the camera makes the board breathe**, and it is wrong
+  at both ends. A square board is half-width across down an axis and
+  half-diagonal across at 45°, and its depth projects by `cos β`, which changes
+  as you tilt — so reading either rescales a board that has not moved, and a
+  mouse drag moves both at once. Verified by probing `orthoTop` through rotate,
+  tilt and mixed drags: it does not change at all, while the wheel moves it
+  as expected.
 
-  The price is the board drawing at about three quarters of the size a live fit
-  gives it head-on. That is what never changing size costs.
+  ⚠️ The price is dead space at every angle but the worst one — on a 12×12 the
+  board sits in roughly three quarters of the height it could fill looking down
+  an axis. That is what a still image costs, and it is the better trade.
 
   From that, each frame: the frustum is sized so `zoom = 1` is *the whole board
   just fits* — which is both the **floor** the wheel cannot go below and the
