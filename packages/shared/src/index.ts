@@ -35,6 +35,11 @@ export type { ArmyPlacement } from './armyGrid';
 export type { UnitTypeId } from './data/unitTypes';
 export { getUnitType, MAX_HEALTH } from './data/unitTypes';
 
+// Combat: the table is out because the tuning harness prints it, and
+// `computeDamage` because the client previews the same number the server rolls.
+export { BASE_DAMAGE, LUCK_MAX } from './data/combat';
+export { computeDamage } from './combat';
+
 export { coordinatesEqual, directionBetween, isWithinGrid } from './coordinate';
 export { getCurrentPlayer, getUnit, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';

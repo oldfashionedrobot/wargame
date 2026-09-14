@@ -19,13 +19,21 @@ Stripping CO modifiers (which we don't have), AW reduces to this — ⚠️ **wr
 damage = baseDamage × (attackerHP / 10) × ((100 − terrainStars × 10 × defenderHP / 10) / 100)
 ```
 
-**Ours, in our units** — the only version to build from:
+**Ours** — the only version to build from:
 
 ```
-damage = baseDamage × (attackerHP / 100) × ((100 − terrainStars × 10 × defenderHP / 100) / 100)
+band(hp) = ceil(hp / 10)                      // 1..10, never 0 while alive
+damage   = floor((baseDamage + luck) × band(attackerHP) / 10)
+                × (100 − terrainStars × band(defenderHP)) / 100
 ```
 
-Both `/10`s become `/100` because we store and display 0–100 (see the next section). Taking the AW line literally is not a rounding difference: at 4 stars with a full-health defender it computes `100 − 4 × 10 × 10 = −300`, so mountains would *heal* the unit standing on them. `baseDamage` stays a percentage of a full-health target, exactly as AW's tables give it, so the matchup numbers transfer unchanged — it is only the HP terms that rescale.
+⚠️ **Both HP terms read the ten-point band, not the raw value — and this is load-bearing, not a rounding preference.** AW's formula reads *displayed* HP, which is `ceil(internal / 10)`, so a unit on 1 internal point still attacks at 1/10 strength. We store and display 0–100 (see the next section) but the formula still reads the band, because feeding it raw health makes a living unit attack at 1% and the floors swallow it: **measured, cavalry at 4 health or less dealt zero to infantry in forest even on a maximum roll.** Two wounded units could then be permanently unable to kill each other, and elimination is the only way a match ends.
+
+⚠️ **AW has no minimum-damage rule and needs none** — the banding *is* the mechanism. Zero stays reachable at the extremes, which is faithful; it is just no longer a predictable band. A `Math.max(1, …)` clamp was the alternative and was rejected: it invents a rule to paper over dropping one AW already had.
+
+⚠️ **One rule, both sides.** Applying the band to the attacker alone would be half of AW's formula with no principle choosing which half. The cost is real and is accepted: a unit at 91 health and one at 100 fight identically while the bar shows two different numbers — AW's arithmetic without AW's rounded display to hide it.
+
+Taking the AW line literally is a separate trap and not a rounding difference either: at 4 stars with a full-health defender, `100 − 4 × 10 × 10 = −300`, so mountains would *heal* the unit standing on them. `baseDamage` stays a percentage of a full-health target, exactly as AW's tables give it, so the matchup numbers transfer unchanged.
 
 Every step rounds down. Three things fall out of it:
 
@@ -33,7 +41,9 @@ Every step rounds down. Three things fall out of it:
 - **A wounded defender loses its cover.** Terrain defence scales by *defender* HP, so a 4-star mountain protects a full-health unit far more than a nearly-dead one. This accelerates kills and stops damaged units turtling on good ground.
 - **Terrain is not a minor modifier.** Four stars at full health is a 40% reduction. Tuning a matchup table with defence stubbed to zero would produce numbers to throw away — which is why terrain comes first.
 
-**Luck** adds 0 to +9 to `baseDamage`, itself scaled by attacker HP: each point of health lost narrows the luck range by 1%, floor of +1%. Because `baseDamage` is a percentage in both schemes, this term needs **no rescaling** — the 0–9 is already in our units, and the "each point of health" that narrows it is AW's 1–10 point, so ours narrows per 10 HP. So damaged units are less swingy as well as weaker. *(Sources disagree slightly on where luck enters relative to the HP multiplier; the magnitude is consistent.)*
+**Luck** adds 0 to +9 to `baseDamage`, and needs **no rescaling** — the 0–9 is already in our units, because `baseDamage` is a percentage in both schemes.
+
+⚠️ **And it needs no narrowing code either.** Luck is added *before* the health multiplier, so a weaker attacker's luck scales down with everything else: 0–9 at full health becomes 0–4 at half and 0–1 at a sliver, with the floor of +1 falling out of the band never reaching zero. A draft that computed the narrowing explicitly was reimplementing the multiplication it sat beside. Damaged units are less swingy as well as weaker, and nothing has to say so. *(Sources disagree slightly on where luck enters relative to the HP multiplier; the magnitude is consistent.)*
 
 ### HP representation — where we diverge ⚠️
 
