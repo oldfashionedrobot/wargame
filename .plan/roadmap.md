@@ -53,6 +53,54 @@ Each star is 10% reduction *at full defender HP*. **The values live in the terra
 
 For reference while reading the formula above: our six terrains run 0 stars (road, bridge, river) through 1 (plains), 2 (forest), to 4 (mountain).
 
+### The numbers, and the shape they have to take
+
+⚠️ **No attack stat and no defence stat, following AW** — which has neither. A
+unit's toughness is not a property of the unit; it is every attacker's column
+against it. Defence comes from terrain and nowhere else.
+
+⚠️ **A triangle cannot come from stats, and that is arithmetic rather than
+taste.** Give every unit an attack `A` and a defence `D` and let damage be any
+`f(A, D)`, and the ordering that falls out is **transitive**: if infantry beats
+cavalry and cavalry beats artillery, infantry beats artillery, necessarily.
+Rock-paper-scissors is non-transitive, so no pair of scalars can express one.
+The choice is only ever a matrix or a class system — and at three unit types a
+class system is more machinery than the nine numbers it would save. AW kept an
+explicit matrix at eighteen.
+
+```ts
+BASE_DAMAGE:      Record<UnitTypeId, Record<UnitTypeId, number>>           // 9
+CHARGE_THRESHOLD: Partial<Record<UnitTypeId, Record<UnitTypeId, number>>>  // 6
+FLANK_BONUS, REAR_BONUS                                                    // 2
+```
+
+Nested `Record`s give the same compile-error-on-incomplete property `TERRAIN`
+and `UNIT_TYPES` already have: add a unit type and every incomplete row stops
+building.
+
+⚠️ **Charge capability is *having a row*, not a flag beside one.** The `Partial`
+on the outside says not every unit charges; the full `Record` inside says one
+that does needs a number against every target. Artillery simply has no entry —
+so "can it charge" and "what are its thresholds" cannot disagree, because they
+are the same fact. A `charge?` boolean on `UnitType` plus a table elsewhere is
+two facts that can.
+
+#### ⚠️ The triangle is not in one table
+
+Each edge of it happens for a different reason, and each mechanic should carry
+exactly one:
+
+| | beats | how |
+|---|---|---|
+| **artillery** | infantry | by **shooting** — `BASE_DAMAGE`, and it should be brutal |
+| **cavalry** | artillery | by **charging** — overrunning a battery is the classic cavalry action |
+| **infantry** | cavalry | by **not breaking** — a frontal charge threshold low enough that it needs a nearly-dead target |
+
+So cavalry's *shooting* numbers can be mediocre across the board — carbines from
+horseback — because cavalry's identity lives in the charge table. And infantry's
+advantage over cavalry is not damage at all. Splitting it this way is what keeps
+tuning one table from smearing into another.
+
 ### Facing, which is charge's other half ⬜ — where we diverge ⚠️
 
 **AW has no facing. This is ours**, and the second original mechanic in the game after charge. It earns its place on theme as much as on mechanics: the period's tactics *are* line, flank and rear, and it gives cavalry's speed a purpose beyond arriving sooner — getting behind something.
@@ -135,7 +183,7 @@ No line-of-sight system. AW never had one either.
 
 ### Charge
 
-A distinct attack type, chosen instead of firing on a given turn, consuming `hasActed` either way. Capability lives on the attacker's `UnitType` (`charge?`), optional; any unit can be a *target* regardless. **This has no AW equivalent** — it's our melee model, and the one part of combat with no reference behaviour to check against.
+A distinct attack type, chosen instead of firing on a given turn, consuming `hasActed` either way. Capability is a row in `CHARGE_THRESHOLD` rather than a flag — see *The numbers* above; any unit can be a *target* regardless. **This has no AW equivalent** — it's our melee model, and the one part of combat with no reference behaviour to check against.
 
 Requires the attacker to be able to enter the target's tile — reads the terrain table, so if the target's terrain is impassable to the attacker's movement type, charge isn't available.
 
@@ -154,7 +202,10 @@ Fire and charge are **different resolutions, dispatched once** on an `attackKind
 
 ### Tuning
 
-**Untuned**: `luckMax`, every charge threshold, the failure-damage scaling function, the flank and rear multipliers, and the whole damage matchup table.
+**Untuned**, and there are **seventeen numbers** of them: the nine of
+`BASE_DAMAGE`, the six of `CHARGE_THRESHOLD`, and `FLANK_BONUS` and
+`REAR_BONUS`. Plus `luckMax` and the failure-damage scaling function, which are
+functions rather than table entries.
 
 **One of those has no reference behaviour at all** — charge, which facing is now part of rather than a second mechanic beside. ⚠️ That is what binding them bought: there is one thing to tune here, not two that interact. Still **in sequence, never together**: the matchup table against AW's numbers first, then charge head-on, then the directional adjustment. Each stage leaves exactly one unknown to move against an observation.
 
