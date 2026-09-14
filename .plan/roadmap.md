@@ -157,11 +157,80 @@ command already carries `facing`, and nothing reads it.
 
 **One quiet payoff:** the single-element path — legal at cost 0, so far justified only as "wait in place" — becomes **turn in place**, a real defensive action. A mechanic we had already decided to allow for other reasons acquires a purpose.
 
+### The attack interaction
+
+⚠️ **There is no direct/indirect category.** Every unit has a `{ min, max }`
+range and everything may move *and* attack, so `canMoveAndAttack` does not
+exist. A gun with `min: 2` is described, not classified — nothing branches on it.
+
+**A counter fires when the attacker is inside the defender's own range.** One
+predicate, no exceptions. Artillery caught at one tile still cannot answer,
+because 1 is not in `[2, 4]` — the behaviour survives without a rule for it, and
+counter-battery becomes possible, which AW forbids and history does not.
+
+#### The panel is the confirm step
+
+Every attack goes through a small panel anchored over the target: it previews
+what would happen, and where more than one action is available it is also how
+you choose.
+
+```
+Volley — 34 damage, they answer for 22
+Charge — 62% to break them
+Hold   — face them, do not fire
+```
+
+⚠️ **It is shown for every attack, near or far**, not only where there is a
+choice. Uniform because it is a *preview and confirmation* first and a chooser
+second — at range 3 it shows one option and a confirm, which is still the number
+you wanted before committing.
+
+⚠️ **No hover affordances, because touch has no hover.** The preview cannot ride
+on pointer-over or the game is uninformative on a tablet. That is a constraint on
+this design and a debt against an existing one: the **route preview is
+hover-driven today** (`POINTERMOVE` calls `pathTo` inside the renderer, and React
+never hears about it), so on touch it simply never appears. Not created by this
+work, but named by it.
+
+⚠️ **The camera freezes while the panel is open.** The anchor projects once and
+nothing tracks anything, which avoids per-frame React commits entirely — and a
+modal moment reading as deliberate is a feature. If following the camera ever
+matters, the escape is the trick the tile-click handler already uses: React
+renders the content, the renderer writes `transform` on the container.
+
+#### What a click means, and in what order
+
+At a pinned destination the tiles are already the menu. Attacking adds one more
+reading of a click that is being read anyway:
+
+| clicked | means |
+|---|---|
+| the unit itself | **hold**, keeping the direction it travelled |
+| an adjacent *empty* tile | **hold**, facing that way |
+| any enemy in range | open the panel |
+| anything else | cancel |
+
+⚠️ **The order those are asked in is load-bearing**, and nothing in the code says
+so. `facingChoiceAt` returns a `Facing` for *any* adjacent tile — it never looks
+at occupancy — so an adjacent enemy answers both "face this way" and "attack
+this". Ask the target predicate first or an adjacent enemy can never be attacked,
+and it is one reordered branch away from that.
+
+**Attacking faces the target**, so the only difference between a facing click and
+an attack click is whether somebody is standing there. ⚠️ Which is why **hold**
+has to be in the panel: the one tile that faces an enemy is the tile they occupy,
+so without it a weakened unit could never turn to face a neighbour without
+shooting and taking a counter it might not survive. It is also the only thing
+artillery can do to something that has reached it — `min: 2` means it cannot
+fire, and it has no charge.
+
 ### Counter-attacks
 
-**Only when both units are direct combat.** If either side is indirect, no counter in either direction. The defender counters using its post-damage HP.
+**Iff the attacker is inside the defender's own range**, and the defender survives. One predicate, no categories. The defender counters using its post-damage HP.
 
-Our `ranged.min === 1` ↔ direct mapping reproduces this exactly, so a counter fires iff both units have `min === 1`, the defender survives, and the attacker is within the defender's range.
+⚠️ **AW's rule looks categorical and is not.** It reads "both units must be direct", but that is equivalent to *the attacker is adjacent and the defender can fight at adjacency* — because in AW a direct unit can only ever attack from range 1, so "direct attacker" and "adjacent attacker" are the same statement. Days of Ruin's Anti-Tank is the proof: indirect out to three, but **no minimum range**, and it counters. Under the category reading that needs a special case; under the geometric one it falls out.
+
+⚠️ Ours differs from AW's in exactly one case, deliberately: **counter-battery**. Two guns at a range each can reach answer each other, which AW forbids and history does not. Artillery caught at one tile still cannot answer, because 1 is not in its band — the property worth keeping survives without a rule naming it.
 
 **Not a special case.** A counter is `computeDamage` applied in the other direction with the defender's reduced HP — the same function, called twice. If it becomes a branch inside the attack resolver rather than a second call, that's the smell.
 
@@ -169,15 +238,15 @@ Our `ranged.min === 1` ↔ direct mapping reproduces this exactly, so a counter 
 
 The sharp edge of invariant 8, and AW shows one before you commit. The client computes it from the same formula with the luck term omitted — a deterministic estimate, explicitly not a prediction. The server rolls and decides the real number, which will differ. **Preview the formula, never the dice.**
 
-### Ranged — one category, not two
+### Range — no categories at all
 
 ```ts
-ranged: { range: { min, max }, canMoveAndAttack: boolean }
+range: { min, max }
 ```
 
-`min === 1` behaves like AW direct fire (adjacent through max, symmetric counter-attack). `min > 1` behaves like indirect fire (can't hit adjacent, no counter given or received). The category falls out of the numbers; no separate flag.
+⚠️ **"Direct" and "indirect" do not exist here**, not even as a category that falls out of the numbers. They are AW's name for three properties that happen to move together in *its* roster — minimum range, whether you may move and fire, and whether you counter — and no AW unit breaks the correlation, so it is impossible to tell from behaviour which is causal.
 
-`canMoveAndAttack` is independent of range category — a mounted archer can be indirect *and* mobile; a cannon indirect and static. AW ties these together (indirects can't move and fire); we don't, deliberately.
+We decouple all three. **Everything may move and fire**, so `canMoveAndAttack` does not exist. **Counters are geometric**, so nothing tests a category. What is left is two numbers: a gun with `min: 2` is *described*, and no branch anywhere asks what kind of unit it is.
 
 No line-of-sight system. AW never had one either.
 
@@ -216,7 +285,7 @@ functions rather than table entries.
 
 ## Open questions
 
-- **Counter-attack for `min > 1` units.** "No counter given or received" was settled when indirect fire and immobility were the same thing. Now that `canMoveAndAttack` is independent of range category, it is worth re-checking whether the rule should still key off `min > 1` alone. **Owned by 9g**, which is where it stops being answerable in the abstract.
+- ~~**Counter-attack for `min > 1` units.**~~ ✅ Settled: a counter fires when the attacker is inside the defender's range, whatever that range is. A gun answers a gun at reach and cannot answer anything at one tile — both from the same predicate, neither from a rule about it.
 
 ## Known compromises
 
@@ -297,18 +366,18 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 - **9c** ⬜ **`BASE_DAMAGE` and `computeDamage`, and nothing else.** ⚠️ Not `CHARGE_THRESHOLD`, which nothing reads until 10a — building it here would be the exact thing this phase condemns below, numbers written down before anything looks at them. Split out of the command step deliberately: this half is *pure* — state, an action and a roll in, a number out — so it is fully testable, carries no integration risk, and is what the harness runs. Building it here is what makes the harness possible **before** the largest step rather than after it. Shape is settled in *The numbers* above.
 
   ⚠️ **The terrain `defense` column is as untuned as the matrix and the doc has been treating it as settled.** `mountain: 4` is a 40% reduction at full HP, written when nothing read it and never played against — with eight units and no reinforcements, a unit parked on a peak may simply be unkillable. The harness prints terrain-shifted hits-to-kill precisely so that is a measurement rather than a surprise.
-- **9d** `ranged: { range: { min, max }, canMoveAndAttack }` on `UnitType`. Ahead of the command step rather than after it, so nothing is ever built against an adjacency that is about to stop being true. Where "the category falls out of the numbers" gets tested: `min === 1` is direct, `min > 1` is indirect, no separate flag. `canMoveAndAttack: false` is where 6c's single-element path stops being a curiosity and becomes the only legal shape for a static unit.
+- **9d** `range: { min, max }` on `UnitType`, and nothing else. Ahead of the command step rather than after it, so nothing is ever built against an adjacency that is about to stop being true. ⚠️ **No `canMoveAndAttack` and no direct/indirect flag** — everything moves and attacks, and `min: 2` describes a gun rather than classifying it. Two numbers per unit.
 
-  ⚠️ **Pulled in from phase 10, and counter-attacks are the reason.** A counter fires only when both units are direct, so without `ranged` there is no way to say that artillery *cannot* counter — and adjacency-only would make it a direct unit that does, which is backwards. Every number tuned under that assumption would move again the day it gained a minimum range. Artillery being devastating at reach and defenceless once reached is also what makes cavalry's closing move work, so the design does not cohere without it.
+  ⚠️ **Pulled in from phase 10, and counter-attacks are the reason.** A counter fires when the attacker is inside the defender's range, so without a range there is nothing to ask — and adjacency-only would give artillery a range of 1, which makes it answer things standing next to it. Backwards. Every number tuned under that assumption would move again the day it gained a minimum range. Artillery being devastating at reach and defenceless once reached is also what makes cavalry's closing move work, so the design does not cohere without it.
 - **9e** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. It grows out of 5b's `snapUnits` and runs where that runs: inside the hook's queue, after the batch's animation, before the commit. Assumes 5b landed — without the gated commit, reconciling meshes against a state whose events are still animating is exactly the ordering bug 5b retired.
 - **9f** `MoveCommand` gains an **optional** attack — path, facing, and a target, atomic. ⚠️ Called `UnitActionCommand` here for years, which oversold it: an optional field is *additive*, so the wire stays compatible, `parseCommand` keeps its existing branch and no stored row changes meaning. Whether the rename earns its churn is a real question and the answer is probably no. Simplest resolution: `computeDamage` from 9c, a target inside the range 9d gave the attacker, no counter yet and no charge. Damage and death events. ⚠️ **Facing is not read here and `computeDamage` takes no direction** — that moved to 10a with charge, which is the only thing that reads it. The command carries `facing` as it already does, and nothing does anything with it. Touches **four** places, not the three this used to claim: `parseCommand` for the wire shape, `validateMove`'s successor for legality, `resolveMove`'s for the events — and `moveCommandFor` in `interaction/selection.ts`, which is what actually builds the command on the client and changes shape with it.
 
   ⚠️ **Rolls are a third argument to `resolveAction`, not a field on `Action`.** The doc has said both. They cannot live on `Action`: `validateCommand` is its only constructor and has no business generating or receiving a roll. And it is a *sequence* rather than a number — an attack and its counter need one each.
 
-  ⚠️ **Invariant 9 constrains the events.** `unitAttacked` must carry the target's *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client can compute from the state preceding the event.
+  ⚠️ **Invariant 9 constrains the events.** `unitDamaged { unitId, health }` carries the *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client can compute from the state preceding the event. ⚠️ Named for the effect rather than the act, because **three different things reduce HP**: the attack, the counter, and a failed charge's backfire — and the last two land on the *attacker*. `unitAttacked` implies a direction the event does not have.
 
   ⚠️ One nuance the client will hit here, parked by 5b with its answer attached: in a multi-resolution catch-up batch, "the state preceding event *k*" is the pre-batch replica folded through events 1..k−1 — a second hit on the same unit computes its damage number from the intermediate HP, not the pre-batch one. If the animation needs that, thread a **locally** folded state through the animation walk (`applyEvents` as a plain helper inside the queue task) — never per-event React commits, never a callback-signature change. Large batches snap without animating anyway (5b's threshold), so this only matters for small ones.
-- **9g** Counter-attacks. Fires iff both units are direct, the defender survives, and the attacker is in its range — `computeDamage` called a second time in the other direction, on the defender's post-damage HP. **If it becomes a branch inside the attack resolver rather than a second call, that is the smell** the Combat section warns about.
+- **9g** Counter-attacks. ⚠️ **Fires iff the attacker is inside the defender's own range** and the defender survives — one predicate, and "both units are direct" is gone with the category it named. `computeDamage` called a second time in the other direction, on the defender's post-damage HP. **If it becomes a branch inside the attack resolver rather than a second call, that is the smell** the Combat section warns about.
 
   ⚠️ **This is what makes the matchup numbers mean anything.** Attacking in AW is an *exchange*: the question is never "can I kill it" but "is the trade worth it". Without a counter, every attack is free and hits-to-kill says nothing about whether to throw the punch.
 
@@ -317,18 +386,21 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   ⚠️ And a counter can **kill the attacker**, which shrinks the attacker's roster mid-turn — so `actionsAllowed` drops and their turn can end sooner than they expected. Correct, since you cannot act with a dead unit, but nothing has written it down and this is where it first fires.
 - **9h** ⚠️ **Mostly built, and smaller than it was.** Phases 7 and 7.999 delivered the whole destination-and-action interaction: pinning, the client-side walk, and a `destinationChosen` whose lit tiles *are* the menu — the unit itself waits, a tile beside it faces that way, anything else cancels. **What remains is one more reading of a click already being read**: an enemy this unit can attack from the pinned tile. ⚠️ **No `choosingTarget` member** — that was the old plan and it is explicitly dropped; a target is a click in the state that exists, not a state of its own. What it does need is an attack-range overlay in a **reddish** tint, so a target is told from a facing choice by colour rather than by a rule.
 
+  ⚠️ **The damage preview is part of this step, not a later one.** It used to be scheduled after, as polish. It cannot be: the panel *is* how an attack is committed, and a panel with no numbers in it is a bare confirm dialog. This is where *deterministic preview, yes; random resolution, no* stops being a slogan — the client runs the same formula with the luck term dropped.
+
+  ⚠️ **And this is where `hold` earns its place in the panel** rather than being a nicety: see *The attack interaction* above for why the tile that faces an enemy is the tile they are standing on.
+
   ⚠️ **"An adjacent enemy means attack" is shorthand that breaks artillery.** A `min > 1` unit cannot hit an adjacent enemy at all and its targets sit two or three tiles out, so this lights **two sets** and the predicate is "an enemy *this unit can attack from here*". The colouring carries it: an adjacent enemy an artillery piece cannot reach simply stays the neutral facing colour. Undecided is only whether that reads oddly in the melee case, where one tile is both a facing choice and a target.
 
   Follow the shape already there: `facingChoiceAt` and `holdFacing` each read a click and answer `Facing | null`, so a third predicate answering `Unit | null` sits beside them, and the hook picks whichever answers. ⚠️ The pure decision belongs in `interaction/selection.ts`; the *dispatch* stays in `clickTile`, which is what has kept `handleTileClick` selection-only through two reworks.
 
   Nothing is needed from the renderer but the overlay. The route question that used to sit here is closed: the range and the route both come down when the menu lights, and the unit standing at the destination is what anchors the tiles around it.
-- **9i** ⬜ **Health has to be visible**, and was missing from this phase entirely. 9b puts `health` in the model and 9f makes it change, but nothing draws it — a unit at 40 reads identically to one at 100, which makes combat unplayable by eye and unverifiable in the browser, the only check the renderer has. Smallest thing that works: a billboarded bar or a scaled emissive band on the unit mesh, driven from `syncUnits` since that already runs per commit with the state in hand. It belongs before 9j, because tuning a matchup table you cannot see the results of is guesswork.
+- **9i** ⬜ **Health has to be visible**, and was missing from this phase entirely. 9b puts `health` in the model and 9f makes it change, but nothing draws it — a unit at 40 reads identically to one at 100, which makes combat unplayable by eye and unverifiable in the browser, the only check the renderer has. Smallest thing that works: a billboarded bar or a scaled emissive band on the unit mesh, driven from `syncUnits` since that already runs per commit with the state in hand. It belongs before any tuning at all, because a matchup table whose results you cannot see is tuned by guesswork.
 
   ⚠️ **The facing marker moved to phase 10** — nothing reads facing until charge does, so a ground chevron here would be drawing a fact that changes nothing. 9i is the health bar and only that.
-- **9j** ⬜ **The damage preview** — specified under Combat as "the sharp edge of invariant 8" and, until now, scheduled nowhere. The client computes the same formula with the luck term omitted and shows it on the target before the click commits. This is the step where *deterministic preview, yes; random resolution, no* stops being a slogan and becomes code, so it is worth its own commit rather than riding inside 9h.
-- **9k** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
+- **9j** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
 
-Without 9k the board reaches a state where one side has nothing left and End Turn keeps working forever.
+Without 9j the board reaches a state where one side has nothing left and End Turn keeps working forever.
 
 **Does 9f roll?** Yes. The step reads "damage from a table" and also "plus rolls", which is a contradiction worth settling in favour of rolling: the rolls plumbing — the server generating them, `Action` carrying them, resolution taking them as an argument so `shared/` stays pure — is the only *structurally* new thing in 9f, and it is what makes 9j's preview mean anything. A deterministic first cut would defer exactly the part worth proving.
 
