@@ -46,15 +46,19 @@ describe('handleTileClick, nothing selected', () => {
     if (selection.phase !== 'unitSelected') return;
     expect(selection.unitId).toBe('b1');
     expect(selection.position).toEqual(at(1, 1));
-    // Infantry's 3 movement points on plains: the tiles within three
-    // orthogonal steps of (1,1) that fit on a 7x7 board, minus its own. Being
-    // near two edges clips the diamond, which is why this is 16 and not 24.
-    expect(selection.movement.reachable).toHaveLength(16);
+    // Infantry's 4 movement points on plains: the tiles within four orthogonal
+    // steps of (1,1) that fit on a 7x7 board, minus its own. Being near two
+    // edges clips the diamond, which is why this is 23 and not 40.
+    expect(selection.movement.reachable).toHaveLength(23);
   });
 
   // Nothing else in the client pins that movement stats come from the catalog
-  // per unit type -- every other fixture is infantry, so a hardcoded budget of
-  // 3 would pass the whole suite. Cavalry reaches twice as far.
+  // per unit type -- every other fixture is infantry, so one hardcoded budget
+  // would pass the whole suite.
+  //
+  // ⚠️ Five is the *only* distance that separates them now that infantry has 4
+  // and cavalry 5. Both assertions sit on it deliberately; if the catalog moves
+  // either number again, this is the test that has to move with it.
   it("reads each unit type's own movement range from the catalog", () => {
     const state = makeState(9, [
       { id: 'foot', col: 4, row: 4 },
@@ -64,9 +68,9 @@ describe('handleTileClick, nothing selected', () => {
     const cavalry = handleTileClick(state, initialSelectionState, at(4, 0));
     if (infantry.phase !== 'unitSelected' || cavalry.phase !== 'unitSelected') throw new Error();
 
-    // Four steps from either unit: beyond infantry's 3, inside cavalry's 5.
-    expect(infantry.movement.pathTo(at(4, 8))).toBeNull();
-    expect(cavalry.movement.pathTo(at(4, 4))).not.toBeNull();
+    // Five steps from either unit: beyond infantry's 4, exactly cavalry's 5.
+    expect(infantry.movement.pathTo(at(0, 3))).toBeNull();
+    expect(cavalry.movement.pathTo(at(4, 5))).not.toBeNull();
   });
 
   it('ignores an empty tile', () => {

@@ -25,7 +25,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     id: 'infantry',
     name: 'Infantry',
     movementType: 'foot',
-    movementRange: 3,
+    movementRange: 4,
   },
   cavalry: {
     id: 'cavalry',
