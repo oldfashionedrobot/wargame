@@ -34,9 +34,9 @@ describe('every map', () => {
       // whatever width it is given. Every map being the same shape is a design
       // decision about what the game is, so it is asserted rather than left as
       // a coincidence for the next board to quietly break.
-      it('is ten by ten', () => {
-        expect(width).toBe(10);
-        expect(height).toBe(10);
+      it('is twenty by twenty', () => {
+        expect(width).toBe(20);
+        expect(height).toBe(20);
       });
 
       it('deploys both armies onto the board', () => {

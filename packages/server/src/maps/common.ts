@@ -10,7 +10,7 @@ import type { GameMap } from './types';
  *
  * The flanking hills are 4 stars of cover apiece and shut to wheels outright,
  * so each is a strong position that no gun can ever hold -- which is the trade
- * the terrain table exists to make, stated twice on one board.
+ * the terrain table exists to make, stated four times on one board.
  */
 export const common: GameMap = {
   id: 'common',
@@ -18,15 +18,25 @@ export const common: GameMap = {
 
   // . plains   - road   = bridge   ~ river   ^ mountain   f forest
   rows: [
-    '.....-....',
-    '...f.-f...',
-    '.....-....',
-    '.....-....',
-    '..^..-..^.',
-    '..^..-..^.',
-    '.....-....',
-    '.....-....',
-    '...f.-f...',
-    '.....-....',
+    '.........--.........',
+    '.........--.........',
+    '...ff....--....ff...',
+    '.........--.........',
+    '.........--.........',
+    '..^^.....--.....^^..',
+    '..^^.....--.....^^..',
+    '.........--.........',
+    '.........--.........',
+    '.........--.........',
+    '.........--.........',
+    '.........--.........',
+    '.........--.........',
+    '..^^.....--.....^^..',
+    '..^^.....--.....^^..',
+    '.........--.........',
+    '.........--.........',
+    '...ff....--....ff...',
+    '.........--.........',
+    '.........--.........',
   ],
 };

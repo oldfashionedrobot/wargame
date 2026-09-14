@@ -8,6 +8,10 @@ import type { GameMap } from './types';
  * anywhere at a cost, cavalry and artillery cannot and must take the bridge, so
  * the crossing is the whole board. The road down the middle is the only ground
  * artillery moves over cheaply, and it runs straight through that crossing.
+ *
+ * ⚠️ Sixteen units funnelling through two tiles is the point rather than an
+ * oversight -- everything else here is arranged to make that one decision
+ * expensive to get wrong.
  */
 export const classic: GameMap = {
   id: 'classic',
@@ -15,15 +19,25 @@ export const classic: GameMap = {
 
   // . plains   - road   = bridge   ~ river   ^ mountain   f forest
   rows: [
-    '....--....',
-    '..f.--.f..',
-    '..f.--.f..',
-    '....--....',
-    '~~~~==~~~~',
-    '....--....',
-    '..^.--.^..',
-    '..^.--.^..',
-    '....--....',
-    '....--....',
+    '.........--.........',
+    '.........--.........',
+    '...ff....--....ff...',
+    '...ff....--....ff...',
+    '.........--.........',
+    '..f......--......f..',
+    '..f......--......f..',
+    '.........--.........',
+    '....f....--....f....',
+    '.........--.........',
+    '~~~~~~~~~==~~~~~~~~~',
+    '.........--.........',
+    '...^^....--....^^...',
+    '...^^....--....^^...',
+    '.........--.........',
+    '..^......--......^..',
+    '.........--.........',
+    '.....f...--...f.....',
+    '.........--.........',
+    '.........--.........',
   ],
 };

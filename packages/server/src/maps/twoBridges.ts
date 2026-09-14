@@ -8,6 +8,11 @@ import type { GameMap } from './types';
  * north to south by a road running east to west. A bridge takes its orientation
  * from its strictly-road neighbours, so a board carrying only one of these
  * would leave half of `bridgeTurns` unexercised by anything anyone plays.
+ *
+ * ⚠️ The north-south arm stops short of the top edge rather than reaching it.
+ * That is the deployment rule showing through: the rank lands on columns 6 to
+ * 13 of the first and last row and `wheels` cannot enter water, so a river may
+ * only leave the board where the army does not stand.
  */
 export const twoBridges: GameMap = {
   id: 'two-bridges',
@@ -15,15 +20,25 @@ export const twoBridges: GameMap = {
 
   // . plains   - road   = bridge   ~ river   ^ mountain   f forest
   rows: [
-    '..........',
-    '..-.......',
-    '..-..ff...',
-    '..-.......',
-    '~~=~~~....',
-    '..-..~....',
-    '..---=-...',
-    '..^..~....',
-    '..^..~....',
-    '..........',
+    '....-...............',
+    '....-...............',
+    '....-.....ff........',
+    '....-.....ff........',
+    '....-...............',
+    '..ff-...............',
+    '....-...............',
+    '~~~~=~~~~~~~~.......',
+    '....-.......~.......',
+    '....-.......~.......',
+    '....-.......~.......',
+    '....-.......~.......',
+    '....--------=--.....',
+    '............~.......',
+    '..^^........~.......',
+    '..^^........~.......',
+    '............~.......',
+    '............~.......',
+    '....................',
+    '....................',
   ],
 };

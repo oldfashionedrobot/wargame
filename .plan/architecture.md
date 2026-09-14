@@ -311,10 +311,17 @@ river may only leave the board through its east and west edges, or stop short of
 the north and south ones. `two-bridges` does the latter, and the river end it
 leaves behind is the visible cost of the rule.
 
-⚠️ **Every map is 10×10**, and that is a decision rather than a requirement:
-nothing in the code needs boards to agree on a size, and `createMatchState`
-centres the rank on whatever width it is handed. `maps.test.ts` asserts it, so
-it stays a constraint rather than becoming a coincidence.
+⚠️ **Every map is 20×20** — Advance Wars' own competitive size — and that is a
+decision rather than a requirement: nothing in the code needs boards to agree on
+a size, and `createMatchState` centres the rank on whatever width it is handed.
+`maps.test.ts` asserts it, so it stays a constraint rather than becoming a
+coincidence.
+
+⚠️ **Sixteen units on four hundred tiles is 4% occupancy**, against Advance
+Wars' own boards which fill that space with properties to capture and bases
+producing units all game. There is no production here and the rank is fixed, so
+if a board plays empty the dial to reach for is **army size**, not another
+resize.
 
 | | |
 |---|---|
@@ -323,7 +330,12 @@ it stays a constraint rather than becoming a coincidence.
 | `two-bridges` | One river bent through a right angle with a crossing on each arm. ⚠️ Carries **both deck orientations**, which nothing else does: a board with only one leaves half of `bridgeTurns` unexercised |
 | `lakeland` | A lake ringing an island, plus a pond. The island is the sharpest thing the cost table can say — water is the one terrain only `foot` may enter, so infantry can hold ground the other two cannot reach at any price |
 | `meadow` | Open field, a **lateral** road straight across and one rise in the middle. A road across rather than along helps you redeploy along your own line more than it helps you advance |
-| `common` | Open field with the opposite road — up the middle, the fast way *at* the enemy — and a pair of hills on each flank: 4 stars of cover apiece and shut to wheels, so a strong position no gun can ever hold |
+| `common` | Open field with the opposite road — up the middle, the fast way *at* the enemy — and hills on both flanks: 4 stars of cover apiece and shut to wheels, so a strong position no gun can ever hold |
+
+⚠️ **A river may only leave the board where the army does not stand.** The rank
+lands on columns 6–13 of the first and last row and `wheels` cannot enter water
+or rock, so neither may be drawn there. `two-bridges` is where this shows: its
+north–south arm stops one row short of the edge rather than reaching it.
 
 `StartScreen` picks between them and `POST /api/matches` carries the choice;
 omitting it takes `DEFAULT_MAP_ID`.

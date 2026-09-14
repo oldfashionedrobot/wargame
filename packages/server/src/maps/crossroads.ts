@@ -6,8 +6,8 @@ import type { GameMap } from './types';
  * what it costs.
  *
  * Which makes this the board artillery actually likes. A gun pays 2 to cross
- * plains and 1 on a road, so the ladder is worth going out of your way for --
- * and the two enclosed blocks are what stop that being a straight line.
+ * plains and 1 on a road, so the rungs are worth going out of your way for --
+ * and the blocks they enclose are what stop that being a straight line.
  */
 export const crossroads: GameMap = {
   id: 'crossroads',
@@ -15,15 +15,25 @@ export const crossroads: GameMap = {
 
   // . plains   - road   = bridge   ~ river   ^ mountain   f forest
   rows: [
-    '....--....',
-    '..f.--.f..',
-    '..f.--.f..',
-    '----------',
-    '....--....',
-    '....--....',
-    '----------',
-    '..f.--.f..',
-    '..f.--.f..',
-    '....--....',
+    '.........--.........',
+    '.........--.........',
+    '...ff....--....ff...',
+    '.........--.........',
+    '--------------------',
+    '.........--.........',
+    '.........--.........',
+    '..f......--......f..',
+    '.........--.........',
+    '--------------------',
+    '.........--.........',
+    '.........--.........',
+    '......f..--..f......',
+    '.........--.........',
+    '--------------------',
+    '.........--.........',
+    '...ff....--....ff...',
+    '.........--.........',
+    '.........--.........',
+    '.........--.........',
   ],
 };
