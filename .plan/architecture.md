@@ -125,6 +125,12 @@ the per-command validator. `resolveAction` accepts nothing but an `Action`.
 1. **The database is the only mutable state.** No module-level mutable state
    exists in `server/`; every request reads, computes, and writes back.
 2. **`shared/` is pure** — no I/O, no RNG, no Babylon, no React, no `Date.now()`.
+   ⚠️ **And the compiler enforces it, via the client.** `shared` has no program
+   of its own; its source is checked inside the two that import it. `server`'s
+   has `types: ["bun"]` and would happily accept `process.env` in the rulebook —
+   but `client`'s has no node or bun globals, so the same line fails there and
+   the build exits non-zero. Purity survives because one of the two programs
+   checking this source has no operating system. Verified by trying it.
 3. **`GameServer.submit()` is async.**
 4. **`GameState` is JSON-serializable** — no `Map`, `Set`, class instance,
    `Date`, or function is reachable from it.
