@@ -71,8 +71,25 @@ explicit matrix at eighteen.
 ```ts
 BASE_DAMAGE:      Record<UnitTypeId, Record<UnitTypeId, number>>           // 9
 CHARGE_THRESHOLD: Partial<Record<UnitTypeId, Record<UnitTypeId, number>>>  // 6
-FLANK_BONUS, REAR_BONUS                                                    // 2
+FLANK_MULTIPLIER, REAR_MULTIPLIER                                          // 2
 ```
+
+⚠️ **The directional terms multiply the threshold; they do not add to it.**
+Additive constants stop meaning anything the moment the table underneath them is
+retuned — halve every threshold and a flat `+20` goes from a nudge to an
+override. A multiplier is scale-free, so the base table can move without
+dragging these two behind it. They also read as what they are: a rear charge is
+*twice as likely to break them*, not *twenty more points of something*.
+
+⚠️ The effective threshold **floors**, like every other step in the formula, so
+`25 × 1.5` is 37 rather than 37.5.
+
+⚠️ A multiplied threshold can exceed 100, and then the charge is automatic
+against any health at all. That is deliberate and it is the mechanic's signature
+moment — cavalry into the rear of a battery — but it is also why a base number
+wants checking *at all three multipliers* rather than head-on alone. A front
+value that looks reasonable can saturate at the flank and make the rear
+distinction dead weight.
 
 Nested `Record`s give the same compile-error-on-incomplete property `TERRAIN`
 and `UNIT_TYPES` already have: add a unit type and every incomplete row stops
@@ -261,10 +278,14 @@ A distinct attack type, chosen instead of firing on a given turn, consuming `has
 Requires the attacker to be able to enter the target's tile — reads the terrain table, so if the target's terrain is impassable to the attacker's movement type, charge isn't available.
 
 ```
-margin   = targetCurrentHP% − matchupThreshold%
-luckRoll = random(0, luckMax)
-success  = margin <= luckRoll
+threshold = floor(matchupThreshold% × directionalMultiplier)
+margin    = targetCurrentHP% − threshold
+luckRoll  = random(0, luckMax)
+success   = margin <= luckRoll
 ```
+
+`directionalMultiplier` is 1 head-on, `FLANK_MULTIPLIER` from the side, and
+`REAR_MULTIPLIER` from behind.
 
 No clamp needed — it falls out of `luckMax` being bounded. `margin ≤ 0` always succeeds; a small positive margin needs a good roll; a margin above `luckMax` is impossible.
 
@@ -276,9 +297,50 @@ Fire and charge are **different resolutions, dispatched once** on an `attackKind
 ### Tuning
 
 **Untuned**, and there are **seventeen numbers** of them: the nine of
-`BASE_DAMAGE`, the six of `CHARGE_THRESHOLD`, and `FLANK_BONUS` and
-`REAR_BONUS`. Plus `luckMax` and the failure-damage scaling function, which are
-functions rather than table entries.
+`BASE_DAMAGE`, the six of `CHARGE_THRESHOLD`, and `FLANK_MULTIPLIER` and
+`REAR_MULTIPLIER`. Plus `luckMax` and the failure-damage scaling function, which
+are functions rather than table entries.
+
+#### The first cut
+
+⚠️ **Written down to be argued with, not because they are right.** Nothing has
+been played. They exist so the harness has something to print and so tuning
+starts from a position rather than a blank table.
+
+`BASE_DAMAGE`, attacker down the side, as a percentage of a full-health target:
+
+| | infantry | cavalry | artillery |
+|---|---|---|---|
+| **infantry** | 55 | 60 | 70 |
+| **cavalry** | 40 | 45 | 55 |
+| **artillery** | 90 | 75 | 60 |
+
+`infantry→infantry 55` is AW's literal value, kept as the anchor the rest are
+judged against. ⚠️ **Cavalry is mediocre in every column deliberately** —
+carbines from horseback — because its identity is in the charge table, and a
+cavalry that also shoots well has no reason to close.
+
+`CHARGE_THRESHOLD`, charger down the side. Target HP at or below this succeeds
+without luck; artillery has no row:
+
+| | infantry | cavalry | artillery |
+|---|---|---|---|
+| **cavalry** | 25 | 25 | 60 |
+| **infantry** | 20 | 15 | 45 |
+
+`FLANK_MULTIPLIER 1.5`, `REAR_MULTIPLIER 2`, `luckMax 9` — the last matching AW
+exactly, since `baseDamage` is a percentage in both schemes.
+
+⚠️ **The triangle closes in the charge table, not the damage one.** Cavalry
+loses the shooting exchange with artillery (55 out against 75 back), so it has
+to close; `cavalry→artillery 60` then runs 60 / 90 / automatic across head-on,
+flank and rear, which keeps all three directions meaningful. Against infantry it
+runs 25 / 37 / 50 — a frontal charge needs a nearly-dead target, which is what
+"infantry beats cavalry by not breaking" has to mean numerically.
+
+⚠️ `infantry→cavalry 15` is the lowest number in either table on purpose:
+charging cavalry on foot is the one attack that should almost never be the right
+call, and it is cheaper to say so with a number than with a rule forbidding it.
 
 **One of those has no reference behaviour at all** — charge, which facing is now part of rather than a second mechanic beside. ⚠️ That is what binding them bought: there is one thing to tune here, not two that interact. Still **in sequence, never together**: the matchup table against AW's numbers first, then charge head-on, then the directional adjustment. Each stage leaves exactly one unknown to move against an observation.
 
@@ -381,7 +443,15 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 - **9e** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. It grows out of 5b's `snapUnits` and runs where that runs: inside the hook's queue, after the batch's animation, before the commit. Assumes 5b landed — without the gated commit, reconciling meshes against a state whose events are still animating is exactly the ordering bug 5b retired.
 - **9f** `MoveCommand` gains an **optional** attack — path, facing, and a target, atomic. ⚠️ Called `UnitActionCommand` here for years, which oversold it: an optional field is *additive*, so the wire stays compatible, `parseCommand` keeps its existing branch and no stored row changes meaning. Whether the rename earns its churn is a real question and the answer is probably no. Simplest resolution: `computeDamage` from 9c, a target inside the range 9d gave the attacker, no counter yet and no charge. Damage and death events. ⚠️ **Facing is not read here and `computeDamage` takes no direction** — that moved to 10a with charge, which is the only thing that reads it. The command carries `facing` as it already does, and nothing does anything with it. Touches **four** places, not the three this used to claim: `parseCommand` for the wire shape, `validateMove`'s successor for legality, `resolveMove`'s for the events — and `moveCommandFor` in `interaction/selection.ts`, which is what actually builds the command on the client and changes shape with it.
 
-  ⚠️ **Rolls are a third argument to `resolveAction`, not a field on `Action`.** The doc has said both. They cannot live on `Action`: `validateCommand` is its only constructor and has no business generating or receiving a roll. And it is a *sequence* rather than a number — an attack and its counter need one each.
+  ⚠️ **Rolls are a third argument to `resolveAction`, not a field on `Action`.** The doc has said both. They cannot live on `Action`: `validateCommand` is its only constructor and has no business generating or receiving a roll.
+
+  ⚠️ **A fixed-length tuple, not an array** — `readonly [number, number]`, the attack then its counter, widening to three in 10a when a failed charge backfires. An array invites `rolls[2]`, which is `undefined`, which is `NaN` damage: silent, and the same shape of failure as a stored unit with no `health`. A tuple makes it a compile error instead of a comment asking people to be careful.
+
+  ⚠️ **One signature, and `endTurn` ignores its rolls.** The alternative — only the attack resolver taking them, with the dispatcher pulling the argument apart — spreads the decision across two places to spare one branch an unused parameter. Taken deliberately; it is a wart either way and this is the smaller one.
+
+  **`Math.random()` on the server is sufficient, and that is invariant 9 paying off.** Events carry *resulting* values rather than inputs, so a replay reads what happened and never re-rolls. There is nothing to reproduce: no seed, no PRNG inside `shared/`, no determinism machinery. Most games need all three.
+
+  ⚠️ **But record the rolls, or the inputs are unrecoverable.** `resolutions` stores the action and the events, and the events give resulting HP — so damage is derivable but cannot be decomposed into base, terrain and luck. A `rolls` column on that table closes it: with the pre-state, the action and the rolls, every number that produced the outcome can be recomputed. It goes on the row, **never on `Action`**, for the reason above. ⚠️ This is the repo's second migration, after `map_id`.
 
   ⚠️ **Invariant 9 constrains the events.** `unitDamaged { unitId, health }` carries the *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client can compute from the state preceding the event. ⚠️ Named for the effect rather than the act, because **three different things reduce HP**: the attack, the counter, and a failed charge's backfire — and the last two land on the *attacker*. `unitAttacked` implies a direction the event does not have. ⚠️ **`applyEvents.ts` has not heard about the rename.** Its doc comment is the canonical statement of invariant 9 — the place somebody reads to learn the rule — and it still says `unitAttacked` must carry the resulting HP. Drift this doc created, and it is fixed here or not at all.
 
