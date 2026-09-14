@@ -410,53 +410,27 @@ a number needs the *before* health, which needs local folding — the piece 9f
 deliberately parks. The ring tweens to an absolute value the event already
 carries and says the same thing for none of that.
 
-#### The cutaway — the thing this is all building toward
+#### The cutaway — deferred to 10b
 
-AW's battle view is the target: a scene that takes the screen, shows both units
-as **squads of figures scaled to health**, plays the exchange, and hands back.
-It is the reason the event carries what it carries, so it is specified here even
-though it is far from built.
+AW's battle view is the target, and **it is designed at 10b rather than here**,
+because two of its four scenes need charge to exist. What matters now is only
+what phase 9 must not foreclose:
 
-**What it plays, per outcome:**
+⚠️ **Nothing does.** `playEvents` returns a promise the hook awaits, so a battle
+scene is a promise that takes longer — no signature change, no new callback, no
+change to how state commits. That is the whole reason the seam was worth
+settling before the feature.
 
-| | the scene |
-|---|---|
-| **volley, unanswered** | attacker's squad fires, defender's figures fall |
-| **volley, answered** | then the defender fires back and the attacker loses figures — one scene, two beats, which is why the exchange is **one event** |
-| **charge, broke through** | the attacker rides in, the defender's line collapses entirely |
-| **charge, repelled** | the attacker rides in, the line **holds**, and the attacker is thrown back losing figures |
+Two things it will need that 9 does not build: the **before** health for both
+units (the route is chosen — fold locally inside the queue task, never change
+the callback signature), and a decision about **where it lives**, a second
+Babylon scene or a DOM layer. Both stay open safely, because the seam is the
+same either way.
 
-⚠️ **The two charge outcomes are the whole reason `kind` and `answered` exist.**
-A repelled charge and a countered volley end in the same arithmetic — the
-attacker lost health — and look nothing alike. Without both fields the client
-would have to guess which animation it is, and `answered` is what tells it the
-line held rather than nothing happening.
+⚠️ **The event already carries what it will need** — `kind` and `answered` exist
+precisely so a repelled charge and a countered volley can be told apart, since
+they end in identical arithmetic and look nothing alike.
 
-⚠️ **Nothing here forecloses it**, which is worth knowing before designing around
-a constraint that does not exist: `playEvents` returns a promise the hook awaits,
-so a modal battle scene is just a promise that takes longer. No signature
-changes, no new callbacks, no change to how state commits.
-
-Two things it will need that do not exist yet:
-
-- the **before** health for both units, to animate figures falling rather than
-  appearing at a new count. The route is already chosen — fold locally inside
-  the queue task, never change the callback signature.
-- **one model per side**, firing. ⚠️ Squads of figures scaled to health —
-  `ceil(health / 20)` instances of a mesh we already own — were considered and
-  deferred: the health bar in the cutaway already carries that information, and a
-  single model is the same scene with less to build. The upgrade stays cheap
-  whenever it is wanted, since models are instanced per unit already and it needs
-  **no new art**.
-
-⚠️ **Where it lives is undecided and does not need deciding yet** — a second
-Babylon scene drawn over the board, or a DOM layer. The seam is the same either
-way, which is the point of specifying the seam first.
-
-⚠️ **One accepted limit:** a snapped batch (over the tile threshold, or a hidden
-tab) skips `playEvents` entirely, so deaths happen instantly with no animation.
-Correct — snapping is snapping — but it means the game has to stay readable
-without the animation, which is another argument for the ring over an effect.
 
 ### Range — no categories at all
 
@@ -816,11 +790,19 @@ Selection doesn't need it: `canSelectUnit` is a game fact ("may this unit act"),
 
 ⚠️ **This is where everything original lands**, facing and charge together, because facing is read by charge and by nothing else. Phase 9 is Advance Wars and checkable against it; this phase is not checkable against anything and has to be played.
 
-One mechanic layered onto the pipeline **phase 9** proved — ⚠️ down from four, because ranged and counter-attacks moved into phase 9 where they belong. What is left is the half that cannot be checked against anything:
+Two steps on the pipeline **phase 9** proved: the mechanic that cannot be checked against anything, and the view that needs it to exist before it can be designed.
 
 - **10a** Charge, `CHARGE_THRESHOLD`, and its own tuning pass. ⚠️ **Invariant 9 constrains its events**: a successful charge emits `unitDied` **plus** `unitMoved`, two independently-applicable events, not one compound event carrying both effects. (Moved here from 9f, which has no charge in it.) It gets its own step because it is the riskiest mechanic in the game: **the one part of combat with no reference behaviour to check against**, an untuned threshold per matchup, an untuned failure-damage function, and a success case that emits two events and displaces a unit. Everything else in phases 9–10 can be checked against AW; this can only be played.
 
   ⚠️ **Tune it head-on first, then add the rear-charge threshold reduction.** Facing is the other mechanic with no AW precedent, and a rear charge puts both unknowns inside one expression — every observation would be adjusting two dials at once. Front-on charge until it feels right, directional term second.
+
+- **10b** ⬜ **The combat cutaway.** A view that takes over, shows both units, plays the exchange, and hands back — AW's battle screen. ⚠️ **Here rather than in phase 9 because two of its four scenes are charge**: volley-unanswered, volley-answered, charge-broke-through and charge-repelled. Building it earlier means building half of it and extending it, and the half that is missing is the half with no reference behaviour.
+
+  Phase 9 is playable without it: the board ring is the feedback, and it is the *persistent* half — "how hurt is that battery" while you are deciding — which a transient panel cannot replace. The cutaway is the drama, not the information.
+
+  ⚠️ **Start small and DOM.** Both units, both health bars, the numbers, a second and a half, gone. It reuses the over-canvas anchoring 8.999 built, needs no second Babylon scene, no camera work and no new art. A 3D scene with firing animations is an upgrade, not the first version. ⚠️ Squads of figures scaled to health were considered and deferred with it — the bar carries that information, and models are instanced per unit already, so it stays cheap whenever it is wanted.
+
+  **What it needs that does not exist:** the *before* health for both units. For a single-action batch that is just the replica, since `unitMoved` does not touch health; folding is only required for multi-action catch-up, which is exactly where the cutaway should be skipped anyway.
 
 The **Open questions** entry on counter-attacks for `min > 1` units belongs to 9g and moved into phase 9 with it — it was decided when indirect fire and immobility were the same thing, and 9d separates them.
 
