@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## The spec comes first
 
-Two living documents, kept accurate in the same commit as the code they
+Three living documents, kept accurate in the same commit as the code they
 describe:
 
 - **`.plan/architecture.md`** — what the code does *now*. No rationale, no
@@ -12,10 +12,12 @@ describe:
   structural, and update it with the change.
 - **`.plan/roadmap.md`** — what is designed but unbuilt: combat, facing,
   remaining phases, accepted limits. Nothing in it describes current behaviour.
+- **`.plan/sidequests.md`** — wanted work that is not a phase and has no place
+  in the ordering. Same rules as the roadmap in every other respect.
 
-When something ships, it moves from the roadmap into the architecture doc and
-is deleted from the roadmap. Neither file keeps a changelog; `git log` is the
-history.
+When something ships, it moves out of the roadmap or sidequests into the
+architecture doc and is deleted from where it came. None of the three keeps a
+changelog; `git log` is the history.
 
 ## Commands
 
