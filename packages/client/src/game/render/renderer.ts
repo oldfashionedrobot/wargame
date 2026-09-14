@@ -14,6 +14,7 @@ import type { Coordinate, Facing, GameEvent, GameState } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
 import { createTileHighlight, setHighlightTile } from './highlight';
+import { createRouteArrow } from './routeArrow';
 import { createTileOverlay } from './tileOverlay';
 import { screenToTile } from './picking';
 import { createTerrainMesh } from './terrain';
@@ -415,7 +416,7 @@ export async function createGameRenderer(
     gridWidth,
     gridHeight,
   });
-  const routeOverlay = createTileOverlay(scene, {
+  const routeArrow = createRouteArrow(scene, {
     name: 'movement-route',
     color: ROUTE_COLOR,
     alpha: ROUTE_ALPHA,
@@ -584,7 +585,7 @@ export async function createGameRenderer(
       rangeOverlay.setTiles(tiles);
     },
     setRoute(path) {
-      routeOverlay.setTiles(path);
+      routeArrow.setPath(path);
     },
     anchorTo(element, coordinate) {
       anchorElement = element;

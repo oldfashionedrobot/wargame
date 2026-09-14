@@ -916,6 +916,24 @@ is off.
   meant it existed only under a pointer and a touchscreen never saw one. Showing
   a route needs a *point* input distinct from *select*; touch is the only device
   without one, so the second click supplies it and the route is state now.
+- **The pinned route is an arrow, not a tint** — `routeArrow.ts`, a sibling of
+  `tileOverlay.ts` that merges per-tile quads into one mesh the same way and
+  adds UVs. A tint says *these tiles*; an arrow says *this way, ending here*.
+  Four shapes cover every case, because **a path never branches** so no tile
+  connects to three neighbours: tail, straight, corner, head. ⚠️ Orientation is
+  a **cyclic shift of the four UV corners**, not a per-tile transform, so every
+  quad stays axis-aligned and there is still one draw call. The ring order
+  `N E S W` is load-bearing — a rotation is `+1` around it, which is what makes
+  orientation arithmetic instead of a lookup table, and the four rotations of a
+  canonical `{SOUTH, EAST}` bend cover all four bends exactly.
+  ⚠️ **A one-tile path draws nothing**: that is standing still, which Advance
+  Wars also draws nothing for, so the case that looks like it needs a fifth
+  shape needs none. The atlas is strokes drawn into a `DynamicTexture` with
+  canvas 2D at startup — no asset file — in white, with the colour on the
+  material's `emissiveColor` so it stays one tunable constant. ⚠️ Babylon's
+  `ICanvasRenderingContext` has no `lineCap`; the default `butt` is wanted
+  anyway, since a flush end is what lets one tile's segment meet the next
+  without a seam.
 - Units are glTF models from `public/models/`, one per unit type, loaded once
   into `AssetContainer`s and instantiated per unit. Each instance is parented to
   a `TransformNode` of ours: the loader's own `__root__` carries the
