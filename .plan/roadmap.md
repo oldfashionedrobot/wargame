@@ -303,6 +303,97 @@ The sharp edge of invariant 8, and AW shows one before you commit. The client ru
 
 **Preview the formula, never the dice** still holds and is the reason this is safe: the client is told the shape of the outcome, never which of the ten it will be. Showing a range is strictly more honest than showing a single number the server was always going to miss.
 
+### Combat resolution — what the client is told
+
+**One event per battle**, not one per effect:
+
+```ts
+{ type: 'battleResolved',
+  kind: 'volley' | 'charge',
+  attacker: { unitId, health },   // resulting
+  defender: { unitId, health } }  // resulting
+```
+
+⚠️ **Split events when the parts are independently meaningful; keep them
+together when they are one fact.** A charge's displacement is a separate
+`unitMoved` because the move is a fact on its own with an animation already. But
+a counter-attack exists *only because* the attack happened — it is not a second
+fact, it is half of one. Splitting it would make the client infer which damage
+events belong to which exchange, and the only signal available is position in a
+batch, which a multi-action catch-up breaks.
+
+It survives invariant 9 intact: resulting healths are absolute, applying it
+twice is a no-op, and it makes sense against the state before it. The invariant
+forbids **deltas** and **interdependence**, not cohesion.
+
+⚠️ **No `unitDied`, and no `died` flag.** `health: 0` is the marker, and a flag
+beside the number could disagree with it. The rule is stated once — *a unit at
+zero health leaves the board* — in the reducer. ⚠️ **No `unitAttacked` either**:
+events are named for the effect rather than the act, which is why `unitAttacked`
+became `unitDamaged` and then dissolved into this. `unitMoved` is the resolution
+of a move; this is the resolution of an attack.
+
+**What it carries, and why that is enough.** The *record* needs only resulting
+healths: `resolutions` stores the **action** beside the events, so base damage,
+terrain and the expected-at-zero-roll all recompute from the action plus the
+pre-state — which makes the **roll** recoverable as `actual − expected`, and a
+counter identifiable as *the attacker's health dropped on its own turn*.
+
+⚠️ **But the client is a second consumer with less information.** `EventsResponse`
+is `{ seq, events, state }` — it never sees the action. So `kind` earns its place:
+a volley and a charge look nothing alike, and the kind lives only in the action.
+
+#### How it is shown
+
+| event | the client plays |
+|---|---|
+| `unitMoved` | walks the mesh *(built)* |
+| `battleResolved` | extinguishes ring segments down to the new health, awaits |
+
+⚠️ **The mesh is guaranteed alive while a death animates.** Removal happens in
+`syncUnits`, which runs *after* `playEvents` resolves — so a death has somewhere
+to play without anything being arranged for it.
+
+**The board shows a ring, not a number or a bar.** Ten segments at the unit's
+base, hidden at full health, extinguishing rather than dimming — bands are
+discrete, so a segment going dark is honest where a fade would imply a
+continuum. ⚠️ Ten segments for ten bands means **the display cannot promise
+precision the rules do not have**, which is the question *HP representation* left
+open. AW shows a number on the board and keeps the bar for the cutaway; this is
+the same split with different furniture. An exact figure belongs to a
+selected-unit info panel, later.
+
+⚠️ It is **parented to the unit node**, so it rides the walk animation for free —
+and therefore turns with the unit. Accepted: a ring is rotationally symmetric,
+so only the segment boundaries move. Fixing it properly means splitting position
+and rotation onto two nodes, which rewrites `createUnitMesh`,
+`animateUnitAlongPath` and `getUnitFacing`'s exactness argument. Not worth it
+yet.
+
+⚠️ **No floating damage numbers.** They look like the cheap option and are not:
+a number needs the *before* health, which needs local folding — the piece 9f
+deliberately parks. The ring tweens to an absolute value the event already
+carries and says the same thing for none of that.
+
+#### The cutaway, eventually
+
+AW's battle view — both units as squads of figures scaled to health, firing
+volleys — is the target. ⚠️ **Nothing here forecloses it**, which is worth
+knowing before designing around a constraint that does not exist:
+`playEvents` returns a promise the hook awaits, so a modal battle scene is just
+a promise that takes longer. No signature changes.
+
+Two things it will need that do not exist: the **before** health (the folding
+route is already chosen — fold locally inside the queue task, never change the
+callback signature), and **squad figures**, which are cheaper than they look
+since models are already instanced per unit — `ceil(health / 20)` copies of a
+mesh we own, and no new art.
+
+⚠️ **One accepted limit:** a snapped batch (over the tile threshold, or a hidden
+tab) skips `playEvents` entirely, so deaths happen instantly with no animation.
+Correct — snapping is snapping — but it means the game has to stay readable
+without the animation, which is another argument for the ring over an effect.
+
 ### Range — no categories at all
 
 ```ts
@@ -323,18 +414,69 @@ Requires the attacker to be able to enter the target's tile — reads the terrai
 
 ```
 threshold = floor(matchupThreshold% × directionalMultiplier)
-margin    = targetCurrentHP% − threshold
-luckRoll  = random(0, luckMax)
-success   = margin <= luckRoll
+margin    = max(0, targetCurrentHP% − threshold)     // raw health, not banded
+chance    = max(1, round(100 × 0.5 ^ (margin / CHARGE_HALF_LIFE)))
+success   = roll < chance                            // roll is 0..99
 ```
 
+⚠️ **Exponential decay, and the shape is the point.** Every `CHARGE_HALF_LIFE`
+points of health above the threshold halves the odds — one dial with a sentence
+you can say out loud. At or below the threshold it is certain; above it the
+curve falls away but **never reaches zero**, so cavalry into a full-health line
+is a long shot rather than a wall. At a half-life of 15 that reads 3% head-on,
+5% from the flank, 10% from the rear.
+
+⚠️ **The 1% floor is stated rather than emergent.** Exponential decay never
+mathematically hits zero, but integer percentages do, and a silent 0% would
+contradict the whole design.
+
+⚠️ **An earlier draft compared `margin` against the damage luck roll**, which
+made the entire uncertain window nine health wide — guaranteed at 25, impossible
+above 34, and a cliff between. It also rendered the directional multipliers
+nearly inert, since they mostly converted *impossible* into *impossible*. The
+curve is what lets facing change a decision instead of a rounding.
+
+⚠️ **Raw health, deliberately not banded** — and this was measured, not assumed.
+Damage bands because raw health broke it: a unit at 1% dealt zero. Charge has no
+such failure, so banding here buys only cosmetic agreement with the board ring
+and costs two things for it. Fully banded, any multiplier under ×1.4 vanishes
+outright — `band(25)` and `band(28)` are both 3, so a ×1.15 flank bonus becomes
+*literally identical* to head-on at every health. Banding the target but not the
+threshold avoids that but makes the table lie: `ceil` rounds the target up, so a
+unit sitting exactly on a stated threshold of 25 shows **79%**. Raw health hits
+100% at exactly 25 and moves on every point of damage.
+
 `directionalMultiplier` is 1 head-on, `FLANK_MULTIPLIER` from the side, and
-`REAR_MULTIPLIER` from behind.
+`REAR_MULTIPLIER` from behind. ⚠️ **They have to be worth manoeuvring for.** At
+×1.15 the flank moved 20% to 23% — inside the noise, a rule to learn that never
+changes a decision. ×1.5 and ×2 move the curve enough to be a reason to ride
+around someone.
 
-No clamp needed — it falls out of `luckMax` being bounded. `margin ≤ 0` always succeeds; a small positive margin needs a good roll; a margin above `luckMax` is impossible.
+- **Success**: the target takes damage equal to its remaining health, and the
+  attacker displaces onto the vacated tile. ⚠️ Expressed as *damage to zero*
+  rather than "it dies", which is what lets a charge be an ordinary
+  `battleResolved` with no special case in the reducer.
+- **Failure**: the attacker takes `CHARGE_REPEL` scaled by how badly the charge
+  missed, and does not move.
 
-- **Success**: target dies, attacker displaces onto the vacated tile.
-- **Failure**: attacker takes bonus damage scaled by `margin`, no position change.
+⚠️ **A charge does not consult the counter rule at all.** That rule — *the
+attacker is inside the defender's range* — is a question about **shooting**, and
+a charge is not shooting. Applying it here would make charging **artillery free**,
+since `min: 2` means a battery cannot answer at contact — the one unit cavalry
+exists to punish would be the only one unable to punish back, which inverts the
+triangle. The repel damage **is** the defence, and every defender has it: the
+battery firing canister at point-blank is the mechanic, not an exception to it.
+
+⚠️ **`CHARGE_REPEL` is one constant, not a table.** Reusing the defender's own
+`BASE_DAMAGE` was considered and refused: artillery's 60 was tuned as *ranged*
+fire, and borrowing it at contact asserts a battery is as dangerous close as far
+— the opposite of what `min: 2` exists to say. One number also keeps the tuning
+honest, since charge already brings six thresholds, two multipliers and a
+half-life, and the roadmap's rule is one unknown at a time. If artillery later
+needs to repel harder than infantry, widening one constant into three is small.
+⚠️ **Undecided: which direction the scaling runs.** "Barely failed, barely hurt"
+rewards a near-miss; "wilder charge, worse mauling" punishes recklessness. They
+feel very different and no number can tell you which you want.
 
 Fire and charge are **different resolutions, dispatched once** on an `attackKind` discriminant — fire produces damage, charge produces death-plus-displacement or a backfire. Two self-contained functions, not conditionals threaded through one.
 
@@ -532,13 +674,15 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
   ⚠️ **Rolls are a third argument to `resolveAction`, not a field on `Action`.** The doc has said both. They cannot live on `Action`: `validateCommand` is its only constructor and has no business generating or receiving a roll.
 
-  ⚠️ **A fixed-length tuple, not an array** — `readonly [number, number]`, the attack then its counter, widening to three in 10a when a failed charge backfires. An array invites `rolls[2]`, which is `undefined`, which is `NaN` damage: silent, and the same shape of failure as a stored unit with no `health`. A tuple makes it a compile error instead of a comment asking people to be careful.
+  ⚠️ **One roll here, not a sequence.** 9f has no counter and no charge, so it needs exactly one number — building the second slot early is the thing this phase condemns elsewhere. When 9g adds the counter it becomes a **named object**, `{ attack, counter }`, widening to `{ attack, counter, charge }` in 10a. Named rather than a tuple: `rolls[0]` is positional and anonymous where `rolls.attack` says what it is, and 10a's third draw extends cleanly instead of adding a nameless slot. Either way an *array* is refused — `rolls[2]` is `undefined`, which is `NaN` damage, the same silent shape as a stored unit with no `health`.
+
+  ⚠️ **The charge roll is a different kind of number.** Damage luck is `0..LUCK_MAX` added to a result; the charge roll is `0..99` compared against a percentage. They share a bag and nothing else.
 
   ⚠️ **One signature, and `endTurn` ignores its rolls.** The alternative — only the attack resolver taking them, with the dispatcher pulling the argument apart — spreads the decision across two places to spare one branch an unused parameter. Taken deliberately; it is a wart either way and this is the smaller one.
 
   **`Math.random()` on the server is sufficient, and that is invariant 9 paying off.** Events carry *resulting* values rather than inputs, so a replay reads what happened and never re-rolls. There is nothing to reproduce: no seed, no PRNG inside `shared/`, no determinism machinery. Most games need all three.
 
-  ⚠️ **But record the rolls, or the inputs are unrecoverable.** `resolutions` stores the action and the events, and the events give resulting HP — so damage is derivable but cannot be decomposed into base, terrain and luck. A `rolls` column on that table closes it: with the pre-state, the action and the rolls, every number that produced the outcome can be recomputed. It goes on the row, **never on `Action`**, for the reason above. ⚠️ This is the repo's second migration, after `map_id`.
+  ⚠️ **No `rolls` column, and the reason is a decision already made.** An earlier draft wanted one so an outcome could be decomposed into base, terrain and luck. It is unnecessary: luck is added **last and flat**, so `roll = actualDamage − computeDamage(preState, attacker, defender, 0)`, and the pre-state replays from the log while the damage comes from the event. **The log already contains the roll.** That removes a schema change, a write path, and a migration — which would have been the *third*, not the second: `0000_silent_prodigy` and `0001_far_roulette` both exist.
 
   ⚠️ **Invariant 9 constrains the events.** `unitDamaged { unitId, health }` carries the *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client can compute from the state preceding the event. ⚠️ Named for the effect rather than the act, because **three different things reduce HP**: the attack, the counter, and a failed charge's backfire — and the last two land on the *attacker*. `unitAttacked` implies a direction the event does not have. ⚠️ **`applyEvents.ts` has not heard about the rename.** Its doc comment is the canonical statement of invariant 9 — the place somebody reads to learn the rule — and it still says `unitAttacked` must carry the resulting HP. Drift this doc created, and it is fixed here or not at all.
 
@@ -569,7 +713,9 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
   ⚠️ **The facing marker moved to phase 10** — nothing reads facing until charge does, so a ground chevron here would be drawing a fact that changes nothing. 9i is the health bar and only that.
 
-  ⚠️ **But banding gave this step a question it did not have before.** The formula reads `ceil(health / 10)`, so 91 and 100 fight identically — and a bar drawn from raw health shows two visibly different states that behave the same. That is the *"permanently explaining why a 9 HP unit died to 15 damage"* problem the **HP representation** section rejected AW's 1–10 display to avoid, reintroduced through the back door by adopting AW's arithmetic. Three answers, none obviously right: draw the raw number and accept that the bar over-promises precision; draw ten segments so the bar shows the band the formula actually reads; or draw raw with the band marked. **Decide it here**, because whichever is chosen is what players will reason about, and the preview range from *Damage preview* has to agree with it.
+  ✅ **Settled: a ten-segment ring at the unit's base** — see *Combat resolution* above for the full shape and why a bar or a number was refused. Ten segments for ten bands is what stops the display over-promising precision the formula does not have.
+
+  ⚠️ **And this step moves ahead of the combat command.** It is scheduled after 9f here for historical reasons and that ordering is wrong: the ring *is* the damage animation, so shipping combat first means shipping it with no feedback at all — health changing invisibly, units vanishing mid-frame, and the database as the only way to tell an attack happened. It is also what makes 9f checkable in a browser, which is the renderer's only check.
 - **9j** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
 
 Without 9j the board reaches a state where one side has nothing left and End Turn keeps working forever.
