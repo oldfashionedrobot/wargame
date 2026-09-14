@@ -186,11 +186,10 @@ second — at range 3 it shows one option and a confirm, which is still the numb
 you wanted before committing.
 
 ⚠️ **No hover affordances, because touch has no hover.** The preview cannot ride
-on pointer-over or the game is uninformative on a tablet. That is a constraint on
-this design and a debt against an existing one: the **route preview is
-hover-driven today** (`POINTERMOVE` calls `pathTo` inside the renderer, and React
-never hears about it), so on touch it simply never appears. Not created by this
-work, but named by it.
+on pointer-over or the game is uninformative on a tablet. Naming that constraint
+is what turned up the **route preview**, which was hover-driven and therefore
+absent on touch — 8.999 pays that off and builds this pane in the process, so
+what arrives here is the pane plus numbers rather than the pane.
 
 ⚠️ **The camera freezes while the panel is open.** The anchor projects once and
 nothing tracks anything, which avoids per-frame React commits entirely — and a
@@ -355,6 +354,67 @@ option, and both cost a few lines against a table's seeding machinery.
 
 ## Remaining phases
 
+### 8.999 — The confirm step, and the end of hover
+
+Slotted before phase 9 rather than into it, exactly as 7.999 was: this reworks
+*shipped* behaviour, and phase 9's whole safety property is that nothing in it is
+original. It is also a prerequisite — 9h's panel is this pane with numbers in it.
+
+**Pinning stops moving the unit.** A first click on a reachable tile draws the
+route and nothing else; a second click on that same tile walks the unit and opens
+the menu. Clicking any other reachable tile re-pins. Clicking a dark tile cancels.
+
+⚠️ **This exists to kill hover, not to add a click.** The route preview is
+computed inside the renderer on `POINTERMOVE` and React never hears about it, so
+on a touchscreen it does not exist. A pinned route is state, and state renders
+the same everywhere.
+
+**The hover route comes out entirely** — `showRouteTo`, `hoveredKey`, and the
+route half of the `POINTERMOVE` branch. ⚠️ The hover *highlight* stays; it is a
+tint, and being inert on touch costs nothing.
+
+⚠️ **The renderer stops importing `Movement`.** Those four lines are the only
+ones, and all four are the hover route. `setMovement(movement)` becomes
+`setRange(tiles)` and `setRoute(path)` — two arrays of coordinates. Presentation
+gets tiles to light instead of a search structure to query, which is the
+authority split the architecture doc already claims and this was the one place
+quietly breaking it. `GameCanvas.test.tsx`'s `pathTo` assertion goes with it: it
+exists only to prove the renderer can bypass React.
+
+**A new phase before the menu, not a rename.** `routePinned` is added; the
+existing `destinationChosen` keeps meaning *arrived, menu up*, so
+`facingChoiceOrigin`, `holdFacing`, `facingChoiceAt`, `unpinDestination` and
+`moveCommandFor` are all untouched.
+
+- ⚠️ `handleTileClick`'s bail narrows to `destinationChosen` alone, because
+  `routePinned` now answers clicks. **No new branch** — both phases carry
+  `unitId` and `movement`, which is everything the pin path reads, so re-pinning
+  and pinning are the same code.
+- ⚠️ The `next === selection` identity guard in `clickTile` **deletes**. It
+  exists solely because `handleTileClick` returns its own argument when pinned;
+  once confirm is its own dispatch branch, nothing on that path starts a walk.
+- ⚠️ Transition `routePinned → destinationChosen` in the walk's `.finally()`,
+  not on the click. Then `walking` is an input gate only and `showSelection`
+  drops its second parameter — back to a pure projection of the selection.
+
+**Confirm is a click on the tile, not a button.** `clickTile` and `endTurn` stay
+the only verbs. ⚠️ Phase 9 spends that invariant — the attack panel needs real
+buttons — so this is the last step where it holds.
+
+**The yellow highlight stays on the unit while pinned.** It marks where the unit
+*is*; the route and the pane mark where it would go. Moving it to the destination
+before the walk asserts something false.
+
+⚠️ **"Lit does something, dark backs out" survives both phases**, which is why
+this needs no new rule taught: while pinned the range is still up, so a lit tile
+re-pins, the pinned tile confirms, and dark cancels. In `destinationChosen` the
+range is down and the facing tiles are lit, exactly as now.
+
+**Accepted cost:** one more click per unit-turn, and sweeping the range no longer
+previews the cost shape — you see a route only after pinning one. The second is a
+real downgrade on desktop, taken because pinning is cheap and re-pinnable and
+because one behaviour beats two.
+
 ### 9 — Combat: the smallest thing you can win
 
 Terrain and pathing already exist, so the numbers mean something. The integration risk here is the chain — command → resolve → events → animate → death → mesh removal → victory — not the damage formula.
@@ -384,7 +444,7 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   ⚠️ **Damage scales with health, and the counter is computed on the reduced HP** — both already in the formula. A wounded attacker hits softer, linearly, and a wounded defender loses its terrain cover, since the defence term scales by defender HP too. So striking first compounds: you hit them, they are weaker, and their counter is weaker for it. That is most of AW's exchange calculus and it falls out of the formula rather than needing a rule.
 
   ⚠️ And a counter can **kill the attacker**, which shrinks the attacker's roster mid-turn — so `actionsAllowed` drops and their turn can end sooner than they expected. Correct, since you cannot act with a dead unit, but nothing has written it down and this is where it first fires.
-- **9h** ⚠️ **Mostly built, and smaller than it was.** Phases 7 and 7.999 delivered the whole destination-and-action interaction: pinning, the client-side walk, and a `destinationChosen` whose lit tiles *are* the menu — the unit itself waits, a tile beside it faces that way, anything else cancels. **What remains is one more reading of a click already being read**: an enemy this unit can attack from the pinned tile. ⚠️ **No `choosingTarget` member** — that was the old plan and it is explicitly dropped; a target is a click in the state that exists, not a state of its own. What it does need is an attack-range overlay in a **reddish** tint, so a target is told from a facing choice by colour rather than by a rule.
+- **9h** ⚠️ **Mostly built, and smaller than it was.** Phases 7, 7.999 and 8.999 delivered the whole destination-and-action interaction: pinning, the confirm step and its pane, the client-side walk, and a `destinationChosen` whose lit tiles *are* the menu — the unit itself waits, a tile beside it faces that way, anything else cancels. **What remains is one more reading of a click already being read**: an enemy this unit can attack from the pinned tile. ⚠️ **No `choosingTarget` member** — that was the old plan and it is explicitly dropped; a target is a click in the state that exists, not a state of its own. What it does need is an attack-range overlay in a **reddish** tint, so a target is told from a facing choice by colour rather than by a rule.
 
   ⚠️ **The damage preview is part of this step, not a later one.** It used to be scheduled after, as polish. It cannot be: the panel *is* how an attack is committed, and a panel with no numbers in it is a bare confirm dialog. This is where *deterministic preview, yes; random resolution, no* stops being a slogan — the client runs the same formula with the luck term dropped.
 
