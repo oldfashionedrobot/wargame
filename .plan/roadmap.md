@@ -53,11 +53,21 @@ Each star is 10% reduction *at full defender HP*. **The values live in the terra
 
 For reference while reading the formula above: our six terrains run 0 stars (road, bridge, river) through 1 (plains), 2 (forest), to 4 (mountain).
 
-### Facing and directional defence ⬜ — where we diverge ⚠️
+### Facing, which is charge's other half ⬜ — where we diverge ⚠️
 
 **AW has no facing. This is ours**, and the second original mechanic in the game after charge. It earns its place on theme as much as on mechanics: the period's tactics *are* line, flank and rear, and it gives cavalry's speed a purpose beyond arriving sooner — getting behind something.
 
-A unit takes full defence from the **front**, less from a **flank**, least from the **rear**. Only the *defender's* facing matters; the attacker's is irrelevant, exactly as in FFT.
+⚠️ **Facing is read by charge and by nothing else.** Shooting ignores it entirely — `computeDamage` sees terrain, HP and luck, and no direction at all. A charge into a formed front is very hard and needs a weak target; into a flank it is easier, and into the rear easier still. Only the *defender's* facing matters; the attacker's is irrelevant, exactly as in FFT.
+
+**Three reasons, in the order they weigh.**
+
+⚠️ **It collapses two untuned mechanics into one.** Facing and charge are the only two things here with no reference behaviour to check against, and this document already warns that tuning them together means moving two dials against one observation. Bound to each other they are a single mechanic with a directional term, tuned once — the hazard stops needing management because it stops existing.
+
+**The history agrees.** Flank and rear fire was deadlier — enfilade, and fewer barrels bearing — but what decided this period's engagements was *melee and morale*, not volume of fire. Infantry in line or square repelled frontal cavalry almost routinely; cavalry into a flank or rear broke them. Position mattered because the charge landed, not because the shooting improved.
+
+**And it prices facing proportionally.** Eight units a side, every one acting every turn, is sixteen moves a round that would each owe a facing decision whether or not it changed anything — and worse on a board dense enough that most units have enemies on two or three sides, where facing stops being a decision and becomes local damage-minimisation. Bound to charge, you think about it when you are contemplating the thing it governs.
+
+⚠️ **No small shooting modifier as a compromise.** Either it is large enough to change decisions -- and every turn owes it a thought, and there are two dials again -- or it is too small to change one, and it is pure tax. A modifier that never changes a choice should not exist.
 
 **The classification is arithmetic on a four-cycle** — one pure function in `shared/`, trivially testable:
 
@@ -67,22 +77,24 @@ A unit takes full defence from the **front**, less from a **flank**, least from 
 
 Adjacent attacks give an orthogonal direction. Ranged ones need not — a cannon three tiles away can sit diagonally — so the direction resolves by **dominant axis, with a perfect diagonal counting as a flank**.
 
-**It enters combat as a factor, never a branch.** A `directionalMultiplier` inside `computeDamage` alongside terrain, which means counter-attacks inherit it for free with the roles swapped: a unit that moved in to attack is facing its target, so its counter arrives at the target's front and takes full defence. No special case, exactly as counter-attacks are already specified to be a second call rather than a branch.
+**It enters charge as a threshold adjustment, not a roll.** ⚠️ And it **raises** the threshold rather than lowering it, which this document had backwards: `margin = targetHP − threshold` and `success = margin <= luckRoll`, so a *lower* threshold makes the margin **bigger** and the charge **harder**. A rear charge wants a higher threshold.
 
-For **charge**, the natural knob is the *threshold* rather than the roll: a rear charge lowers `matchupThreshold`, so `margin = targetHP − threshold` shrinks and the existing formula carries it unchanged.
+⚠️ **Additive, not per-matchup.** Three directions against nine matchups is twenty-seven numbers nobody can tune. One `matchupThreshold` per attacker-and-target pair plus a single directional adjustment — front +0, flank +N, rear +M — is **eleven**, and it keeps the advice below intact: tune the nine head-on, then the two.
+
+**Infantry charges too.** The bayonet charge is period-real, and it is what keeps facing relevant in most engagements rather than only where cavalry happens to be. Artillery never charges. `charge?` is already optional on `UnitType`, and any unit may be a *target* regardless.
 
 #### An override with a default, not a step
 
 **Facing is chosen, but never demanded.** The destination step already reads *pick destination → see route → confirm*; facing inserts as *→ rotate →* between the last two, defaulting to the direction of travel, which is right most of the time. Confirm accepts the default; a rotate gesture changes it.
 
-That default is what makes this affordable. Three units a turn over a forty-turn game is a hundred-plus facing decisions, and most of them do not matter — a required step would tax every move in the game to price the few that do. FFT gets away with demanding it because it is slow and menu-driven by design; this is meant to feel closer to AW.
+That default is what makes this affordable. Eight units a side over a forty-turn game is several hundred facing decisions, and most of them do not matter — a required step would tax every move in the game to price the few that do. FFT gets away with demanding it because it is slow and menu-driven by design; this is meant to feel closer to AW.
 
 ⚠️ **Sequencing, and the reason it is split across two phases: facing selection is pure friction until combat reads it.** So:
 
 - **6f derived it** from the last step of the path, with no UI at all — built. Free, deterministic, and it stops units moonwalking.
 - **Phase 7 let the player choose it** at the confirmation step — built. It came
   forward, ahead of combat reading it, which inverts the ordering argument below.
-- **9d makes it mechanical** — the command carries it and `computeDamage` reads it as a factor.
+- **10c makes it mechanical**, with charge, because charge is the only thing that reads it. ⚠️ Moved here from 9d: phase 9 reads facing nowhere at all.
 
 That ordering existed so the game would never ask for a decision that does
 nothing, and phase 7 took the cost deliberately: the confirmation step had to be
@@ -93,7 +105,7 @@ override, which is what "chosen, but never demanded" above actually asked for.
 **9d is the only part left**, and it needs no interaction work at all: the
 command already carries `facing`, and nothing reads it.
 
-⚠️ **Tune charge head-on before layering direction onto it.** Charge is already the one mechanic with no reference behaviour, an untuned threshold table and an untuned failure-damage function; rear-charge bonuses put a *second* untuned original mechanic in the same expression. Get charge behaving sensibly front-on first, then add the directional term — otherwise every observation is adjusting two unknowns at once.
+⚠️ **Tune charge head-on before layering direction onto it**, which is now the *only* sequencing constraint left rather than one of two. Charge is already the one mechanic with no reference behaviour, an untuned threshold table and an untuned failure-damage function; rear-charge bonuses put a *second* untuned original mechanic in the same expression. Get charge behaving sensibly front-on first, then add the directional term — otherwise every observation is adjusting two unknowns at once.
 
 **One quiet payoff:** the single-element path — legal at cost 0, so far justified only as "wait in place" — becomes **turn in place**, a real defensive action. A mechanic we had already decided to allow for other reasons acquires a purpose.
 
@@ -227,10 +239,12 @@ option, and both cost a few lines against a table's seeding machinery.
 
 Terrain and pathing already exist, so the numbers mean something. The integration risk here is the chain — command → resolve → events → animate → death → mesh removal → victory — not the damage formula.
 
+⚠️ **Nothing original is in this phase.** Facing and charge — the only two mechanics here with no reference behaviour — both land together in phase 10, so everything below can be checked against Advance Wars. That is the point of splitting them out: a phase that can be wrong in a way a reference will tell you about, followed by a phase that cannot.
+
 - **9a** — *moved to 6a.* The `UnitType` catalog wiring is a prerequisite of the terrain cost table, not a consequence of combat; see phase 6's hard dependencies.
 - **9b** `Unit` gains `health`; update the starting units. (`unitTypeId` arrived in 6a.) **`maxHealth` does not go on `Unit`** — it is static per unit type, which is the exact distinction 6a exists to draw, and putting it on every instance would re-introduce the duplication that moving `movementRange` onto `UnitType` just removed. If every unit tops out at 100 it is a constant in `shared/`; the day one doesn't, it is a `UnitType` field. **No migration** — `Unit` lives inside `GameState`, which is a JSON blob, so the shape changes without the schema moving. That is the JSON-blob decision paying off, and it is why `map_id` in phase 6 is the first migration rather than this.
 - **9c** `GameRenderer.syncUnits(state)` — mesh add/remove, required before anything can die. It grows out of 5b's `snapUnits` and runs where that runs: inside the hook's queue, after the batch's animation, before the commit. Assumes 5b landed — without the gated commit, reconciling meshes against a state whose events are still animating is exactly the ordering bug 5b retired.
-- **9d** `UnitActionCommand` replaces `MoveCommand` — path, facing, plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events. **Facing becomes mechanical here** — the command carries it and `computeDamage` reads it as a directional factor beside terrain — while the client still sends only the default 6f derives. The player does not get to choose until 9e, by which point choosing already matters. Touches three places, all separate now: `parseCommand` for the wire shape, `validateMove`'s successor for legality, and `resolveMove`'s for the events — plus rolls, which arrive as an argument to resolution so `shared/` stays pure.
+- **9d** `UnitActionCommand` replaces `MoveCommand` — path, facing, plus optional attack, atomic. Simplest resolution: adjacent only, damage from a table, no counter-attack, no charge. Damage and death events. ⚠️ **Facing is not read here and `computeDamage` takes no direction** — that moved to 10c with charge, which is the only thing that reads it. The command carries `facing` as it already does, and nothing does anything with it. Touches three places, all separate now: `parseCommand` for the wire shape, `validateMove`'s successor for legality, and `resolveMove`'s for the events — plus rolls, which arrive as an argument to resolution so `shared/` stays pure.
 
   ⚠️ **Invariant 9 constrains the events.** `unitAttacked` must carry the target's *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client can compute from the state preceding the event. And a successful charge emits `unitDied` **plus** `unitMoved`, two independently-applicable events, not one compound event carrying both effects.
 
@@ -244,7 +258,7 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   Nothing is needed from the renderer but the overlay. The route question that used to sit here is closed: the range and the route both come down when the menu lights, and the unit standing at the destination is what anchors the tiles around it.
 - **9f** ⬜ **Health has to be visible**, and was missing from this phase entirely. 9b puts `health` in the model and 9d makes it change, but nothing draws it — a unit at 40 reads identically to one at 100, which makes combat unplayable by eye and unverifiable in the browser, the only check the renderer has. Smallest thing that works: a billboarded bar or a scaled emissive band on the unit mesh, driven from `syncUnits` since that already runs per commit with the state in hand. It belongs before 9g, because tuning a matchup table you cannot see the results of is guesswork.
 
-  ⚠️ **Facing needs the same treatment in the same step, and for the same reason.** 9d makes facing a damage factor while nothing on screen says which way a piece is looking — and the camera orbits, so the model's own orientation cannot carry it: a piece seen from behind at a shallow tilt is a silhouette. A **ground marker** under it — a chevron or a front arc — turns with the world and so stays truthful from every orbit position, which a screen-space indicator would not. Same overlay machinery `setFacingChoices` already drives, so the renderer gains no new concept. Cheap now and expensive later: phase 10's directional defence is unplayable without it, and a rear charge cannot be tuned if the player cannot see what counts as a rear.
+  ⚠️ **The facing marker moved to phase 10** — nothing reads facing until charge does, so a ground chevron here would be drawing a fact that changes nothing. 9f is the health bar and only that.
 - **9g** ⬜ **The damage preview** — specified under Combat as "the sharp edge of invariant 8" and, until now, scheduled nowhere. The client computes the same formula with the luck term omitted and shows it on the target before the click commits. This is the step where *deterministic preview, yes; random resolution, no* stops being a slogan and becomes code, so it is worth its own commit rather than riding inside 9e.
 - **9h** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
 
@@ -263,6 +277,8 @@ Without 9h the board reaches a state where one side has nothing left and End Tur
 Selection doesn't need it: `canSelectUnit` is a game fact ("may this unit act"), and the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
 
 ### 10 — Combat depth
+
+⚠️ **This is where everything original lands**, facing and charge together, because facing is read by charge and by nothing else. Phase 9 is Advance Wars and checkable against it; this phase is not checkable against anything and has to be played.
 
 Four mechanics layered onto the pipeline **phase 9** proved. (This said "phase 6" while phase 6 has no combat in it.) They were one sentence between them, which understated the last one badly — so, in order:
 
