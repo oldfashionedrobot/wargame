@@ -344,15 +344,36 @@ counter identifiable as *the attacker's health dropped on its own turn*.
 is `{ seq, events, state }` — it never sees the action. So `kind` earns its place:
 a volley and a charge look nothing alike, and the kind lives only in the action.
 
-⚠️ **`answered` earns its place on a stricter test: a field is redundant only if
-it is *always* derivable.** The client would otherwise infer a counter from the
-attacker's health dropping — which works only while every counter deals at least
-1. That is true of the current table and guarded by the harness sweep, but it
-means **presentation would rest on tuning**, and a table change could silently
-delete an animation. A counter that deals zero is a real outcome and
-indistinguishable from no counter at all, so the fact is carried rather than
-guessed. `answered: true` with the attacker's health unchanged is *consistent*,
-not contradictory: they fired and it did nothing, which the client should show.
+⚠️ **`answered` is a decision, not a duplicate — and that is the test.** Drop a
+field that duplicates data already in its own event; keep one that records a
+decision not otherwise recoverable without re-running the rule. `died` was the
+first kind: `health: 0` said it, in the same event, and the two could disagree.
+`answered` is the second: it appears nowhere else, and reconstructing it means
+re-running the counter predicate against a rebuilt state.
+
+Three things make that worth a boolean:
+
+- ⚠️ **The log outlives the rules.** The counter rule already gains an exception
+  in 10a, where charge does not consult it at all. If it moves again, replaying a
+  stored match would derive counters with *today's* rule and describe yesterday's
+  match wrongly. A fact written into the event is rules-independent; an implied
+  one is not — which is exactly what *Ruleset versioning* sits in the compromises
+  table for, and carrying the fact shrinks that problem.
+- ⚠️ **Deterministic does not mean the client agrees.** The server resolves
+  against its own state; a client deriving would work from a *reconstruction*,
+  correct only if the local fold is right. A folding bug then produces a
+  confidently wrong animation and no error anywhere.
+- ⚠️ **The log is a consumer immediately.** `resolutions.events` holds it the
+  moment it is written, and the record should *describe* the game rather than
+  require a reader to recompute it. A row saying the defender answered is
+  self-describing to any tool; one implying it needs the range table, both
+  positions and the rule.
+
+⚠️ It **cannot** contradict the healths: `answered: true` with the attacker's
+health unchanged means they fired and it did nothing, which is a real outcome the
+client should show. And the counter predicate still lives in `shared/` as
+`wouldCounter(state, attacker, defender)` — the server needs it to *resolve*, so
+there is still one definition of the rule. The event records what it answered.
 
 `kind` does the rest of the work — in a volley the attacker losing health is a
 counter, in a charge it is a repel — so no third field is needed to say which.
@@ -421,10 +442,12 @@ Two things it will need that do not exist yet:
 - the **before** health for both units, to animate figures falling rather than
   appearing at a new count. The route is already chosen — fold locally inside
   the queue task, never change the callback signature.
-- **squad figures**, which are cheaper than they look: models are already
-  instanced per unit, so this is `ceil(health / 20)` copies of a mesh we own,
-  arranged in a row. ⚠️ **No new art**, which is normally what kills a feature
-  like this before it starts.
+- **one model per side**, firing. ⚠️ Squads of figures scaled to health —
+  `ceil(health / 20)` instances of a mesh we already own — were considered and
+  deferred: the health bar in the cutaway already carries that information, and a
+  single model is the same scene with less to build. The upgrade stays cheap
+  whenever it is wanted, since models are instanced per unit already and it needs
+  **no new art**.
 
 ⚠️ **Where it lives is undecided and does not need deciding yet** — a second
 Babylon scene drawn over the board, or a DOM layer. The seam is the same either
@@ -727,7 +750,9 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   phase 11 (*Known compromises*), and luck's flat ordering with the
   measurements behind it (*The damage formula*).
 
-- **9f** `MoveCommand` gains an **optional** attack — path, facing, and a target, atomic. ⚠️ Called `UnitActionCommand` here for years, which oversold it: an optional field is *additive*, so the wire stays compatible, `parseCommand` keeps its existing branch and no stored row changes meaning. Whether the rename earns its churn is a real question and the answer is probably no. Simplest resolution: `computeDamage` from 9c, a target inside the range 9d gave the attacker, no counter yet and no charge. Damage and death events. ⚠️ **Facing is not read here and `computeDamage` takes no direction** — that moved to 10a with charge, which is the only thing that reads it. The command carries `facing` as it already does, and nothing does anything with it. Touches **four** places, not the three this used to claim: `parseCommand` for the wire shape, `validateMove`'s successor for legality, `resolveMove`'s for the events — and `moveCommandFor` in `interaction/selection.ts`, which is what actually builds the command on the client and changes shape with it.
+- **9f** `MoveCommand` gains an **optional** attack — path, facing, and a target, atomic.
+
+  ⚠️ **First, the snap budget has to learn what combat costs.** `animatedTiles` sums `path.length - 1` for `unitMoved` and **zero for everything else**, so a catch-up batch of ten battles scores 0 tiles, clears `tiles <= MAX_ANIMATED_TILES`, and animates every one of them back to back while the state commit waits. The comment there says the ceiling *is* the wait — but combat is wait the ceiling cannot see. It needs a term before any battle event exists, or the first multi-action catch-up is an unskippable minute. ⚠️ Called `UnitActionCommand` here for years, which oversold it: an optional field is *additive*, so the wire stays compatible, `parseCommand` keeps its existing branch and no stored row changes meaning. Whether the rename earns its churn is a real question and the answer is probably no. Simplest resolution: `computeDamage` from 9c, a target inside the range 9d gave the attacker, no counter yet and no charge. Damage and death events. ⚠️ **Facing is not read here and `computeDamage` takes no direction** — that moved to 10a with charge, which is the only thing that reads it. The command carries `facing` as it already does, and nothing does anything with it. Touches **four** places, not the three this used to claim: `parseCommand` for the wire shape, `validateMove`'s successor for legality, `resolveMove`'s for the events — and `moveCommandFor` in `interaction/selection.ts`, which is what actually builds the command on the client and changes shape with it.
 
   ⚠️ **Rolls are a third argument to `resolveAction`, not a field on `Action`.** The doc has said both. They cannot live on `Action`: `validateCommand` is its only constructor and has no business generating or receiving a roll.
 
