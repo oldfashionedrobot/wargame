@@ -25,11 +25,28 @@ import type { TerrainModel } from './terrainModels';
 import { animateUnitAlongPath, createUnitMesh, getUnitFacing, setUnitFacing } from './units';
 import { loadUnitModels } from './unitModels';
 
-const ORTHO_ZOOM_PADDING = 0.7;
-// How far the wheel may take you either way, and how fast it gets there.
-const MIN_ZOOM = 0.45;
-const MAX_ZOOM = 3;
+/**
+ * Zoom, as a multiple of the distance at which the whole board just fits.
+ *
+ * ⚠️ **`MIN_ZOOM` of 1 is the floor for a reason, not a taste.** Below it the
+ * board stops filling the viewport and the wheel buys nothing but background.
+ * The fit it is a multiple *of* is measured at the current camera angle rather
+ * than derived from the grid -- see `fitExtent`.
+ *
+ * ⚠️ **`DEFAULT_ZOOM` sits at the floor, and that was not the first answer.**
+ * Going to 20x20 appeared to leave pieces unreadable whole-board, so this began
+ * at 2.2 -- which put the camera on the middle of the board with neither army
+ * in frame, and was worse. The appearance came from judging a *cropped and
+ * downscaled* screenshot rather than the viewport: at full size the fit reads
+ * perfectly well, and starting anywhere else is starting somewhere the player
+ * did not ask to be. Zoom in for detail; the board is the view.
+ */
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 3.5;
+const DEFAULT_ZOOM = MIN_ZOOM;
 const ZOOM_PER_NOTCH = 1.12;
+/** A hair of air around the board at full zoom-out, so it is not flush. */
+const FIT_MARGIN = 1.04;
 
 /**
  * How far the camera may tilt, and what the band costs at each end.
@@ -213,24 +230,12 @@ export async function createGameRenderer(
   camera.upperBetaLimit = CAMERA_BETA_SHALLOW;
   camera.minZ = 0.1;
 
-  // 1 fits the whole board; larger fills more of the viewport with less of it.
-  let zoom = 1;
-
-  const applyOrthoBounds = (): void => {
-    const extent = (Math.max(gridWidth, gridHeight) * ORTHO_ZOOM_PADDING) / zoom;
-    const aspect = canvas.clientWidth / canvas.clientHeight;
-    camera.orthoLeft = -extent * aspect;
-    camera.orthoRight = extent * aspect;
-    camera.orthoTop = extent;
-    camera.orthoBottom = -extent;
-  };
-  applyOrthoBounds();
+  let zoom = DEFAULT_ZOOM;
 
   const handleWheel = (event: WheelEvent): void => {
     event.preventDefault();
     const scale = event.deltaY < 0 ? ZOOM_PER_NOTCH : 1 / ZOOM_PER_NOTCH;
     zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * scale));
-    applyOrthoBounds();
   };
   canvas.addEventListener('wheel', handleWheel, { passive: false });
 
@@ -296,7 +301,85 @@ export async function createGameRenderer(
   // top is the bank at 0.00 while the water it has to stay under is at -0.05.
   // Measuring the top here hangs the slab through every river on the board.
   const boardFloor = Math.min(...cells.flat().map((cell) => terrainModels.bottomOf(cell.ground)));
-  createBoardBase(scene, boardFloor, gridWidth, gridHeight);
+  const boardBase = createBoardBase(scene, boardFloor, gridWidth, gridHeight);
+
+  /**
+   * The eight corners of the board as an object, measured off the slab.
+   *
+   * ⚠️ The slab is in here rather than just the playing surface: it hangs below
+   * the board and is part of the silhouette, so a fit that ignored it would clip
+   * it at shallow angles -- which is exactly where it is most of what you see.
+   */
+  boardBase.computeWorldMatrix(true);
+  const box = boardBase.getBoundingInfo().boundingBox;
+  const boardCorners = [box.minimumWorld.x, box.maximumWorld.x].flatMap((x) =>
+    [box.minimumWorld.z, box.maximumWorld.z].flatMap((z) =>
+      [box.minimumWorld.y, groundLevel].map((y) => new Vector3(x, y, z)),
+    ),
+  );
+
+  /**
+   * How far the board reaches along the screen's own axes, right now.
+   *
+   * ⚠️ **This cannot be a function of the grid's size**, which is what the
+   * constant it replaces was pretending. Orbit a square board through 45° and
+   * its projected width grows by √2, with `beta` foreshortening the depth on
+   * top -- so a number derived from `max(width, height)` fits one angle and
+   * either wastes the viewport or clips the corners at every other.
+   *
+   * Dotting each corner against the camera's own right and up vectors is the
+   * exact answer: those two directions *are* the orthographic frustum's axes.
+   */
+  const boardReach = (): { x: number; y: number } => {
+    const right = camera.getDirection(Vector3.Right());
+    const up = camera.getDirection(Vector3.Up());
+    let x = 0;
+    let y = 0;
+    for (const corner of boardCorners) {
+      x = Math.max(x, Math.abs(Vector3.Dot(corner, right)));
+      y = Math.max(y, Math.abs(Vector3.Dot(corner, up)));
+    }
+    return { x, y };
+  };
+
+  /**
+   * Sizes the frustum, then keeps the board under it.
+   *
+   * Run every frame rather than on a change, because everything it depends on
+   * -- the orbit, the tilt, the zoom, the window -- moves independently, and
+   * sixteen dot products is not worth the bookkeeping of tracking which.
+   */
+  const holdTheBoard = (): void => {
+    const aspect = canvas.clientWidth / canvas.clientHeight;
+    const reach = boardReach();
+
+    // The vertical half-extent at which the whole board just fits, which is
+    // whichever of the two axes runs out of room first.
+    const extent = (Math.max(reach.y, reach.x / aspect) * FIT_MARGIN) / zoom;
+    camera.orthoLeft = -extent * aspect;
+    camera.orthoRight = extent * aspect;
+    camera.orthoTop = extent;
+    camera.orthoBottom = -extent;
+
+    // ⚠️ **Panning is clamped to the board, and centring falls out of it.** Per
+    // axis the target may stray by however much board the viewport does not
+    // already cover -- and at full zoom-out it covers all of it, the expression
+    // goes to zero, and the board is centred with nowhere to pan. Centring is
+    // not a rule of its own; it is this clamp at its limit.
+    const right = camera.getDirection(Vector3.Right());
+    const up = camera.getDirection(Vector3.Up());
+    const slackX = Math.max(0, reach.x - extent * aspect);
+    const slackY = Math.max(0, reach.y - extent);
+
+    // The board is centred on the origin, so the target *is* its own offset.
+    const alongX = Vector3.Dot(camera.target, right);
+    const alongY = Vector3.Dot(camera.target, up);
+    const heldX = Math.min(slackX, Math.max(-slackX, alongX));
+    const heldY = Math.min(slackY, Math.max(-slackY, alongY));
+    if (heldX !== alongX || heldY !== alongY) {
+      camera.target.copyFrom(right.scale(heldX).add(up.scale(heldY)));
+    }
+  };
   const hoverHighlight = createTileHighlight(scene, 'hover-highlight', HOVER_COLOR, HOVER_ALPHA);
   const selectedHighlight = createTileHighlight(
     scene,
@@ -436,12 +519,12 @@ export async function createGameRenderer(
   });
 
   engine.runRenderLoop(() => {
+    holdTheBoard();
     scene.render();
   });
 
   const handleResize = (): void => {
     engine.resize();
-    applyOrthoBounds();
   };
   window.addEventListener('resize', handleResize);
 

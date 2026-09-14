@@ -635,8 +635,26 @@ cancelPreview()           toggleInspector()          dispose()
   camera toward the board until the near plane clips it. The wheel input is
   removed, `radius` is pinned by matching limits, and a listener on the canvas
   scales a zoom factor that the ortho bounds divide by — clamped, and removed in
-  `dispose()` alongside the `resize` listener. Bounds are recomputed from grid
-  size, aspect and zoom.
+  `dispose()` alongside the `resize` listener.
+
+  ⚠️ **The camera cannot be driven anywhere useless, and the bounds that stop it
+  are measured rather than derived.** `boardReach` dots the board's eight
+  corners — the slab's, so its overhang is in the silhouette — against the
+  camera's own right and up vectors, which *are* the orthographic frustum's
+  axes. A number derived from `max(width, height)` could not do this: orbit a
+  square board through 45° and its projected width grows by √2, with `beta`
+  foreshortening the depth on top, so one constant fits one angle and wastes or
+  clips at every other.
+
+  From that, each frame: the frustum is sized so `zoom = 1` is *the whole board
+  just fits*, and the target is clamped per axis to whatever board the viewport
+  does not already cover. ⚠️ **Centring is not a rule of its own** — at full
+  zoom-out the viewport covers everything, the slack goes to zero, and the board
+  is centred with nowhere to pan. It is the clamp at its limit.
+
+  ⚠️ Run every frame rather than on a change, because the orbit, the tilt, the
+  zoom and the window all move independently and sixteen dot products is not
+  worth the bookkeeping of tracking which.
 
   ⚠️ **Rotation is free; tilt is not.** `alpha` spins without limit, because
   facing and flanking mean a unit's rear has to be somewhere the player can go
