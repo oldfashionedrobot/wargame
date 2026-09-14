@@ -36,14 +36,14 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     name: 'Infantry',
     char: 'i',
     movementType: 'foot',
-    movementRange: 4,
+    movementRange: 3,
   },
   cavalry: {
     id: 'cavalry',
     name: 'Cavalry',
     char: 'c',
     movementType: 'horse',
-    movementRange: 5,
+    movementRange: 4,
   },
   artillery: {
     id: 'artillery',
