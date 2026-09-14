@@ -1,4 +1,5 @@
 import { resolveEndTurn, validateEndTurn } from './endTurn';
+import { actionEndsTurn } from './turns';
 import { resolveMove, validateMove } from './move';
 import type { Command, EndTurnCommand, GameEvent, GameState, MoveCommand, PlayerId } from './types';
 
@@ -75,8 +76,17 @@ function refuse(state: GameState, command: Command): string | null {
  */
 export function resolveAction(state: GameState, action: Action): GameEvent[] {
   switch (action.type) {
-    case 'move':
-      return resolveMove(action);
+    case 'move': {
+      const events = resolveMove(action);
+      // ⚠️ **Appended, never folded into `unitMoved`.** Two independently
+      // applicable events carrying absolute values, which is invariant 9 and
+      // the same shape a successful charge takes in 10c -- `unitDied` plus
+      // `unitMoved`, not one event carrying both effects. `resolveEndTurn` is
+      // reused rather than constructing a second `turnEnded` beside it, so
+      // there stays exactly one place that decides who plays next.
+      if (actionEndsTurn(state)) events.push(...resolveEndTurn(state));
+      return events;
+    }
     case 'endTurn':
       return resolveEndTurn(state);
     default:

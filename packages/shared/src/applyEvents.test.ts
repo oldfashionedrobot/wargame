@@ -135,14 +135,17 @@ describe('a full turn cycle validates, resolves and folds', () => {
 
     // Commands plus the actor the server would stamp. Tests cannot build an
     // Action directly -- that is the brand doing its job.
+    // ⚠️ Alternating, because a turn ends itself once its actions are spent and
+    // `ACTIONS_PER_TURN` is 1 -- so a second move by the same player in a row
+    // is not a fold that goes wrong, it is a command the validator refuses. The
+    // explicit `endTurn` in the middle is red declining to act at all, which is
+    // the one thing the button still does that the auto-end cannot.
     const script: [Command, PlayerId][] = [
       [move('b1', pos(0, 0), pos(1, 2)), 'blue'],
-      [move('b2', pos(1, 0), pos(2, 2)), 'blue'],
-      [{ type: 'endTurn' }, 'blue'],
       [move('r1', pos(7, 7), pos(6, 5)), 'red'],
+      [move('b2', pos(1, 0), pos(2, 2)), 'blue'],
       [{ type: 'endTurn' }, 'red'],
       [move('b1', pos(1, 2), pos(2, 4)), 'blue'],
-      [{ type: 'endTurn' }, 'blue'],
     ];
 
     // Play it exactly the way the server does: validate, resolve, fold.
@@ -157,7 +160,8 @@ describe('a full turn cycle validates, resolves and folds', () => {
       live = applyEvents(live, events);
     }
 
-    expect(log).toHaveLength(script.length);
+    // Four moves carrying a turn end apiece, plus the one turn end on its own.
+    expect(log).toHaveLength(9);
     expect(applyEvents(initial, log)).toEqual(live);
   });
 

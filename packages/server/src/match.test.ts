@@ -112,12 +112,15 @@ describe('snapshot', () => {
 
 describe('since', () => {
   it('returns everything after the cursor, with the current state', async () => {
+    // ⚠️ One command, two events. A move spends the turn's only action at
+    // `ACTIONS_PER_TURN` of 1, so it carries the turn end with it -- there is
+    // no second submit to make here, and blue attempting one would be refused
+    // for the ordinary reason that it is no longer blue's turn.
     const { id } = await store.create();
     await store.submit(id, move('blue-1', [1, 1], [1, 0]), BLUE);
-    await store.submit(id, { type: 'endTurn' }, BLUE);
 
     const all = await store.since(id, 0);
-    expect(all?.seq).toBe(2);
+    expect(all?.seq).toBe(1);
     expect(all?.events.map((e) => e.type)).toEqual(['unitMoved', 'turnEnded']);
     expect(all?.state?.currentTurn).toBe(RED);
   });
@@ -145,7 +148,7 @@ describe('submit', () => {
     expect(result?.ok).toBe(true);
     if (!result?.ok) return;
     expect(result.seq).toBe(1);
-    expect(result.events).toHaveLength(1);
+    expect(result.events).toHaveLength(2); // the move, and the turn it spends
     expect(result.state.units.find((u) => u.id === 'blue-1')?.position).toEqual({ col: 1, row: 1 });
   });
 
@@ -236,7 +239,6 @@ describe('storage guarantees', () => {
   it('keeps current_state equal to folding the log from initial_state', async () => {
     const { id } = await store.create();
     await store.submit(id, move('blue-1', [1, 1], [1, 0]), BLUE);
-    await store.submit(id, { type: 'endTurn' }, BLUE);
     await store.submit(id, move('red-1', [8, 8], [8, 9]), RED);
 
     const { applyEvents } = await import('@vod/shared');

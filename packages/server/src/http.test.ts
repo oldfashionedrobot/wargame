@@ -206,7 +206,7 @@ describe('GET /api/matches/:id/events', () => {
 
     const body = (await (await get(`/api/matches/${id}/events?since=0`)).json()) as EventsResponse;
     expect(body.seq).toBe(1);
-    expect(body.events).toHaveLength(1);
+    expect(body.events).toHaveLength(2); // the move, and the turn it spends
     // Events never travel without the state they produced -- and the state
     // is the *post*-move one. currentTurn alone would not show that: a move
     // does not end a turn, so the pre-move snapshot has the same value.
@@ -246,7 +246,7 @@ describe('POST /api/matches/:id/commands', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.seq).toBe(1);
-    expect(result.events).toHaveLength(1);
+    expect(result.events).toHaveLength(2); // the move, and the turn it spends
     expect(result.state.units.find((unit) => unit.id === 'blue-1')?.position).toEqual({
       col: 1,
       row: 1,

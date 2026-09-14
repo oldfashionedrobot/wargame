@@ -10,8 +10,8 @@ is planned but unbuilt lives in [`roadmap.md`](roadmap.md).
 the tiles it can reach across terrain, hover to preview the route, click a
 destination and watch the unit walk to it — then click the unit to stop there, a
 tile beside it to end up looking that way, or anywhere else to think again —
-end turn. Two players, a rank of eight each — two guns, two horse, four foot —
-on one of six maps chosen when the match is created. No combat.
+and the turn passes. Two players, a rank of eight each — two guns, two horse,
+four foot — on one of six maps chosen when the match is created. No combat.
 
 ## Packages
 
@@ -49,6 +49,7 @@ packages/
     action.ts         command validation and resolution, and the Action brand
     move.ts           the move command
     endTurn.ts        the end-turn command
+    turns.ts          the action budget, and whose turn is next
     applyEvents.ts    the event fold
     protocol.ts       the GameServer interface, the wire shapes, and parsing
     testing.ts        fixtures, imported by tests only
@@ -168,6 +169,42 @@ MatchSummary      { id, createdAt, seq, currentTurn, mapId }
 MapSummary        { id, name }                       // GET /api/maps
 ErrorResponse     { error }                          // the body of every non-2xx
 ```
+
+**A turn is a budget of actions**, `ACTIONS_PER_TURN` in `turns.ts`, and the
+turn ends itself once the budget is spent. At 1 the game is chess — one unit,
+one command, over to you. At the size of a roster it is Advance Wars, where
+every unit acts once and the player picks the order. Everything between is one
+edited line, which is what the constant is for.
+
+```ts
+actionsTaken(state)    // this player's units with hasActed set
+actionsAllowed(state)  // min(ACTIONS_PER_TURN, this player's roster)
+actionEndsTurn(state)  // does one more action finish the turn
+```
+
+⚠️ **The `min` is load-bearing.** A player with fewer units than the budget
+could never reach it, so their turn would never end on its own — "everyone has
+acted" has to finish a turn as surely as "the budget is gone".
+
+⚠️ **No state fold is needed to decide.** An action sets `hasActed` on exactly
+one unit that lacked it, so the count afterwards is the count now plus one, and
+resolution can answer without applying its own events to a copy first.
+
+⚠️ The budget is taken as a **default argument** rather than read from the
+module, so the arithmetic stays reachable from a test at any value. Baked in,
+the only budget anything could exercise is whichever one the constant holds —
+and the case that matters most, a roster shorter than the budget, is invisible
+at 1.
+
+`resolveAction` appends `turnEnded` to a move that spends the turn, reusing
+`resolveEndTurn` so exactly one place decides who plays next. ⚠️ **Two events,
+never one carrying both effects** — invariant 9, and the shape a successful
+charge takes later.
+
+**The End Turn command survives the budget** rather than being replaced by it.
+It is the early exit: the one thing it does that an auto-end cannot is let a
+player stop before committing every unit they are allowed to, which is exactly
+the job Advance Wars' own `End` does. At a budget of 1 it is a pass.
 
 Turn order is array rotation over `GameState.players`, wrapping via modulo.
 `hasActed` is one flag per unit, set by `unitMoved` and reset by `turnEnded` for

@@ -133,19 +133,28 @@ describe('resolveAction', () => {
   ]);
 
   it('emits one unitMoved carrying the whole path, for animation', () => {
-    expect(resolveAction(state, accept(state, to(2, 0)))).toEqual([
-      {
-        type: 'unitMoved',
-        unitId: 'b1',
-        // Every step, not just the destination: the renderer walks these one
-        // tween per tile.
-        path: [
-          { col: 0, row: 0 },
-          { col: 1, row: 0 },
-          { col: 2, row: 0 },
-        ],
-      },
-    ]);
+    const [moved] = resolveAction(state, accept(state, to(2, 0)));
+    expect(moved).toEqual({
+      type: 'unitMoved',
+      unitId: 'b1',
+      // Every step, not just the destination: the renderer walks these one
+      // tween per tile.
+      path: [
+        { col: 0, row: 0 },
+        { col: 1, row: 0 },
+        { col: 2, row: 0 },
+      ],
+    });
+  });
+
+  it('ends the turn in the same breath, once the budget is spent', () => {
+    // ⚠️ **Two events, not one carrying both effects.** Invariant 9 -- each is
+    // independently applicable and absolute -- and the same shape a successful
+    // charge takes in 10c. At `ACTIONS_PER_TURN` of 1 the first action is also
+    // the last, so every move brings the turn with it.
+    const events = resolveAction(state, accept(state, to(2, 0)));
+    expect(events.map((event) => event.type)).toEqual(['unitMoved', 'turnEnded']);
+    expect(events[1]).toEqual({ type: 'turnEnded', nextPlayer: 'red' });
   });
 
   it('names the next player when a turn ends', () => {
