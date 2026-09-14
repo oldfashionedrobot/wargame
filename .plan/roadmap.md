@@ -488,11 +488,14 @@ buttons — so this is the last step where it holds.
 *is*; the route and the pane mark where it would go. Moving it to the destination
 before the walk asserts something false.
 
-⚠️ **The overlay heights want a look once it runs.** `SELECTED_HEIGHT` (0.025)
-and `HOVER_HEIGHT` (0.02) both sit above `ROUTE_HEIGHT` (0.018). That was
-harmless while the route followed the pointer; a *persistent* route means the
-hover tint cuts a hole in it wherever the pointer rests, and the yellow covers
-its first tile. Possibly fine, possibly ugly, and only the browser can say.
+⚠️ **The overlay heights want a look, but the arrow retires most of it.**
+`SELECTED_HEIGHT` (0.025) and `HOVER_HEIGHT` (0.02) both sit above
+`ROUTE_HEIGHT` (0.018), which was harmless while the route followed the pointer:
+a *persistent* route means the hover tint cuts a hole in it wherever the pointer
+rests, and the yellow covers its first tile. Both are artefacts of the route
+being a **full-tile tint** — a thin arrow with alpha around it barely overlaps
+either, so this is a blemish on the interim rendering rather than a problem to
+solve twice. Worth a glance, not a fix.
 
 ⚠️ **"Lit does something, dark backs out" survives both modes**, which is why
 this needs no new rule taught: in movement selection a lit tile pins or re-pins
