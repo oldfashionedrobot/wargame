@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeState, route, unitAt } from '@vod/shared/testing';
 import type { Coordinate, GameState } from '@vod/shared';
 import {
+  confirmRoute,
   facingChoiceAt,
   facingChoiceOrigin,
   handleTileClick,
@@ -10,7 +11,7 @@ import {
   unpinDestination,
   holdFacing,
 } from './selection';
-import type { DestinationChosen, SelectionState } from './selection';
+import type { DestinationChosen, RoutePinned, SelectionState } from './selection';
 
 // The pure half of the client: state and a coordinate in, a new selection out.
 // No React, no Babylon, no server. `handleTileClick` never produces a command
@@ -32,12 +33,16 @@ const at = (col: number, row: number): Coordinate => ({ col, row });
 const withB1Selected = (state: GameState): SelectionState =>
   handleTileClick(state, initialSelectionState, at(1, 1));
 
-/** Select b1, then pin `destination`. */
-function withB1Pinned(state: GameState, destination: Coordinate): DestinationChosen {
+/** Select b1, then pin a route to `destination`. Nothing has walked yet. */
+function withB1Pinned(state: GameState, destination: Coordinate): RoutePinned {
   const pinned = handleTileClick(state, withB1Selected(state), destination);
-  if (pinned.phase !== 'destinationChosen') throw new Error('expected a pinned destination');
+  if (pinned.phase !== 'routePinned') throw new Error('expected a pinned route');
   return pinned;
 }
+
+/** Pin a route and confirm it: the phase the menu and the facing choice live in. */
+const withB1Arrived = (state: GameState, destination: Coordinate): DestinationChosen =>
+  confirmRoute(withB1Pinned(state, destination));
 
 describe('handleTileClick, nothing selected', () => {
   it('selects a unit that can act, snapshotting its position and range', () => {
@@ -93,7 +98,7 @@ describe('handleTileClick, nothing selected', () => {
 });
 
 describe('handleTileClick, a unit selected', () => {
-  it('pins a reachable tile rather than committing it', () => {
+  it('pins a route to a reachable tile rather than walking it', () => {
     const state = board();
     const pinned = withB1Pinned(state, at(1, 3));
     expect(pinned.path).toEqual(route(at(1, 1), at(1, 3)));
@@ -158,22 +163,44 @@ describe('handleTileClick, a unit selected', () => {
   });
 });
 
-describe('a destination pinned', () => {
-  it('ignores tile clicks, returning the very same selection', () => {
+// ⚠️ A pinned route is still being chosen, so unlike the menu phase below it
+// keeps answering tile clicks. That is what makes the second click a confirm
+// rather than a commit: nothing has moved, and every reachable tile is live.
+describe('a route pinned', () => {
+  it('re-pins to another reachable tile', () => {
+    const state = board();
+    const repinned = handleTileClick(state, withB1Pinned(state, at(1, 3)), at(3, 1));
+    expect(repinned).toMatchObject({ phase: 'routePinned', unitId: 'b1' });
+    if (repinned.phase !== 'routePinned') return;
+    expect(repinned.path.at(-1)).toEqual(at(3, 1));
+    expect(repinned.path[0]).toEqual(at(1, 1)); // still where it really stands
+  });
+
+  // Re-pinning runs the same code that pinned it, so the snapshot taken at
+  // selection is carried rather than a fresh search being run per click.
+  it('carries the original search rather than re-exploring', () => {
     const state = board();
     const pinned = withB1Pinned(state, at(1, 3));
-    // Identity, not equality: the menu owns the decision, and a re-render for
-    // a click that changes nothing is waste React can see.
-    expect(handleTileClick(state, pinned, at(2, 2))).toBe(pinned);
-    expect(handleTileClick(state, pinned, at(1, 1))).toBe(pinned);
+    const repinned = handleTileClick(state, pinned, at(3, 1));
+    if (repinned.phase !== 'routePinned') throw new Error('expected a pinned route');
+    expect(repinned.movement).toBe(pinned.movement);
   });
 
-  it('lights the four directions around the destination, not the origin', () => {
-    expect(facingChoiceOrigin(withB1Pinned(board(), at(1, 3)))).toEqual(at(1, 3));
+  it('re-pins onto the unit itself, which is standing still', () => {
+    const state = board();
+    const staying = handleTileClick(state, withB1Pinned(state, at(1, 3)), at(1, 1));
+    expect(staying).toMatchObject({ phase: 'routePinned' });
+    if (staying.phase !== 'routePinned') return;
+    expect(staying.path).toEqual([at(1, 1)]);
   });
 
-  // Cancel goes back to a selected unit rather than to idle, so the next click
-  // picks a different destination instead of re-selecting.
+  it('cancels on a tile outside the range, without a command', () => {
+    const state = board();
+    expect(handleTileClick(state, withB1Pinned(state, at(1, 3)), at(6, 1))).toEqual(
+      initialSelectionState,
+    );
+  });
+
   it('unpins to the unit selected where it still stands', () => {
     const state = board();
     const pinned = withB1Pinned(state, at(1, 3));
@@ -184,9 +211,42 @@ describe('a destination pinned', () => {
   });
 });
 
+describe('a destination arrived at', () => {
+  it('ignores tile clicks, returning the very same selection', () => {
+    const state = board();
+    const arrived = withB1Arrived(state, at(1, 3));
+    // Identity, not equality: the menu owns the decision, and a re-render for
+    // a click that changes nothing is waste React can see.
+    expect(handleTileClick(state, arrived, at(2, 2))).toBe(arrived);
+    expect(handleTileClick(state, arrived, at(1, 1))).toBe(arrived);
+  });
+
+  it('lights the four directions around the destination, not the origin', () => {
+    expect(facingChoiceOrigin(withB1Arrived(board(), at(1, 3)))).toEqual(at(1, 3));
+  });
+
+  // Confirming carries the plan across untouched -- only the phase moves, so
+  // the path the command is built from cannot drift at the handover.
+  it('keeps the path and the search when the route is confirmed', () => {
+    const state = board();
+    const pinned = withB1Pinned(state, at(1, 3));
+    const arrived = confirmRoute(pinned);
+    expect(arrived.path).toBe(pinned.path);
+    expect(arrived.movement).toBe(pinned.movement);
+  });
+
+  // Cancel goes back to a selected unit rather than to idle, so the next click
+  // picks a different destination instead of re-selecting.
+  it('unpins to the unit selected where it still stands', () => {
+    const state = board();
+    const back = unpinDestination(withB1Arrived(state, at(1, 3)));
+    expect(back).toMatchObject({ phase: 'unitSelected', unitId: 'b1', position: at(1, 1) });
+  });
+});
+
 describe('choosing a facing', () => {
   const choosing = (destination: Coordinate): DestinationChosen =>
-    withB1Pinned(board(), destination);
+    withB1Arrived(board(), destination);
 
   it('reads a click on an adjacent tile as that direction', () => {
     const facing = choosing(at(1, 3));
@@ -216,7 +276,7 @@ describe('choosing a facing', () => {
   // unit keeps the facing it already had.
   it('keeps the current facing when the path never left the tile', () => {
     const state = board();
-    const staying = withB1Pinned(state, at(1, 1));
+    const staying = withB1Arrived(state, at(1, 1));
     expect(staying.path).toEqual([at(1, 1)]);
     expect(holdFacing(state, staying)).toBe(unitAt(state, 'b1').facing);
   });

@@ -303,6 +303,19 @@ describe('useGameSession', () => {
   // (1,3) is the destination throughout, so (1,4) is the tile north of it --
   // clicking that is how a facing gets chosen and the move committed.
   const FACE_NORTH = at(1, 4);
+  const PIN = at(1, 3);
+
+  /**
+   * Select b1, pin a route, and confirm it -- three clicks, ending with the
+   * menu up. ⚠️ The confirm is a second click on the *same* tile: the first
+   * only draws the route, which is what makes the route state rather than a
+   * hover reaction and therefore visible on a touchscreen.
+   */
+  async function reachMenu(result: ReturnType<typeof renderSession>['result']): Promise<void> {
+    act(() => result.current.clickTile(at(1, 1)));
+    await act(async () => result.current.clickTile(PIN));
+    await act(async () => result.current.clickTile(PIN));
+  }
 
   it('pins on click, offers directions on Hold, and submits on a direction', async () => {
     const fake = fakeServer(board);
@@ -312,7 +325,10 @@ describe('useGameSession', () => {
     act(() => result.current.clickTile(at(1, 1)));
     expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
 
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await act(async () => result.current.clickTile(PIN));
+    expect(result.current.selection).toMatchObject({ phase: 'routePinned', unitId: 'b1' });
+
+    await act(async () => result.current.clickTile(PIN)); // the confirm
     expect(result.current.selection).toMatchObject({ phase: 'destinationChosen', unitId: 'b1' });
     expect(fake.submissions).toEqual([]); // the whole point: nothing has left yet
 
@@ -340,13 +356,14 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, cb);
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
-    act(() => result.current.clickTile(at(1, 1)));
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await reachMenu(result);
     expect(result.current.walking).toBe(true);
 
     await act(async () => result.current.clickTile(FACE_NORTH));
     expect(fake.submissions).toEqual([]); // refused: the mesh is still short
-    expect(result.current.selection.phase).toBe('destinationChosen');
+    // ⚠️ Still the pinned phase, because arrival is what turns it over -- so
+    // the refused click cannot have been read as a facing on the way past.
+    expect(result.current.selection.phase).toBe('routePinned');
 
     await act(async () => arrive());
     await act(async () => result.current.clickTile(FACE_NORTH));
@@ -356,7 +373,7 @@ describe('useGameSession', () => {
   // 7d's contract, and the reason the menu waits: while the ghost walks, the
   // mesh is short of the destination, and a confirm there would replay the
   // move from wherever it had got to.
-  it('walks the preview on pin, and holds the menu shut until it arrives', async () => {
+  it('walks the preview on confirm rather than on the pin', async () => {
     const fake = fakeServer(board);
     const cb = callbacks();
     let arrive!: () => void;
@@ -369,8 +386,12 @@ describe('useGameSession', () => {
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
     act(() => result.current.clickTile(at(1, 1)));
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await act(async () => result.current.clickTile(PIN));
+    // ⚠️ The pin draws a route and moves nothing. This is the whole step.
+    expect(cb.onPreview).not.toHaveBeenCalled();
+    expect(result.current.walking).toBe(false);
 
+    await act(async () => result.current.clickTile(PIN));
     expect(cb.onPreview).toHaveBeenCalledWith({
       unitId: 'b1',
       path: route(at(1, 1), at(1, 3)),
@@ -381,23 +402,44 @@ describe('useGameSession', () => {
     expect(result.current.walking).toBe(false);
   });
 
-  // A click that changes nothing must not restart the walk. handleTileClick
-  // returns the same object while pinned, which is what this leans on.
-  it('does not re-walk when a click lands on an already pinned selection', async () => {
+  // ⚠️ Every reachable tile stays live while a route is pinned, so re-pinning
+  // is a click rather than a cancel and a reselect -- and none of it walks
+  // anything, which is what makes changing your mind free.
+  it('re-pins without walking, and only the confirm moves the unit', async () => {
+    const fake = fakeServer(board);
+    const cb = callbacks();
+    const { result } = renderSession(fake, cb);
+    await act(async () => {}); // settle the initial batch, which would drop a pin
+
+    // ⚠️ Every tile here is within infantry's 3 from (1,1). (3,3) costs 4 and
+    // would cancel instead of re-pinning -- the range is a diamond, not a box.
+    act(() => result.current.clickTile(at(1, 1)));
+    await act(async () => result.current.clickTile(PIN));
+    await act(async () => result.current.clickTile(at(3, 1)));
+    await act(async () => result.current.clickTile(at(2, 2)));
+    expect(cb.onPreview).not.toHaveBeenCalled();
+    expect(result.current.selection).toMatchObject({ phase: 'routePinned', unitId: 'b1' });
+
+    await act(async () => result.current.clickTile(at(2, 2)));
+    expect(cb.onPreview).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(cb.onPreview).mock.lastCall?.[0]?.path.at(-1)).toEqual(at(2, 2));
+  });
+
+  // Backing out of a route that never walked has nothing to put back, so the
+  // preview is never told. ⚠️ The menu phase differs and is covered below: a
+  // ghost is standing at the destination there, and it has to go home.
+  it('cancels a pinned route without touching the preview', async () => {
     const fake = fakeServer(board);
     const cb = callbacks();
     const { result } = renderSession(fake, cb);
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
     act(() => result.current.clickTile(at(1, 1)));
-    await act(async () => result.current.clickTile(at(1, 3)));
-    expect(cb.onPreview).toHaveBeenCalledTimes(1);
+    await act(async () => result.current.clickTile(PIN));
+    await act(async () => result.current.clickTile(at(6, 1))); // outside the range
 
-    // ⚠️ Two tiles away, not one: a tile *beside* the destination is a facing
-    // and commits, while this backs out -- and backing out is not re-walking.
-    await act(async () => result.current.clickTile(at(3, 3)));
-    expect(cb.onPreview).toHaveBeenLastCalledWith(null);
-    expect(cb.onPreview).toHaveBeenCalledTimes(2);
+    expect(cb.onPreview).not.toHaveBeenCalled();
+    expect(fake.submissions).toEqual([]);
   });
 
   // The silence is the design: both of these end with onSnap writing an
@@ -409,8 +451,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, cb);
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
-    act(() => result.current.clickTile(at(1, 1)));
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await reachMenu(result);
     vi.mocked(cb.onPreview).mockClear();
 
     fake.respond({ ok: true, seq: 1, events: [], state: board });
@@ -426,8 +467,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, cb);
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
-    act(() => result.current.clickTile(at(1, 1)));
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await reachMenu(result);
     fake.respond({ ok: false, reason: 'illegal move' });
     await act(async () => result.current.clickTile(FACE_NORTH));
 
@@ -440,8 +480,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, cb);
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
-    act(() => result.current.clickTile(at(1, 1)));
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await reachMenu(result);
     expect(result.current.selection.phase).toBe('destinationChosen');
 
     // An uncommitted plan does not survive the board changing under it -- it
@@ -456,8 +495,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, cb);
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
-    act(() => result.current.clickTile(at(1, 1)));
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await reachMenu(result);
     // Neither the destination nor beside it, so it means back out.
     await act(async () => result.current.clickTile(at(3, 3)));
 
@@ -479,8 +517,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, callbacks());
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
-    act(() => result.current.clickTile(at(1, 1)));
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await reachMenu(result);
 
     // Reachable, but neither the destination nor beside it.
     await act(async () => result.current.clickTile(at(3, 3)));
@@ -495,9 +532,8 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, callbacks());
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
-    act(() => result.current.clickTile(at(1, 1)));
-    await act(async () => result.current.clickTile(at(1, 3)));
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await reachMenu(result);
+    await act(async () => result.current.clickTile(PIN)); // and again, to commit
 
     expect(fake.submissions).toEqual([
       { type: 'move', unitId: 'b1', path: route(at(1, 1), at(1, 3)), facing: 'north' },
@@ -536,8 +572,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, callbacks());
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
-    act(() => result.current.clickTile(at(1, 1)));
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await reachMenu(result);
     fake.respond({ ok: false, reason: 'illegal move' });
     await act(async () => result.current.clickTile(FACE_NORTH));
 
@@ -605,8 +640,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, cb);
 
     await act(async () => {}); // settle the initial batch, which would drop a pin
-    act(() => result.current.clickTile(at(1, 1)));
-    await act(async () => result.current.clickTile(at(1, 3)));
+    await reachMenu(result);
     let release!: (result: CommandResult) => void;
     fake.respond(new Promise<CommandResult>((res) => (release = res)));
 

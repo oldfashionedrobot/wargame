@@ -7,9 +7,10 @@ Turn-based strategy game, American Revolutionary War theme. React + TypeScript
 is planned but unbuilt lives in [`roadmap.md`](roadmap.md).
 
 **What plays today:** hot-seat against a real server process. Select a unit, see
-the tiles it can reach across terrain, hover to preview the route, click a
-destination and watch the unit walk to it — then click the unit to stop there, a
-tile beside it to end up looking that way, or anywhere else to think again —
+the tiles it can reach across terrain, click a destination to pin the route
+there and click it again to send the unit walking — then click the unit to stop
+there, a tile beside it to end up looking that way, or anywhere else to think
+again —
 and the turn passes. Two players, a rank of eight each — two guns, two horse,
 four foot — on one of six maps chosen when the match is created. No combat.
 
@@ -501,14 +502,14 @@ the next click see the same value. `pendingRef` stays a ref — it is a mutex
 against a second submit landing before the first resolves, and has to be
 synchronously current rather than rendered.
 
-⚠️ `clickTile` and `endTurn` are the only verbs left. A pinned plan is
-committed *and* abandoned by a click on the board — the tiles a pinned
-destination lights are the whole menu, and everything else is the way out. A
-refused
+⚠️ `clickTile` and `endTurn` are the only verbs. A plan is pinned, confirmed
+*and* abandoned by a click on the board — whatever is lit does something and
+everything else is the way out, in both modes. A refused
 submit rolls back to the unit **selected**, not to the destination the server
 just refused — handing that back would invite confirming the same move again.
 
-Pinning a destination starts a **preview walk**: the unit moves on screen while
+⚠️ **Confirming a pinned route** — a second click on the tile it already ends at
+— starts a **preview walk**: the unit moves on screen while
 nothing has been sent. `onPreview(next | null)` drives it, and the two cases it
 is *not* called on are the design — a confirm and an incoming update both end
 with `onSnap` writing an authoritative position over the mesh, so the correction
@@ -516,11 +517,14 @@ the renderer already performs is the instruction, and there is no commit verb. I
 *is* called on a rejection, which is the one ending that produces no update at
 all.
 
-⚠️ `walking` is true until the preview settles, and **nothing a pinned selection
-offers is answerable during it** — `playEvents` skips a move only once its mesh
+⚠️ `walking` is true until the preview settles, and **nothing is answerable
+during it** — `playEvents` skips a move only once its mesh
 stands at the destination, so committing early would replay the committed move
-from halfway along the path. That is why `clickTile` closes over `walking`
-rather than reading it from a render that may predate the walk.
+from halfway along the path, and a second confirm would start the same walk
+twice. That is why `clickTile` closes over `walking`
+rather than reading it from a render that may predate the walk, and why the
+guard sits at the top rather than inside a phase: a poll can unpin a plan
+mid-walk, and the mesh is still moving either way.
 
 Every update runs through a serial promise queue:
 
@@ -533,6 +537,13 @@ on update (events, state):
     commit state
 ```
 
+⚠️ **An uncommitted plan does not survive that commit** — either kind, pinned or
+arrived, is dropped back to the unit selected, because the board it was drawn
+against has moved and the plan may not even be legal any more. The confirm step
+widens the window this can land in: a route now waits for a second click, so an
+opponent's move is that much likelier to arrive while one is pinned. Correct,
+and the first thing to suspect when a pin seems to vanish on its own.
+
 `worthAnimating` is false for an empty batch, while the tab is hidden, and for
 a batch covering more than 28 tiles of walking. The budget counts **tiles, not
 events**, because one `unitMoved` can be a six-tile walk and every unit moves at
@@ -544,12 +555,18 @@ snap is caught and logged; the commit always happens.
 
 ```ts
 handleTileClick(state, selection, coordinate) → SelectionState
-facingChoiceOrigin(pinned)                    → Coordinate
-facingChoiceAt(pinned, coordinate)            → Facing | null
-holdFacing(state, pinned)                     → Facing | null
+pinnedDestination(pinned)                     → Coordinate
+confirmRoute(routePinned)                     → DestinationChosen
+facingChoiceOrigin(arrived)                   → Coordinate
+facingChoiceAt(arrived, coordinate)           → Facing | null
+holdFacing(state, arrived)                    → Facing | null
 unpinDestination(pinned)                      → SelectionState
-moveCommandFor(pinned, facing)                → Command
+moveCommandFor(arrived, facing)               → Command
 ```
+
+⚠️ `pinned` above is **either** phase carrying a path; `arrived` is only the one
+that has walked. `unpinDestination` is the sole helper serving both, because
+backing out means the same thing in both modes and nothing else does.
 
 `handleTileClick` **never produces a command** — it picks a destination, and
 nothing more. ⚠️ A click *can* commit, but the phase dispatch that decides so
@@ -560,21 +577,32 @@ paired return would carry no information.
 ```ts
 | { phase: 'idle' }
 | { phase: 'unitSelected'; unitId; position; movement }
+| { phase: 'routePinned'; unitId; path; movement }
 | { phase: 'destinationChosen'; unitId; path; movement }
 ```
 
 `movement` is the whole `exploreMovement` result, snapshotted at selection time.
 `reachable` decides whether a click pins; `pathTo` builds the path.
 
-A pinned destination is a **plan, not a submission** — nothing has been sent, and
+⚠️ **Two modes, four phases.** *Movement selection* is `unitSelected` and
+`routePinned` — the range is lit and both answer clicks identically, which is
+why pinning and re-pinning are one code path rather than two. *Action selection*
+is `destinationChosen`: the unit has walked, and the tiles around it are a menu.
+
+Either pinned phase is a **plan, not a submission** — nothing has been sent, and
 a click that means nothing else discards it without the server hearing.
 `path[0]` is where the unit still
 stands, so unpinning needs no extra field, and the selected unit's own tile is a
 destination like any other: that is how acting without moving needs no gesture of
-its own, and a single-element path is legal at cost 0. While a destination is
-pinned, `handleTileClick` returns the **same object** it was given — the caller
-has already read the click as a direction or a wait, and a re-render for a click
-that changes nothing is waste.
+its own, and a single-element path is legal at cost 0. ⚠️ Which also means
+clicking the unit **pins standing still** rather than deselecting — the one
+gesture this arrangement spends.
+
+⚠️ In `destinationChosen` — and only there — `handleTileClick` returns the
+**same object** it was given: the caller has already read the click as a
+direction, and a re-render for a click that changes nothing is waste.
+`routePinned` is deliberately excluded, because a route is still being chosen
+and its clicks are tile clicks.
 
 ⚠️ **`destinationChosen` is also the facing choice**, which used to be a phase of
 its own. Once the preview arrives, the tiles around the unit are the menu: a
@@ -596,16 +624,32 @@ edge is a strictly worse choice than any of the alternatives.
 **`game/GameCanvas.tsx`** — the canvas ref, the renderer lifecycle, and the
 chrome around it: the turn label, End Turn, the rejection reason, the
 reconnecting banner, and a Toggle Inspector button under an
-`import.meta.env.DEV` guard, plus a hint line while a destination is pinned. End
-Turn is disabled while pinned, since ending the turn there would submit around a
-plan the player has not answered for.
+`import.meta.env.DEV` guard, plus a hint line during action selection. End
+Turn is disabled while *either* kind of plan is open, since ending the turn
+there would submit around one the player has not answered for.
 
-⚠️ The tile menu lights **on arrival** rather than on pin: an inert lit tile
+⚠️ The tile menu lights **on arrival** rather than on confirm: an inert lit tile
 invites a click that does nothing. So `showSelection` is a projection of the
 selection *and* `walking` — the range stays lit while the unit walks, as the
-context the choice was made against, and comes down as the menu lights. ⚠️ The
-hint line is the only thing naming any of the gestures, since there are no
-buttons left to name them.
+context the choice was made against, and comes down as the menu lights.
+
+⚠️ **The route and the confirm pane are one affordance**, drawn on
+`routePinned && !walking` and gone the instant a route is confirmed, so the
+ghost walks over a clean board instead of retracing a line it was already
+handed. That predicate is why `walking` is a display input and not just a guard.
+
+**The confirm pane is DOM over canvas** — a small box anchored above the pinned
+tile, mounted only while it applies. ⚠️ React populates refs during the commit,
+*before* effects run, so the anchor effect finds the element on the render that
+introduces it and `null` on the one that removes it, which is exactly the clear.
+`pointerEvents: none`, because the tile underneath **is** the button and a pane
+that swallowed the click would block its own confirmation. Its container clips,
+since `Vector3.Project` does not: a tile zoom has pushed off screen would
+otherwise position an absolute child outside the viewport and add scrollbars.
+
+⚠️ The hint line and the pane **hand over rather than overlap** — the pane
+belongs to movement selection, the hint to action selection — and between them
+they are the only thing naming any gesture, since there are no buttons left.
 
 Its two callbacks read the renderer ref at call time, so a queue task resolving
 after unmount finds `null` rather than a disposed renderer.
@@ -627,11 +671,25 @@ unmount. It resolves to:
 
 ```ts
 onTileClick(handler)      setSelectedTile(coordinate | null)
-setMovement(movement)     setFacingChoices(around | null)
+setRange(tiles)           setRoute(path)
+setFacingChoices(around | null)
+anchorTo(element | null, coordinate | null)
 playEvents(events): Promise<void>
 snapUnits(state)          previewMove(unitId, path): Promise<void>
 cancelPreview()           toggleInspector()          dispose()
 ```
+
+⚠️ **Coordinates, never a `Movement`.** The renderer is told what to light, not
+handed a search to query — presentation gets facts, the rulebook stays upstream.
+`setRoute` takes the path *in order*, which a tint does not need but an arrow
+would, so that interface survives the rendering changing under it.
+
+`anchorTo` keeps a DOM element sitting over a tile: **the renderer writes its
+`transform`** from the render loop while React owns only the content, because an
+overlay tracking the board is otherwise a React commit every frame the camera
+turns. ⚠️ Projection lands in render-buffer pixels and is scaled to CSS pixels
+by the hardware scaling level — equal today only because `adaptToDeviceRatio`
+is off.
 
 - **Camera:** `ArcRotateCamera` in `ORTHOGRAPHIC_CAMERA` mode, starting at a
   fixed isometric angle. Orbit stays on the default input; **wheel zoom does
@@ -852,12 +910,12 @@ cancelPreview()           toggleInspector()          dispose()
   clears the ground plane, which has no thickness of its own and would otherwise
   depth-fight a coplanar face in bands that move with the camera.
 - A highlight follows the pointer, moved from `POINTERMOVE` inside the
-  renderer. React never hears about hover.
-- **The route preview is computed here, not in React.** `setMovement` hands the
-  renderer the whole `Movement`, so `POINTERMOVE` can call `pathTo` on the
-  hovered tile — recomputed only when the pointer crosses into a different
-  tile. A route is drawn only to a tile in `reachable`, since `pathTo` also
-  answers for tiles nobody may stop on.
+  renderer. React never hears about hover. ⚠️ That highlight is **all** hover
+  does — it is a tint, and being inert on a touchscreen costs nothing. The
+  route used to be computed here too, from `pathTo` on the hovered tile, which
+  meant it existed only under a pointer and a touchscreen never saw one. Showing
+  a route needs a *point* input distinct from *select*; touch is the only device
+  without one, so the second click supplies it and the route is state now.
 - Units are glTF models from `public/models/`, one per unit type, loaded once
   into `AssetContainer`s and instantiated per unit. Each instance is parented to
   a `TransformNode` of ours: the loader's own `__root__` carries the
@@ -950,7 +1008,8 @@ Every package is tested. `bun test` runs `shared` and `server`, Vitest runs
 
 - React components are tested with the renderer mocked, so Babylon never
   loads: `GameCanvas` covers the chrome, the renderer lifecycle, the tile click
-  and what a pinned destination projects at each stage of the walk; `MatchRoute` covers both failure branches, Retry, and disposal
+  and what each mode projects at every stage — pin, re-pin, confirm, walk,
+  arrive; `MatchRoute` covers both failure branches, Retry, and disposal
   including a connection that resolves after teardown; `StartScreen` covers
   each of its states and create-and-navigate.
 

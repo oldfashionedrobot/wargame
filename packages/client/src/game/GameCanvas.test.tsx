@@ -24,7 +24,9 @@ beforeEach(() => {
       clickTile = handler;
     }),
     setSelectedTile: vi.fn(),
-    setMovement: vi.fn(),
+    setRange: vi.fn(),
+    setRoute: vi.fn(),
+    anchorTo: vi.fn(),
     playEvents: vi.fn(() => Promise.resolve()),
     snapUnits: vi.fn(),
     setFacingChoices: vi.fn(),
@@ -160,11 +162,9 @@ describe('GameCanvas', () => {
     // follows the commit rather than inside the click.
     await act(async () => clickTile({ col: 1, row: 1 })); // the unit's own tile
     expect(renderer.setSelectedTile).toHaveBeenLastCalledWith({ col: 1, row: 1 });
-    // The whole search is handed over, so the renderer can draw a route on
-    // hover without asking React for anything.
-    const movement = vi.mocked(renderer.setMovement).mock.lastCall?.[0];
-    expect(movement?.reachable.length).toBeGreaterThan(0);
-    expect(typeof movement?.pathTo).toBe('function');
+    // ⚠️ Tiles, not the search. The renderer used to be handed the whole
+    // `Movement` so it could answer hover itself; it is given what to light.
+    expect(vi.mocked(renderer.setRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
   });
 
   // The point of registering a stable wrapper: clickTile's identity changes
@@ -180,12 +180,47 @@ describe('GameCanvas', () => {
     expect(renderer.dispose).not.toHaveBeenCalled();
   });
 
+  // ⚠️ The first click on a destination draws a route and moves nothing. That
+  // is the whole point of the step: a route that is state renders the same on
+  // a touchscreen, and the one computed under a pointer never did.
+  it('pins a route without walking it, and keeps the unit highlighted', async () => {
+    await renderCanvas(fakeServer());
+
+    await act(async () => clickTile({ col: 1, row: 1 }));
+    await act(async () => clickTile({ col: 1, row: 3 }));
+
+    expect(renderer.previewMove).not.toHaveBeenCalled();
+    expect(vi.mocked(renderer.setRoute).mock.lastCall?.[0]).toEqual([
+      { col: 1, row: 1 },
+      { col: 1, row: 2 },
+      { col: 1, row: 3 },
+    ]);
+    // The unit has not moved, so the highlight must not claim it has -- and
+    // the range stays up, because the pin can still be moved.
+    expect(renderer.setSelectedTile).toHaveBeenLastCalledWith({ col: 1, row: 1 });
+    expect(vi.mocked(renderer.setRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
+    expect(screen.getByText(/click again to confirm/i)).toBeTruthy();
+  });
+
+  // Every reachable tile stays live while a route is pinned, so changing your
+  // mind costs one click rather than a cancel and a reselect.
+  it('re-pins to another reachable tile without walking', async () => {
+    await renderCanvas(fakeServer());
+
+    await act(async () => clickTile({ col: 1, row: 1 }));
+    await act(async () => clickTile({ col: 1, row: 3 }));
+    await act(async () => clickTile({ col: 3, row: 1 }));
+
+    expect(renderer.previewMove).not.toHaveBeenCalled();
+    expect(vi.mocked(renderer.setRoute).mock.lastCall?.[0].at(-1)).toEqual({ col: 3, row: 1 });
+  });
+
   // The menu is present but inert until the unit arrives: confirming mid-walk
   // would leave the mesh short of the destination, and the committed move
   // would then replay from wherever it had got to.
   // ⚠️ The menu is tiles now, so "shut" means unlit rather than disabled: an
   // inert lit tile invites a click that does nothing.
-  it('holds the menu back until the previewed unit arrives', async () => {
+  it('holds the menu back until the confirmed unit arrives', async () => {
     let arrive!: () => void;
     vi.mocked(renderer.previewMove).mockReturnValue(
       new Promise<void>((resolve) => {
@@ -195,17 +230,21 @@ describe('GameCanvas', () => {
     await renderCanvas(fakeServer());
 
     await act(async () => clickTile({ col: 1, row: 1 }));
-    await act(async () => clickTile({ col: 1, row: 3 }));
+    await act(async () => clickTile({ col: 1, row: 3 })); // pins
+    await act(async () => clickTile({ col: 1, row: 3 })); // confirms
 
     expect(renderer.previewMove).toHaveBeenCalled();
     // Still walking: the range is the context, and no directions are offered.
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith(null);
-    expect(renderer.setMovement).toHaveBeenLastCalledWith(expect.anything());
+    expect(vi.mocked(renderer.setRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
     expect(screen.queryByText(/click the unit to hold/i)).toBeNull();
+    // And the pane is down, because it invites a click that is refused now.
+    expect(screen.queryByText(/click again to confirm/i)).toBeNull();
 
     await act(async () => arrive());
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith({ col: 1, row: 3 });
-    expect(renderer.setMovement).toHaveBeenLastCalledWith(null);
+    expect(renderer.setRange).toHaveBeenLastCalledWith([]);
+    expect(renderer.setRoute).toHaveBeenLastCalledWith([]);
     expect(screen.getByText(/click the unit to hold/i)).toBeTruthy();
   });
 
@@ -214,7 +253,8 @@ describe('GameCanvas', () => {
     await act(async () => clickTile({ col: 1, row: 1 })); // select
     await act(async () => clickTile({ col: 4, row: 4 })); // dead click, out of range
     expect(renderer.setSelectedTile).toHaveBeenLastCalledWith(null);
-    expect(renderer.setMovement).toHaveBeenLastCalledWith(null);
+    expect(renderer.setRange).toHaveBeenLastCalledWith([]);
+    expect(renderer.setRoute).toHaveBeenLastCalledWith([]);
   });
 
   // The menu is DOM like every other control -- the canvas draws the game and
@@ -233,13 +273,22 @@ describe('GameCanvas', () => {
     expect(screen.getByRole('button', { name: 'End Turn' })).toHaveProperty('disabled', false);
   });
 
-  // The buttons were the only thing naming the gestures; with Hold gone, the
-  // hint is all that is left saying a click on a tile means anything.
-  it('tells the player what a click means, once the unit has arrived', async () => {
+  // The buttons were the only thing naming the gestures; with Hold gone, these
+  // two lines are all that is left saying a click on a tile means anything.
+  // ⚠️ They hand over rather than overlap: the pane belongs to movement
+  // selection and the hint to action selection, so neither mode is ever silent
+  // and neither is ever telling you about the other one's clicks.
+  it('hands the pane over to the hint as the unit arrives', async () => {
     await renderCanvas(fakeServer());
     await act(async () => clickTile({ col: 1, row: 1 }));
-    await act(async () => clickTile({ col: 1, row: 3 }));
+    expect(screen.queryByText(/click again to confirm/i)).toBeNull();
 
+    await act(async () => clickTile({ col: 1, row: 3 })); // pins
+    expect(screen.getByText(/click again to confirm/i)).toBeTruthy();
+    expect(screen.queryByText(/click the unit to hold/i)).toBeNull();
+
+    await act(async () => clickTile({ col: 1, row: 3 })); // confirms
     expect(screen.getByText(/click the unit to hold/i)).toBeTruthy();
+    expect(screen.queryByText(/click again to confirm/i)).toBeNull();
   });
 });

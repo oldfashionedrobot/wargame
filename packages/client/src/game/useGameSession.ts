@@ -9,10 +9,12 @@ import type {
 } from '@vod/shared';
 import { coordinatesEqual } from '@vod/shared';
 import {
+  confirmRoute,
   facingChoiceAt,
   handleTileClick,
   initialSelectionState,
   moveCommandFor,
+  pinnedDestination,
   unpinDestination,
   holdFacing,
 } from './interaction/selection';
@@ -214,7 +216,9 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
         // ghost kept standing until a batch finished animating. An
         // uncommitted plan does not survive the board moving under it.
         setSelection((current) =>
-          current.phase === 'destinationChosen' ? unpinDestination(current) : current,
+          current.phase === 'destinationChosen' || current.phase === 'routePinned'
+            ? unpinDestination(current)
+            : current,
         );
         setGameState(state);
       });
@@ -225,18 +229,43 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     (coordinate: Coordinate): void => {
       if (pendingRef.current) return;
 
-      // Once a destination is pinned, the tiles around the unit are the menu
-      // and a click on one of them commits -- the destination itself keeps the
-      // direction travelled, the four beside it override it, and phase 8 adds
-      // an enemy in range as a third reading of the same gesture.
-      if (selection.phase === 'destinationChosen') {
-        // ⚠️ Nothing is answerable until the preview has arrived: `playEvents`
-        // skips a move only once its mesh stands at the destination, so
-        // committing early makes the committed move replay from halfway along
-        // the path. `walking` has to be in this callback's deps for that to be
-        // read fresh rather than from the render that pinned it.
-        if (walking) return;
+      // ⚠️ Nothing is answerable while the preview walks: `playEvents` skips a
+      // move only once its mesh stands at the destination, so committing early
+      // makes the committed move replay from halfway along the path. And a
+      // second click on the destination would otherwise start the same walk
+      // twice. `walking` has to be in this callback's deps for that to be read
+      // fresh rather than from the render that pinned it.
+      if (walking) return;
 
+      // A pinned route is a plan, and a second click on its own destination is
+      // what commits it to the walk. ⚠️ Read *before* `handleTileClick`, which
+      // would otherwise re-pin the destination onto itself: an equal object, a
+      // wasted render, and no walk. Dispatch order, exactly like the menu's.
+      if (
+        selection.phase === 'routePinned' &&
+        coordinatesEqual(coordinate, pinnedDestination(selection))
+      ) {
+        setWalking(true);
+        void callbacksRef.current
+          .onPreview({ unitId: selection.unitId, path: selection.path })
+          .catch((error: unknown) => console.error('preview failed:', error))
+          // ⚠️ Functional and phase-checked: a poll can unpin this plan while
+          // the walk is in flight, and committing the captured `selection`
+          // would resurrect it over authoritative state.
+          .finally(() => {
+            setWalking(false);
+            setSelection((current) =>
+              current.phase === 'routePinned' ? confirmRoute(current) : current,
+            );
+          });
+        return;
+      }
+
+      // Once the unit has arrived, the tiles around it are the menu and a click
+      // on one of them commits -- the destination itself keeps the direction
+      // travelled, the four beside it override it, and phase 9 adds an enemy in
+      // range as a third reading of the same gesture.
+      if (selection.phase === 'destinationChosen') {
         const state = server.getState();
         const facing = coordinatesEqual(coordinate, selection.path[selection.path.length - 1])
           ? holdFacing(state, selection)
@@ -264,18 +293,10 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       // The authoritative board, not the replica (invariant 1) -- the replica
       // is in scope and tempting, and a beat old. Otherwise a click commits
       // nothing: it picks a destination, and the menu decides from there.
-      const next = handleTileClick(server.getState(), selection, coordinate);
-      setSelection(next);
-
-      // Identity, not phase: a click that changes nothing returns the very same
-      // object, and only a fresh pin should start a walk.
-      if (next === selection || next.phase !== 'destinationChosen') return;
-
-      setWalking(true);
-      void callbacksRef.current
-        .onPreview({ unitId: next.unitId, path: next.path })
-        .catch((error: unknown) => console.error('preview failed:', error))
-        .finally(() => setWalking(false));
+      // Nothing commits here: a click picks or moves a pin, and the second
+      // click on it decides. ⚠️ No walk is started on this path at all, which
+      // is what retired the identity check that used to guard it.
+      setSelection(handleTileClick(server.getState(), selection, coordinate));
     },
     [server, selection, submitCommand, walking],
   );

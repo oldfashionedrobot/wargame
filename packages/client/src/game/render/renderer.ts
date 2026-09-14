@@ -7,10 +7,10 @@ import { Engine } from '@babylonjs/core/Engines/engine';
 import { PointerEventTypes } from '@babylonjs/core/Events/pointerEvents';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import type { Coordinate, Facing, GameEvent, GameState, Movement } from '@vod/shared';
+import type { Coordinate, Facing, GameEvent, GameState } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
 import { createTileHighlight, setHighlightTile } from './highlight';
@@ -105,12 +105,25 @@ const FACING_HEIGHT = 0.02;
 export interface GameRenderer {
   onTileClick(handler: (coordinate: Coordinate) => void): void;
   setSelectedTile(coordinate: Coordinate | null): void;
+  /** Light the tiles a selected unit may reach, or clear them. */
+  setRange(tiles: Coordinate[]): void;
   /**
-   * The selected unit's movement, or null when nothing is selected. The
-   * renderer keeps it so it can draw the route to whatever the pointer is
-   * over -- hover never reaches React.
+   * Draw a pinned route, or clear it.
+   *
+   * ⚠️ Coordinates, not a `Movement`. The renderer used to hold the search
+   * itself so it could answer `POINTERMOVE` without troubling React -- which
+   * meant the route existed only under a pointer, and a touchscreen never saw
+   * one at all. Presentation is given tiles to light, not a search to query.
    */
-  setMovement(movement: Movement | null): void;
+  setRoute(path: Coordinate[]): void;
+  /**
+   * Keep `element` positioned over `coordinate`, or stop.
+   *
+   * ⚠️ The renderer writes `transform` rather than React re-rendering: a DOM
+   * overlay tracking the board is otherwise a React commit every frame the
+   * camera turns. React owns the content, this owns the placement.
+   */
+  anchorTo(element: HTMLElement | null, coordinate: Coordinate | null): void;
   /**
    * Light the tiles a unit at `around` may turn to look at, or clear them.
    *
@@ -488,20 +501,27 @@ export async function createGameRenderer(
       levels,
     );
 
-  // The route is recomputed only when the pointer crosses into a different
-  // tile, not on every mouse event.
-  let movement: Movement | null = null;
-  let hoveredKey: string | null = null;
+  // Where a DOM overlay is pinned, and what it is pinned to. Both null unless
+  // something is anchored, which is the common case.
+  let anchorElement: HTMLElement | null = null;
+  let anchorTile: Coordinate | null = null;
 
-  const showRouteTo = (coordinate: Coordinate | null): void => {
-    if (!movement || !coordinate) return routeOverlay.setTiles([]);
-    // `pathTo` answers for any settled tile, including ones occupied by a
-    // friendly unit that nobody may stop on. Only draw a route somewhere the
-    // unit could actually end up.
-    const reachable = movement.reachable.some(
-      (tile) => tile.col === coordinate.col && tile.row === coordinate.row,
+  const placeAnchor = (): void => {
+    if (!anchorElement || !anchorTile) return;
+    const { x, z } = tileToWorld(anchorTile, gridWidth, gridHeight);
+    const screen = Vector3.Project(
+      new Vector3(x, surfaceAt(anchorTile), z),
+      Matrix.Identity(),
+      scene.getTransformMatrix(),
+      camera.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight()),
     );
-    routeOverlay.setTiles(reachable ? (movement.pathTo(coordinate) ?? []) : []);
+    // ⚠️ Projection lands in render-buffer pixels and CSS wants CSS pixels.
+    // They are equal today (`adaptToDeviceRatio` is off, so the scaling level
+    // is 1) and would silently diverge on a retina display the day it is not.
+    const scale = engine.getHardwareScalingLevel();
+    // Centred above the tile: the element's own size is its business, so this
+    // shifts by its own extent rather than measuring anything.
+    anchorElement.style.transform = `translate(${screen.x * scale}px, ${screen.y * scale}px) translate(-50%, -100%)`;
   };
 
   let clickHandler: ((coordinate: Coordinate) => void) | null = null;
@@ -509,12 +529,6 @@ export async function createGameRenderer(
     if (pointerInfo.type === PointerEventTypes.POINTERMOVE) {
       const coordinate = hoveredCoordinate();
       setHighlightTile(hoverHighlight, coordinate, HOVER_HEIGHT, surfaceAt, gridWidth, gridHeight);
-
-      const key = coordinate ? `${coordinate.col},${coordinate.row}` : null;
-      if (key !== hoveredKey) {
-        hoveredKey = key;
-        showRouteTo(coordinate);
-      }
       return;
     }
 
@@ -527,6 +541,7 @@ export async function createGameRenderer(
   engine.runRenderLoop(() => {
     holdTheBoard();
     scene.render();
+    placeAnchor();
   });
 
   const handleResize = (): void => {
@@ -565,12 +580,18 @@ export async function createGameRenderer(
         ),
       );
     },
-    setMovement(next) {
-      movement = next;
-      rangeOverlay.setTiles(next?.reachable ?? []);
-      // The selection changed under the pointer, so the route it was showing
-      // may no longer apply.
-      showRouteTo(next ? hoveredCoordinate() : null);
+    setRange(tiles) {
+      rangeOverlay.setTiles(tiles);
+    },
+    setRoute(path) {
+      routeOverlay.setTiles(path);
+    },
+    anchorTo(element, coordinate) {
+      anchorElement = element;
+      anchorTile = coordinate;
+      // Placed now rather than next frame: an overlay that appears at its
+      // previous position and corrects a frame later reads as a jump.
+      placeAnchor();
     },
     async playEvents(events) {
       for (const event of events) {
