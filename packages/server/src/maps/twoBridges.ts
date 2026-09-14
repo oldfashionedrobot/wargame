@@ -9,9 +9,9 @@ import type { GameMap } from './types';
  * from its strictly-road neighbours, so a board carrying only one of these
  * would leave half of `bridgeTurns` unexercised by anything anyone plays.
  *
- * ⚠️ The north-south arm stops short of the top edge rather than reaching it.
- * That is the deployment rule showing through: the rank lands on columns 6 to
- * 13 of the first and last row and `wheels` cannot enter water, so a river may
+ * ⚠️ The north-south arm stops short of the bottom edge rather than reaching
+ * it. That is the deployment rule showing through: the rank lands on columns 2
+ * to 9 of the first and last row and `wheels` cannot enter water, so a river may
  * only leave the board where the army does not stand.
  */
 export const twoBridges: GameMap = {
@@ -20,25 +20,17 @@ export const twoBridges: GameMap = {
 
   // . plains   - road   = bridge   ~ river   ^ mountain   f forest
   rows: [
-    '....-...............',
-    '....-...............',
-    '....-.....ff........',
-    '....-.....ff........',
-    '....-...............',
-    '..ff-...............',
-    '....-...............',
-    '~~~~=~~~~~~~~.......',
-    '....-.......~.......',
-    '....-.......~.......',
-    '....-.......~.......',
-    '....-.......~.......',
-    '....--------=--.....',
-    '............~.......',
-    '..^^........~.......',
-    '..^^........~.......',
-    '............~.......',
-    '............~.......',
-    '....................',
-    '....................',
+    '..-.........',
+    '..-.........',
+    '..-....ff...',
+    '~~=~~~~~....',
+    '..-....~....',
+    '..-....~....',
+    '..-----=-...',
+    '.......~....',
+    '..^^...~....',
+    '..^^...~....',
+    '............',
+    '............',
   ],
 };

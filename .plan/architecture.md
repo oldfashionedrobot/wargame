@@ -311,16 +311,20 @@ river may only leave the board through its east and west edges, or stop short of
 the north and south ones. `two-bridges` does the latter, and the river end it
 leaves behind is the visible cost of the rule.
 
-⚠️ **Every map is 20×20** — Advance Wars' own competitive size — and that is a
-decision rather than a requirement: nothing in the code needs boards to agree on
-a size, and `createMatchState` centres the rank on whatever width it is handed.
-`maps.test.ts` asserts it, so it stays a constraint rather than becoming a
-coincidence.
+⚠️ **Every map is 12×12**, and that is a decision rather than a requirement:
+nothing in the code needs boards to agree on a size, and `createMatchState`
+centres the rank on whatever width it is handed. `maps.test.ts` asserts it, so it
+stays a constraint rather than becoming a coincidence.
 
-⚠️ **Sixteen units on four hundred tiles is 4% occupancy**, against Advance
-Wars' own boards which fill that space with properties to capture and bases
-producing units all game. There is no production here and the rank is fixed, so
-if a board plays empty the dial to reach for is **army size**, not another
+⚠️ **Twelve is a middle found by overshooting both ways.** Ten was too tight —
+the rank spans eight of its columns, leaving one spare a side and nowhere to go
+round a line, which matters because flanking is the mechanic this game has that
+Advance Wars does not. Twenty was Advance Wars' own competitive size and too
+empty: AW fills that space with properties to capture and bases producing units
+all game, and there is no production here. Twelve leaves **two spare columns a
+side** at 11% occupancy.
+
+⚠️ If a board plays empty from here the dial is **army size**, not another
 resize.
 
 | | |
