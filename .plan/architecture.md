@@ -46,6 +46,7 @@ packages/
     legality.ts       what may be selected
     movement.ts       the search, the path check, and the cost model both call
     terrainGrid.ts    character rows into a tile grid
+    armyGrid.ts       character rows into unit placements
     action.ts         command validation and resolution, and the Action brand
     move.ts           the move command
     endTurn.ts        the end-turn command
@@ -651,8 +652,12 @@ cancelPreview()           toggleInspector()          dispose()
   clips at every other.
 
   From that, each frame: the frustum is sized so `zoom = 1` is *the whole board
-  just fits*, and the target is clamped per axis to whatever board the viewport
-  does not already cover. ⚠️ **Centring is not a rule of its own** — at full
+  just fits* — which is both the **floor** the wheel cannot go below and the
+  **default** it starts at. The board is the view you play from, and zooming in
+  is for detail; starting anywhere else starts the player somewhere they did not
+  ask to be, looking at the middle of a board with neither army in frame. The
+  target is then clamped per axis to whatever board the viewport does not
+  already cover. ⚠️ **Centring is not a rule of its own** — at full
   zoom-out the viewport covers everything, the slack goes to zero, and the board
   is centred with nowhere to pan. It is the clamp at its limit.
 
