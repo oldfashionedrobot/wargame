@@ -83,7 +83,7 @@ describe('computeDamage', () => {
     );
   });
 
-  it('adds luck to the base before scaling, never subtracting', () => {
+  it('adds luck last, flat, and never subtracts', () => {
     const { state, a, d } = fight(ROAD);
     const floorValue = computeDamage(state, a, d, 0);
     for (let roll = 0; roll <= LUCK_MAX; roll++) {
@@ -94,22 +94,30 @@ describe('computeDamage', () => {
     expect(computeDamage(state, a, d, LUCK_MAX)).toBe(floorValue + LUCK_MAX);
   });
 
-  // Damaged attackers are less swingy as well as weaker -- the luck range
-  // narrows with health, so the spread between the worst and best roll shrinks.
-  it('narrows the luck spread as the attacker weakens', () => {
+  // ⚠️ The spread does *not* narrow with the attacker's health, and an earlier
+  // version of this suite asserted that it did. Luck is added after every
+  // multiplication, so it is the same flat band however weak the attacker is --
+  // which makes it worth proportionally *more* the worse shape they are in.
+  // A ROM-derived reconstruction of the GBA engine is the source; wikis that
+  // describe luck as scaling with HP disagree with it.
+  it('keeps the luck spread flat however weak the attacker is', () => {
     const spread = (health: number): number => {
       const { state, a, d } = fight(ROAD, { health });
       return computeDamage(state, a, d, LUCK_MAX) - computeDamage(state, a, d, 0);
     };
-    expect(spread(MAX_HEALTH)).toBeGreaterThan(spread(50));
-    expect(spread(50)).toBeGreaterThan(spread(10));
+    expect(spread(MAX_HEALTH)).toBe(LUCK_MAX);
+    expect(spread(50)).toBe(LUCK_MAX);
+    expect(spread(1)).toBe(LUCK_MAX);
   });
 
-  // The floor is AW's: the range narrows, it never closes, so even a nearly
-  // dead attacker can roll something.
-  it('leaves a sliver of luck to an almost-dead attacker', () => {
-    const { state, a, d } = fight(ROAD, { health: 1 });
-    expect(computeDamage(state, a, d, LUCK_MAX)).toBeGreaterThan(computeDamage(state, a, d, 0));
+  // The consequence worth stating separately: for a nearly-dead attacker the
+  // roll stops being a modifier and becomes most of the attack.
+  it('makes luck matter more, not less, to a weakened attacker', () => {
+    const share = (health: number): number => {
+      const { state, a, d } = fight(ROAD, { health });
+      return LUCK_MAX / computeDamage(state, a, d, LUCK_MAX);
+    };
+    expect(share(1)).toBeGreaterThan(share(MAX_HEALTH));
   });
 
   it('never returns a negative number', () => {
@@ -147,6 +155,14 @@ describe('computeDamage', () => {
         }
       }
     }
+  });
+
+  // ⚠️ Luck is added after every other step, so it sails past a zeroed base
+  // unless something stops it: without the guard a unit at 0 health lands 9.
+  it('lets a dead attacker deal nothing, luck included', () => {
+    const { state, a, d } = fight(ROAD, { health: 0 });
+    expect(computeDamage(state, a, d, 0)).toBe(0);
+    expect(computeDamage(state, a, d, LUCK_MAX)).toBe(0);
   });
 
   it('reads the defender’s terrain, not the attacker’s', () => {

@@ -23,8 +23,9 @@ damage = baseDamage × (attackerHP / 10) × ((100 − terrainStars × 10 × defe
 
 ```
 band(hp) = ceil(hp / 10)                      // 1..10, never 0 while alive
-damage   = floor((baseDamage + luck) × band(attackerHP) / 10)
-                × (100 − terrainStars × band(defenderHP)) / 100
+damage   = floor(floor(baseDamage × band(attackerHP) / 10)
+                 × (100 − terrainStars × band(defenderHP)) / 100)
+           + luck                              // last, flat, unscaled
 ```
 
 ⚠️ **Both HP terms read the ten-point band, not the raw value — and this is load-bearing, not a rounding preference.** AW's formula reads *displayed* HP, which is `ceil(internal / 10)`, so a unit on 1 internal point still attacks at 1/10 strength. We store and display 0–100 (see the next section) but the formula still reads the band, because feeding it raw health makes a living unit attack at 1% and the floors swallow it: **measured, cavalry at 4 health or less dealt zero to infantry in forest even on a maximum roll.** Two wounded units could then be permanently unable to kill each other, and elimination is the only way a match ends.
@@ -41,9 +42,11 @@ Every step rounds down. Three things fall out of it:
 - **A wounded defender loses its cover.** Terrain defence scales by *defender* HP, so a 4-star mountain protects a full-health unit far more than a nearly-dead one. This accelerates kills and stops damaged units turtling on good ground.
 - **Terrain is not a minor modifier.** Four stars at full health is a 40% reduction. Tuning a matchup table with defence stubbed to zero would produce numbers to throw away — which is why terrain comes first.
 
-**Luck** adds 0 to +9 to `baseDamage`, and needs **no rescaling** — the 0–9 is already in our units, because `baseDamage` is a percentage in both schemes.
+**Luck** adds 0 to +9, and needs **no rescaling** — the 0–9 is already in our units, because `baseDamage` is a percentage in both schemes.
 
-⚠️ **And it needs no narrowing code either.** Luck is added *before* the health multiplier, so a weaker attacker's luck scales down with everything else: 0–9 at full health becomes 0–4 at half and 0–1 at a sliver, with the floor of +1 falling out of the band never reaching zero. A draft that computed the narrowing explicitly was reimplementing the multiplication it sat beside. Damaged units are less swingy as well as weaker, and nothing has to say so. *(Sources disagree slightly on where luck enters relative to the HP multiplier; the magnitude is consistent.)*
+⚠️ **It is added last, flat, and scaled by nothing.** This doc twice said the opposite — that luck folds into the base before the health multiplier and therefore narrows as an attacker weakens. A [ROM-derived reconstruction](https://github.com/geno55/advance-wars-advisor) of the GBA engine finds luck applied *after* every multiplication and truncation, as a plain addition of true hitpoints. Wikis describing luck as scaling with HP disagree with the ROM, and the ROM wins.
+
+⚠️ **The difference is not cosmetic, and it points the other way from the old claim.** Folded in, a weak attacker's luck shrinks with it. Added last, **luck is worth proportionally more the weaker the attacker is** — at the current table a full-strength volley of 27 carries the same ±9 as a crippled one of 18, which is half again as much of it. A nearly-dead unit's best roll is most of its remaining threat, and damaged units are *swingier*, not steadier.
 
 ### HP representation — where we diverge ⚠️
 
@@ -321,14 +324,34 @@ starts from a position rather than a blank table.
 
 | | infantry | cavalry | artillery |
 |---|---|---|---|
-| **infantry** | 55 | 60 | 70 |
-| **cavalry** | 40 | 45 | 55 |
-| **artillery** | 90 | 75 | 60 |
+| **infantry** | 30 | 35 | 45 |
+| **cavalry** | 20 | 25 | 30 |
+| **artillery** | 75 | 60 | 40 |
 
-`infantry→infantry 55` is AW's literal value, kept as the anchor the rest are
-judged against. ⚠️ **Cavalry is mediocre in every column deliberately** —
-carbines from horseback — because its identity is in the charge table, and a
-cavalry that also shoots well has no reason to close.
+⚠️ **An earlier cut ran 40–90 and the harness killed it.** Everything died in two
+hits, which flattened three things at once: terrain became a rounding error (a
+four-star mountain bought one extra blow or none), the nine matchup numbers
+produced two distinct outcomes, and luck moved nothing. Worse, it starved phase
+10 — `CHARGE_THRESHOLD` wants infantry at ≤25 health, and a unit went 100 → 45 →
+dead without ever passing through the band where a charge is legal.
+
+**The fix was spread, not shape.** AW's nine analogous cells run 12 to 90:
+
+| AW2 | Infantry | Recon | Artillery |
+|---|---|---|---|
+| **Infantry** | 55 | 12 | 15 |
+| **Recon** | 70 | 35 | 45 |
+| **Artillery** | 90 | 80 | 75 |
+
+⚠️ **Copy the range, never the shape.** AW's 12 and 15 encode *armour
+penetration* — a rifle cannot hurt a vehicle. There is no armour in a
+horse-and-musket war and musketry into cavalry was famously lethal, so importing
+that 12 would say infantry cannot hurt horses and leave cavalry riding around
+untouchable. What transfers is that the losing edges must genuinely lose.
+
+⚠️ **Cavalry is bad in every column deliberately** — carbines from horseback —
+because its identity is in the charge table, and a cavalry that shoots well has
+no reason to close. At six hits to kill infantry it plainly cannot.
 
 `CHARGE_THRESHOLD`, charger down the side. Target HP at or below this succeeds
 without luck; artillery has no row:
