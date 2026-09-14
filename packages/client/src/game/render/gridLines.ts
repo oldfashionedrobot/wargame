@@ -8,15 +8,30 @@ import { tileToWorld, TILE_SIZE } from './coordinates';
 const LINE_HEIGHT = 0.012;
 
 /**
- * ⚠️ A mid grey, very faintly. These started near-black at 35%, which drew a
- * hard rule between every pair of tiles and read as a wireframe laid over the
- * board. White was tried next and overcorrected -- a bright seam is still a
- * seam. Grey at 7% neither cuts the board nor lights it: the eye finds a
- * boundary when it goes looking for one and otherwise sees terrain, which is
- * the whole job of a grid here.
+ * A mid grey, faintly: the eye finds a boundary when it goes looking for one
+ * and otherwise sees terrain, which is the whole job of a grid here.
+ *
+ * ⚠️ **The alpha lives in this `Color4`, and `useVertexAlpha` below is what
+ * makes it do anything.** Passing `colors` to `CreateLineSystem` turns on
+ * vertex colouring, after which `LinesMesh.alpha` is ignored -- the fragment
+ * comes from the vertex colour. And vertex *alpha* stays off unless asked for,
+ * so until it was asked for, every line drew fully opaque whatever either
+ * number said.
+ *
+ * ⚠️ Which means the tuning this comment used to describe never happened.
+ * Near-black at 35%, white at 10%, grey at 7% -- all three rendered identically
+ * opaque, and only the RGB was ever really being chosen. Treat the value below
+ * as the first one anybody has actually seen.
  */
-const LINE_COLOR = new Color4(0.35, 0.36, 0.36, 1);
-const LINE_ALPHA = 0.07;
+const LINE_COLOR = new Color4(0.36, 0.36, 0.36, 0.15);
+
+/**
+ * ⚠️ Deliberately 1, and not the knob. `LinesMesh.alpha` does nothing while
+ * vertex colouring is on; it is left at its no-op value rather than deleted,
+ * because a mesh alpha that silently loses to the vertex colour is exactly the
+ * trap this file already fell into once.
+ */
+const LINE_ALPHA = 1;
 
 /**
  * One flat grid across the whole board, at the height of the ground.
@@ -62,7 +77,9 @@ export function createGridLines(
   }
 
   const colors = lines.map((line) => line.map(() => LINE_COLOR));
-  const gridLines = CreateLineSystem('grid-lines', { lines, colors }, scene);
+  // ⚠️ `useVertexAlpha` is not optional decoration: without it the alpha in
+  // `LINE_COLOR` is dropped and every line draws opaque. See the note above.
+  const gridLines = CreateLineSystem('grid-lines', { lines, colors, useVertexAlpha: true }, scene);
   gridLines.alpha = LINE_ALPHA;
   gridLines.isPickable = false; // picking is plane arithmetic, never a ray at a mesh
   return gridLines;
