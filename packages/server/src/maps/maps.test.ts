@@ -29,6 +29,16 @@ describe('every map', () => {
       const width = grid[0].length;
       const { units } = createMatchState(map);
 
+      // ⚠️ A chosen constraint, not a technical one: nothing in the code needs
+      // boards to agree on a size, and `createMatchState` centres the rank on
+      // whatever width it is given. Every map being the same shape is a design
+      // decision about what the game is, so it is asserted rather than left as
+      // a coincidence for the next board to quietly break.
+      it('is ten by ten', () => {
+        expect(width).toBe(10);
+        expect(height).toBe(10);
+      });
+
       it('deploys both armies onto the board', () => {
         expect(units.length).toBeGreaterThan(0);
         for (const { position } of units) {

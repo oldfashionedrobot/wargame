@@ -1,37 +1,31 @@
 import type { GameMap } from './types';
 
 /**
- * A lake with an island in it, mountains to the north and woods on both shores.
+ * A lake with an island in the middle of it, and a pond off to one side.
  *
- * The island is the interesting part for the tiler rather than for the game:
- * a single land tile ringed by water gives four cells that have water on all
- * four sides but land on one diagonal — the inner corner a neighbour mask alone
- * cannot see. Nothing but infantry can reach it, so it is scenery with a
- * footnote.
+ * The island is the point: it is ringed by water, and water is the one terrain
+ * only `foot` may enter. So infantry can take and hold ground that cavalry and
+ * artillery cannot reach at any price -- the sharpest thing the cost table can
+ * say, on a board built to say it.
  *
- * There is no bridge and none is needed: the lake stops short of both edges, so
- * going round is the wide way and fording is the short one. The pond off to the
- * east is a single tile with no water neighbours at all — the one shape a lake
- * never produces.
+ * Everything else goes round. The lake leaves a lane down each flank, which is
+ * what keeps the board crossable for wheels without a bridge on it anywhere.
  */
 export const lakeland: GameMap = {
   id: 'lakeland',
   name: 'Lakeland',
 
   // . plains   - road   = bridge   ~ river   ^ mountain   f forest
-  // rows[0] is the bottom of the screen.
   rows: [
-    '............',
-    '..ff.....~..',
-    '..ff........',
-    '...~~~~~~...',
-    '..~~~~~~~~..',
-    '..~~~.~~~~..',
-    '..~~~~~~~~..',
-    '...~~~~~~...',
-    '......ffff..',
-    '....^.......',
-    '...^^^......',
-    '....^^......',
+    '..........',
+    '........~.',
+    '...~~~~...',
+    '..~~~~~~..',
+    '..~~..~~..',
+    '..~~..~~..',
+    '..~~~~~~..',
+    '...~~~~...',
+    '.f.^^...f.',
+    '..........',
   ],
 };

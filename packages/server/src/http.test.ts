@@ -73,14 +73,19 @@ async function newMatch(): Promise<MatchSummary> {
   return (await postJson('/api/matches')).json() as Promise<MatchSummary>;
 }
 
-// blue-1 starts at (0,0) as infantry, range 3, and blue moves first. The path
-// is a walkable route rather than two endpoints, which is what a client
-// actually sends -- validatePath walks every step in 6c.
+// blue-1 is the artillery on the left end of blue's rank, at (1,0) -- column
+// one because eight units centred on a board of ten leave a column spare each
+// side -- and blue moves first. ⚠️ One tile, because wheels pay 2 to cross
+// plains against a range of 4: these are tests about the HTTP surface, and a
+// route a gun cannot afford fails them for the wrong reason.
+//
+// The path is a walkable route rather than two endpoints, which is what a
+// client actually sends -- validatePath walks every step in 6c.
 const legalMove: Command = {
   type: 'move',
   facing: 'north',
   unitId: 'blue-1',
-  path: route({ col: 0, row: 0 }, { col: 0, row: 2 }),
+  path: route({ col: 1, row: 0 }, { col: 1, row: 1 }),
 };
 
 describe('GET /api/matches', () => {
@@ -206,8 +211,8 @@ describe('GET /api/matches/:id/events', () => {
     // is the *post*-move one. currentTurn alone would not show that: a move
     // does not end a turn, so the pre-move snapshot has the same value.
     expect(body.state?.units.find((unit) => unit.id === 'blue-1')?.position).toEqual({
-      col: 0,
-      row: 2,
+      col: 1,
+      row: 1,
     });
 
     // Asking from the current seq is the steady-state poll: nothing new, and
@@ -243,8 +248,8 @@ describe('POST /api/matches/:id/commands', () => {
     expect(result.seq).toBe(1);
     expect(result.events).toHaveLength(1);
     expect(result.state.units.find((unit) => unit.id === 'blue-1')?.position).toEqual({
-      col: 0,
-      row: 2,
+      col: 1,
+      row: 1,
     });
   });
 
@@ -258,7 +263,7 @@ describe('POST /api/matches/:id/commands', () => {
       type: 'move',
       facing: 'north',
       unitId: 'blue-1',
-      path: route({ col: 0, row: 0 }, { col: 7, row: 7 }),
+      path: route({ col: 1, row: 0 }, { col: 8, row: 9 }),
     };
 
     const response = await postJson(`/api/matches/${id}/commands`, outOfRange);

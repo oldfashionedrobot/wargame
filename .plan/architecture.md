@@ -11,7 +11,7 @@ the tiles it can reach across terrain, hover to preview the route, click a
 destination and watch the unit walk to it — then click the unit to stop there, a
 tile beside it to end up looking that way, or anywhere else to think again —
 end turn. Two players, a rank of eight each — two guns, two horse, four foot —
-on one of four maps chosen when the match is created. No combat.
+on one of six maps chosen when the match is created. No combat.
 
 ## Packages
 
@@ -256,12 +256,26 @@ match claims to have been played on. A changed map gets a new id.
 camera** — row index increases north, so a map written out top-down is upside
 down in the source.
 
+⚠️ **The deployment rows constrain what a map may draw.** The rank lands on
+columns 1–8 of the first and last row, and `wheels` cannot enter river or
+mountain at any price, so neither may appear there — which in practice means a
+river may only leave the board through its east and west edges, or stop short of
+the north and south ones. `two-bridges` does the latter, and the river end it
+leaves behind is the visible cost of the rule.
+
+⚠️ **Every map is 10×10**, and that is a decision rather than a requirement:
+nothing in the code needs boards to agree on a size, and `createMatchState`
+centres the rank on whatever width it is handed. `maps.test.ts` asserts it, so
+it stays a constraint rather than becoming a coincidence.
+
 | | |
 |---|---|
-| `classic` | 8×8. A river split by one bridge, mountains flanking the far approach and forest the near one, so infantry ford where cavalry and artillery take the bridge |
-| `crossroads` | 10×10. A road network closed into a figure of eight, no water and no mountains |
-| `two-bridges` | 12×10. One river bent through a right angle, with a bridge across each arm — so both bridge orientations appear on one board, and the river cuts it into three |
-| `lakeland` | 12×12. A lake with an island only infantry can reach, mountains north, woods on both shores, and a one-tile pond |
+| `classic` | A river across the middle with one bridge, woods on the near approach and high ground on the far one. Infantry ford anywhere; cavalry and artillery must take the crossing, which is the whole board |
+| `crossroads` | A road network closed into a figure of eight. No water and no high ground, so nothing is impassable and cost is the only thing shaping a move — which makes it the board artillery likes |
+| `two-bridges` | One river bent through a right angle with a crossing on each arm. ⚠️ Carries **both deck orientations**, which nothing else does: a board with only one leaves half of `bridgeTurns` unexercised |
+| `lakeland` | A lake ringing an island, plus a pond. The island is the sharpest thing the cost table can say — water is the one terrain only `foot` may enter, so infantry can hold ground the other two cannot reach at any price |
+| `meadow` | Open field, a **lateral** road straight across and one rise in the middle. A road across rather than along helps you redeploy along your own line more than it helps you advance |
+| `common` | Open field with the opposite road — up the middle, the fast way *at* the enemy — and a pair of hills on each flank: 4 stars of cover apiece and shut to wheels, so a strong position no gun can ever hold |
 
 `StartScreen` picks between them and `POST /api/matches` carries the choice;
 omitting it takes `DEFAULT_MAP_ID`.

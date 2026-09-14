@@ -6,40 +6,7 @@ however it suits. Forward-looking only, exactly like
 [`architecture.md`](architecture.md) and is deleted from here. Nothing below
 describes current behaviour.
 
-⚠️ **S3 has shipped**, and it left S1 a constraint: the army's rank occupies
-columns 1–8 of the first and last row, and `wheels` cannot enter river or
-mountain — so every board S1 draws must keep those squares clear of both.
-
 ---
-
-## S1 — ⬜ Every map is 10×10
-
-A constraint to design within, rather than four boards that are each whatever
-size they happened to be written at. `crossroads` already is; `classic` is 8×8,
-`two-bridges` 12×10, `lakeland` 12×12.
-
-**Redrawn rather than resized**, keeping roughly the variety of terrain the set
-has today, and **gaining a couple of more open boards** — the current four are
-all cut up by water or road, so there is nowhere that plays as a field.
-
-The terrain is character rows, so this is mostly retyping. Three things make it
-more than that:
-
-- ⚠️ **Map ids are immutable** — `architecture.md` says so, and this breaks the
-  rule head-on: changing a map's terrain under its id retroactively changes what
-  every existing match claims to have been played on. The only thing holding
-  such matches is the dev database, which is disposable, so the answer is to
-  **wipe it** — after which no row references those ids and reusing them is
-  vacuously safe rather than merely convenient. Write the wipe down as a step:
-  `packages/server/vod.db` and its `-wal`/`-shm` siblings, all gitignored, all
-  recreated by `migrate()` at boot.
-- **`maps.test.ts` is the specification.** It already checks that every unit
-  stands on terrain it can enter, that nothing stacks, that the two sides have
-  equal numbers, and that **each movement type has a route across**. That last
-  one is the one resizing breaks: trimming two columns off `lakeland` can sever
-  the only way round its lake, and trimming `two-bridges` can strand a bridge.
-- **S3's deployment zone is a terrain constraint**, and honouring it while
-  drawing is far cheaper than retrofitting it.
 
 ## S2 — ⬜ The camera fits the board
 

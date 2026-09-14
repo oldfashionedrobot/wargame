@@ -1,6 +1,8 @@
 import { classic } from './classic';
+import { common } from './common';
 import { crossroads } from './crossroads';
 import { lakeland } from './lakeland';
+import { meadow } from './meadow';
 import { twoBridges } from './twoBridges';
 import type { GameMap } from './types';
 
@@ -9,7 +11,7 @@ export type { GameMap } from './types';
 // Every map, by id. Maps are code rather than rows because they are reviewed
 // as diffs; see *Maps in a table* in the roadmap for when that changes.
 const MAPS: Record<string, GameMap> = Object.fromEntries(
-  [classic, crossroads, twoBridges, lakeland].map((map) => [map.id, map]),
+  [classic, crossroads, twoBridges, lakeland, meadow, common].map((map) => [map.id, map]),
 );
 
 export const DEFAULT_MAP_ID = classic.id;
