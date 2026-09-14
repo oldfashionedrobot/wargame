@@ -172,7 +172,9 @@ counter-battery becomes possible, which AW forbids and history does not.
 
 Every attack goes through a small panel anchored over the target: it previews
 what would happen, and where more than one action is available it is also how
-you choose.
+you choose. It is 8.999's confirm pane with numbers in it — same anchoring, same
+DOM-over-canvas, and the camera-tracking `transform` already lives in the
+renderer.
 
 ```
 Volley — 34 damage, they answer for 22
@@ -199,8 +201,8 @@ renders the content, the renderer writes `transform` on the container.
 
 #### What a click means, and in what order
 
-At a pinned destination the tiles are already the menu. Attacking adds one more
-reading of a click that is being read anyway:
+**Action selection** (8.999's name for it) already reads the tiles around the
+unit as a menu. Attacking adds one more reading of a click being read anyway:
 
 | clicked | means |
 |---|---|
@@ -360,42 +362,109 @@ Slotted before phase 9 rather than into it, exactly as 7.999 was: this reworks
 *shipped* behaviour, and phase 9's whole safety property is that nothing in it is
 original. It is also a prerequisite — 9h's panel is this pane with numbers in it.
 
-**Pinning stops moving the unit.** A first click on a reachable tile draws the
-route and nothing else; a second click on that same tile walks the unit and opens
-the menu. Clicking any other reachable tile re-pins. Clicking a dark tile cancels.
+#### Why: touch is missing an input channel
 
-⚠️ **This exists to kill hover, not to add a click.** The route preview is
-computed inside the renderer on `POINTERMOVE` and React never hears about it, so
-on a touchscreen it does not exist. A pinned route is state, and state renders
-the same everywhere.
+Drawing a route means answering *where are you considering going* **before** you
+commit. That needs two inputs — one to point, one to select:
 
-**The hover route comes out entirely** — `showRouteTo`, `hoveredKey`, and the
-route half of the `POINTERMOVE` branch. ⚠️ The hover *highlight* stays; it is a
-tint, and being inert on touch costs nothing.
+| | point | select |
+|---|---|---|
+| Advance Wars on a D-pad | move the cursor | press **A** |
+| desktop mouse | move the pointer | click |
+| finger on glass | — | tap |
 
-⚠️ **The renderer stops importing `Movement`.** Those four lines are the only
-ones, and all four are the hover route. `setMovement(movement)` becomes
+⚠️ **Touch is the only one short a channel**, and the shipped client is a
+faithful port of the other two: hover points, click selects, and the route falls
+out for free. A finger has no position until it commits to one, so there is
+nothing to preview and the route simply never appears.
+
+**The second tap is the missing point channel.** First tap points, second
+selects. One behaviour on every device, at the price of a click on desktop —
+which had been getting its pointing for free.
+
+⚠️ **The rejected alternative is worth recording**, because it gives up nothing
+and was still turned down: branch on `@media (hover: hover)`, so a pointer keeps
+hover-and-one-click and touch gets two taps. That is AW parity on both, and two
+interaction paths to maintain, test and reason about forever. One behaviour is
+worth one click in a game whose turn is eight deliberate moves. ⚠️ If desktop
+ever feels sluggish in play this is the retrofit, and it is contained: same
+states, same events, only the dispatch branches.
+
+#### The two modes
+
+Names for talking about this, mapping onto phases that keep their own:
+
+- **Movement selection** — the range is lit. `unitSelected` is it with no pin,
+  `routePinned` is it with one. Both answer clicks the same way.
+- **Action selection** — the unit has walked and the tiles around it are the
+  menu. `destinationChosen`, and where phase 9 hangs attack, charge and hold.
+
+**Pinning stops moving the unit.** In movement selection a click on a reachable
+tile draws the route and nothing else; a second click on that same tile walks the
+unit and opens action selection. Any other reachable tile discards the old route
+and pins the new one — re-pinning is free, and it is the whole point of the step.
+
+#### Cancelling, which differs by mode and should
+
+- **From movement selection:** a click outside the range clears the pin *and*
+  deselects the unit. `trySelect`'s existing fallthrough to `idle`, unchanged.
+- **From action selection:** back to movement selection with no pin and the unit
+  home. `unpinDestination` plus the `onPreview(null)` that walks the ghost back.
+
+⚠️ **Not an inconsistency — the states differ.** Before the walk there is nothing
+to undo, so a stray click can afford to clear everything. After it, the unit is
+standing somewhere it has not committed to, and dropping to `idle` would strand
+that fact on the board.
+
+⚠️ **And the two cancels carry opposite obligations toward the preview**: the
+menu's *must* say `onPreview(null)`, the pinned route's must *not* — nothing
+walked, and telling it would be a spurious command. Two paths, one dispatch
+function, nothing in the types keeping them apart. Same shape as 9h's
+dispatch-order hazard, and worth the same suspicion.
+
+**Clicking the unit itself pins standing still**, because its own tile is a
+reachable tile at cost 0 — so it is how you act without moving, and a second
+click confirms it into action selection. ⚠️ It is therefore *not* a way to
+deselect, which is the one gesture this design quietly spends.
+
+#### What comes out
+
+**The hover route goes entirely** — `showRouteTo`, `hoveredKey`, and the route
+half of the `POINTERMOVE` branch. ⚠️ The hover *highlight* stays; it is a tint,
+and being inert on touch costs nothing.
+
+⚠️ **The renderer stops importing `Movement`.** Those four references are the
+only ones and all four are the hover route. `setMovement(movement)` becomes
 `setRange(tiles)` and `setRoute(path)` — two arrays of coordinates. Presentation
-gets tiles to light instead of a search structure to query, which is the
-authority split the architecture doc already claims and this was the one place
-quietly breaking it. `GameCanvas.test.tsx`'s `pathTo` assertion goes with it: it
-exists only to prove the renderer can bypass React.
+is given tiles to light instead of a search to query, which is the authority
+split the architecture doc already claims and this was the one place quietly
+breaking it. `GameCanvas.test.tsx`'s `pathTo` assertion goes with it: it exists
+only to prove the renderer can bypass React.
+
+#### What it costs in code
 
 **A new phase before the menu, not a rename.** `routePinned` is added; the
 existing `destinationChosen` keeps meaning *arrived, menu up*, so
-`facingChoiceOrigin`, `holdFacing`, `facingChoiceAt`, `unpinDestination` and
-`moveCommandFor` are all untouched.
+`facingChoiceOrigin`, `holdFacing`, `facingChoiceAt` and `moveCommandFor` are
+untouched. `unpinDestination` widens to serve both.
 
 - ⚠️ `handleTileClick`'s bail narrows to `destinationChosen` alone, because
-  `routePinned` now answers clicks. **No new branch** — both phases carry
-  `unitId` and `movement`, which is everything the pin path reads, so re-pinning
-  and pinning are the same code.
+  `routePinned` now answers clicks. **No new branch** — both movement-selection
+  phases carry `unitId` and `movement`, which is everything the pin path reads,
+  so re-pinning and pinning are the same code.
 - ⚠️ The `next === selection` identity guard in `clickTile` **deletes**. It
   exists solely because `handleTileClick` returns its own argument when pinned;
   once confirm is its own dispatch branch, nothing on that path starts a walk.
-- ⚠️ Transition `routePinned → destinationChosen` in the walk's `.finally()`,
-  not on the click. Then `walking` is an input gate only and `showSelection`
-  drops its second parameter — back to a pure projection of the selection.
+- ⚠️ **The confirm has to be read before `handleTileClick`**, which would
+  otherwise re-pin the destination onto itself: an equal object, a wasted
+  render, and no walk.
+- ⚠️ `routePinned → destinationChosen` transitions in the walk's `.finally()`,
+  **functionally and phase-checked**. A poll can unpin the plan while the walk is
+  in flight, and committing a captured selection would resurrect it over
+  authoritative state. This failure mode does not exist today, because today
+  there is no gap between pinning and walking.
+- With arrival a phase of its own, `showSelection` drops its `walking` parameter
+  and is a pure projection of the selection again.
 
 **Confirm is a click on the tile, not a button.** `clickTile` and `endTurn` stay
 the only verbs. ⚠️ Phase 9 spends that invariant — the attack panel needs real
@@ -405,15 +474,26 @@ buttons — so this is the last step where it holds.
 *is*; the route and the pane mark where it would go. Moving it to the destination
 before the walk asserts something false.
 
-⚠️ **"Lit does something, dark backs out" survives both phases**, which is why
-this needs no new rule taught: while pinned the range is still up, so a lit tile
-re-pins, the pinned tile confirms, and dark cancels. In `destinationChosen` the
-range is down and the facing tiles are lit, exactly as now.
+⚠️ **"Lit does something, dark backs out" survives both modes**, which is why
+this needs no new rule taught: in movement selection a lit tile pins or re-pins
+and dark deselects; in action selection the range is down, the facing tiles are
+lit, and dark cancels.
+
+**The pane is DOM over canvas**, anchored above the pinned tile. Always mounted
+and toggled by visibility — the renderer is handed the element by ref, and one
+React has not rendered cannot be handed to anything. `pointerEvents: none`, or it
+swallows the click confirming it. ⚠️ **The renderer writes its `transform`, not
+React**: an overlay tracking the board is otherwise a React commit every frame
+the camera turns. Projection lands in render-buffer pixels, equal to CSS pixels
+only because `adaptToDeviceRatio` is off.
 
 **Accepted cost:** one more click per unit-turn, and sweeping the range no longer
-previews the cost shape — you see a route only after pinning one. The second is a
-real downgrade on desktop, taken because pinning is cheap and re-pinnable and
-because one behaviour beats two.
+previews the cost shape — you see a route only after pinning one.
+
+⚠️ **The test blast radius is most of the work**, and larger than the source:
+around 25 assertions across the three interaction suites, because nearly every
+one reaches the menu through a pin. Two fixtures change shape rather than
+arguments — a helper returning "pinned" now has to say which mode it means.
 
 ### 9 — Combat: the smallest thing you can win
 
