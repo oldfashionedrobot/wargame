@@ -155,7 +155,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             answer to a pinned destination is a tile rather than a button. */}
         {pinned && !walking && (
           <span>
-            Click the unit to wait, a tile beside it to face that way, or elsewhere to cancel.
+            Click the unit to hold, a tile beside it to face that way, or elsewhere to cancel.
           </span>
         )}
         {rejection && <span style={{ color: '#c0392b' }}> rejected: {rejection}</span>}

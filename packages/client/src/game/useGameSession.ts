@@ -14,7 +14,7 @@ import {
   initialSelectionState,
   moveCommandFor,
   unpinDestination,
-  waitFacing,
+  holdFacing,
 } from './interaction/selection';
 import type { SelectionState } from './interaction/selection';
 
@@ -239,7 +239,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
 
         const state = server.getState();
         const facing = coordinatesEqual(coordinate, selection.path[selection.path.length - 1])
-          ? waitFacing(state, selection)
+          ? holdFacing(state, selection)
           : facingChoiceAt(selection, coordinate);
 
         if (facing) {

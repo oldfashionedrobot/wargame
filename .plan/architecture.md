@@ -546,7 +546,7 @@ snap is caught and logged; the commit always happens.
 handleTileClick(state, selection, coordinate) → SelectionState
 facingChoiceOrigin(pinned)                    → Coordinate
 facingChoiceAt(pinned, coordinate)            → Facing | null
-waitFacing(state, pinned)                     → Facing | null
+holdFacing(state, pinned)                     → Facing | null
 unpinDestination(pinned)                      → SelectionState
 moveCommandFor(pinned, facing)                → Command
 ```
@@ -578,7 +578,7 @@ that changes nothing is waste.
 
 ⚠️ **`destinationChosen` is also the facing choice**, which used to be a phase of
 its own. Once the preview arrives, the tiles around the unit are the menu: a
-click on the destination keeps the direction travelled (`waitFacing`), a click on
+click on the destination keeps the direction travelled (`holdFacing`), a click on
 one of the four beside it overrides that (`facingChoiceAt`), and **either commits**
 — the direction is the last decision, so there is nothing left to confirm.
 Anything further away is ignored. Facing is therefore *offered* rather than
@@ -586,7 +586,7 @@ demanded, which is what the design always asked for.
 
 ⚠️ The two answers cannot collide: `facingChoiceAt` returns `null` for the
 destination itself, because `directionBetween` wants a step of exactly one tile.
-`waitFacing` is the only one that needs `GameState`, for the case with no last
+`holdFacing` is the only one that needs `GameState`, for the case with no last
 step to read — acting without moving keeps the facing the unit already had. The
 unit is already standing in the direction it walked, so keeping that facing is a
 click on the tile it is looking

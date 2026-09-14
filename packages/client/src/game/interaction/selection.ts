@@ -72,7 +72,7 @@ export function handleTileClick(
   coordinate: Coordinate,
 ): SelectionState {
   // Once a destination is pinned a click means a direction or a target rather
-  // than a tile, and the caller answers it with `waitFacing` and
+  // than a tile, and the caller answers it with `holdFacing` and
   // `facingChoiceAt` before ever reaching here. Returning the same object
   // rather than an equal one keeps a stray click from re-rendering.
   if (selection.phase === 'destinationChosen') return selection;
@@ -153,7 +153,7 @@ export function facingChoiceAt(
  * can vanish from state under a stale selection, and "no answer" is a reading
  * the caller already refuses to commit.
  */
-export function waitFacing(state: GameState, selection: DestinationChosen): Facing | null {
+export function holdFacing(state: GameState, selection: DestinationChosen): Facing | null {
   const previous = selection.path.at(-2);
   const travelled = previous ? directionBetween(previous, destinationOf(selection)) : null;
   return travelled ?? getUnit(state, selection.unitId)?.facing ?? null;

@@ -201,12 +201,12 @@ describe('GameCanvas', () => {
     // Still walking: the range is the context, and no directions are offered.
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith(null);
     expect(renderer.setMovement).toHaveBeenLastCalledWith(expect.anything());
-    expect(screen.queryByText(/click the unit to wait/i)).toBeNull();
+    expect(screen.queryByText(/click the unit to hold/i)).toBeNull();
 
     await act(async () => arrive());
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith({ col: 1, row: 3 });
     expect(renderer.setMovement).toHaveBeenLastCalledWith(null);
-    expect(screen.getByText(/click the unit to wait/i)).toBeTruthy();
+    expect(screen.getByText(/click the unit to hold/i)).toBeTruthy();
   });
 
   it('clears the overlays when the selection is dropped', async () => {
@@ -233,13 +233,13 @@ describe('GameCanvas', () => {
     expect(screen.getByRole('button', { name: 'End Turn' })).toHaveProperty('disabled', false);
   });
 
-  // The buttons were the only thing naming the gestures; with Wait gone, the
+  // The buttons were the only thing naming the gestures; with Hold gone, the
   // hint is all that is left saying a click on a tile means anything.
   it('tells the player what a click means, once the unit has arrived', async () => {
     await renderCanvas(fakeServer());
     await act(async () => clickTile({ col: 1, row: 1 }));
     await act(async () => clickTile({ col: 1, row: 3 }));
 
-    expect(screen.getByText(/click the unit to wait/i)).toBeTruthy();
+    expect(screen.getByText(/click the unit to hold/i)).toBeTruthy();
   });
 });

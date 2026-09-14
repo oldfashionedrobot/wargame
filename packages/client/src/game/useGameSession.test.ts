@@ -304,7 +304,7 @@ describe('useGameSession', () => {
   // clicking that is how a facing gets chosen and the move committed.
   const FACE_NORTH = at(1, 4);
 
-  it('pins on click, offers directions on Wait, and submits on a direction', async () => {
+  it('pins on click, offers directions on Hold, and submits on a direction', async () => {
     const fake = fakeServer(board);
     const { result } = renderSession(fake, callbacks());
     await act(async () => {}); // settle the initial batch, which would drop a pin
@@ -328,7 +328,7 @@ describe('useGameSession', () => {
   // The skip in playEvents is sound only because the mesh has arrived, so the
   // rule lives here rather than on the button's disabled attribute -- a
   // keyboard shortcut or a direct call would otherwise walk straight past it.
-  it('refuses Wait while the preview is still walking', async () => {
+  it('refuses Hold while the preview is still walking', async () => {
     const fake = fakeServer(board);
     const cb = callbacks();
     let arrive!: () => void;

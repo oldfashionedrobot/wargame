@@ -8,7 +8,7 @@ import {
   initialSelectionState,
   moveCommandFor,
   unpinDestination,
-  waitFacing,
+  holdFacing,
 } from './selection';
 import type { DestinationChosen, SelectionState } from './selection';
 
@@ -204,12 +204,12 @@ describe('choosing a facing', () => {
 
   // ⚠️ The destination answers null here rather than a direction, and that is
   // what lets the caller tell "keep travelling" from "face this way" without
-  // ordering the two by hand. `waitFacing` is what answers it instead.
-  it('answers null for the destination itself, which waitFacing covers', () => {
+  // ordering the two by hand. `holdFacing` is what answers it instead.
+  it('answers null for the destination itself, which holdFacing covers', () => {
     const state = board();
     const facing = choosing(at(1, 3));
     expect(facingChoiceAt(facing, at(1, 3))).toBeNull();
-    expect(waitFacing(state, facing)).toBe('north'); // b1 walked 1,1 -> 1,3
+    expect(holdFacing(state, facing)).toBe('north'); // b1 walked 1,1 -> 1,3
   });
 
   // Acting without moving has no last step to read a direction off, so the
@@ -218,7 +218,7 @@ describe('choosing a facing', () => {
     const state = board();
     const staying = withB1Pinned(state, at(1, 1));
     expect(staying.path).toEqual([at(1, 1)]);
-    expect(waitFacing(state, staying)).toBe(unitAt(state, 'b1').facing);
+    expect(holdFacing(state, staying)).toBe(unitAt(state, 'b1').facing);
   });
 
   it('still ignores tile clicks as far as the selection goes', () => {
