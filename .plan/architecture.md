@@ -743,7 +743,7 @@ setRange(tiles)           setRoute(path)
 setFacingChoices(around | null)
 anchorTo(element | null, coordinate | null)
 playEvents(events): Promise<void>
-snapUnits(state)          previewMove(unitId, path): Promise<void>
+syncUnits(state)          previewMove(unitId, path): Promise<void>
 cancelPreview()           toggleInspector()          dispose()
 ```
 
@@ -820,7 +820,7 @@ is off.
   with nothing, so the flat reading is kept as a fallback.
 - **Elevation is visual only; the map data has no height.** A tile's walkable
   surface is `surfaceAt(coordinate)` in `renderer.ts`, the one place any `y` is
-  decided — terrain props, units, the walk tween, `snapUnits`, `cancelPreview`,
+  decided — terrain props, units, the walk tween, `syncUnits`, `cancelPreview`,
   every overlay and now picking read it, so a raised tile cannot be raised for
   some of them and not others. Three ways a cell can say how high it is, in
   order of preference:
@@ -1035,9 +1035,18 @@ is off.
   (`FRAMES_PER_TILE` over `FRAME_RATE` in `units.ts` — one dial for every
   unit's pace). Each step turns the mesh before it moves, so a unit walks the
   way it is looking; the turn is snapped rather than tweened.
-- `snapUnits` positions *and* orients meshes from state with no tween, stopping
-  any running animation first, and **ends any preview**: authority overwrites
-  every position, so there is no separate commit step.
+- `syncUnits` makes the meshes match state: it **removes the dead**, then
+  positions *and* orients the living with no tween, stopping any running
+  animation first. It **ends any preview** before either — authority overwrites
+  every position, so there is no separate commit step, and a live preview holds
+  a mesh by id that must not be disposed mid-tween.
+  ⚠️ **Removal only, never creation.** Nothing can add a unit to a match:
+  `applyEvents` only maps over `units`, and there is no production,
+  reinforcement or recruitment. Units enter state once, in `createMatchState`,
+  before the renderer is built. ⚠️ Disposal passes `dispose(false, false)`
+  deliberately — every unit of a colour shares one material cached on the scene
+  by name, and disposing it with the first casualty would leave the rest of that
+  army untextured, several turns later and looking unrelated.
 - **The preview** is one nullable `{ unitId, origin, facing, settle }`. Arriving
   and ending are separate moments: the walk resolves the promise, but the record
   outlives it, because a cancel *after* the unit lands is exactly when something

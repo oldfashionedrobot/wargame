@@ -28,7 +28,7 @@ export interface UnitModels {
  * The models are small and local, but this is still I/O, which is why
  * `createGameRenderer` is async: a renderer whose units have not loaded is not
  * a renderer, and the alternative -- constructing empty and filling in later --
- * gives `snapUnits` and `playEvents` a window where a unit has no mesh.
+ * gives `syncUnits` and `playEvents` a window where a unit has no mesh.
  */
 export async function loadUnitModels(scene: Scene): Promise<UnitModels> {
   const ids = Object.keys(MODEL_URLS) as UnitTypeId[];

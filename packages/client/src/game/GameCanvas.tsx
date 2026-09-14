@@ -69,7 +69,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   );
 
   const onSnap = useCallback((state: GameState): void => {
-    rendererRef.current?.snapUnits(state);
+    rendererRef.current?.syncUnits(state);
   }, []);
 
   const onPreview = useCallback(

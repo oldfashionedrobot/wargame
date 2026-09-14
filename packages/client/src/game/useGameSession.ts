@@ -170,7 +170,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       if (response.ok) return;
 
       // A rejection produces no update, so nothing else would ever put the
-      // previewed unit back -- snapUnits only runs when the server speaks.
+      // previewed unit back -- syncUnits only runs when the server speaks.
       void callbacksRef.current.onPreview(null);
       setRejection(response.reason);
       setSelection(rollbackSelection);

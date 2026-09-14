@@ -28,7 +28,7 @@ beforeEach(() => {
     setRoute: vi.fn(),
     anchorTo: vi.fn(),
     playEvents: vi.fn(() => Promise.resolve()),
-    snapUnits: vi.fn(),
+    syncUnits: vi.fn(),
     setFacingChoices: vi.fn(),
     previewMove: vi.fn(() => Promise.resolve()),
     cancelPreview: vi.fn(),
@@ -145,13 +145,13 @@ describe('GameCanvas', () => {
     };
     await act(async () => push([moved], board)); // the task parks on playEvents
     unmount();
-    vi.mocked(renderer.snapUnits).mockClear();
+    vi.mocked(renderer.syncUnits).mockClear();
 
     await act(async () => {
       finish();
       await Promise.resolve();
     });
-    expect(renderer.snapUnits).not.toHaveBeenCalled();
+    expect(renderer.syncUnits).not.toHaveBeenCalled();
   });
 
   it('routes a tile click into a selection push', async () => {

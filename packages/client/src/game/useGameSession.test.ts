@@ -460,7 +460,7 @@ describe('useGameSession', () => {
   });
 
   // The one case nothing else would correct: a rejection produces no update,
-  // so snapUnits never runs and the ghost would stand there for good.
+  // so syncUnits never runs and the ghost would stand there for good.
   it('puts the unit back when the authority refuses', async () => {
     const fake = fakeServer(board);
     const cb = callbacks();

@@ -1,4 +1,4 @@
-// Side effect: installs scene.stopAnimation, which snapUnits leans on --
+// Side effect: installs scene.stopAnimation, which syncUnits leans on --
 // undefined at runtime without it.
 import '@babylonjs/core/Animations/animatable';
 import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera';
@@ -136,11 +136,17 @@ export interface GameRenderer {
   /** Animates what the authority says happened. Resolves when done. */
   playEvents(events: GameEvent[]): Promise<void>;
   /**
-   * Positions unit meshes from state, no tween -- a no-op after a played
-   * animation, the correction after a skipped or failed one. Grows into
-   * syncUnits (mesh add/remove) in 9e.
+   * Makes the meshes match `state`: the dead are removed, the living are
+   * positioned, no tween. A no-op after a played animation, the correction
+   * after a skipped or failed one.
+   *
+   * ⚠️ **Removal only, never creation, and that is not an oversight.** Nothing
+   * can add a unit to a match: `applyEvents` only ever maps over `units`, and
+   * there is no production, no reinforcement and no recruitment. Units enter
+   * state once, in `createMatchState`, before this renderer is built. If that
+   * ever changes, the other half goes here.
    */
-  snapUnits(state: GameState): void;
+  syncUnits(state: GameState): void;
   /**
    * Walk a unit to a destination it has not actually moved to. Resolves when
    * the preview **settles** -- which is when the walk finishes, but also when
@@ -436,7 +442,7 @@ export async function createGameRenderer(
   });
 
   // Awaited before any unit exists: a renderer whose units are still loading
-  // would give snapUnits and playEvents a window in which a unit has no mesh.
+  // would give syncUnits and playEvents a window in which a unit has no mesh.
   const models = await loadUnitModels(scene);
 
   const unitMeshes = new Map<string, TransformNode>();
@@ -642,10 +648,33 @@ export async function createGameRenderer(
       }
       endPreview();
     },
-    snapUnits(state) {
+    syncUnits(state) {
       // Authority overwrites every position, the previewed one included, so
       // this *is* the preview ending -- there is no separate commit.
+      //
+      // ⚠️ Before the removal pass, not after. A live preview holds a unit by
+      // id and animates its mesh; disposing that node first would leave a tween
+      // writing into a destroyed object.
       endPreview();
+
+      // Whatever the authority no longer lists is dead, and a mesh nobody
+      // removes stands on the board for the rest of the match -- unselectable,
+      // unkillable, and in the way.
+      const alive = new Set(state.units.map((unit) => unit.id));
+      for (const [id, mesh] of unitMeshes) {
+        if (alive.has(id)) continue;
+        // Stop first: a tween outliving its target writes into a dead node.
+        scene.stopAnimation(mesh);
+        // ⚠️ The second argument is the one that matters, and it is why this is
+        // not a bare `dispose()`. Every unit of a colour **shares one
+        // material**, cached on the scene by name -- disposing it with the
+        // first casualty would leave the rest of that army untextured, several
+        // turns later and looking unrelated. The first argument stays false so
+        // the model's child meshes go with it.
+        mesh.dispose(false, false);
+        unitMeshes.delete(id);
+      }
+
       for (const unit of state.units) {
         const mesh = unitMeshes.get(unit.id);
         if (!mesh) continue;
