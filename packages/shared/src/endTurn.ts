@@ -10,7 +10,7 @@ import type { GameEvent, GameState } from './types';
  * one thing Advance Wars' own End command does that an auto-end cannot, which
  * is letting a player stop before committing every unit they are allowed to.
  *
- * It will grow some: phase 9h wants every command refused once a game has a
+ * It will grow some: phase 9k wants every command refused once a game has a
  * terminal marker, and that rule lands here and in validateMove alike.
  */
 export function validateEndTurn(): string | null {

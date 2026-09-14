@@ -70,7 +70,7 @@ export function createMatchState(map: GameMap): GameState {
         // ⚠️ Toward the enemy, which is the opposite of what this used to say.
         // Row index increases north and owner 0 starts at row 0, so giving it
         // `south` pointed both armies off their own edge -- invisible while no
-        // rule reads facing, and a damage factor from 9d onward.
+        // rule reads facing, and a damage factor from 10a onward.
         facing: owner === 0 ? 'north' : 'south',
         unitTypeId: placement.unitTypeId,
         owner: player.id,
