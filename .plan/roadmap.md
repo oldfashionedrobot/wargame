@@ -311,7 +311,8 @@ The sharp edge of invariant 8, and AW shows one before you commit. The client ru
 { type: 'battleResolved',
   kind: 'volley' | 'charge',
   attacker: { unitId, health },   // resulting
-  defender: { unitId, health } }  // resulting
+  defender: { unitId, health },   // resulting
+  answered: boolean }             // the defender hit back: a counter, or a repel
 ```
 
 ⚠️ **Split events when the parts are independently meaningful; keep them
@@ -342,6 +343,19 @@ counter identifiable as *the attacker's health dropped on its own turn*.
 ⚠️ **But the client is a second consumer with less information.** `EventsResponse`
 is `{ seq, events, state }` — it never sees the action. So `kind` earns its place:
 a volley and a charge look nothing alike, and the kind lives only in the action.
+
+⚠️ **`answered` earns its place on a stricter test: a field is redundant only if
+it is *always* derivable.** The client would otherwise infer a counter from the
+attacker's health dropping — which works only while every counter deals at least
+1. That is true of the current table and guarded by the harness sweep, but it
+means **presentation would rest on tuning**, and a table change could silently
+delete an animation. A counter that deals zero is a real outcome and
+indistinguishable from no counter at all, so the fact is carried rather than
+guessed. `answered: true` with the attacker's health unchanged is *consistent*,
+not contradictory: they fired and it did nothing, which the client should show.
+
+`kind` does the rest of the work — in a volley the attacker losing health is a
+counter, in a charge it is a repel — so no third field is needed to say which.
 
 #### How it is shown
 
@@ -375,19 +389,46 @@ a number needs the *before* health, which needs local folding — the piece 9f
 deliberately parks. The ring tweens to an absolute value the event already
 carries and says the same thing for none of that.
 
-#### The cutaway, eventually
+#### The cutaway — the thing this is all building toward
 
-AW's battle view — both units as squads of figures scaled to health, firing
-volleys — is the target. ⚠️ **Nothing here forecloses it**, which is worth
-knowing before designing around a constraint that does not exist:
-`playEvents` returns a promise the hook awaits, so a modal battle scene is just
-a promise that takes longer. No signature changes.
+AW's battle view is the target: a scene that takes the screen, shows both units
+as **squads of figures scaled to health**, plays the exchange, and hands back.
+It is the reason the event carries what it carries, so it is specified here even
+though it is far from built.
 
-Two things it will need that do not exist: the **before** health (the folding
-route is already chosen — fold locally inside the queue task, never change the
-callback signature), and **squad figures**, which are cheaper than they look
-since models are already instanced per unit — `ceil(health / 20)` copies of a
-mesh we own, and no new art.
+**What it plays, per outcome:**
+
+| | the scene |
+|---|---|
+| **volley, unanswered** | attacker's squad fires, defender's figures fall |
+| **volley, answered** | then the defender fires back and the attacker loses figures — one scene, two beats, which is why the exchange is **one event** |
+| **charge, broke through** | the attacker rides in, the defender's line collapses entirely |
+| **charge, repelled** | the attacker rides in, the line **holds**, and the attacker is thrown back losing figures |
+
+⚠️ **The two charge outcomes are the whole reason `kind` and `answered` exist.**
+A repelled charge and a countered volley end in the same arithmetic — the
+attacker lost health — and look nothing alike. Without both fields the client
+would have to guess which animation it is, and `answered` is what tells it the
+line held rather than nothing happening.
+
+⚠️ **Nothing here forecloses it**, which is worth knowing before designing around
+a constraint that does not exist: `playEvents` returns a promise the hook awaits,
+so a modal battle scene is just a promise that takes longer. No signature
+changes, no new callbacks, no change to how state commits.
+
+Two things it will need that do not exist yet:
+
+- the **before** health for both units, to animate figures falling rather than
+  appearing at a new count. The route is already chosen — fold locally inside
+  the queue task, never change the callback signature.
+- **squad figures**, which are cheaper than they look: models are already
+  instanced per unit, so this is `ceil(health / 20)` copies of a mesh we own,
+  arranged in a row. ⚠️ **No new art**, which is normally what kills a feature
+  like this before it starts.
+
+⚠️ **Where it lives is undecided and does not need deciding yet** — a second
+Babylon scene drawn over the board, or a DOM layer. The seam is the same either
+way, which is the point of specifying the seam first.
 
 ⚠️ **One accepted limit:** a snapped batch (over the tile threshold, or a hidden
 tab) skips `playEvents` entirely, so deaths happen instantly with no animation.
@@ -467,13 +508,29 @@ exists to punish would be the only one unable to punish back, which inverts the
 triangle. The repel damage **is** the defence, and every defender has it: the
 battery firing canister at point-blank is the mechanic, not an exception to it.
 
-⚠️ **`CHARGE_REPEL` is one constant, not a table.** Reusing the defender's own
-`BASE_DAMAGE` was considered and refused: artillery's 60 was tuned as *ranged*
-fire, and borrowing it at contact asserts a battery is as dangerous close as far
-— the opposite of what `min: 2` exists to say. One number also keeps the tuning
-honest, since charge already brings six thresholds, two multipliers and a
-half-life, and the roadmap's rule is one unknown at a time. If artillery later
-needs to repel harder than infantry, widening one constant into three is small.
+⚠️ **`CHARGE_REPEL` is one value per defender type** — `Record<UnitTypeId,
+number>`, three numbers, keyed by who is being charged. How hard a unit punishes
+a failed charge is a real difference between units, not a global constant:
+infantry with bayonets fixed and a battery firing canister are doing different
+things, and both differ from a unit simply being run into.
+
+⚠️ **Keyed by the *defender* only, not by the matchup.** What a unit does when
+cavalry hits its line is about its own equipment, not about who is arriving —
+and the attacker-versus-defender dimension is already spent on
+`CHARGE_THRESHOLD`. The split is worth stating: **the threshold says how likely
+the charge is, the repel says what failing costs.** Two questions, two tables,
+neither doing the other's job.
+
+⚠️ **This is not the "defence stat" the damage design refuses.** That refusal is
+about *damage*, where a scalar defence would force a transitive ordering and
+make a triangle impossible. Repel takes no part in the damage formula and orders
+nothing — it is a punishment, not a toughness.
+
+⚠️ Reusing the defender's own `BASE_DAMAGE` was considered first and refused:
+artillery's 60 was tuned as *ranged* fire, and borrowing it at contact asserts a
+battery is as dangerous close as far, which is the opposite of what `min: 2`
+exists to say. Its own table says what canister does without disturbing what
+round shot does. **Tuning count goes from seventeen to twenty.**
 ⚠️ **Undecided: which direction the scaling runs.** "Barely failed, barely hurt"
 rewards a near-miss; "wilder charge, worse mauling" punishes recklessness. They
 feel very different and no number can tell you which you want.
@@ -482,10 +539,10 @@ Fire and charge are **different resolutions, dispatched once** on an `attackKind
 
 ### Tuning
 
-**Untuned**, and there are **seventeen numbers** of them: the nine of
-`BASE_DAMAGE`, the six of `CHARGE_THRESHOLD`, and `FLANK_MULTIPLIER` and
-`REAR_MULTIPLIER`. Plus `luckMax` and the failure-damage scaling function, which
-are functions rather than table entries.
+**Untuned**, and there are **twenty numbers** of them: the nine of
+`BASE_DAMAGE`, the six of `CHARGE_THRESHOLD`, the three of `CHARGE_REPEL`, and
+`FLANK_MULTIPLIER` and `REAR_MULTIPLIER`. Plus `LUCK_MAX`, `CHARGE_HALF_LIFE`
+and the repel's miss-scaling, which are dials rather than table entries.
 
 #### The first cut
 
