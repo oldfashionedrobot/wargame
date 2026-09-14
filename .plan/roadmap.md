@@ -193,11 +193,14 @@ is what turned up the **route preview**, which was hover-driven and therefore
 absent on touch — 8.999 pays that off and builds this pane in the process, so
 what arrives here is the pane plus numbers rather than the pane.
 
-⚠️ **The camera freezes while the panel is open.** The anchor projects once and
-nothing tracks anything, which avoids per-frame React commits entirely — and a
-modal moment reading as deliberate is a feature. If following the camera ever
-matters, the escape is the trick the tile-click handler already uses: React
-renders the content, the renderer writes `transform` on the container.
+⚠️ **The camera does not need freezing, and this used to say it did.** The old
+argument was that projecting once and tracking nothing avoids a React commit per
+frame, with camera-tracking named as a future escape hatch. 8.999 takes that
+escape as its default — the renderer writes `transform` in the render loop while
+React owns only the content — so the panel already follows the board for free and
+a freeze would buy nothing. ⚠️ What 8.999 does *not* solve and this step
+inherits: `Vector3.Project` has no clipping, so a target the camera has pushed
+off screen needs the panel hidden rather than positioned into the void.
 
 #### What a click means, and in what order
 
@@ -463,8 +466,19 @@ untouched. `unpinDestination` widens to serve both.
   in flight, and committing a captured selection would resurrect it over
   authoritative state. This failure mode does not exist today, because today
   there is no gap between pinning and walking.
-- With arrival a phase of its own, `showSelection` drops its `walking` parameter
-  and is a pure projection of the selection again.
+- ⚠️ **`showSelection` keeps its `walking` parameter.** An earlier draft had it
+  dropped, on the grounds that arrival is a phase now — but the route comes down
+  *on confirm* rather than on arrival, so the walk is a visible state and
+  `walking` is genuinely a display input. The justification improves, not the
+  signature: **the route and the pane are one affordance**, both saying *you are
+  being asked to confirm*, and both down while the ghost walks. One predicate,
+  `routePinned && !walking`, drives both.
+- ⚠️ `walking` moves to a blanket guard at the top of `clickTile`, which is a
+  small widening. Today `walking` implies pinned, so where the guard sits cannot
+  matter. Afterwards a poll can unpin mid-walk and leave `walking` true in
+  `unitSelected`, where the blanket guard swallows a click the old code would
+  have taken. Correct — the mesh is mid-animation — but it is a behaviour
+  change, not a refactor.
 
 **Confirm is a click on the tile, not a button.** `clickTile` and `endTurn` stay
 the only verbs. ⚠️ Phase 9 spends that invariant — the attack panel needs real
@@ -473,6 +487,12 @@ buttons — so this is the last step where it holds.
 **The yellow highlight stays on the unit while pinned.** It marks where the unit
 *is*; the route and the pane mark where it would go. Moving it to the destination
 before the walk asserts something false.
+
+⚠️ **The overlay heights want a look once it runs.** `SELECTED_HEIGHT` (0.025)
+and `HOVER_HEIGHT` (0.02) both sit above `ROUTE_HEIGHT` (0.018). That was
+harmless while the route followed the pointer; a *persistent* route means the
+hover tint cuts a hole in it wherever the pointer rests, and the yellow covers
+its first tile. Possibly fine, possibly ugly, and only the browser can say.
 
 ⚠️ **"Lit does something, dark backs out" survives both modes**, which is why
 this needs no new rule taught: in movement selection a lit tile pins or re-pins
@@ -487,13 +507,64 @@ React**: an overlay tracking the board is otherwise a React commit every frame
 the camera turns. Projection lands in render-buffer pixels, equal to CSS pixels
 only because `adaptToDeviceRatio` is off.
 
+⚠️ **Projection does not clip.** `Vector3.Project` returns coordinates outside
+the viewport happily and nonsense behind the camera, so a pinned tile that zoom
+has pushed off screen positions the pane outside its container — and an absolute
+element there can add page scrollbars. `overflow: hidden` on the wrapper, or the
+pane hiding itself when the projection lands out of bounds.
+
 **Accepted cost:** one more click per unit-turn, and sweeping the range no longer
 previews the cost shape — you see a route only after pinning one.
+
+⚠️ **A double-click already pays the click back**, and by accident rather than
+design: Babylon fires `POINTERPICK` per release, so two quick clicks on a
+destination pin it and then confirm it. Desktop keeps its one-gesture move for
+anyone who knows where they are going. The same accident means a stray
+double-click walks a unit it was only meant to preview — harmless, because the
+walk commits nothing and action selection can still cancel it home.
 
 ⚠️ **The test blast radius is most of the work**, and larger than the source:
 around 25 assertions across the three interaction suites, because nearly every
 one reaches the menu through a pin. Two fixtures change shape rather than
 arguments — a helper returning "pinned" now has to say which mode it means.
+
+⚠️ **And `architecture.md` is a third of the diff**, which an earlier draft of
+this entry left out of the count entirely. Around ten sites, including the
+opening *What plays today* sentence — "hover to preview the route" — which
+becomes false the moment this ships. Also the verbs paragraph, `walking`'s
+description, the `SelectionState` union, the "returns the **same object**" rule,
+the renderer's interface table, the hint-line description, the test-coverage
+summary, and one whole bullet — *"The route preview is computed here, not in
+React"* — that is deleted rather than edited.
+
+**Verifiable, including the half this exists for.** Playwright takes
+`hasTouch: true`, so `/run-app` can drive an actual tap-tap confirm rather than
+shipping the touch path on faith.
+
+#### What follows: the route as an arrow
+
+⚠️ **A separate commit, and deliberately not folded in.** This one moves a state
+machine and 25 assertions; adding a rendering module to it makes one commit whose
+gate cannot tell you which half broke.
+
+It is cheap because the seam is already right: **`setRoute(path)` passes the
+ordered path**, which a tint does not need and an arrow does. `tileOverlay.ts`
+builds one merged mesh of per-tile quads; the arrow is that module with **UVs**
+added, and orientation is a cyclic shift of the four UV corners rather than a
+per-tile transform — so every quad stays axis-aligned in one mesh.
+
+Four shapes, because a path never branches and no tile has three connections:
+first tile is a tail, last is a head, middle is straight or a corner. ⚠️ A
+one-tile path is *standing still* and draws nothing, which is what AW does and
+means no fifth piece. The atlas is drawn into a `DynamicTexture` with canvas 2D
+at startup — no asset file, no pipeline, and the colour stays a tunable constant.
+
+Known and not new: the arrow **steps** rather than ramps across a hill, and
+foreshortens at shallow camera angles. Every tile overlay already does both.
+
+⚠️ This also *opens* the **manual routing** sidequest rather than closing it — a
+pinned, re-pinnable route is the substrate waypoints would hang off. Deleting
+hover loses nothing that idea needed.
 
 ### 9 — Combat: the smallest thing you can win
 
