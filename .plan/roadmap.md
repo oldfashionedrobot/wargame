@@ -38,7 +38,7 @@ Taking the AW line literally is a separate trap and not a rounding difference ei
 
 Every step rounds down. Three things fall out of it:
 
-- **A wounded attacker hits softer** — linearly, by HP fraction.
+- **A wounded attacker hits softer** — by ten-point band, not smoothly. Four of them can share a step, and the bar will show four different numbers while they fight identically.
 - **A wounded defender loses its cover.** Terrain defence scales by *defender* HP, so a 4-star mountain protects a full-health unit far more than a nearly-dead one. This accelerates kills and stops damaged units turtling on good ground.
 - **Terrain is not a minor modifier.** Four stars at full health is a 40% reduction. Tuning a matchup table with defence stubbed to zero would produce numbers to throw away — which is why terrain comes first.
 
@@ -270,7 +270,11 @@ fire, and it has no charge.
 
 ### Damage preview
 
-The sharp edge of invariant 8, and AW shows one before you commit. The client computes it from the same formula with the luck term omitted — a deterministic estimate, explicitly not a prediction. The server rolls and decides the real number, which will differ. **Preview the formula, never the dice.**
+The sharp edge of invariant 8, and AW shows one before you commit. The client runs the same `computeDamage` the server will, with the roll set to zero.
+
+⚠️ **That is no longer an estimate — it is an exact lower bound, and the upper bound is free.** When luck was folded into the base it scaled with everything else and "omit the luck term" gave a number that was merely close. Luck is added **last and flat**, so the true outcome is exactly `[d, d + LUCK_MAX]` where `d` is the zero-roll result. The panel can therefore show a **range** rather than a point, and be right about both ends.
+
+**Preview the formula, never the dice** still holds and is the reason this is safe: the client is told the shape of the outcome, never which of the ten it will be. Showing a range is strictly more honest than showing a single number the server was always going to miss.
 
 ### Range — no categories at all
 
@@ -497,7 +501,7 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
   ⚠️ **This is what makes the matchup numbers mean anything.** Attacking in AW is an *exchange*: the question is never "can I kill it" but "is the trade worth it". Without a counter, every attack is free and hits-to-kill says nothing about whether to throw the punch.
 
-  ⚠️ **Damage scales with health, and the counter is computed on the reduced HP** — both already in the formula. A wounded attacker hits softer, linearly, and a wounded defender loses its terrain cover, since the defence term scales by defender HP too. So striking first compounds: you hit them, they are weaker, and their counter is weaker for it. That is most of AW's exchange calculus and it falls out of the formula rather than needing a rule.
+  ⚠️ **Damage scales with health, and the counter is computed on the reduced HP** — both already in the formula. A wounded attacker hits softer *by band*, and a wounded defender loses its terrain cover, since the defence term scales by defender band too. ⚠️ **Which makes the counter lumpy**: a hit that pushes the defender across a band boundary cuts its reply, while one that leaves it inside the same band does not — so the exchange turns on where the boundaries fall, not just on how much damage was dealt. So striking first compounds: you hit them, they are weaker, and their counter is weaker for it. That is most of AW's exchange calculus and it falls out of the formula rather than needing a rule.
 
   ⚠️ And a counter can **kill the attacker**, which shrinks the attacker's roster mid-turn — so `actionsAllowed` drops and their turn can end sooner than they expected. Correct, since you cannot act with a dead unit, but nothing has written it down and this is where it first fires.
 - **9h** ⚠️ **Mostly built, and smaller than it was.** Phases 7, 7.999 and 8.999 delivered the whole destination-and-action interaction: pinning, the confirm step and its pane, the client-side walk, and a `destinationChosen` whose lit tiles *are* the menu — the unit itself waits, a tile beside it faces that way, anything else cancels. **What remains is one more reading of a click already being read**: an enemy this unit can attack from the pinned tile. ⚠️ **No `choosingTarget` member** — that was the old plan and it is explicitly dropped; a target is a click in the state that exists, not a state of its own. What it does need is an attack-range overlay in a **reddish** tint, so a target is told from a facing choice by colour rather than by a rule.
@@ -518,6 +522,8 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 - **9i** ⬜ **Health has to be visible**, and was missing from this phase entirely. 9b puts `health` in the model and 9f makes it change, but nothing draws it — a unit at 40 reads identically to one at 100, which makes combat unplayable by eye and unverifiable in the browser, the only check the renderer has. Smallest thing that works: a billboarded bar or a scaled emissive band on the unit mesh, driven from `syncUnits` since that already runs per commit with the state in hand. It belongs before any tuning at all, because a matchup table whose results you cannot see is tuned by guesswork.
 
   ⚠️ **The facing marker moved to phase 10** — nothing reads facing until charge does, so a ground chevron here would be drawing a fact that changes nothing. 9i is the health bar and only that.
+
+  ⚠️ **But banding gave this step a question it did not have before.** The formula reads `ceil(health / 10)`, so 91 and 100 fight identically — and a bar drawn from raw health shows two visibly different states that behave the same. That is the *"permanently explaining why a 9 HP unit died to 15 damage"* problem the **HP representation** section rejected AW's 1–10 display to avoid, reintroduced through the back door by adopting AW's arithmetic. Three answers, none obviously right: draw the raw number and accept that the bar over-promises precision; draw ten segments so the bar shows the band the formula actually reads; or draw raw with the band marked. **Decide it here**, because whichever is chosen is what players will reason about, and the preview range from *Damage preview* has to agree with it.
 - **9j** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
 
 Without 9j the board reaches a state where one side has nothing left and End Turn keeps working forever.

@@ -12,7 +12,12 @@ there and click it again to send the unit walking — then click the unit to sto
 there, a tile beside it to end up looking that way, or anywhere else to think
 again —
 and the turn passes. Two players, a rank of eight each — two guns, two horse,
-four foot — on one of six maps chosen when the match is created. No combat.
+four foot — on one of six maps chosen when the match is created.
+
+⚠️ **No combat is playable yet, but half of it exists.** Units carry `health`,
+and `computeDamage` is complete and tested — what is missing is a command that
+carries an attack, which is what makes any of it reachable from the board. Until
+then the formula is exercised only by its tests and by the tuning harness.
 
 ## Packages
 
@@ -52,11 +57,15 @@ packages/
     move.ts           the move command
     endTurn.ts        the end-turn command
     turns.ts          the action budget, and whose turn is next
+    combat.ts         the damage formula — nothing commands an attack yet
     applyEvents.ts    the event fold
     protocol.ts       the GameServer interface, the wire shapes, and parsing
     testing.ts        fixtures, imported by tests only
     index.ts          the barrel
-    data/             the static content tables — unit types and terrain
+    data/             the static content tables — unit types, terrain, combat
+  shared/scripts/
+    matchups.ts       prints hits-to-kill; the one importer of shared/ that is
+                      neither server nor client, which only purity allows
   server/
     src/
       http.ts         createServer() — Bun.serve routes, /api/* plus the client build
@@ -243,12 +252,23 @@ Static tables keyed by `Record`, so adding a member makes every incomplete table
 a compile error. **The values are the modules' — read them there.** Both are
 short, and a copy here would be a second set of numbers to tune.
 
-**`unitTypes.ts`** — `{ id, name, movementType, movementRange }` per type.
+**`unitTypes.ts`** — `{ id, name, char, movementType, movementRange }` per type.
 `movementType` is `foot`, `horse` or `wheels`, and picks a column out of the
 terrain cost table; `movementRange` is the budget that column is spent against.
+Also `MAX_HEALTH`, a constant beside the interface rather than a field on it:
+nothing varies it, so a per-instance copy would be one number written once per
+unit. ⚠️ It lives here so that the day some unit is tougher than another, it
+becomes a column of `UnitType` and the edit is local.
+
+**`combat.ts`** — `BASE_DAMAGE`, a nested `Record` of attacker → defender as a
+percentage of a full-health target, and `LUCK_MAX`. ⚠️ **A matrix rather than an
+attack stat and a defence stat, and that is arithmetic rather than taste:** any
+`f(attack, defence)` produces a *transitive* ordering, so no pair of scalars can
+express rock-paper-scissors. `road` and `bridge` are currently identical in both
+their columns, so the board has five distinct terrains rather than six.
 
 **`terrain.ts`** — `{ char, defense, cost }` per terrain. `char` is the symbol a
-map is drawn with; `defense` is stars of cover, read by nothing yet; `cost` is
+map is drawn with; `defense` is stars of cover, read by `computeDamage`; `cost` is
 movement points to *enter*, one per movement type, with `null` for impassable —
 which is what makes a river a wall to wheels and a toll to boots. ⚠️ Costly and
 impassable are deliberately different answers, and a mountain is where that is
@@ -386,6 +406,43 @@ path is legal and costs 0. The server never derives a route.
 Both the search and the walk call `entryCost(state, unit, coordinate,
 movementType)`, which returns `{ ok: true, cost }` or `{ ok: false, reason }` —
 the one place that decides whether a tile can be entered and what it costs.
+
+## Combat
+
+`computeDamage(state, attacker, defender, roll)` in `shared/src/combat.ts`, and
+nothing calls it yet — no command carries an attack. It is pure, and the roll is
+an **input**, which is what lets the tuning harness run the whole grid with no
+server and no browser.
+
+```
+band(hp) = ceil(hp / 10)                    // 1..10, never 0 while alive
+damage   = floor(floor(base × band(attackerHP) / 10)
+                 × (100 − stars × band(defenderHP)) / 100)
+           + luck                           // last, flat, unscaled
+```
+
+⚠️ **Both health terms read the ten-point band, never the raw value**, which is
+what AW does and is load-bearing rather than a rounding preference. Health is
+stored and displayed 0–100 here, but feeding raw health to the formula makes a
+unit on one point attack at 1% instead of 10%, and the floors swallow it:
+measured, cavalry at 4 health or less dealt **zero** to infantry in forest even
+on a maximum roll, so two wounded units could be permanently unable to kill each
+other. AW has no minimum-damage rule and needs none — the banding is what it has
+instead. The cost is accepted: a unit at 91 health and one at 100 fight
+identically while the bar shows two different numbers.
+
+⚠️ **Luck is added last and flat.** It is therefore worth proportionally *more*
+the weaker the attacker is — nine points on a crippled volley of 18 is half again
+as much of it. A dead attacker is guarded explicitly, because `band(0)` zeroes
+the base but luck would sail past it and land 9.
+
+Three behaviours fall out rather than being rules: a wounded attacker hits
+softer, a wounded defender loses its cover (the terrain term scales by *defender*
+band, so damaged units cannot turtle on a peak), and striking first compounds.
+
+Verified against an independent reimplementation of the AW specification across
+113,400 combinations of terrain, matchup, both healths and roll. Sources are in
+the module's doc comment, with a note on which wins where they disagree.
 
 ## HTTP
 
@@ -1055,11 +1112,19 @@ in the roadmap. `server`'s and `client`'s test files are.
 
 **Typechecking** reads `shared`'s source directly: `server` and `client` resolve
 `@vod/shared` through its `exports` and pull that source into their own
-programs. The root `tsconfig.json` is a solution file over those two only.
-`shared` emits nothing. `strict`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`,
-`erasableSyntaxOnly` and `verbatimModuleSyntax` are on in all four tsconfigs.
-`shared` has no program of its own — its config exists for editors, and its
-source is checked inside the two programs that import it.
+programs. `shared` emits nothing. `strict`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`,
+`erasableSyntaxOnly` and `verbatimModuleSyntax` are on in every tsconfig.
+`shared` has no program of its own for `src` — its config exists for editors,
+and its source is checked inside the two programs that import it.
+
+The root `tsconfig.json` is a solution file over **three** projects: `server`,
+`client`, and `shared/tsconfig.scripts.json`. ⚠️ That third one covers
+`scripts/` **alone**, with its own `types: ["node"]` for `console` — which is
+how a directory of `shared`'s can be typechecked without putting node or bun
+types anywhere near the rulebook. Types are per-program, so `src`'s config is
+untouched and purity is unaffected. It needs no `composite: true` and no new
+dependency, and it could not have been added before the first script existed:
+an `include` matching an empty directory is `TS18003` and a non-zero exit.
 
 ## Deployment
 
