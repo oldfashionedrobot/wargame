@@ -156,7 +156,7 @@ Fire and charge are **different resolutions, dispatched once** on an `attackKind
 
 **Untuned**: `luckMax`, every charge threshold, the failure-damage scaling function, the flank and rear multipliers, and the whole damage matchup table.
 
-**Two of those have no reference behaviour at all** — charge and directional defence are both ours, and they meet in the rear-charge threshold. Tune them **in sequence, never together**: the matchup table against AW's numbers first, then charge front-on, then the directional term. Each stage leaves exactly one unknown to move against an observation.
+**One of those has no reference behaviour at all** — charge, which facing is now part of rather than a second mechanic beside. ⚠️ That is what binding them bought: there is one thing to tune here, not two that interact. Still **in sequence, never together**: the matchup table against AW's numbers first, then charge head-on, then the directional adjustment. Each stage leaves exactly one unknown to move against an observation.
 
 **Build the harness before tuning.** `shared/` is pure and rolls are inputs, so a script that runs the matchup grid and prints **hits-to-kill** — attacker × defender at full health on plains, then shifted by terrain — is roughly thirty lines and needs no browser. Hits-to-kill is the artefact worth tuning against; a raw damage number isn't. Without it, tuning means editing a table, restarting, creating a match, manoeuvring two units together, and reading one number.
 
