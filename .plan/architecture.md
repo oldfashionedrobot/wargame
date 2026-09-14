@@ -252,7 +252,12 @@ Static tables keyed by `Record`, so adding a member makes every incomplete table
 a compile error. **The values are the modules' — read them there.** Both are
 short, and a copy here would be a second set of numbers to tune.
 
-**`unitTypes.ts`** — `{ id, name, char, movementType, movementRange }` per type.
+**`unitTypes.ts`** — `{ id, name, char, movementType, movementRange, range }` per
+type. `range` is `{ min, max }` tiles, inclusive, and **read by nothing yet** —
+no command carries a target. ⚠️ There is no category beside it: no
+`canMoveAndAttack`, no direct/indirect flag. `min: 2` describes a gun rather
+than classifying it, and whether a defender may answer is "is the attacker
+inside my own range" and nothing else.
 `movementType` is `foot`, `horse` or `wheels`, and picks a column out of the
 terrain cost table; `movementRange` is the budget that column is spent against.
 Also `MAX_HEALTH`, a constant beside the interface rather than a field on it:

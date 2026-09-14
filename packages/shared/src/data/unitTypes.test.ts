@@ -21,6 +21,28 @@ describe('getUnitType', () => {
     }
   });
 
+  it('gives every unit type a coherent shooting range', () => {
+    for (const { range } of Object.values(UNIT_TYPES)) {
+      expect(Number.isInteger(range.min)).toBe(true);
+      expect(Number.isInteger(range.max)).toBe(true);
+      // A minimum below 1 would mean shooting your own tile; a max below the
+      // min is a band nothing can ever be inside, so the unit could never fire
+      // and could never counter -- both silent, since no rule reads a category.
+      expect(range.min).toBeGreaterThanOrEqual(1);
+      expect(range.max).toBeGreaterThanOrEqual(range.min);
+    }
+  });
+
+  // ⚠️ A design assertion rather than a technical one, like the maps suite's
+  // "is twelve by twelve". Nothing breaks if every unit can shoot at one tile
+  // -- but a gun that can defend itself at arm's length leaves cavalry with no
+  // job, and the whole triangle rests on that not being true. Loud, here,
+  // rather than discovered in a playtest.
+  it('keeps at least one unit unable to fire at what has reached it', () => {
+    const helplessUpClose = Object.values(UNIT_TYPES).filter(({ range }) => range.min > 1);
+    expect(helplessUpClose.length).toBeGreaterThan(0);
+  });
+
   // Types make this unreachable in-process and guarantee nothing about a
   // GameState parsed back out of the database -- a row written before a unit
   // type existed is exactly the case. Loud beats an undefined that surfaces

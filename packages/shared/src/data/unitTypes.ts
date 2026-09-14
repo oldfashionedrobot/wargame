@@ -26,6 +26,17 @@ export interface UnitType {
   // Movement points, not tiles: once terrain costs exist these are spent per
   // tile entered via the (movementType, tileType) table rather than 1-per-tile.
   movementRange: number;
+  /**
+   * How far this unit can shoot, inclusive at both ends, in tiles.
+   *
+   * ⚠️ **Two numbers, and no category beside them.** There is no
+   * `canMoveAndAttack` and no direct/indirect flag: everything moves and
+   * attacks, and `min: 2` *describes* a gun rather than classifying it. Every
+   * behaviour AW spreads across those categories falls out of this pair --
+   * including whether a defender can answer, which is "is the attacker inside
+   * my own range" and nothing else.
+   */
+  range: { min: number; max: number };
 }
 
 /**
@@ -54,6 +65,9 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     char: 'i',
     movementType: 'foot',
     movementRange: 3,
+    // ⚠️ Reaching two tiles is what gives infantry a choice against a battery:
+    // trade at two and be answered, or close to one where the gun cannot fire.
+    range: { min: 1, max: 2 },
   },
   cavalry: {
     id: 'cavalry',
@@ -61,6 +75,10 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     char: 'c',
     movementType: 'horse',
     movementRange: 4,
+    // ⚠️ Adjacent only, which is the whole shape of the unit: it is shot at all
+    // the way in, cannot answer a gun that outranges it, and is safe from a
+    // counter once it arrives. Closing is the cost, and the charge is the point.
+    range: { min: 1, max: 1 },
   },
   artillery: {
     id: 'artillery',
@@ -68,6 +86,10 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     char: 'a',
     movementType: 'wheels',
     movementRange: 4,
+    // ⚠️ `min: 2` is the unit's defining weakness and the reason cavalry has a
+    // job: a gun cannot fire at what has reached it, and therefore cannot
+    // counter it either -- the same predicate, not a second rule.
+    range: { min: 2, max: 5 },
   },
 };
 
