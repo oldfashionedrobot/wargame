@@ -48,6 +48,33 @@ Every step rounds down. Three things fall out of it:
 
 ⚠️ **The difference is not cosmetic, and it points the other way from the old claim.** Folded in, a weak attacker's luck shrinks with it. Added last, **luck is worth proportionally more the weaker the attacker is** — at the current table a full-strength volley of 27 carries the same ±9 as a crippled one of 18, which is half again as much of it. A nearly-dead unit's best roll is most of its remaining threat, and damaged units are *swingier*, not steadier.
 
+#### ⚠️ Flat luck, measured — and why the alternative was refused
+
+Both formulas were built and compared cell by cell before keeping this one. **At full health they are indistinguishable** — one point apart, from rounding — so nothing about a healthy exchange turns on the choice. Hits-to-kill barely moves either: 6/4 against infantry with cavalry under both.
+
+They differ entirely at the bottom of the health scale:
+
+| cavalry → infantry, plains | full health | band 1 |
+|---|---|---|
+| flat (kept) | 18–27 | **1–10** |
+| folded in | 18–26 | **1–1** |
+
+⚠️ **Folding does not narrow luck at low health, it annihilates it.** `floor((20 + 9) × 1/10)` and `floor(20 × 1/10)` are both 2 — the integer divide swallows the whole roll. **There is no version where luck narrows but stays meaningful**: the two options are a full lottery and nothing at all, and the middle does not exist.
+
+**What luck buys, and its price.** The governing ratio is `LUCK_MAX ÷ (base/10)`, so a roll is worth 1.2 bands of health against artillery's 75 and 4.5 against cavalry's 20. Measured as *how many bands of health advantage a good roll overturns*:
+
+| | overturn, flat | folded |
+|---|---|---|
+| artillery → infantry (75) | 1 | 1 |
+| infantry → infantry (30) | 3 | 2 |
+| cavalry → infantry (20) | **5** | 3 |
+
+A cavalry unit at 10 health rolling well matches one at 60 health rolling badly. ⚠️ **Note this was made worse by widening the damage table** — the old floor of 40 put luck at 2.25 bands, the new floor of 20 puts it at 4.5. Spreading damage narrowed reliability.
+
+**Kept anyway, because the texture is worth it.** Reliability becomes a unit trait nobody designed: artillery is precise, infantry moderate, cavalry a lottery. Carbines from horseback being erratic is right, and it gives three units a second axis of difference beyond raw damage. ⚠️ A crippled unit can never match a *full-health* one in any matchup — band 1 at its best is 10 against a full-health worst of 18 — so the swing is between neighbours on the scale, not a reversal of it.
+
+⚠️ **If five bands ever proves too much, the lever is `LUCK_MAX`, not the ordering.** Lowering it turns overturn down everywhere at once and keeps the reliability texture; folding the roll back in only moves the bottom of the scale, and moves it to zero.
+
 ### HP representation — where we diverge ⚠️
 
 **AW stores 100 internally and displays 1–10.** A displayed "9" is anywhere from 81 to 90. Three consequences people know the game by:
