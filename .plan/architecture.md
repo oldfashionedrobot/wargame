@@ -652,16 +652,34 @@ cancelPreview()           toggleInspector()          dispose()
   as masonry, while a rock does not fill a square — the hover and range tints
   sit at the mesa's height and float past its sloping edges — and reads as
   terrain, which is worth more.
-- **Woodland is five trees on a jittered ring**, drawn from six shapes, each
-  turned and scaled, because one shape stamped repeatedly reads as wallpaper.
-  Free: every one is painted `woodBark` and `leafsGreen`, so a denser wood costs
-  no draw call — the kit's pines each carry two more materials, which is why
-  none is used. ⚠️ **They are scaled to about a third, and the pieces set that
-  number rather than the trees.** A tree model is 1.15–1.71 tall against a
-  unit's 0.39–0.64, so at the size they are drawn a wood stands two to four
-  times higher than the army walking through it, and a piece reads by standing
-  *over* the wood rather than by being given room in it. A ring rather than a
-  cluster behind the unit, because the camera orbits and no angle is the front.
+- **A wood is scattered across the tiles it covers, not tile by tile.**
+  `woodlands` flood-fills the forest tiles into four-connected groups — matching
+  `neighbourMask` and every other neighbourhood question in the module — and
+  `scatterWood` seeds one stream per group from its **scan-order first** tile,
+  so the result is identical whatever order the fill walks in.
+
+  Five trees a tile, planted **round robin**: one pass per tree, each visiting
+  every tile of the group once, the first pass required so no square comes out
+  bare. ⚠️ Round robin rather than handing each tree to a randomly chosen tile,
+  which is a multinomial and looks like one — measured over a four-by-four wood,
+  random assignment left 2 trees on one square against 7 on another with a
+  target of 5. ⚠️ The visiting order rotates each pass, because it is not
+  neutral: whichever tile goes last has every neighbour's trunk already down to
+  dodge, so a fixed order thins the same squares every time.
+
+  ⚠️ The spacing that turns a candidate away is measured **across tile
+  boundaries**, which is what makes the group the unit of placement rather than
+  the tile. `KEEP_CLEAR` still binds every trunk, because a unit may stand on
+  any of those tiles — so each square keeps its hole however the wood is shaped.
+- **Six tree shapes**, each turned and scaled, because one stamped repeatedly
+  reads as wallpaper. Free: every one is painted `woodBark` and `leafsGreen`, so
+  a denser wood costs no draw call — the kit's pines each carry two more
+  materials, which is why none is used. ⚠️ **They are scaled to about a third,
+  and the pieces set that number rather than the trees.** A tree model is
+  1.15–1.71 tall against a unit's 0.39–0.64, so at the size they are drawn a
+  wood stands two to four times higher than the army walking through it, and a
+  piece reads by standing *over* the wood rather than by being given room in
+  it.
 - **Open ground carries light scenery** — grass tufts, a small bush, the odd
   flower, on about a third of plains tiles. ⚠️ None of it means anything: a tile
   with a flower plays exactly like one without, and the scatter stays thin

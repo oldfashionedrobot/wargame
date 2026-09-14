@@ -1,4 +1,4 @@
-import type { TileType } from '@vod/shared';
+import type { Coordinate, TileType } from '@vod/shared';
 import type { TerrainModel } from './terrainModels';
 
 /** A quarter turn about y — the increment every ground model is turned by. */
@@ -105,66 +105,160 @@ const TREES: TerrainModel[] = [
   'tree_cone',
 ];
 
-const TREES_PER_WOOD = 5;
+/** Trees per tile of woodland, however the wood happens to be shaped. */
+const TREES_PER_TILE = 5;
 
 /**
- * Where the trees stand, and how big.
+ * How the trees are sized and spaced.
  *
- * ⚠️ **`TREE_SCALE` is the number this whole pass turns on.** Measured from the
- * kit, a tree model is 1.15--1.71 tall while a unit is 0.39--0.64, so at the
- * scale these were first drawn a wood stood **two to four times higher than the
- * army walking through it**. That is the "landscape units stand inside" read,
- * and it is arithmetic rather than taste.
+ * ⚠️ **`TREE_SCALE` is the number the board's whole sense of scale turns on.**
+ * Measured from the kit, a tree model is 1.15--1.71 tall while a unit is
+ * 0.39--0.64, so at the size they were first drawn a wood stood **two to four
+ * times higher than the army walking through it**. That is the "landscape units
+ * stand inside" read, and it is arithmetic rather than taste.
  *
- * ⚠️ A second thing falls out of the same number and was never measured: at
- * 38.6 degrees a prop of height `h` draws `1.25h` tiles up-screen, so a tree at
- * the old scale hid **two and a half tiles** behind it. `MAX_STAND_HEIGHT` did
- * not catch it, because that bound governs surfaces a unit stands *on* and
- * nobody stands on a tree.
+ * ⚠️ A second thing falls out of the same number and was never measured: a prop
+ * of height `h` draws `h / tan θ` tiles up-screen, so a tree at the old scale
+ * hid two and a half tiles behind it. `MAX_STAND_HEIGHT` did not catch that,
+ * because it bounds surfaces a unit stands *on* and nobody stands on a tree.
  *
- * `TREE_RING` stays outside `KEEP_CLEAR` at its tightest, which is what keeps
- * the middle free without the two constants having to know about each other.
+ * `TREE_SPAN` keeps a trunk off its tile's edge, so a canopy reaching into the
+ * next square stays a canopy. `TREE_SPACING` is measured **across tile
+ * boundaries**, which is the whole reason a wood is scattered as one shape
+ * rather than a tile at a time.
  */
-const TREE_RING = 0.32;
-const TREE_RING_JITTER = 0.05;
-const TREE_ANGLE_JITTER = 0.5; // as a fraction of the spacing between spokes
 const TREE_SCALE = 0.34;
 const TREE_SCALE_VARIANCE = 0.12;
+const TREE_SPAN = 0.84;
+const TREE_SPACING = 0.22;
+const SCATTER_ATTEMPTS = 20;
+
+const ORTHOGONAL: readonly (readonly [number, number])[] = [
+  [0, -1],
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+];
 
 /**
- * A wood: several small trees ringing the tile, middle left for whatever stands
- * there.
+ * Forest tiles grouped into the woods they actually form.
  *
- * ⚠️ **The piece reads by standing taller than these, not by being given room.**
- * That is the Advance Wars answer and it is why this is a ring of small trees
- * rather than one large one pushed aside -- a wood should look like a wood from
- * every angle, and the unit should look like it is in front of it.
+ * Four-connected, matching `neighbourMask` and every other neighbourhood
+ * question in this module: two woods touching at a corner only are two woods.
  *
- * A ring rather than a corner for a reason the camera decides: it orbits, so no
- * angle is the front, and anything placed relative to one would be placed wrong
- * from the other three.
+ * ⚠️ A group's first entry is its **scan-order** first, and that is what seeds
+ * the scatter -- so a wood comes out identical whatever order the flood fill
+ * happens to walk it in, which is the same determinism `seeded` exists for.
  */
-function trees(col: number, row: number): Prop[] {
-  const next = seeded(col, row);
-  // The whole wood is turned by one angle, so neighbouring tiles do not line
-  // their trees up into spokes the eye reads as planting.
-  const turn = next() * 2 * Math.PI;
-  const spacing = (2 * Math.PI) / TREES_PER_WOOD;
+function woodlands(grid: TileType[][]): Coordinate[][] {
+  const seen = new Set<string>();
+  const groups: Coordinate[][] = [];
 
-  return Array.from({ length: TREES_PER_WOOD }, (_, i) => {
-    const angle = turn + (i + (next() - 0.5) * TREE_ANGLE_JITTER) * spacing;
-    const radius = TREE_RING + (next() - 0.5) * 2 * TREE_RING_JITTER;
+  grid.forEach((cellRow, row) =>
+    cellRow.forEach((_, col) => {
+      if (at(grid, col, row) !== 'forest' || seen.has(`${col},${row}`)) return;
 
-    return {
-      model: TREES[Math.floor(next() * TREES.length)],
-      x: Math.cos(angle) * radius,
-      z: Math.sin(angle) * radius,
-      // Free variety: a tree has no front, so a turn costs nothing and stops a
-      // wood reading as the same shape stamped repeatedly.
-      rotation: next() * 2 * Math.PI,
-      scale: TREE_SCALE + next() * TREE_SCALE_VARIANCE,
-    };
-  });
+      const group: Coordinate[] = [{ col, row }];
+      seen.add(`${col},${row}`);
+
+      // The group is its own queue: walk it with an index and let it grow
+      // underneath, which needs no second array and no non-null assertion.
+      for (let head = 0; head < group.length; head++) {
+        const tile = group[head];
+        for (const [dc, dr] of ORTHOGONAL) {
+          const c = tile.col + dc;
+          const r = tile.row + dr;
+          if (at(grid, c, r) !== 'forest' || seen.has(`${c},${r}`)) continue;
+          seen.add(`${c},${r}`);
+          group.push({ col: c, row: r });
+        }
+      }
+
+      groups.push(group);
+    }),
+  );
+
+  return groups;
+}
+
+/**
+ * Scatters one wood across every tile it covers.
+ *
+ * ⚠️ **The wood is the unit of placement, not the tile.** Placed tile by tile,
+ * every square gets the same count in the same ring, and a forest reads as one
+ * pattern stamped repeatedly -- which is exactly what it did. Sampling over the
+ * whole group, and rejecting on a spacing measured **between tiles as well as
+ * within them**, is what lets a wood look like a single thing that happens to
+ * cover several squares.
+ *
+ * ⚠️ `KEEP_CLEAR` survives all of it, and is the one bound with no give: a unit
+ * may stand on any of these tiles, so the middle of every one of them stays
+ * empty however the wood is shaped.
+ */
+function scatterWood(group: Coordinate[], cells: TerrainCell[][]): void {
+  const anchor = group[0];
+  const next = seeded(anchor.col, anchor.row);
+  // Trunks in board coordinates, because spacing has to see across tile edges.
+  const trunks: { x: number; z: number }[] = [];
+
+  const plant = (tile: Coordinate, required: boolean): void => {
+    let crowded: Prop | null = null;
+
+    for (let attempt = 0; attempt < SCATTER_ATTEMPTS; attempt++) {
+      const x = (next() - 0.5) * TREE_SPAN;
+      const z = (next() - 0.5) * TREE_SPAN;
+      const tree: Prop = {
+        model: TREES[Math.floor(next() * TREES.length)],
+        x,
+        z,
+        // Free variety: a tree has no front, so a turn costs nothing and stops
+        // a wood reading as one shape stamped repeatedly.
+        rotation: next() * 2 * Math.PI,
+        scale: TREE_SCALE + next() * TREE_SCALE_VARIANCE,
+      };
+
+      if (Math.hypot(x, z) < KEEP_CLEAR) continue;
+      crowded ??= tree;
+
+      const room = trunks.every(
+        (t) => Math.hypot(t.x - (tile.col + x), t.z - (tile.row + z)) >= TREE_SPACING,
+      );
+      if (!room) continue;
+
+      trunks.push({ x: tile.col + x, z: tile.row + z });
+      cells[tile.row][tile.col].props.push(tree);
+      return;
+    }
+
+    // ⚠️ A square of woodland is never left bare. If twenty tries could not find
+    // room, take the best candidate that at least cleared the centre: two
+    // trunks standing close is a thicket, while an empty forest tile is a hole
+    // the player can see and the terrain underneath is lying about.
+    if (required && crowded) {
+      trunks.push({ x: tile.col + crowded.x, z: tile.row + crowded.z });
+      cells[tile.row][tile.col].props.push(crowded);
+    }
+  };
+
+  // ⚠️ **Round robin, not random draws.** Handing each tree to a randomly chosen
+  // tile of the group is a multinomial, and its spread is plainly visible:
+  // measured over a four-by-four wood it left 2 trees on one square and 7 on
+  // another against a target of 5. One pass per tree, each visiting every tile
+  // once, makes the counts even by construction and leaves the randomness where
+  // it earns something -- where in a tile a trunk lands, and which candidates
+  // the spacing turns away.
+  //
+  // ⚠️ The starting tile rotates each pass, because the visiting order is not
+  // neutral: whichever tile goes last has every neighbour's trunk already down
+  // to dodge, so a fixed order thins the same squares every time.
+  //
+  // The first pass is the required one, which is what keeps a square of
+  // woodland from ever coming out bare.
+  for (let pass = 0; pass < TREES_PER_TILE; pass++) {
+    for (let i = 0; i < group.length; i++) {
+      plant(group[(i + pass) % group.length], pass === 0);
+    }
+  }
 }
 
 // --- peaks -----------------------------------------------------------------
@@ -492,7 +586,9 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
       return { ground: chosen.model, turns: chosen.turns, props: [] };
     }
     case 'forest':
-      return { ground: 'ground_grass', turns: 0, props: trees(col, row) };
+      // Left empty here and filled by `scatterWood` once every cell exists: a
+      // wood is placed across the tiles it covers, not one tile at a time.
+      return { ground: 'ground_grass', turns: 0, props: [] };
     case 'mountain':
       return {
         ground: 'ground_grass',
@@ -512,14 +608,9 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
 
 /** Every cell's models, worked out once -- terrain does not change in a match. */
 export function composeTerrain(grid: TileType[][]): TerrainCell[][] {
-  return grid.map((cells, row) => cells.map((_, col) => baseCell(grid, col, row)));
+  const cells = grid.map((cellRow, row) => cellRow.map((_, col) => baseCell(grid, col, row)));
+  // Woods come second, because one is scattered across the tiles it covers and
+  // so cannot be worked out until every cell it covers exists.
+  for (const group of woodlands(grid)) scatterWood(group, cells);
+  return cells;
 }
-
-/**
- * Where a single tall prop stands within its tile — a tree, and only a tree.
- *
- * ⚠️ Never the middle: a unit stands there, and a tree planted in the centre is
- * a tree wearing a soldier. A corner rather than anywhere nearer, because a
- * tree is tall enough that the half of the tile it occupies has to be a half
- * the unit is not in.
- */

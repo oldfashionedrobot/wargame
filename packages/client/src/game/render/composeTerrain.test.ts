@@ -339,12 +339,68 @@ describe('ground cover', () => {
     expect(trees.every((t) => t.model.startsWith('tree_'))).toBe(true);
   });
 
-  it('does not stack every tree in the same corner', () => {
+  it('does not stack every tree in the same quarter of its tile', () => {
     const corners = new Set(
       compose('ffffffff', 'ffffffff')
         .flat()
         .map(({ props }) => `${Math.sign(props[0].x)},${Math.sign(props[0].z)}`),
     );
     expect(corners.size).toBeGreaterThan(1);
+  });
+
+  // ⚠️ The three below are the contract of scattering a wood as one shape
+  // rather than a tile at a time. Each states a thing the per-tile ring could
+  // not do, so together they are what stops it quietly coming back.
+
+  it('never leaves a square of woodland bare', () => {
+    const rows = ['ffff', 'f..f', 'ffff'];
+    const cells = compose(...rows);
+
+    rows.forEach((row, r) =>
+      [...row].forEach((char, c) => {
+        if (char !== 'f') return;
+        // A unit may stand on any of these, and a forest tile with nothing on
+        // it is terrain lying about what it is.
+        expect(cellAt(cells, c, r).props.length).toBeGreaterThan(0);
+        expect(cellAt(cells, c, r).props.every((p) => p.model.startsWith('tree_'))).toBe(true);
+      }),
+    );
+  });
+
+  it('grows a wood with its area rather than repeating one tile', () => {
+    const count = (...rows: string[]) =>
+      compose(...rows)
+        .flat()
+        .flatMap(({ props }) => props)
+        .filter((prop) => prop.model.startsWith('tree_')).length;
+
+    // Four tiles of wood carry far more than twice what one does -- which is
+    // the density holding while the shape changes.
+    expect(count('ff', 'ff')).toBeGreaterThan(count('f.', '..') * 2);
+  });
+
+  it('spreads a wood evenly over the tiles it covers', () => {
+    const counts = compose(...Array.from({ length: 4 }, () => 'ffff'))
+      .flat()
+      .map(({ props }) => props.length);
+
+    // ⚠️ The number this exists to catch. Handing each tree to a randomly chosen
+    // tile of the group is a multinomial, and its spread is visible on the
+    // board: this same wood ran 2 trees on one square against 7 on another,
+    // target 5, before the placement went round robin. A tolerance of one
+    // leaves room for a candidate the spacing turns away without leaving room
+    // for that.
+    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+  });
+
+  it('fills the tile rather than ringing it', () => {
+    const radii = compose(...Array.from({ length: 6 }, () => 'ffffff'))
+      .flat()
+      .flatMap(({ props }) => props.map((prop) => Math.hypot(prop.x, prop.z)));
+
+    // A ring put every trunk in one narrow band. A scatter uses the whole tile
+    // outside the hole a unit stands in, so both ends of the range show up.
+    expect(Math.min(...radii)).toBeLessThan(0.3);
+    expect(Math.max(...radii)).toBeGreaterThan(0.45);
   });
 });
