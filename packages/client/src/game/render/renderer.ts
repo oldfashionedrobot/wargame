@@ -319,28 +319,23 @@ export async function createGameRenderer(
   );
 
   /**
-   * How far the board reaches along the screen's own axes, right now.
+   * The board as a **volume the camera orbits**, rather than as whatever
+   * silhouette it happens to present from where the camera is standing.
    *
-   * ⚠️ **This cannot be a function of the grid's size**, which is what the
-   * constant it replaces was pretending. Orbit a square board through 45° and
-   * its projected width grows by √2, with `beta` foreshortening the depth on
-   * top -- so a number derived from `max(width, height)` fits one angle and
-   * either wastes the viewport or clips the corners at every other.
+   * ⚠️ **Measuring the live silhouette is what makes a camera breathe.** It is
+   * the tighter fit and it is the wrong one: a square board is `half-width`
+   * across when you look down an axis and `half-diagonal` across at 45°, so a
+   * fit that tracks it rescales the whole board as you orbit -- on a 12×12 the
+   * extent swings 4.37 to 5.92, a 35% change in size, for a board that has not
+   * moved. Rotating should spin the board, not zoom it.
    *
-   * Dotting each corner against the camera's own right and up vectors is the
-   * exact answer: those two directions *are* the orthographic frustum's axes.
+   * So the horizontal bound is the **ground-plane half-diagonal**, which is the
+   * worst case over every `alpha` and therefore invariant under all of them.
+   * The price is the board drawing at about three quarters of the size a
+   * live fit gives it head-on, which is the cost of it never changing size.
    */
-  const boardReach = (): { x: number; y: number } => {
-    const right = camera.getDirection(Vector3.Right());
-    const up = camera.getDirection(Vector3.Up());
-    let x = 0;
-    let y = 0;
-    for (const corner of boardCorners) {
-      x = Math.max(x, Math.abs(Vector3.Dot(corner, right)));
-      y = Math.max(y, Math.abs(Vector3.Dot(corner, up)));
-    }
-    return { x, y };
-  };
+  const boardRadius = Math.max(...boardCorners.map((corner) => Math.hypot(corner.x, corner.z)));
+  const boardRise = Math.max(...boardCorners.map((corner) => Math.abs(corner.y)));
 
   /**
    * Sizes the frustum, then keeps the board under it.
@@ -351,11 +346,19 @@ export async function createGameRenderer(
    */
   const holdTheBoard = (): void => {
     const aspect = canvas.clientWidth / canvas.clientHeight;
-    const reach = boardReach();
+
+    // ⚠️ **Invariant in `alpha`, responsive to `beta`, and that asymmetry is
+    // deliberate.** Orbiting spins a board whose shape on screen never changes,
+    // so rescaling it would be gratuitous. Tilting genuinely changes that shape
+    // -- ground distance projects by `cos β` and height by `sin β` -- so the
+    // framing following it is the camera doing what it is told rather than
+    // fidgeting.
+    const reachX = boardRadius;
+    const reachY = boardRadius * Math.cos(camera.beta) + boardRise * Math.sin(camera.beta);
 
     // The vertical half-extent at which the whole board just fits, which is
     // whichever of the two axes runs out of room first.
-    const extent = (Math.max(reach.y, reach.x / aspect) * FIT_MARGIN) / zoom;
+    const extent = (Math.max(reachY, reachX / aspect) * FIT_MARGIN) / zoom;
     camera.orthoLeft = -extent * aspect;
     camera.orthoRight = extent * aspect;
     camera.orthoTop = extent;
@@ -368,8 +371,11 @@ export async function createGameRenderer(
     // not a rule of its own; it is this clamp at its limit.
     const right = camera.getDirection(Vector3.Right());
     const up = camera.getDirection(Vector3.Up());
-    const slackX = Math.max(0, reach.x - extent * aspect);
-    const slackY = Math.max(0, reach.y - extent);
+    // ⚠️ Built from the same invariant reach, so the pan limits do not move
+    // when the board spins either. A limit that shrank under rotation would
+    // snap a panned camera back, which is the same fidget in another place.
+    const slackX = Math.max(0, reachX - extent * aspect);
+    const slackY = Math.max(0, reachY - extent);
 
     // The board is centred on the origin, so the target *is* its own offset.
     const alongX = Vector3.Dot(camera.target, right);

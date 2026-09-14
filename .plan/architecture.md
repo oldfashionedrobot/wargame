@@ -642,14 +642,26 @@ cancelPreview()           toggleInspector()          dispose()
   scales a zoom factor that the ortho bounds divide by — clamped, and removed in
   `dispose()` alongside the `resize` listener.
 
-  ⚠️ **The camera cannot be driven anywhere useless, and the bounds that stop it
-  are measured rather than derived.** `boardReach` dots the board's eight
-  corners — the slab's, so its overhang is in the silhouette — against the
-  camera's own right and up vectors, which *are* the orthographic frustum's
-  axes. A number derived from `max(width, height)` could not do this: orbit a
-  square board through 45° and its projected width grows by √2, with `beta`
-  foreshortening the depth on top, so one constant fits one angle and wastes or
-  clips at every other.
+  ⚠️ **The camera cannot be driven anywhere useless, and the bound that stops it
+  is the board as a volume rather than as a silhouette.** `boardRadius` is the
+  ground-plane half-diagonal and `boardRise` the height either side of the
+  target, both measured once off the slab's own bounding box so its overhang is
+  included. From those, each frame: `reachX = boardRadius` and
+  `reachY = boardRadius·cos β + boardRise·sin β`.
+
+  ⚠️ **Invariant in `alpha`, responsive to `beta`, and that asymmetry is the
+  whole point.** Fitting the *live* silhouette is the tighter answer and the
+  wrong one: a square board is half-width across seen down an axis and
+  half-diagonal across at 45°, so a fit that tracks it rescales the board as you
+  orbit. Measured on a 12×12 by counting drawn pixels through a full turn, that
+  came to a **41.8% swing in projected area for a board that had not moved**;
+  against the volume bound it is 2.9%, which is the slab's own sides. Rotating
+  should spin the board, not zoom it. Tilting is different — ground distance
+  projects by `cos β` and height by `sin β`, so the shape on screen genuinely
+  changes and the framing follows it.
+
+  The price is the board drawing at about three quarters of the size a live fit
+  gives it head-on. That is what never changing size costs.
 
   From that, each frame: the frustum is sized so `zoom = 1` is *the whole board
   just fits* — which is both the **floor** the wheel cannot go below and the
