@@ -23,7 +23,7 @@ const LINE_HEIGHT = 0.012;
  * opaque, and only the RGB was ever really being chosen. Treat the value below
  * as the first one anybody has actually seen.
  */
-const LINE_COLOR = new Color4(0.36, 0.36, 0.36, 0.15);
+const LINE_COLOR = new Color4(0.36, 0.36, 0.36, 0.25);
 
 /**
  * ⚠️ Deliberately 1, and not the knob. `LinesMesh.alpha` does nothing while
