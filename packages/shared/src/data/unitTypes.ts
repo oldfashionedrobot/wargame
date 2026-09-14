@@ -28,6 +28,23 @@ export interface UnitType {
   movementRange: number;
 }
 
+/**
+ * What every unit starts at and tops out at.
+ *
+ * ⚠️ **A constant, not a `UnitType` field, and deliberately not on `Unit`.**
+ * Nothing varies it, so a per-instance copy would be the same number written
+ * once per unit -- the duplication that moving `movementRange` onto the catalog
+ * just removed. It lives in this file rather than beside the damage table
+ * because the day some unit is tougher than another, it becomes a column of
+ * `UnitType` below and the change is local.
+ *
+ * 100 because the damage table is read as a percentage of a full-strength
+ * unit: at full health an attack scoring 55 takes 55 off, and a half-strength
+ * attacker deals half of that. Choosing any other maximum would make the table
+ * mean something other than what Advance Wars' numbers mean.
+ */
+export const MAX_HEALTH = 100;
+
 // A Record, so adding a UnitTypeId turns every incomplete table in data/ into a
 // compile error instead of a silent runtime gap.
 export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { getTerrain, getUnitType, parseTerrainGrid } from '@vod/shared';
+import { getTerrain, getUnitType, MAX_HEALTH, parseTerrainGrid } from '@vod/shared';
 import { createMatchState } from '../matchState';
 import { DEFAULT_MAP_ID, getMap, listMaps } from './index';
 
@@ -59,6 +59,14 @@ describe('every map', () => {
           const terrain = getTerrain(grid[position.row][position.col]);
           expect(terrain.cost[movementType]).not.toBeNull();
         }
+      });
+
+      // ⚠️ Cheap, and it guards a failure that is silent rather than loud: a
+      // unit deployed without health types as `number` and is `undefined`, and
+      // `undefined` arithmetic is `NaN` -- so the first symptom would be a
+      // damage figure rather than a crash, several phases from here.
+      it('deploys every unit at full health', () => {
+        for (const { health } of units) expect(health).toBe(MAX_HEALTH);
       });
 
       it('never stacks two units on one tile', () => {

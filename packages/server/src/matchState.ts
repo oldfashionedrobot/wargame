@@ -1,4 +1,4 @@
-import { armyWidth, parseArmyGrid, parseTerrainGrid } from '@vod/shared';
+import { armyWidth, MAX_HEALTH, parseArmyGrid, parseTerrainGrid } from '@vod/shared';
 import type { GameState, Player, Unit } from '@vod/shared';
 import type { GameMap } from './maps';
 
@@ -74,6 +74,7 @@ export function createMatchState(map: GameMap): GameState {
         facing: owner === 0 ? 'north' : 'south',
         unitTypeId: placement.unitTypeId,
         owner: player.id,
+        health: MAX_HEALTH,
         hasActed: false,
       };
     }),

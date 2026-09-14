@@ -24,11 +24,25 @@ export interface Unit {
   facing: Facing;
   /**
    * What this unit *is*. Everything that never changes during a match --
-   * movement range today, health and combat stats later -- lives on the
-   * catalog entry this names, not on the instance. See data/unitTypes.
+   * movement range, and the combat stats to come -- lives on the catalog entry
+   * this names, not on the instance. See data/unitTypes.
+   *
+   * ⚠️ `health` below is the counterexample and the reason this sentence is
+   * worded carefully: it is the one combat number that changes every time
+   * something hits, so it is state and belongs here. `MAX_HEALTH` is the part
+   * that never changes, and that is on the catalog side.
    */
   unitTypeId: UnitTypeId;
   owner: PlayerId;
+  /**
+   * Current strength, from `MAX_HEALTH` down. Also the damage scale: an
+   * attacker deals in proportion to what is left of it, so a wounded unit hits
+   * softer without any rule saying so.
+   *
+   * ⚠️ Events carry the **resulting** value, never the damage dealt -- invariant
+   * 9, so applying one twice is a no-op.
+   */
+  health: number;
   hasActed: boolean;
 }
 

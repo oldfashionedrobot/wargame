@@ -2,6 +2,7 @@
 // is not part of the package's public surface -- server/ and client/ have no
 // reason to build game states by hand.
 import { TERRAIN } from './data/terrain';
+import { MAX_HEALTH } from './data/unitTypes';
 import type { UnitTypeId } from './data/unitTypes';
 import { parseTerrainGrid } from './terrainGrid';
 import type { Coordinate, GameState, Unit } from './types';
@@ -15,6 +16,8 @@ export interface UnitSpec {
    *  from the catalog, so a search test wanting a particular budget passes
    *  one to the search rather than picking a type that happens to have it. */
   unitTypeId?: UnitTypeId;
+  /** Defaults to full. A wounded unit is what most combat cases are about. */
+  health?: number;
   hasActed?: boolean;
 }
 
@@ -58,6 +61,7 @@ export function makeState(
       facing: 'south',
       unitTypeId: u.unitTypeId ?? 'infantry',
       owner: u.owner ?? 'blue',
+      health: u.health ?? MAX_HEALTH,
       hasActed: u.hasActed ?? false,
     })),
     currentTurn,
