@@ -116,3 +116,10 @@ the client's overlay and the server's check cannot disagree.
 Small, one concern each, message style `area: what changed` in lowercase with
 the reasoning in the body — read `git log` before writing one. Plan-doc updates
 ride in the same commit as the code they track.
+
+⚠️ **No trailers.** Not `Co-Authored-By`, not `Claude-Session`, not any other
+`Key: value` footer. Claude Code adds both by default and this overrides that:
+the message ends with the last sentence of the reasoning. Older commits carry
+them — 179 and 125 of them respectively — and those are **left alone**, because
+they are published and a force-push to strip metadata is a bad trade. Do not
+backfill and do not rewrite to match.
