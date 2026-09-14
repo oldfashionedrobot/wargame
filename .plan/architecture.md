@@ -102,6 +102,7 @@ Run from the repo root. All exit non-zero on failure.
 | `bun run build` | `tsc -b`, then bundle and compress the client |
 | `bun run format` / `format:check` | Prettier (Markdown and exported glTF are excluded) |
 | `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
+| `bun packages/shared/scripts/matchups.ts` | The tuning harness: hits-to-kill for every matchup on every terrain. No server, no browser |
 | `bun run preview` | `vite preview` — the built client with no `/api` proxy, so it reaches no match |
 | `bun run --filter '@vod/server' start` | The production shape: one process serving the API and `dist` together |
 
@@ -169,7 +170,7 @@ Facing      'north' | 'east' | 'south' | 'west'      // chosen by the player; no
 PlayerId    string                                   // never a union of colours
 PlayerColor 'blue' | 'red' | 'green' | 'yellow'      // the renderer keys on it
 Player      { id, name, color }                      // colour is display-only
-Unit        { id, position, facing, unitTypeId, owner, hasActed }
+Unit        { id, position, facing, unitTypeId, owner, health, hasActed }
 GameState   { grid, units, players, currentTurn }    // grid is [row][col]
 
 Command       MoveCommand { type, unitId, path, facing } | EndTurnCommand { type }
