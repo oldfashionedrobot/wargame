@@ -34,13 +34,4 @@ export const lakeland: GameMap = {
     '...^^^......',
     '....^^......',
   ],
-
-  units: [
-    { at: { col: 0, row: 0 }, type: 'infantry', owner: 0 },
-    { at: { col: 1, row: 0 }, type: 'cavalry', owner: 0 },
-    { at: { col: 2, row: 0 }, type: 'artillery', owner: 0 },
-    { at: { col: 11, row: 11 }, type: 'infantry', owner: 1 },
-    { at: { col: 10, row: 11 }, type: 'cavalry', owner: 1 },
-    { at: { col: 9, row: 11 }, type: 'artillery', owner: 1 },
-  ],
 };

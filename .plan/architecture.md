@@ -10,8 +10,8 @@ is planned but unbuilt lives in [`roadmap.md`](roadmap.md).
 the tiles it can reach across terrain, hover to preview the route, click a
 destination and watch the unit walk to it — then click the unit to stop there, a
 tile beside it to end up looking that way, or anywhere else to think again —
-end turn. Two players, one infantry, cavalry and artillery each, on one of four
-maps chosen when the match is created. No combat.
+end turn. Two players, a rank of eight each — two guns, two horse, four foot —
+on one of four maps chosen when the match is created. No combat.
 
 ## Packages
 
@@ -214,15 +214,39 @@ interface GameMap {
   id: string;
   name: string;
   rows: string[];                                       // parsed by parseTerrainGrid
-  units: { at: Coordinate; type: UnitTypeId; owner: number }[];
 }
 ```
 
-`owner` is an **index into the match's players**, not a `PlayerId` — a map
-cannot know who is playing it. `createMatchState(map)` resolves the index
-against the two hardcoded players and generates unit ids as `${colour}-${n}`,
-numbered per owner in the order the map lists them. The ids are deterministic
+**A map is terrain and nothing else.** Units are deployed onto it by
+`createMatchState` from `ARMY`, one hardcoded rank beside the hardcoded
+`PLAYERS` and for the same reason — nothing chooses between armies yet.
+
+```
+'aciiiica'      // artillery on the ends, cavalry on the wings, infantry between
+```
+
+Parsed by `parseArmyGrid` over a `char` column on `UnitType`, which is the same
+shape terrain has and exists for the same reason: a legend written once, and
+content that is read in a diff. ⚠️ `.` means *empty* in an army and *plains* in
+a map — one character, two grids, and safe only because no row is ever parsed as
+both.
+
+The rank is **centred** on the board's width, sits on row 0 for the first player
+and is placed for the second by a **180° rotation about the board's centre** —
+not a copy, which would run both lines the same way down the board. Facing is
+toward the enemy: north for the first player, south for the second. Unit ids are
+`${colour}-${n}` in **army scan order**, row then column, and are deterministic
 because `initial_state` plus the log must replay identically.
+
+⚠️ **A board too small for the army is refused, not clamped.** A negative
+centring margin deploys units at negative coordinates — a state that parses,
+stores and replays perfectly while being wrong from the first frame.
+
+⚠️ **What a map owes the army is a deployment zone it can stand in.** `wheels`
+cannot enter river or mountain at any price, so a board that draws either under
+the rank strands a gun where it starts. `maps.test.ts` checks it, and checks
+every board against the real army rather than against placements of its own —
+so the property under test is the *pair*, which is where the fault would be.
 
 ⚠️ **Map ids are immutable.** A match records the id it was built from, so
 changing a map's terrain under its id retroactively changes what every existing

@@ -25,15 +25,4 @@ export const classic: GameMap = {
     '...--...',
     '...--...',
   ],
-
-  // Order decides ids: each owner's units are numbered as they appear, so
-  // these are blue-1..blue-3 and red-1..red-3.
-  units: [
-    { at: { col: 0, row: 0 }, type: 'infantry', owner: 0 },
-    { at: { col: 1, row: 0 }, type: 'cavalry', owner: 0 },
-    { at: { col: 2, row: 0 }, type: 'artillery', owner: 0 },
-    { at: { col: 7, row: 7 }, type: 'infantry', owner: 1 },
-    { at: { col: 6, row: 7 }, type: 'cavalry', owner: 1 },
-    { at: { col: 5, row: 7 }, type: 'artillery', owner: 1 },
-  ],
 };

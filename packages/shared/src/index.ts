@@ -24,9 +24,14 @@ export { getTerrain } from './data/terrain';
 // board -- the server parses its map definitions with it, and so does the
 // test fixture.
 export { parseTerrainGrid } from './terrainGrid';
+// Armies are character grids too, and this is the only thing that turns one
+// into placements. Same split as terrain: the parser is here because what it
+// produces is game state, while the armies themselves are the server's.
+export { armyWidth, parseArmyGrid } from './armyGrid';
+export type { ArmyPlacement } from './armyGrid';
 
-// The unit catalog. `UnitTypeId` is out because maps name the units they
-// place; the rest of the catalog is read through `getUnitType`.
+// The unit catalog. `UnitTypeId` is out because an army names the units it
+// places; the rest of the catalog is read through `getUnitType`.
 export type { UnitTypeId } from './data/unitTypes';
 export { getUnitType } from './data/unitTypes';
 

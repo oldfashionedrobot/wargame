@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'bun:test';
 import { getTerrain, getUnitType, parseTerrainGrid } from '@vod/shared';
+import { createMatchState } from '../matchState';
 import { DEFAULT_MAP_ID, getMap, listMaps } from './index';
 
-// A map is content the compiler cannot check: it is characters and
-// coordinates, and every way of getting one wrong produces a board that loads
-// and plays wrong. These are the properties every map has to satisfy, applied
-// to all of them, so a new map is covered the moment it is added.
+// A map is content the compiler cannot check: it is characters, and every way
+// of getting one wrong produces a board that loads and plays wrong. These are
+// the properties every map has to satisfy, applied to all of them, so a new map
+// is covered the moment it is added.
+//
+// ⚠️ Asserted against `createMatchState` rather than against the map alone,
+// because a map no longer carries units -- so what is under test is the board
+// *and the army deployed onto it*. That is more than these used to cover for
+// less content: a deployment zone drawn across a river is a property of the
+// pair, and neither half can see it on its own.
 
 describe('every map', () => {
   const maps = listMaps();
@@ -20,56 +27,69 @@ describe('every map', () => {
       const grid = parseTerrainGrid(map.rows); // throws on a ragged row or bad char
       const height = grid.length;
       const width = grid[0].length;
+      const { units } = createMatchState(map);
 
-      it('places every unit on the board', () => {
-        for (const { at } of map.units) {
-          expect(at.col).toBeGreaterThanOrEqual(0);
-          expect(at.row).toBeGreaterThanOrEqual(0);
-          expect(at.col).toBeLessThan(width);
-          expect(at.row).toBeLessThan(height);
+      it('deploys both armies onto the board', () => {
+        expect(units.length).toBeGreaterThan(0);
+        for (const { position } of units) {
+          expect(position.col).toBeGreaterThanOrEqual(0);
+          expect(position.row).toBeGreaterThanOrEqual(0);
+          expect(position.col).toBeLessThan(width);
+          expect(position.row).toBeLessThan(height);
         }
       });
 
-      // A unit on impassable ground can never move, and one on terrain its own
-      // movement type cannot enter is stuck from the first turn.
-      it('places every unit on terrain it can stand on', () => {
-        for (const { at, type } of map.units) {
-          const { movementType } = getUnitType(type);
-          const terrain = getTerrain(grid[at.row][at.col]);
+      // A unit on ground its own movement type cannot enter is stuck from the
+      // first turn. ⚠️ Artillery is what this really guards: `wheels` is barred
+      // from river and mountain outright, so a board that draws either into a
+      // deployment square strands a gun where it stands.
+      it('deploys every unit onto terrain it can stand on', () => {
+        for (const { position, unitTypeId } of units) {
+          const { movementType } = getUnitType(unitTypeId);
+          const terrain = getTerrain(grid[position.row][position.col]);
           expect(terrain.cost[movementType]).not.toBeNull();
         }
       });
 
       it('never stacks two units on one tile', () => {
-        const keys = map.units.map(({ at }) => `${at.col},${at.row}`);
+        const keys = units.map(({ position }) => `${position.col},${position.row}`);
         expect(new Set(keys).size).toBe(keys.length);
       });
 
       it('gives every player the same number of units', () => {
-        const perOwner = new Map<number, number>();
-        for (const { owner } of map.units) {
-          perOwner.set(owner, (perOwner.get(owner) ?? 0) + 1);
-        }
+        const perOwner = new Map<string, number>();
+        for (const { owner } of units) perOwner.set(owner, (perOwner.get(owner) ?? 0) + 1);
         expect(perOwner.size).toBeGreaterThan(1); // somebody to play against
         expect(new Set(perOwner.values()).size).toBe(1); // and an even start
       });
 
+      it('points each army at the other rather than off its own edge', () => {
+        // ⚠️ Worth asserting precisely because nothing else can see it: no rule
+        // reads facing until 9d, so a sign error here is invisible in play and
+        // then silently becomes a damage factor. Row index increases north.
+        const northmost = Math.max(...units.map((unit) => unit.position.row));
+        for (const unit of units) {
+          const atBack = unit.position.row === northmost;
+          expect(unit.facing).toBe(atBack ? 'south' : 'north');
+        }
+      });
+
       // The board has to be crossable by everything on it, or a unit is stranded
-      // from the first turn. Checked per movement type actually placed: the river
-      // is impassable to horse and wheels, so this is what proves the bridge
+      // from the first turn. Checked per movement type actually deployed: the
+      // river is impassable to horse and wheels, so this is what proves a bridge
       // connects the two halves rather than merely existing.
       const movementTypes = [
-        ...new Set(map.units.map(({ type }) => getUnitType(type).movementType)),
+        ...new Set(units.map(({ unitTypeId }) => getUnitType(unitTypeId).movementType)),
       ];
       for (const movementType of movementTypes) {
         it(`leaves a route across for ${movementType}`, () => {
           const passable = (col: number, row: number) =>
             getTerrain(grid[row][col]).cost[movementType] !== null;
           const seen = new Set<string>();
-          const seed = map.units.find(
-            ({ type }) => getUnitType(type).movementType === movementType,
+          const seed = units.find(
+            ({ unitTypeId }) => getUnitType(unitTypeId).movementType === movementType,
           )!;
-          const queue = [{ col: seed.at.col, row: seed.at.row }];
+          const queue = [{ col: seed.position.col, row: seed.position.row }];
           while (queue.length) {
             const { col, row } = queue.shift()!;
             const key = `${col},${row}`;
@@ -80,9 +100,9 @@ describe('every map', () => {
             queue.push({ col: col + 1, row }, { col: col - 1, row });
             queue.push({ col, row: row + 1 }, { col, row: row - 1 });
           }
-          for (const { at, type } of map.units) {
-            if (getUnitType(type).movementType !== movementType) continue;
-            expect(seen.has(`${at.col},${at.row}`)).toBe(true);
+          for (const { position, unitTypeId } of units) {
+            if (getUnitType(unitTypeId).movementType !== movementType) continue;
+            expect(seen.has(`${position.col},${position.row}`)).toBe(true);
           }
           // And the far side is reachable, not just the corner it started in.
           expect(seen.size).toBeGreaterThan((width * height) / 2);

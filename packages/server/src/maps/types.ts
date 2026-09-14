@@ -1,7 +1,11 @@
-import type { Coordinate, UnitTypeId } from '@vod/shared';
-
 /**
- * A battlefield: terrain as character rows, plus where the units start.
+ * A battlefield: terrain, and nothing else.
+ *
+ * ⚠️ Units are **not** here. Every map used to carry its own copy of the same
+ * three placements in the same corner, which was one piece of content written
+ * four times; `matchState.ts` now deploys one army onto whatever board it is
+ * given. What a map owes that army is a **deployment zone it can stand in** --
+ * see the warning beside `ARMY`.
  *
  * ⚠️ **Map ids are immutable.** A match records the id it was built from, so
  * changing a map's terrain under its id retroactively changes what every
@@ -18,15 +22,4 @@ export interface GameMap {
    * down here. Author it bottom-up, or write it out and reverse it.
    */
   rows: string[];
-  units: MapUnit[];
-}
-
-export interface MapUnit {
-  at: Coordinate;
-  type: UnitTypeId;
-  /**
-   * An index into the match's players, not a `PlayerId` — a map cannot know
-   * who is playing it. Resolved by `createMatchState`.
-   */
-  owner: number;
 }

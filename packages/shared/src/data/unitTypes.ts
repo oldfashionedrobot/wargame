@@ -12,6 +12,16 @@ export type MovementType = 'foot' | 'horse' | 'wheels';
 export interface UnitType {
   id: UnitTypeId;
   name: string;
+  /**
+   * How this unit is written in an army. The legend lives here and nowhere
+   * else -- `parseArmyGrid` inverts this column rather than keeping a second
+   * copy that could drift, exactly as `parseTerrainGrid` does with terrain's.
+   *
+   * ⚠️ `.` is not among them and cannot be: it means *empty* in an army and
+   * *plains* in a map. Two grids, two legends, one character that belongs to
+   * both -- which is fine while nothing ever parses a row as both.
+   */
+  char: string;
   movementType: MovementType;
   // Movement points, not tiles: once terrain costs exist these are spent per
   // tile entered via the (movementType, tileType) table rather than 1-per-tile.
@@ -24,18 +34,21 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
   infantry: {
     id: 'infantry',
     name: 'Infantry',
+    char: 'i',
     movementType: 'foot',
     movementRange: 4,
   },
   cavalry: {
     id: 'cavalry',
     name: 'Cavalry',
+    char: 'c',
     movementType: 'horse',
     movementRange: 5,
   },
   artillery: {
     id: 'artillery',
     name: 'Artillery',
+    char: 'a',
     movementType: 'wheels',
     movementRange: 4,
   },

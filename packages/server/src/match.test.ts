@@ -30,6 +30,11 @@ const move = (unitId: string, to: [number, number], from: [number, number]): Com
 
 // The starting board, from the `classic` map. Only blue-1 at (0,0) and red-1
 // at (7,7) are relied on below; the rest of the roster is free to change.
+//
+// ⚠️ blue-1 is the **artillery** on the rank's left end -- wheels, which pay 2
+// to cross plains. So the legal move below is one tile, not three: these are
+// tests about the store, and a route that costs more than a gun carriage has is
+// a movement test failing in the wrong file.
 const BLUE = 'player-blue';
 const RED = 'player-red';
 
@@ -106,7 +111,7 @@ describe('snapshot', () => {
 describe('since', () => {
   it('returns everything after the cursor, with the current state', async () => {
     const { id } = await store.create();
-    await store.submit(id, move('blue-1', [1, 2], [0, 0]), BLUE);
+    await store.submit(id, move('blue-1', [0, 1], [0, 0]), BLUE);
     await store.submit(id, { type: 'endTurn' }, BLUE);
 
     const all = await store.since(id, 0);
@@ -134,12 +139,12 @@ describe('since', () => {
 describe('submit', () => {
   it('advances seq and returns the resulting state', async () => {
     const { id } = await store.create();
-    const result = await store.submit(id, move('blue-1', [1, 2], [0, 0]), BLUE);
+    const result = await store.submit(id, move('blue-1', [0, 1], [0, 0]), BLUE);
     expect(result?.ok).toBe(true);
     if (!result?.ok) return;
     expect(result.seq).toBe(1);
     expect(result.events).toHaveLength(1);
-    expect(result.state.units.find((u) => u.id === 'blue-1')?.position).toEqual({ col: 1, row: 2 });
+    expect(result.state.units.find((u) => u.id === 'blue-1')?.position).toEqual({ col: 0, row: 1 });
   });
 
   it('refuses a command the rulebook rejects, and writes nothing', async () => {
@@ -164,7 +169,7 @@ describe('submit', () => {
     const { id } = await store.create();
     // Deliberately malformed: a client cannot construct this, which is the
     // point -- `actor` exists only on Action. Cast through unknown to build it.
-    const smuggled = { ...move('blue-1', [1, 2], [0, 0]), actor: RED } as unknown as Command;
+    const smuggled = { ...move('blue-1', [0, 1], [0, 0]), actor: RED } as unknown as Command;
     expect((await store.submit(id, smuggled, BLUE))?.ok).toBe(true);
     const { rows } = await sql.execute({
       sql: 'SELECT actor, action FROM resolutions WHERE match_id = ?',
@@ -180,7 +185,7 @@ describe('storage guarantees', () => {
   // and impossible conditions should be loud rather than silently overwrite.
   it('refuses two resolutions claiming the same seq', async () => {
     const { id } = await store.create();
-    await store.submit(id, move('blue-1', [1, 2], [0, 0]), BLUE);
+    await store.submit(id, move('blue-1', [0, 1], [0, 0]), BLUE);
     const duplicate = sql.execute({
       sql: `INSERT INTO resolutions (match_id, seq, actor, action, events, created_at)
             VALUES (?, 1, ?, '{}', '[]', 0)`,
@@ -228,7 +233,7 @@ describe('storage guarantees', () => {
 
   it('keeps current_state equal to folding the log from initial_state', async () => {
     const { id } = await store.create();
-    await store.submit(id, move('blue-1', [1, 2], [0, 0]), BLUE);
+    await store.submit(id, move('blue-1', [0, 1], [0, 0]), BLUE);
     await store.submit(id, { type: 'endTurn' }, BLUE);
     await store.submit(id, move('red-1', [6, 5], [7, 7]), RED);
 
