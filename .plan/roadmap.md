@@ -1062,21 +1062,37 @@ one formula cannot be read apart, not because the geometry might be wrong.
 
   #### What it needs that does not exist
 
-  **The *before* health for both units.** For a single-action batch that is just
-  the replica, since `unitMoved` does not touch health; folding is only required
-  for multi-action catch-up, which is exactly where the cutaway should be skipped.
+  ⚠️ **One decision answers all three of these: the beat script is built in
+  `useGameSession`, not in the renderer.**
 
-  ⚠️ **And the skip does not work yet.** `animatedTiles` scores a batch by summing
-  `unitMoved` path lengths, so a `battleResolved` counts **zero** — a catch-up
-  batch of ten battles scores nothing, passes `worthAnimating`, and plays ten
-  cutaways back to back. 9f recorded that this "becomes 10b's problem when the
-  cutaway lands" and recorded it *in 9f*, where nobody building the cutaway would
-  look. The fix is a term in `animatedTiles`, and the number to give a battle is
-  whatever a cutaway costs in tile-times.
+  **The *before* health for both units.** `battleResolved` carries only the
+  *resulting* healths — invariant 9, absolute values and never deltas — so a bar
+  draining from X to Y has Y and not X. The replica still holds X, because state
+  is committed only *after* the batch animates. ⚠️ But the renderer cannot reach
+  it: its one health channel is `HealthRing.setHealth(health)`, a setter with no
+  getter, which writes the value and forgets it. Building the script in the hook
+  puts the question where both halves already are.
 
-  **A way to turn it off.** AW has one and by the third hour you want it. It is
-  the same switch the catch-up skip already needs, so designing it in now is
-  cheaper than retrofitting.
+  ⚠️ **A tile-cost for a battle.** `animatedTiles` sums `unitMoved` path lengths
+  and `MAX_ANIMATED_TILES` is 28 — *"at 0.15s a tile this is a bit over four
+  seconds"* — so the budget is really *four seconds of animation, denominated in
+  tiles*. A `battleResolved` scores **zero**, so a catch-up batch of ten battles
+  scores nothing, passes `worthAnimating`, and plays ten cutaways back to back:
+  fifteen seconds with no way out. A 1.5s cutaway is **10 tiles** in that
+  currency, which lets two battles animate and skips three. 9f predicted this and
+  recorded it *in 9f*, where nobody building the cutaway would look.
+
+  **A way to turn it off.** AW has one and by the third hour you want it. ⚠️ The
+  *automatic* skip already works — `worthAnimating` false means `playEvents` is
+  never called and `syncUnits` corrects — so what is missing is only a player
+  preference. Built as *something the renderer does whenever it sees a battle*,
+  adding that later means threading a flag into the renderer; built as a script
+  the caller hands down, it is a condition at the call site and nothing else.
+
+  ⚠️ **And it keeps the renderer ignorant of game state**, which is how it is
+  built everywhere else — *"it is given tiles to light, not a search to query"*.
+  `playEvents` takes the script beside the events rather than reconstructing
+  anything.
 
 The **Open questions** entry on counter-attacks for `min > 1` units belongs to 9g and moved into phase 9 with it — it was decided when indirect fire and immobility were the same thing, and 9d separates them.
 
