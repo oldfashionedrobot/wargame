@@ -929,32 +929,20 @@ one formula cannot be read apart, not because the geometry might be wrong.
   time. That reads like two steps — the mechanic head-on, then the directional
   term — which would push the cutaway to 10c.
 
-- **10b** ⬜ **A facing marker on the board.** 9i deferred this here — *"nothing
-  reads facing until charge does, so a ground chevron here would be drawing a
-  fact that changes nothing"* — and then phase 10 was never given it. It existed
-  only as a forwarding note inside a shipped entry.
+- ~~**A facing marker on the board.**~~ ❌ **Declined**, not deferred. 9i moved a
+  ground chevron here on the grounds that nothing read facing yet; 9k then made a
+  rear shot go unanswered, so the premise expired — and the conclusion survived
+  it anyway. **`setUnitFacing` rotates the model, so facing is already drawn**,
+  and a chevron would be a second drawing of a fact the piece already shows.
 
-  ⚠️ **Its premise expired early.** 9k made a rear shot go unanswered, so facing
-  has been read by a rule since then and is drawn nowhere. The only cue today is
-  the unit model's rotation, which is legible enough for your own piece under the
-  cursor and marginal for an enemy across the board — and the enemy's facing is
-  the one you are deciding against.
+  ⚠️ Worth keeping if it is ever reopened: the case *for* one was never about
+  your own unit, which is under the cursor and unambiguous. It was about reading
+  an **enemy's** facing at a glance across the board, which is the thing a
+  flanking decision actually needs. If circling for the rear ever feels like
+  guesswork in play, that is the symptom, and the fix is a marker rather than a
+  camera change.
 
-  ⚠️ **It belongs before any directional tuning**, for exactly the reason 9i gave
-  for the health ring: *a table whose results you cannot see is tuned by
-  guesswork.* `FLANK_MULTIPLIER` and `REAR_MULTIPLIER` cannot be judged by eye if
-  the geometry feeding them is invisible. If 10a splits, this goes between the
-  halves; if it does not, this goes first.
-
-  **Smallest thing that works:** a chevron or notch on the tile under each unit,
-  pointing the way it faces. ⚠️ Not the tile-overlay machinery, which paints
-  whole quads — this wants a shape. A small mesh parented to the unit's node
-  inherits the facing rotation for free, which is how `setUnitFacing` already
-  works. ⚠️ Readable for *enemies at rest* is the bar, not readable for the
-  selected unit: it is what makes "can I get behind that" answerable without
-  clicking.
-
-- **10c** ⬜ **The combat cutaway.** A view that takes over, shows both units, plays the exchange, and hands back — AW's battle screen. ⚠️ **Here rather than in phase 9 because two of its four scenes are charge**: volley-unanswered, volley-answered, charge-broke-through and charge-repelled. Building it earlier means building half of it and extending it, and the half that is missing is the half with no reference behaviour.
+- **10b** ⬜ **The combat cutaway.** A view that takes over, shows both units, plays the exchange, and hands back — AW's battle screen. ⚠️ **Here rather than in phase 9 because two of its four scenes are charge**: volley-unanswered, volley-answered, charge-broke-through and charge-repelled. Building it earlier means building half of it and extending it, and the half that is missing is the half with no reference behaviour.
 
   Phase 9 is playable without it: the board ring is the feedback, and it is the *persistent* half — "how hurt is that battery" while you are deciding — which a transient panel cannot replace. The cutaway is the drama, not the information.
 
