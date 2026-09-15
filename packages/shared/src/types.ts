@@ -68,6 +68,20 @@ export interface MoveCommand {
    * move facing somewhere it did not come from.
    */
   facing: Facing;
+  /**
+   * Who to attack once the move lands, by id. Absent is a plain move.
+   *
+   * ⚠️ **Optional, and that is what keeps this additive.** A client that never
+   * sends one keeps working, `parseCommand` keeps its existing branch, and no
+   * stored row changes meaning -- which is why this is not the rename to
+   * `UnitActionCommand` the doc proposed for years.
+   *
+   * ⚠️ **An id rather than a coordinate.** The events name units by id, so this
+   * matches them, and a tile could name a different unit than the player meant.
+   * Safe because turns are exclusive: nothing moves between the click and the
+   * command being validated.
+   */
+  targetUnitId?: string;
 }
 
 export interface EndTurnCommand {

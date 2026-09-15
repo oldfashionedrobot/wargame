@@ -1,7 +1,7 @@
 import type { InStatement, InValue } from '@libsql/client';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import type { Query } from 'drizzle-orm';
-import { applyEvents, resolveAction, validateCommand } from '@vod/shared';
+import { applyEvents, LUCK_MAX, resolveAction, validateCommand } from '@vod/shared';
 import type {
   Command,
   CommandResult,
@@ -20,6 +20,23 @@ import { Matches, Resolutions } from './schema';
 // be pagination -- which isn't worth building until matches are owned and
 // there's a reason to look past the newest few.
 const LIST_LIMIT = 50;
+
+/**
+ * The only randomness in the codebase, and it is here because `shared/` is not
+ * allowed any (invariant 2).
+ *
+ * ⚠️ **No seed, and that is invariant 9 paying off.** Events carry *resulting*
+ * values rather than inputs, so a replay reads what happened and never re-rolls
+ * -- there is nothing to reproduce. Most games need a seeded generator, a stored
+ * seed and a determinism story; this design bought its way out of all three.
+ *
+ * ⚠️ **And no `rolls` column either.** Luck is added last and flat, so the roll
+ * is recoverable from the log as `actualDamage − computeDamage(preState, …, 0)`
+ * -- storing it would be storing something the log already contains.
+ */
+function rollLuck(): number {
+  return Math.floor(Math.random() * (LUCK_MAX + 1));
+}
 
 export interface MatchStore {
   /** On `mapId`, or on the default when it is omitted. Throws on an unknown id. */
@@ -137,7 +154,7 @@ export function createMatchStore({ db }: Database): MatchStore {
       const validation = validateCommand(match.state, command, actor);
       if (!validation.ok) return { ok: false, reason: validation.reason };
 
-      const events = resolveAction(match.state, validation.action);
+      const events = resolveAction(match.state, validation.action, rollLuck());
 
       // Reducers return events, not state. Folding them here is the only way a
       // new state is ever produced, so what gets stored and what a replay of

@@ -1,6 +1,9 @@
+import { tileDistance } from './coordinate';
 import { BASE_DAMAGE } from './data/combat';
+import { getUnitType } from './data/unitTypes';
+import { getUnit } from './queries';
 import { getTerrain } from './data/terrain';
-import type { GameState, Unit } from './types';
+import type { BattleResolvedEvent, Coordinate, GameState, Unit } from './types';
 
 /** How many ten-point bands of health a unit has left: 1 through 10, never 0. */
 const BANDS = 10;
@@ -103,4 +106,66 @@ export function computeDamage(
   // `floor(floor(a × b) × c)` are different numbers, and the second is AW's.
   const scaled = Math.floor((base * band(attacker.health)) / BANDS);
   return Math.floor((scaled * (100 - cover)) / 100) + roll;
+}
+
+/**
+ * Why this attack is refused, or null if it is legal.
+ *
+ * ⚠️ **`from` is where the unit *ends up*, not where it stands.** The command is
+ * move-then-attack, so a range checked against `attacker.position` would be
+ * measuring the wrong tile and would accept shots the unit cannot take. The
+ * caller passes the destination deliberately rather than this reaching for a
+ * position that is about to be stale.
+ *
+ * ⚠️ **No category is consulted**, because there is none. `range` is two numbers
+ * and a band either contains the distance or it does not -- the same predicate
+ * that makes artillery helpless at one tile also makes it deadly at four, with
+ * no rule naming either case.
+ */
+export function refuseAttack(
+  state: GameState,
+  attacker: Unit,
+  from: Coordinate,
+  targetUnitId: string,
+): string | null {
+  const target = getUnit(state, targetUnitId);
+  if (!target) return 'target not found';
+  if (target.id === attacker.id) return 'a unit cannot attack itself';
+  if (target.owner === attacker.owner) return 'that unit is yours';
+
+  const { range } = getUnitType(attacker.unitTypeId);
+  const distance = tileDistance(from, target.position);
+  if (distance < range.min) return 'target is too close';
+  if (distance > range.max) return 'target is out of range';
+  return null;
+}
+
+/**
+ * The exchange, as one event.
+ *
+ * ⚠️ **`attacker` should be the unit as it is *after* moving.** Nothing in the
+ * damage of a first strike reads the attacker's position -- only its health, and
+ * the defender's terrain -- but a counter-attack reads the *attacker's* terrain,
+ * which is the destination's. Passing the moved unit here means 9g inherits the
+ * right tile instead of having to retrofit it.
+ *
+ * ⚠️ No counter yet: `answered` is false and the attacker's health is carried
+ * through unchanged. 9g is the only thing that changes about this function.
+ */
+export function resolveBattle(
+  state: GameState,
+  attacker: Unit,
+  defender: Unit,
+  roll: number,
+): BattleResolvedEvent {
+  const damage = computeDamage(state, attacker, defender, roll);
+  return {
+    type: 'battleResolved',
+    kind: 'volley',
+    attacker: { unitId: attacker.id, health: attacker.health },
+    // Clamped: the event says what the defender *has*, and a negative health
+    // would be a number no rule could read.
+    defender: { unitId: defender.id, health: Math.max(0, defender.health - damage) },
+    answered: false,
+  };
 }

@@ -152,7 +152,16 @@ export function parseCommand(input: unknown): Command | null {
         path.push(coordinate);
       }
       if (!isFacing(input.facing)) return null;
-      return { type: 'move', unitId: input.unitId, path, facing: input.facing };
+
+      // ⚠️ Refused when present and wrong, rather than dropped. Silently
+      // discarding a malformed target would turn an attack into a plain move --
+      // the command would succeed and do something the player did not ask for.
+      const { targetUnitId } = input;
+      if (targetUnitId !== undefined && typeof targetUnitId !== 'string') return null;
+
+      const command: Command = { type: 'move', unitId: input.unitId, path, facing: input.facing };
+      if (targetUnitId !== undefined) command.targetUnitId = targetUnitId;
+      return command;
     }
     case 'endTurn':
       return { type: 'endTurn' };

@@ -85,6 +85,21 @@ describe('applyEvents, battleResolved', () => {
     expect(unitAt(next, 'r1').health).toBe(55);
   });
 
+  // ⚠️ The breadth I documented in the reducer, asserted rather than asserted
+  // *about*: the filter removes anyone at zero, not only the two participants.
+  // Unreachable in play -- nothing else can be sitting at zero -- but it is what
+  // keeps the rule "zero leaves the board" one statement instead of a special
+  // case, and what makes applying the event twice a no-op.
+  it('removes any unit at zero, not only the two it names', () => {
+    const withCorpse = makeState(8, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'ghost', col: 5, row: 5, health: 0 },
+      { id: 'r1', col: 2, row: 0, owner: 'red' },
+    ]);
+    const next = applyEvents(withCorpse, [battle(['b1', 90], ['r1', 40])]);
+    expect(next.units.map((unit) => unit.id)).toEqual(['b1', 'r1']);
+  });
+
   it('carries kind and answered without either touching state', () => {
     const volley = applyEvents(state, [battle(['b1', 90], ['r1', 40], true, 'volley')]);
     const charge = applyEvents(state, [battle(['b1', 90], ['r1', 40], false, 'charge')]);
