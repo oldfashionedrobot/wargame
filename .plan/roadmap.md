@@ -152,10 +152,23 @@ DOM-over-canvas, and the camera-tracking `transform` already lives in the
 renderer.
 
 ```
-Volley — 34 damage, they answer for 22
-Charge — 62% to break them
-Hold   — face them, do not fire
+Fire   34-43 damage · they return fire
+Hold   face them, do not fire
 ```
+
+⚠️ **The action is `Fire`, and the counter's *magnitude* is not shown.** Both
+numbers on that line are exactly computable: damage is `[d, d + LUCK_MAX]` where
+`d` is the zero-roll result, and whether they answer is a deterministic
+geometric predicate. **The counter's size is neither.** It is computed on the
+defender's *post-damage* health, so it depends on how the attack roll landed —
+and because health is banded, the spread comes from band *crossings* rather than
+a clean ±9. A single figure would be true only when the attack rolls zero, and
+the honest version is a ragged range that teaches nothing.
+
+⚠️ A counter that deals zero is **not** the panel lying: they fired back and
+missed, which is a real outcome and one the cutaway will eventually show as one.
+
+`Charge` joins this list in 10a, with a percentage rather than a damage range.
 
 ⚠️ **It is shown for every attack, near or far**, not only where there is a
 choice. Uniform because it is a *preview and confirmation* first and a chooser
@@ -661,6 +674,21 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
   **8.999 left less to do here than this step assumes.** The anchored DOM pane exists, and `anchorTo` takes one element — enough, because the confirm pane belongs to movement selection and the panel to action selection, so they can never both be up. The attack-range overlay is `createTileOverlay` with a new colour.
 
+  ⚠️ **The overlay shows the whole attack band, not just occupied tiles** — reach
+  is the information, and a gun's reach is most of what makes it a gun. Red
+  therefore means *in range*, not *attackable*.
+
+  ⚠️ **The adjacent ring is the only place two readings collide, and occupancy
+  decides it.** Those four tiles are facing choices *and*, for a `min: 1` unit,
+  inside the attack band. So: **adjacent with no enemy on it is a facing tile and
+  reads yellow; everything else in the band reads red.** One rule, no ordering to
+  remember, and "dark backs out" survives untouched.
+
+  ⚠️ **Undecided, and best decided on screen:** whether an occupied *target*
+  inside the band should read differently from an empty tile in it. Red-as-reach
+  means a click on empty red is not an attack, and how that should look is a
+  question for the thing being visible.
+
   ⚠️ **"An adjacent enemy means attack" is shorthand that breaks artillery.** A `min > 1` unit cannot hit an adjacent enemy at all and its targets sit two or three tiles out, so this lights **two sets** and the predicate is "an enemy *this unit can attack from here*". The colouring carries it: an adjacent enemy an artillery piece cannot reach simply stays the neutral facing colour. Undecided is only whether that reads oddly in the melee case, where one tile is both a facing choice and a target.
 
   ⚠️ **One reader, not three predicates in a load-bearing order.** An earlier draft said to add a third `Unit | null` predicate beside `facingChoiceAt` and `holdFacing` and let the hook pick whichever answers. **That is the hazard, not the fix** — `facingChoiceAt` answers a `Facing` for *any* adjacent tile without checking occupancy, so an adjacent enemy satisfies two readings and only the call order separates them. Replace the three with one function that answers what a click **means**:
@@ -711,7 +739,12 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
   ⚠️ **`nextPlayer` needs no elimination logic, *because there are two players*.** It is `(current + 1) % players.length` and knows nothing about who is alive. With elimination victory and two sides, a roster empties and the game ends in the same resolution, so it never sees a dead player. Recorded as resting on the player count rather than as generally true: a third player would need it.
 
-  ⚠️ **Which event wins at the end is undecided.** When the last unit dies, does the resolution emit `turnEnded` *and* `gameEnded`, or only the latter? Emitting both passes the turn to someone who has already lost. The likely answer is `gameEnded` alone, with `actionEndsTurn` not firing once a winner exists — but that is a rule about precedence between two reducers and wants deciding rather than falling out. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
+  ⚠️ **`gameEnded` alone, never `turnEnded` beside it.** There is no reason to
+  hand the turn to a player who has already lost. One condition in
+  `resolveAction`: the turn-end check is skipped when the resolution ended the
+  game. It composes with `currentTurn` never being cleared — `getCurrentPlayer`
+  keeps working, so the board renders a winner instead of crashing on a blank
+  turn. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
 
 Without 9j the board reaches a state where one side has nothing left and End Turn keeps working forever.
 
