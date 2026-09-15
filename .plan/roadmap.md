@@ -776,19 +776,95 @@ instrumented, not retried with new coordinates. See the open question below.
 
 ### 10 — Combat depth
 
-⚠️ **This is where everything original lands**, facing and charge together, because facing is read by charge and by nothing else. Phase 9 is Advance Wars and checkable against it; this phase is not checkable against anything and has to be played.
+⚠️ **Charge is what is left of "everything original", and facing is no longer
+waiting here.** This said facing and charge land together *because facing is read
+by charge and by nothing else* — which stopped being true when 9k shipped: a shot
+from directly behind goes unanswered, `attackSide` is built and tested, and
+`flank` is already classified and waiting for a reader. So phase 10 is charge,
+plus the view charge needs to exist before it can be designed.
 
-Two steps on the pipeline **phase 9** proved: the mechanic that cannot be checked against anything, and the view that needs it to exist before it can be designed.
+⚠️ **That weakens the "one unknown at a time" argument without retiring it.** The
+worry was that a rear charge puts two untested mechanics inside one expression.
+The *classifier* is now proven, so what is unknown is only the multipliers —
+still worth tuning head-on first, but for the smaller reason that two dials in
+one formula cannot be read apart, not because the geometry might be wrong.
 
-- **10a** Charge, `CHARGE_THRESHOLD`, and its own tuning pass. ⚠️ **Invariant 9 constrains its events**: a successful charge emits `unitDied` **plus** `unitMoved`, two independently-applicable events, not one compound event carrying both effects. (Moved here from 9f, which has no charge in it.) It gets its own step because it is the riskiest mechanic in the game: **the one part of combat with no reference behaviour to check against**, an untuned threshold per matchup, an untuned failure-damage function, and a success case that emits two events and displaces a unit. Everything else in phases 9–10 can be checked against AW; this can only be played.
+- **10a** Charge, `CHARGE_THRESHOLD`, and its own tuning pass. It gets its own
+  step because it is the riskiest mechanic in the game: **the one part of combat
+  with no reference behaviour to check against**, an untuned threshold per
+  matchup, an untuned failure-damage function, and a success case that emits two
+  events and displaces a unit. Everything else in phases 9–10 can be checked
+  against AW; this can only be played.
 
-  ⚠️ **Tune it head-on first, then add the rear-charge threshold reduction.** Facing is the other mechanic with no AW precedent, and a rear charge puts both unknowns inside one expression — every observation would be adjusting two dials at once. Front-on charge until it feels right, directional term second.
+  ⚠️ **Tune it head-on first, then add the directional term.** Two dials in one
+  formula cannot be read apart — every observation would be adjusting both.
 
-  ⚠️ **9.9 leaves charge nothing to design.** It is a third button on the action
-  panel and a fourth tile set, and it inherits the pin-then-confirm gesture for
-  picking a target rather than needing one of its own. The overlay conflict that
-  would have existed — charge tiles blending with attack tiles at the same
-  height — cannot arise, because the two are never lit together.
+  ⚠️ **There is no `unitDied` event**, and this entry used to say a successful
+  charge emits one. 9f settled it: `health: 0` inside `battleResolved` is the
+  marker, said once, so a flag beside the number cannot disagree with it — which
+  is what lets a charge be an ordinary `battleResolved` with no special case in
+  the reducer. The two events are `battleResolved` and `unitMoved`.
+
+  ⚠️ **And their order is load-bearing.** Approach `unitMoved`, then
+  `battleResolved` taking the defender to zero, then a one-step `unitMoved` onto
+  the vacated tile. Displace before the kill and the attacker lands on an
+  occupied tile, which breaks invariant 9's *makes sense against the state
+  immediately before it*. ⚠️ That is **two `unitMoved` for one unit in one
+  batch**, which no client code has seen: `previewMove` and `playEvents` both
+  assume one walk per unit per batch.
+
+#### What the codebase already says about 10a
+
+  ⚠️ **`entryCost` refuses the very tile charge has to ask about.** The rule is
+  *the attacker must be able to enter the target's tile*, and `entryCost` answers
+  `is held by an enemy` for exactly that tile. Charge cannot call it, and
+  duplicating the terrain lookup is the one-rule-two-spellings shape this
+  codebase has corrected repeatedly. Split out the terrain-passability question
+  and have `entryCost` call it too.
+
+  ⚠️ **`refuseAttack` measures the range band; charge is contact.** Infantry
+  reaches two, so reusing it would permit a "charge" from two tiles off. Cavalry's
+  `{1,1}` coincides with contact only by accident.
+
+  ⚠️ **`canCharge` is `canFire`'s twin**, and 9.9 built the pattern: ask the rule
+  that will refuse the click, never the tile set, so the menu row and the click
+  cannot disagree.
+
+  ⚠️ **Making `Rolls` a discriminated union looks like it contradicts its own
+  comment**, which says deciding what to roll before rolling is the coupling that
+  keeping RNG on the server exists to avoid. It does not: the attack *kind* comes
+  from the **command**, not from the rules, so the server knows it before it
+  rolls. Worth writing down rather than rediscovering.
+
+  ⚠️ **9j's victory fold needs no change.** It folds whatever events resolution
+  produced, so a charge that kills the last unit ends the game for free.
+
+  ⚠️ **9.9 leaves the interaction nothing to design.** A third menu row, one tile
+  set, and the pin-then-confirm gesture inherited from firing. The overlay
+  conflict that would have existed — charge tiles blending with attack tiles at
+  the same height — cannot arise, because no two modes are ever lit together.
+
+  ⚠️ **`attackSide` is built, tested, and returns `flank` to nobody.** Charge is
+  the reader it was written for.
+
+#### Three decisions 10a cannot make for itself
+
+  ⚠️ **Which direction does repel scaling run?** Already flagged in *Charge*
+  above and still unanswered: *barely failed, barely hurt* rewards a near-miss,
+  *wilder charge, worse mauling* punishes recklessness. No number can tell you
+  which you want. It also decides the `Rolls` union's shape — `{ charge }` or
+  `{ charge, repel }` — which `combat.ts` is explicitly waiting on.
+
+  ⚠️ **Which two unit types can charge?** `CHARGE_THRESHOLD` is specced as a
+  `Partial<Record<…>>` with **six** entries, which is two rows of three — so one
+  type cannot charge at all, and a missing row is how that is said. Infantry and
+  cavalry is the obvious reading, artillery being the odd one out, but it defines
+  what the mechanic *is* and should be stated rather than inferred from a count.
+
+  ⚠️ **Does 10a ship in one piece or two?** Roughly twelve untuned numbers with
+  no reference behaviour, and the tuning advice above is to move one dial at a
+  time. That reads like two steps — the mechanic head-on, then the directional
+  term — which would push the cutaway to 10c.
 
 - **10b** ⬜ **The combat cutaway.** A view that takes over, shows both units, plays the exchange, and hands back — AW's battle screen. ⚠️ **Here rather than in phase 9 because two of its four scenes are charge**: volley-unanswered, volley-answered, charge-broke-through and charge-repelled. Building it earlier means building half of it and extending it, and the half that is missing is the half with no reference behaviour.
 
