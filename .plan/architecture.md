@@ -1215,8 +1215,20 @@ in the roadmap. `server`'s and `client`'s test files are.
 `@vod/shared` through its `exports` and pull that source into their own
 programs. `shared` emits nothing. `strict`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`,
 `erasableSyntaxOnly` and `verbatimModuleSyntax` are on in every tsconfig.
-`shared` has no program of its own for `src` — its config exists for editors,
-and its source is checked inside the two programs that import it.
+`shared` has no program of its own for `src`, and its `tsconfig.json` earns its
+keep twice over. ⚠️ **It is the name editors look for** — the language server
+walks up for `tsconfig.json` *specifically*, so a file called anything else is
+invisible to it and `src` would be edited under default options with no `strict`
+and none of the linting flags. ⚠️ **And it is the only place `src` has no bun
+types**, which is what makes the rulebook's purity *visible while you type*:
+`process.env` in `combat.ts` is red in the editor rather than a surprise at the
+gate. Merging it into `tsconfig.dev.json` would keep purity enforced — the
+client program still rejects it — and stop it being legible.
+
+⚠️ `extends` **replaces** `include` rather than merging it, which is why
+`tsconfig.dev.json` names `src/**/*.test.ts` explicitly instead of inheriting
+`["src"]`. That is load-bearing: it is what keeps `src/*.ts` out of the
+bun-typed program.
 
 The root `tsconfig.json` is a solution file over **three** projects: `server`,
 `client`, and `shared/tsconfig.dev.json`. ⚠️ That third one covers everything in
