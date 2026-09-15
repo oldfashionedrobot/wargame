@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { coordinateKey, coordinatesEqual, directionBetween, isWithinGrid } from './coordinate';
+import {
+  coordinateKey,
+  coordinatesEqual,
+  directionBetween,
+  isWithinGrid,
+  tileDistance,
+} from './coordinate';
 
 const at = (col: number, row: number) => ({ col, row });
 
@@ -48,5 +54,26 @@ describe('directionBetween', () => {
     expect(directionBetween(at(2, 2), at(2, 2))).toBeNull();
     expect(directionBetween(at(0, 0), at(0, 2))).toBeNull(); // two tiles
     expect(directionBetween(at(0, 0), at(1, 1))).toBeNull(); // diagonal
+  });
+});
+
+describe('tileDistance', () => {
+  it('counts orthogonal steps, not straight-line distance', () => {
+    expect(tileDistance({ col: 0, row: 0 }, { col: 3, row: 0 })).toBe(3);
+    expect(tileDistance({ col: 0, row: 0 }, { col: 0, row: 3 })).toBe(3);
+  });
+
+  // ⚠️ The case that decides the whole function. Euclidean would call this 1.41
+  // and Chebyshev would call it 1; the board is orthogonal, so it is 2 -- and a
+  // range band that disagreed would let a gun reach corners its movement cannot.
+  it('counts a diagonal as two steps', () => {
+    expect(tileDistance({ col: 0, row: 0 }, { col: 1, row: 1 })).toBe(2);
+  });
+
+  it('is zero for a tile against itself, and symmetric otherwise', () => {
+    expect(tileDistance({ col: 4, row: 7 }, { col: 4, row: 7 })).toBe(0);
+    expect(tileDistance({ col: 1, row: 5 }, { col: 4, row: 2 })).toBe(
+      tileDistance({ col: 4, row: 2 }, { col: 1, row: 5 }),
+    );
   });
 });

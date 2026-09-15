@@ -10,6 +10,22 @@ export function coordinateKey(coordinate: Coordinate): string {
   return `${coordinate.col},${coordinate.row}`;
 }
 
+/**
+ * Orthogonal steps between two tiles -- Manhattan, because the board is.
+ *
+ * ⚠️ **Not Euclidean, and not Chebyshev.** Movement is orthogonal, so two tiles
+ * diagonally apart are *two* steps away, and a range band that counted them as
+ * one would let a gun reach corners its own movement could not. Every rule that
+ * measures distance measures it the same way: a shooting range now, whether a
+ * defender can answer at 9g, and what a panel may target at 9h.
+ *
+ * This is deliberately the **only** distance in the codebase. Written inline at
+ * each of those three, it is three chances to disagree about a diagonal.
+ */
+export function tileDistance(a: Coordinate, b: Coordinate): number {
+  return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
+}
+
 // A rule, not a rendering concern -- what's on the board is a game fact, so
 // pathfinding and picking both read it from here.
 export function isWithinGrid(

@@ -40,7 +40,7 @@ export { getUnitType, MAX_HEALTH } from './data/unitTypes';
 export { BASE_DAMAGE, LUCK_MAX } from './data/combat';
 export { computeDamage } from './combat';
 
-export { coordinatesEqual, directionBetween, isWithinGrid } from './coordinate';
+export { coordinatesEqual, directionBetween, isWithinGrid, tileDistance } from './coordinate';
 export { getCurrentPlayer, getUnit, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';
 export { exploreMovement } from './movement';
