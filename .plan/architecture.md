@@ -1003,9 +1003,12 @@ is off.
   piece. ⚠️ One material for every ring, cached on the scene by name — so the
   `disposeMaterialAndTextures: false` that protects unit colours protects these
   too.
-  ⚠️ `syncUnits` snaps it, as it does position. When damage animates, the tween
-  belongs in `playEvents` — and `scene.stopAnimation(mesh)` targets the *unit*
-  node, so a tween on the ring survives it and must be stopped separately.
+  ⚠️ **`syncUnits` is its only writer and it never tweens.** The ring is
+  persistent state, not an animation: it says how close a unit is to breaking
+  while you plan, and showing *change* belongs to the combat cutaway. That also
+  keeps it out of `playEvents`, where an animation on the ring would be a
+  different target from the unit node and would survive
+  `scene.stopAnimation(mesh)`.
 - **The pinned route is an arrow, not a tint** — `routeArrow.ts`, a sibling of
   `tileOverlay.ts` that merges per-tile quads into one mesh the same way and
   adds UVs. A tint says *these tiles*; an arrow says *this way, ending here*.

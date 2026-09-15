@@ -383,11 +383,17 @@ counter, in a charge it is a repel — so no third field is needed to say which.
 | event | the client plays |
 |---|---|
 | `unitMoved` | walks the mesh *(built)* |
-| `battleResolved` | extinguishes ring segments down to the new health, awaits |
+| `battleResolved` | **nothing, until 10b** — the ring changes at the commit |
 
-⚠️ **The mesh is guaranteed alive while a death animates.** Removal happens in
-`syncUnits`, which runs *after* `playEvents` resolves — so a death has somewhere
-to play without anything being arranged for it.
+⚠️ **The ring does not animate, and that is deliberate.** It is the *persistent*
+state — how close a unit is to breaking, readable while you plan — and the
+cutaway is where change gets shown. Making the ring tween would have given the
+same information twice and made the cutaway redundant before it existed.
+`syncUnits` sets it from state, which is already built.
+
+⚠️ **The mesh is still guaranteed alive while a death animates**, whenever one is
+built: removal happens in `syncUnits`, which runs *after* `playEvents` resolves.
+That property costs nothing to keep and is what 10b will need.
 
 **The board shows a ring, not a number or a bar.** Ten segments at the unit's
 base, hidden at full health, extinguishing rather than dimming — bands are
@@ -726,11 +732,60 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
 - **9f** `MoveCommand` gains an **optional** attack — path, facing, and a target, atomic.
 
+  ⚠️ **There is no distance function anywhere.** `coordinate.ts` has
+  `coordinatesEqual`, `isWithinGrid`, `directionBetween` and `coordinateKey` —
+  nothing that measures. Range checking needs one, `wouldCounter` needs the same
+  one at 9g, and targeting needs it again at 9h. It lands **once, here**, or it
+  lands three times as inline arithmetic.
+
+  ⚠️ **Range is measured from the destination, not from the unit.** The command
+  is *move-then-attack*, so legality is `distance(path.at(-1), target)` inside
+  the attacker's range. `validateMove` today only ever reads `unit.position`, so
+  taking the obvious route validates against where the unit *started* and
+  silently accepts impossible shots.
+
+  ⚠️ **`applyEvents` throws on an unknown event type and `playEvents` shrugs.**
+  The reducer refuses loudly on purpose — ignoring an event would desync a
+  replay — while the renderer's loop `continue`s past anything that is not a
+  move. So one `battleResolved` reaching stale client code is a **hard crash in
+  the reducer and a silent no-op in the renderer**: the same event with two
+  opposite failure modes. Consistent with old matches being expendable, but it
+  is a crash rather than a degrade and that is worth knowing before it happens.
+
   ⚠️ **`resolveMove` takes only the action today** — no state — and damage needs terrain and both units, so the signature changes rather than just the body. The shape to aim for is orchestration: `resolveMove` emits the move, then delegates to a `resolveBattle` in `combat.ts` beside `computeDamage`. Combat resolution should not accumulate inside a file named for the move command.
 
   ⚠️ **The preview does *not* conflict with attacking**, though it looks like it should. A pre-check raised it and walking it through retired it: the preview finishes before action selection opens, `clickTile` refuses everything while `walking`, and `playEvents` skips the `unitMoved` positionally — so by the time a `battleResolved` arrives the mesh is parked and there is nothing to collide with. Recorded because the worry is a natural one to have twice.
 
-  ⚠️ **First, the snap budget has to learn what combat costs.** `animatedTiles` sums `path.length - 1` for `unitMoved` and **zero for everything else**, so a catch-up batch of ten battles scores 0 tiles, clears `tiles <= MAX_ANIMATED_TILES`, and animates every one of them back to back while the state commit waits. The comment there says the ceiling *is* the wait — but combat is wait the ceiling cannot see. It needs a term before any battle event exists, or the first multi-action catch-up is an unskippable minute. ⚠️ Called `UnitActionCommand` here for years, which oversold it: an optional field is *additive*, so the wire stays compatible, `parseCommand` keeps its existing branch and no stored row changes meaning. Whether the rename earns its churn is a real question and the answer is probably no. Simplest resolution: `computeDamage` from 9c, a target inside the range 9d gave the attacker, no counter yet and no charge. Damage and death events. ⚠️ **Facing is not read here and `computeDamage` takes no direction** — that moved to 10a with charge, which is the only thing that reads it. The command carries `facing` as it already does, and nothing does anything with it. Touches **four** places, not the three this used to claim: `parseCommand` for the wire shape, `validateMove`'s successor for legality, `resolveMove`'s for the events — and `moveCommandFor` in `interaction/selection.ts`, which is what actually builds the command on the client and changes shape with it.
+  **Eleven files in four layers**, which is what "four places" undercounted — it
+  was counting the command's shape, not the chain. Shared types (`types.ts`,
+  `protocol.ts`), shared rules (`move.ts`, `combat.ts`, `applyEvents.ts`,
+  `action.ts`, `coordinate.ts`), the server (`match.ts`), and the client
+  (`selection.ts`, `useGameSession.ts`, `renderer.ts`).
+
+  **Build it in this order**, each gateable alone:
+
+  1. `distance` in `coordinate.ts` — one function, used by everything after it
+  2. the event and the reducer — pure, testable, no integration
+  3. the command, its resolution, and the roll
+  4. `moveCommandFor` carrying a target — the only client change
+
+  ⚠️ **9f ships unplayable**, and that is expected rather than a gap: nothing in
+  the UI can *name* a target until 9h. Verification is tests and a hand-made
+  request, not a browser. The ring will move when a battle resolves, because
+  `syncUnits` already sets it from state — no client work is needed for that.
+
+  ⚠️ **Step 3 is the densest point in the phase and wants its own commit.** It is
+  where `hasActed`, turn-ending and death first interact: a counter can kill the
+  *attacker*, which shrinks the roster, which changes `actionsAllowed` — and
+  `actionsTaken` counts `hasActed` among *surviving* units, so both terms of that
+  `min` move at once. Riding it along with plumbing is how that goes unnoticed.
+
+  **What is genuinely easy**, for contrast: `moveCommandFor` has one non-test
+  call site, `parseCommand`'s move branch returns a literal so an optional field
+  is additive, and `canSelectUnit` is untouched — it answers *may this act*,
+  which attacking does not change.
+
+  ⚠️ **The snap budget needs nothing, and an earlier draft of this step said it did.** `animatedTiles` scores zero for anything that is not a move, which looked like a defect — a catch-up of ten battles clearing the threshold and playing back to back. It is only a defect if battles *take time*, and they do not: **the ring does not tween**, so `playEvents` has no battle branch at all and a battle costs nothing to "animate". The budget measures walking because walking is the only thing that waits. ⚠️ It becomes 10b's problem the moment the cutaway exists, and that is where the term belongs. ⚠️ Called `UnitActionCommand` here for years, which oversold it: an optional field is *additive*, so the wire stays compatible, `parseCommand` keeps its existing branch and no stored row changes meaning. Whether the rename earns its churn is a real question and the answer is probably no. Simplest resolution: `computeDamage` from 9c, a target inside the range 9d gave the attacker, no counter yet and no charge. Damage and death events. ⚠️ **Facing is not read here and `computeDamage` takes no direction** — that moved to 10a with charge, which is the only thing that reads it. The command carries `facing` as it already does, and nothing does anything with it. Touches **four** places, not the three this used to claim: `parseCommand` for the wire shape, `validateMove`'s successor for legality, `resolveMove`'s for the events — and `moveCommandFor` in `interaction/selection.ts`, which is what actually builds the command on the client and changes shape with it.
 
   ⚠️ **Rolls are a third argument to `resolveAction`, not a field on `Action`.** The doc has said both. They cannot live on `Action`: `validateCommand` is its only constructor and has no business generating or receiving a roll.
 
@@ -779,7 +834,7 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
   ⚠️ **The ring inherits `PIECE_SCALE`, and that is probably right.** A ring parented to the unit node is scaled with it — infantry 1.5, artillery 1.2 — so the rings come out different sizes. But `PIECE_SCALE` exists to make each piece fill its tile for readability, so a ring scaling with it stays *proportionate to its piece* and still fits. Leave it inheriting and judge it in a browser; `1 / PIECE_SCALE[type]` on the child is the one-line fix if artillery's reads too small. ⚠️ The structurally tidier answer — scale and rotation on separate nodes — is **not** two nodes: the model child is the loader's `__root__`, which carries the handedness flip as a negative-z scale, which is exactly why scaling sits on our node today. It would take three levels.
 
-  ⚠️ **Two writers, and the precedent settles which is which.** `playEvents` tweens the ring toward an event's value; `syncUnits` snaps it to the authoritative one. Identical to how position already works. **But `scene.stopAnimation(mesh)` stops animations on the *unit* node** — a tween running on the ring is a different target and survives it, so a snap can land while the ring is still travelling toward a stale value. Both have to be stopped.
+  ⚠️ **One writer: `syncUnits` snaps it, and the ring never tweens.** An earlier draft had `playEvents` animating segments out as damage landed, which would have made the ring the damage animation. It is not — **the cutaway is**, and the ring is the persistent state beside it. That removes a hazard as well as work: a tween on the ring is a different animation target from the unit node, so `scene.stopAnimation(mesh)` would not have reached it and a snap could have landed on a value still in motion. No tween, no orphan.
 
   ⚠️ **And this step moves ahead of the combat command.** It is scheduled after 9f here for historical reasons and that ordering is wrong: the ring *is* the damage animation, so shipping combat first means shipping it with no feedback at all — health changing invisibly, units vanishing mid-frame, and the database as the only way to tell an attack happened. It is also what makes 9f checkable in a browser, which is the renderer's only check.
 - **9j** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop.
