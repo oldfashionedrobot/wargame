@@ -1,6 +1,6 @@
 import { tileDistance } from './coordinate';
 import { BASE_DAMAGE } from './data/combat';
-import { getUnitType } from './data/unitTypes';
+import { clampHealth, getUnitType } from './data/unitTypes';
 import { getUnit } from './queries';
 import { getTerrain } from './data/terrain';
 import type { BattleResolvedEvent, Coordinate, GameState, Unit } from './types';
@@ -163,9 +163,9 @@ export function resolveBattle(
     type: 'battleResolved',
     kind: 'volley',
     attacker: { unitId: attacker.id, health: attacker.health },
-    // Clamped: the event says what the defender *has*, and a negative health
-    // would be a number no rule could read.
-    defender: { unitId: defender.id, health: Math.max(0, defender.health - damage) },
+    // The event says what the defender *has*, so it must be a number a rule can
+    // read -- `clampHealth` owns both ends of that, rather than this owning one.
+    defender: { unitId: defender.id, health: clampHealth(defender.health - damage) },
     answered: false,
   };
 }

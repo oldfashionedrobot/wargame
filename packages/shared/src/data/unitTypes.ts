@@ -56,6 +56,26 @@ export interface UnitType {
  */
 export const MAX_HEALTH = 100;
 
+/**
+ * A health, brought inside its bounds.
+ *
+ * ⚠️ **Because the bounds were being written inline, and only half of them
+ * were.** `resolveBattle` clamped the bottom with a literal `Math.max(0, …)` and
+ * nothing anywhere clamped the top -- so "0 to `MAX_HEALTH`" was a rule the code
+ * stated in pieces and the next person to compute a health would state again,
+ * possibly differently. One function is a thing nobody can write half of.
+ *
+ * ⚠️ **For producers, not for `applyEvents`.** Clamping in the reducer would
+ * cover every writer forever, which is tempting -- but it would *silently
+ * correct* a bad event rather than refusing it, and this codebase refuses
+ * loudly: `getUnitType` throws, and the reducer throws on an unknown event. A
+ * health out of range can only come from a resolution bug, and quietly healing
+ * it buries that bug in the log for good.
+ */
+export function clampHealth(value: number): number {
+  return Math.min(MAX_HEALTH, Math.max(0, value));
+}
+
 // A Record, so adding a UnitTypeId turns every incomplete table in data/ into a
 // compile error instead of a silent runtime gap.
 export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {

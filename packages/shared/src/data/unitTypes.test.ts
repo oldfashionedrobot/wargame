@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { getUnitType, UNIT_TYPES } from './unitTypes';
+import { clampHealth, getUnitType, MAX_HEALTH, UNIT_TYPES } from './unitTypes';
 import type { UnitTypeId } from './unitTypes';
 
 // The catalog was dead code until 6a wired `Unit.unitTypeId` to it. These
@@ -49,5 +49,28 @@ describe('getUnitType', () => {
   // as NaN movement somewhere else entirely.
   it('throws on an id the catalog does not hold', () => {
     expect(() => getUnitType('trebuchet' as UnitTypeId)).toThrow(/unknown unit type/);
+  });
+});
+
+describe('clampHealth', () => {
+  it('leaves an ordinary health alone', () => {
+    expect(clampHealth(1)).toBe(1);
+    expect(clampHealth(57)).toBe(57);
+    expect(clampHealth(MAX_HEALTH)).toBe(MAX_HEALTH);
+  });
+
+  // The half that existed, as a literal inside resolveBattle: a fatal blow must
+  // land on zero rather than a number no rule could read.
+  it('floors at zero rather than going negative', () => {
+    expect(clampHealth(-1)).toBe(0);
+    expect(clampHealth(-250)).toBe(0);
+  });
+
+  // ⚠️ The half that did not exist anywhere, which is the reason this function
+  // does. Nothing heals today, so this is unreachable in play -- and it is
+  // exactly the kind of bound that gets written once, half, and never revisited.
+  it('caps at MAX_HEALTH rather than letting anything over-heal', () => {
+    expect(clampHealth(MAX_HEALTH + 1)).toBe(MAX_HEALTH);
+    expect(clampHealth(9001)).toBe(MAX_HEALTH);
   });
 });

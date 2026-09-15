@@ -33,7 +33,7 @@ export type { ArmyPlacement } from './armyGrid';
 // The unit catalog. `UnitTypeId` is out because an army names the units it
 // places; the rest of the catalog is read through `getUnitType`.
 export type { UnitTypeId } from './data/unitTypes';
-export { getUnitType, MAX_HEALTH } from './data/unitTypes';
+export { clampHealth, getUnitType, MAX_HEALTH } from './data/unitTypes';
 
 // Combat: the table is out because the tuning harness prints it, and
 // `computeDamage` because the client previews the same number the server rolls.

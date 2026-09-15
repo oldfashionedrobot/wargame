@@ -237,7 +237,11 @@ describe('a full turn cycle validates, resolves and folds', () => {
       const validation = validateCommand(live, command, actor);
       expect(validation.ok).toBe(true);
       if (!validation.ok) return;
-      const events = resolveAction(live, validation.action);
+      // ⚠️ The roll matters to nothing in this script -- it is all moves and
+      // end-turns -- but leaving it off compiled anyway, because `shared/`'s
+      // test files are not typechecked, and would have been NaN damage the
+      // first time this script grew an attack.
+      const events = resolveAction(live, validation.action, 0);
       log.push(...events);
       live = applyEvents(live, events);
     }
