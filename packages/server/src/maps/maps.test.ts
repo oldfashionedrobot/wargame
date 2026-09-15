@@ -82,9 +82,11 @@ describe('every map', () => {
       });
 
       it('points each army at the other rather than off its own edge', () => {
-        // ⚠️ Worth asserting precisely because nothing else can see it: no rule
-        // reads facing until 9d, so a sign error here is invisible in play and
-        // then silently becomes a damage factor. Row index increases north.
+        // ⚠️ A rule reads this now: a shot from directly behind is never
+        // answered, so deployment facing the wrong way would hand every opening
+        // exchange's counter to whoever moved second. Row index increases north,
+        // and that is the sign worth stating -- it is the one thing here that
+        // can be backwards while every individual value still looks reasonable.
         const northmost = Math.max(...units.map((unit) => unit.position.row));
         for (const unit of units) {
           const atBack = unit.position.row === northmost;

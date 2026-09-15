@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import type { Facing } from './types';
 import { makeState } from './testing';
 import { band, BANDS, computeDamage, tilesInRange, wouldCounter } from './combat';
 import { BASE_DAMAGE, LUCK_MAX } from './data/combat';
@@ -200,8 +201,17 @@ describe('band', () => {
 
 describe('wouldCounter', () => {
   const at = (col: number, row: number) => ({ col, row });
-  const unitAt = (unitTypeId: 'infantry' | 'cavalry' | 'artillery', col: number, row: number) =>
-    makeState(8, [{ id: 'd', col, row, owner: 'red', unitTypeId }]).units[0];
+  // ⚠️ Facing `north` on purpose, because these attackers are all placed to the
+  // north: a shot from directly behind is never answered, so a defender left on
+  // the fixture's `south` default would refuse every one of them and this whole
+  // block would assert the rear rule while reading as a range-band check. The
+  // rear rule has its own block below.
+  const unitAt = (
+    unitTypeId: 'infantry' | 'cavalry' | 'artillery',
+    col: number,
+    row: number,
+    facing: Facing = 'north',
+  ) => makeState(8, [{ id: 'd', col, row, owner: 'red', unitTypeId, facing }]).units[0];
 
   it('answers inside its own band and nowhere else', () => {
     const gun = unitAt('artillery', 0, 0); // range 2..5
@@ -222,7 +232,9 @@ describe('wouldCounter', () => {
   });
 
   it('never answers when it did not survive', () => {
-    const dead = makeState(8, [{ id: 'd', col: 0, row: 0, owner: 'red', health: 0 }]).units[0];
+    const dead = makeState(8, [
+      { id: 'd', col: 0, row: 0, owner: 'red', health: 0, facing: 'north' },
+    ]).units[0];
     expect(wouldCounter(dead, at(0, 1))).toBe(false);
   });
 
@@ -231,6 +243,35 @@ describe('wouldCounter', () => {
     const foot = unitAt('infantry', 0, 0);
     expect(wouldCounter(foot, at(1, 1))).toBe(true); // two steps
     expect(wouldCounter(foot, at(2, 1))).toBe(false); // three
+  });
+
+  // ⚠️ The one place facing changes shooting. Every case here is inside the
+  // defender's range and would be answered but for the direction, which is what
+  // makes it a test of the rear rule rather than of the band.
+  describe('a shot from behind', () => {
+    it('is never answered, at any distance it could have answered from', () => {
+      const foot = unitAt('infantry', 0, 4, 'south');
+      expect(wouldCounter(foot, at(0, 5))).toBe(false); // adjacent, behind
+      expect(wouldCounter(foot, at(0, 6))).toBe(false); // the far end of the band
+    });
+
+    it('still answers the same tiles from the front and the flanks', () => {
+      const foot = unitAt('infantry', 4, 4, 'south');
+      expect(wouldCounter(foot, at(4, 3))).toBe(true); // front
+      expect(wouldCounter(foot, at(5, 4))).toBe(true); // flank
+      expect(wouldCounter(foot, at(3, 4))).toBe(true); // the other flank
+      expect(wouldCounter(foot, at(4, 5))).toBe(false); // rear
+    });
+
+    // ⚠️ It only ever subtracts. A gun firing from outside the defender's band
+    // is unanswered whichever way anyone is looking, so the rule cannot turn a
+    // shot that was already safe into anything else -- and cannot be mistaken
+    // for having granted a counter it did not.
+    it('changes nothing about a shot that was out of range anyway', () => {
+      const gun = unitAt('artillery', 0, 4, 'south'); // range 2..5
+      expect(wouldCounter(gun, at(0, 5))).toBe(false); // rear *and* too close
+      expect(wouldCounter(gun, at(0, 3))).toBe(false); // front, still too close
+    });
   });
 });
 

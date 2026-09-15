@@ -86,3 +86,39 @@ export function directionBetween(from: Coordinate, to: Coordinate): Facing | nul
   // Row 0 renders at the near edge, so a rising row index faces away.
   return dRow === 1 ? 'north' : 'south';
 }
+
+/** Which way `facing` is looking, reversed. */
+function opposite(facing: Facing): Facing {
+  return FACINGS[(FACINGS.indexOf(facing) + 2) % FACINGS.length];
+}
+
+/**
+ * Where a shot is coming from, relative to the way its target is looking.
+ *
+ * ⚠️ **`attackerAt` is measured *from* the defender, not toward it.** The
+ * direction from a unit to its attacker equalling its facing means it is
+ * *looking at* the shot, which is `front`. Read the other way round every case
+ * inverts and nothing about the result looks wrong -- the same sign error
+ * `maps.test.ts` guards for deployment, and the reason both ends are asserted
+ * rather than just one.
+ *
+ * Diagonals inherit `facingToward`'s tie-break -- dominant axis, ties to row --
+ * so a gun sitting off the axis is classified by the same arbitrary rule that
+ * decides which way the attacker itself turns. Arbitrary, but stated once and
+ * shared, which is what `facingToward` is for.
+ *
+ * ⚠️ `flank` is returned and read by nothing: `wouldCounter` asks only about
+ * `rear`, and charge wants all three in 10a. The one place this file knowingly
+ * describes more than the game currently uses.
+ */
+export function attackSide(
+  defenderFacing: Facing,
+  defenderAt: Coordinate,
+  attackerAt: Coordinate,
+): 'front' | 'flank' | 'rear' {
+  // Its own tile is unreachable -- nothing may target itself -- and `facingToward`
+  // answers with the fallback, so this reads `front` rather than throwing.
+  const towardAttacker = facingToward(defenderAt, attackerAt, defenderFacing);
+  if (towardAttacker === defenderFacing) return 'front';
+  return towardAttacker === opposite(defenderFacing) ? 'rear' : 'flank';
+}

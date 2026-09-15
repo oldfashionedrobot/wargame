@@ -1,4 +1,4 @@
-import { isWithinGrid, tileDistance } from './coordinate';
+import { attackSide, isWithinGrid, tileDistance } from './coordinate';
 import { BASE_DAMAGE } from './data/combat';
 import { clampHealth, getUnitType } from './data/unitTypes';
 import { getUnit } from './queries';
@@ -232,6 +232,25 @@ export function tilesInRange(
  * Under the category reading that needs a special case; under this one it falls
  * out.
  *
+ * ⚠️ **A shot from directly behind is never answered**, and this is the only
+ * place facing changes shooting -- `computeDamage` still cannot see it. The
+ * signature did not have to change to say so, because a `Unit` already carries
+ * its facing, which is why both callers got the rule for free: this one, and the
+ * client's `attackForecast`.
+ *
+ * ⚠️ **It negates the counter rather than shrinking it, and the panel is why.**
+ * The counter's *magnitude* is deliberately absent from the preview, so a
+ * counter that was merely reduced would be invisible at the moment of choosing
+ * -- the panel would say "they return fire" either way. An absence is already in
+ * its vocabulary. A flanking *damage* bonus was refused on its own terms: see
+ * the roadmap's facing section.
+ *
+ * ⚠️ **In a head-on meeting it changes nothing**, which is the point. Deployment
+ * points each army at the other, so the armies arrive front-to-front and the
+ * rear has to be earned by manoeuvre. And it only ever bites where a counter was
+ * possible at all: a gun firing from outside the defender's band is unanswered
+ * regardless of which way anyone is looking.
+ *
  * ⚠️ **Ours differs from AW's in exactly one case, deliberately: counter-battery.**
  * Two guns within reach of each other answer each other, which AW forbids and
  * history does not. Artillery caught at one tile still cannot answer, because 1
@@ -250,6 +269,7 @@ export function tilesInRange(
  */
 export function wouldCounter(defender: Unit, from: Coordinate): boolean {
   if (defender.health <= 0) return false;
+  if (attackSide(defender.facing, defender.position, from) === 'rear') return false;
   return outsideRange(defender, defender.position, from) === null;
 }
 

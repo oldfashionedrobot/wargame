@@ -77,7 +77,11 @@ const lane = (enemyRow: number, unitTypeId: 'infantry' | 'artillery' = 'infantry
   makeState(8, [
     { id: 'b1', col: 0, row: 0, unitTypeId },
     { id: 'friend', col: 7, row: 0 },
-    { id: 'r1', col: 0, row: enemyRow, owner: 'red' },
+    // ⚠️ Stated, not inherited. `b1` attacks from the south, so a defender
+    // looking south is looking *at* it -- and a shot from directly behind is
+    // never answered, so the fixture's own default deciding that would make
+    // every counter below depend on something it does not mention.
+    { id: 'r1', col: 0, row: enemyRow, owner: 'red', facing: 'south' },
   ]);
 
 const resolved = (
@@ -215,7 +219,7 @@ describe('resolveMove', () => {
   it('lets two guns answer each other, but not one that has been reached', () => {
     const duel = makeState(8, [
       { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
-      { id: 'r1', col: 0, row: 3, owner: 'red', unitTypeId: 'artillery' },
+      { id: 'r1', col: 0, row: 3, owner: 'red', unitTypeId: 'artillery', facing: 'south' },
     ]);
     const [, counterBattery] = resolved(duel, move('b1', at(0, 0), at(0, 0), 'r1'));
     if (counterBattery.type !== 'battleResolved') throw new Error('expected a battle');
@@ -230,12 +234,40 @@ describe('resolveMove', () => {
     expect(atContact.answered).toBe(false);
   });
 
+  // ⚠️ The rear rule, end to end. The predicate has its own tests; this is the
+  // one that proves it reaches the *event* -- `answered` is what decides whether
+  // a riposte is computed at all, so an attacker still at full health is the
+  // observable consequence rather than a restatement of the flag.
+  it('is unanswered from directly behind, and the attacker takes nothing', () => {
+    const behind = makeState(8, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'r1', col: 0, row: 2, owner: 'red', facing: 'north' },
+    ]);
+    const [, battle] = resolved(behind, move('b1', at(0, 0), at(0, 0), 'r1'));
+    if (battle.type !== 'battleResolved') throw new Error('expected a battle');
+    expect(battle.answered).toBe(false);
+    expect(battle.attacker.health).toBe(MAX_HEALTH);
+  });
+
+  // The same shot from the same tile against the same unit, turned around: what
+  // isolates the facing as the cause rather than anything else about the setup.
+  it('is answered from that same tile when the defender is facing it', () => {
+    const facing = makeState(8, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'r1', col: 0, row: 2, owner: 'red', facing: 'south' },
+    ]);
+    const [, battle] = resolved(facing, move('b1', at(0, 0), at(0, 0), 'r1'));
+    if (battle.type !== 'battleResolved') throw new Error('expected a battle');
+    expect(battle.answered).toBe(true);
+    expect(battle.attacker.health).toBeLessThan(MAX_HEALTH);
+  });
+
   // `hasActed` stops a unit *acting* twice in its own turn; answering an attack
   // is not acting, and the predicate is purely geometric so it never asks.
   it('is answered by a defender that has already acted', () => {
     const spent = makeState(8, [
       { id: 'b1', col: 0, row: 0 },
-      { id: 'r1', col: 0, row: 2, owner: 'red', hasActed: true },
+      { id: 'r1', col: 0, row: 2, owner: 'red', hasActed: true, facing: 'south' },
     ]);
     const [, battle] = resolved(spent, move('b1', at(0, 0), at(0, 0), 'r1'));
     if (battle.type !== 'battleResolved') throw new Error('expected a battle');

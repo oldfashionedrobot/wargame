@@ -5,7 +5,7 @@ import { TERRAIN } from './data/terrain';
 import { MAX_HEALTH } from './data/unitTypes';
 import type { UnitTypeId } from './data/unitTypes';
 import { parseTerrainGrid } from './terrainGrid';
-import type { Coordinate, GameState, Unit } from './types';
+import type { Coordinate, Facing, GameState, Unit } from './types';
 
 export interface UnitSpec {
   id: string;
@@ -18,6 +18,12 @@ export interface UnitSpec {
   unitTypeId?: UnitTypeId;
   /** Defaults to full. A wounded unit is what most combat cases are about. */
   health?: number;
+  /** ⚠️ Defaults to `south`, which is a *rule* input and not decoration: a shot
+   *  from directly behind is never answered, so where a test puts an attacker
+   *  relative to this decides whether a counter happens at all. Anything
+   *  asserting a counter should say which way the defender looks rather than
+   *  inherit it. */
+  facing?: Facing;
   hasActed?: boolean;
 }
 
@@ -58,7 +64,7 @@ export function makeState(
     units: units.map((u): Unit => ({
       id: u.id,
       position: { col: u.col, row: u.row },
-      facing: 'south',
+      facing: u.facing ?? 'south',
       unitTypeId: u.unitTypeId ?? 'infantry',
       owner: u.owner ?? 'blue',
       health: u.health ?? MAX_HEALTH,

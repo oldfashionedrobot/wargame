@@ -42,6 +42,7 @@ export { band, BANDS, computeDamage, refuseAttack, tilesInRange, wouldCounter } 
 export type { Rolls } from './combat';
 
 export {
+  attackSide,
   coordinatesEqual,
   directionBetween,
   facingToward,

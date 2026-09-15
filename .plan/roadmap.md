@@ -76,11 +76,15 @@ horseback — because cavalry's identity lives in the charge table. And infantry
 advantage over cavalry is not damage at all. Splitting it this way is what keeps
 tuning one table from smearing into another.
 
-### Facing, which is charge's other half ⬜ — where we diverge ⚠️
+### Facing ⬜ — where we diverge ⚠️
 
 **AW has no facing. This is ours**, and the second original mechanic in the game after charge. It earns its place on theme as much as on mechanics: the period's tactics *are* line, flank and rear, and it gives cavalry's speed a purpose beyond arriving sooner — getting behind something.
 
-⚠️ **Facing is read by charge and by nothing else.** Shooting ignores it entirely — `computeDamage` sees terrain, HP and luck, and no direction at all. A charge into a formed front is very hard and needs a weak target; into a flank it is easier, and into the rear easier still. Only the *defender's* facing matters; the attacker's is irrelevant, exactly as in FFT.
+⚠️ **Facing does exactly two things, and one of them has shipped** (see
+*Combat* in [`architecture.md`](architecture.md))**.** **A shot
+from directly behind is never answered** — the defender cannot bring its weapons
+round in time — and charge reads it for its thresholds in 10a. Nothing else
+consults it: `computeDamage` sees terrain, HP and luck, and no direction at all. A charge into a formed front is very hard and needs a weak target; into a flank it is easier, and into the rear easier still. Only the *defender's* facing matters; the attacker's is irrelevant, exactly as in FFT.
 
 **Three reasons, in the order they weigh.**
 
@@ -90,7 +94,35 @@ tuning one table from smearing into another.
 
 **And it prices facing proportionally.** Eight units a side, every one acting every turn, is sixteen moves a round that would each owe a facing decision whether or not it changed anything — and worse on a board dense enough that most units have enemies on two or three sides, where facing stops being a decision and becomes local damage-minimisation. Bound to charge, you think about it when you are contemplating the thing it governs.
 
+⚠️ **The rear rule negates the counter rather than shrinking it, and the panel
+is why.** The counter's *magnitude* is deliberately absent from the preview — it
+depends on how the attack roll lands, and with health banded the spread comes
+from band crossings rather than a clean range. So a counter that is merely
+*reduced* is *invisible at decision time*: the panel says "they return fire"
+either way and the player learns the benefit only by noticing it over many
+games. A counter that is **negated** is already expressible in copy that exists —
+the line simply does not appear. A mechanic that cannot be seen when choosing is
+not informing the choice.
+
+⚠️ **It costs no new constants**, which is why it can land in 9j rather than
+waiting for a tuning pass. `FLANK_MULTIPLIER` and `REAR_MULTIPLIER` are **not**
+reused: they are charge thresholds, and sharing a dial would mean tuning one
+mechanic breaks the other.
+
+⚠️ **The flank gets nothing, deliberately.** A damage bonus for flanking was
+considered — it would be visible in the panel by construction, since the range
+shown would simply be larger — and refused for now as a second thing to tune in
+a phase whose point is the smallest thing you can win. It stays available: it
+would be a modifier on the formula like terrain, not a change to the matchup
+table, so it does not smear position into the triangle.
+
 ⚠️ **No small shooting modifier as a compromise.** Either it is large enough to change decisions -- and every turn owes it a thought, and there are two dials again -- or it is too small to change one, and it is pure tax. A modifier that never changes a choice should not exist.
+
+⚠️ **The classifier shipped with 9k and charge inherits it**, rather than 10a
+growing a second copy. It also makes facing *read by something* two phases
+earlier than planned, which is worth having on its own: a fact nothing consults
+is a fact nobody notices is wrong, and the maps suite already guards the
+deployment sign for exactly that reason.
 
 **The classification is arithmetic on a four-cycle** — one pure function in `shared/`, trivially testable:
 
@@ -697,12 +729,45 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
   ⚠️ **`nextPlayer` needs no elimination logic, *because there are two players*.** It is `(current + 1) % players.length` and knows nothing about who is alive. With elimination victory and two sides, a roster empties and the game ends in the same resolution, so it never sees a dead player. Recorded as resting on the player count rather than as generally true: a third player would need it.
 
+  ⚠️ **It carries the winner, and `playerEliminated` is the event that will
+  carry a loser.** With two players "red is eliminated" and "blue won" are one
+  fact stated twice, so emitting both would be redundancy in the log rather than
+  structure. With three they stop being the same fact, and that is when a
+  `playerEliminated` companion earns its place — purely additive, because
+  nothing in `GameState` marks elimination (units vanish via `battleResolved`'s
+  filter), so no field exists for an absent event to desync and old logs replay
+  identically.
+
+  ⚠️ **Which makes one implementation detail load-bearing: derive the winner as
+  *the sole player still holding units*, never as "the one who isn't the
+  loser".** Identical code today. But `players.find(p => p.id !== loser)` is
+  two-player-only and would need rewriting the moment a third arrives, whereas
+  sole-survivor is already the N-player predicate. That is what makes
+  `playerEliminated` a companion later rather than a rework.
+
+  ⚠️ **At most one player can be eliminated per resolution**, which is what makes
+  sole-survivor safe to compute without handling an empty board. It falls out of
+  code that already exists: `wouldCounter` is false at zero health, so a defender
+  that dies never ripostes, so a single battle kills exactly one unit. Mutual
+  destruction is unreachable.
+
+  ⚠️ **`winner` is nullable on `GameState` and not on the event.** `null` there
+  means *still playing*, which is a real state; the event exists only because
+  somebody won. Different nullability for different reasons — stated so the next
+  reader does not "fix" one to match the other.
+
   ⚠️ **`gameEnded` alone, never `turnEnded` beside it.** There is no reason to
   hand the turn to a player who has already lost. One condition in
   `resolveAction`: the turn-end check is skipped when the resolution ended the
   game. It composes with `currentTurn` never being cleared — `getCurrentPlayer`
   keeps working, so the board renders a winner instead of crashing on a blank
   turn. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
+
+- **9k** ✅ **Shipped**, and gone from here: `attackSide` in `coordinate.ts`,
+  read by `wouldCounter` — see *Combat* in [`architecture.md`](architecture.md).
+  ⚠️ **`flank` is classified and wired to nothing**, waiting for 10a; a flanking
+  *damage* bonus was refused, not forgotten, and the facing section above says
+  why.
 
 Without 9j the board reaches a state where one side has nothing left and End Turn keeps working forever.
 

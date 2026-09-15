@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  attackSide,
   coordinateKey,
   coordinatesEqual,
   directionBetween,
@@ -102,5 +103,47 @@ describe('facingToward', () => {
 
   it('keeps the unit’s own facing for its own tile', () => {
     expect(facingToward(at(4, 4), at(4, 4), 'west')).toBe('west');
+  });
+});
+
+describe('attackSide', () => {
+  // ⚠️ The sign, asserted from both ends deliberately. Read the arguments the
+  // other way round -- as the direction the *shot travels* rather than the
+  // direction the defender looks to find it -- and front and rear swap with
+  // nothing about either result looking wrong. One example would be satisfied
+  // by the inverted reading; a matched pair cannot be.
+  it('is front when the defender is looking at the shot, rear when away', () => {
+    expect(attackSide('north', at(2, 2), at(2, 5))).toBe('front');
+    expect(attackSide('north', at(2, 2), at(2, 0))).toBe('rear');
+    expect(attackSide('south', at(2, 2), at(2, 0))).toBe('front');
+    expect(attackSide('south', at(2, 2), at(2, 5))).toBe('rear');
+  });
+
+  it('is flank from either side, and they are not told apart', () => {
+    expect(attackSide('north', at(2, 2), at(5, 2))).toBe('flank');
+    expect(attackSide('north', at(2, 2), at(0, 2))).toBe('flank');
+  });
+
+  it('classifies all four directions against one facing', () => {
+    expect(attackSide('east', at(2, 2), at(5, 2))).toBe('front');
+    expect(attackSide('east', at(2, 2), at(0, 2))).toBe('rear');
+    expect(attackSide('east', at(2, 2), at(2, 5))).toBe('flank');
+    expect(attackSide('east', at(2, 2), at(2, 0))).toBe('flank');
+  });
+
+  // Inherited from `facingToward` rather than decided again here: the dominant
+  // axis wins and an exact diagonal goes to the row. Stated once, so a gun off
+  // the axis is classified by the same rule that turns the attacker.
+  it('takes the dominant axis off the line, ties going to the row', () => {
+    expect(attackSide('north', at(0, 0), at(1, 4))).toBe('front'); // mostly ahead
+    expect(attackSide('north', at(0, 0), at(4, 1))).toBe('flank'); // mostly aside
+    expect(attackSide('north', at(0, 0), at(3, 3))).toBe('front'); // the tie
+  });
+
+  // Nothing may target itself, so this is unreachable rather than meaningful --
+  // it is here because `facingToward` needs *some* fallback and a unit reading
+  // as attacked from its own front is the harmless answer.
+  it('reads its own tile as front', () => {
+    expect(attackSide('west', at(4, 4), at(4, 4))).toBe('front');
   });
 });

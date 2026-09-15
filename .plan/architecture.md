@@ -174,7 +174,7 @@ the per-command validator. `resolveAction` accepts nothing but an `Action`.
 ```ts
 Coordinate  { col, row }
 TileType    'plains' | 'road' | 'bridge' | 'forest' | 'mountain' | 'river'
-Facing      'north' | 'east' | 'south' | 'west'      // chosen by the player; no rule reads it yet
+Facing      'north' | 'east' | 'south' | 'west'      // read by the counter rule; see Combat
 PlayerId    string                                   // never a union of colours
 PlayerColor 'blue' | 'red' | 'green' | 'yellow'      // the renderer keys on it
 Player      { id, name, color }                      // colour is display-only
@@ -256,7 +256,12 @@ come from, which is exactly what a derivation could not express. The client
 proposes the travel direction as a default (`directionBetween`), the command
 carries the answer, and `parseCommand` refuses anything but one of the four.
 A single-element path plus a facing is a **turn in place**, and it spends the
-unit's turn like any other action.
+unit's turn like any other action — ⚠️ which costs a turn and buys a counter,
+now that a shot from behind goes unanswered.
+
+⚠️ **The defender's facing is never changed by being shot at.** A unit answers
+from where it was left looking, which is what makes turning in place a decision
+rather than a formality.
 
 ## Content — `shared/src/data/`
 
@@ -456,8 +461,8 @@ off**, and both callers use it — `refuseAttack` turns it into a reason,
 the negation of the other in the same file. Two spellings of one rule is how an
 off-by-one arrives.
 
-**A counter fires iff the attacker is inside the defender's own range**, and the
-defender survived. ⚠️ **One predicate, no categories.** AW's rule reads "both
+**A counter fires iff the attacker is inside the defender's own range, the
+defender survived, and the shot did not come from directly behind.** ⚠️ **One predicate, no categories.** AW's rule reads "both
 units must be direct", which looks categorical and is not — it is equivalent to
 *the attacker is adjacent and the defender can fight at adjacency*, because a
 direct unit in AW can only attack from range 1. Days of Ruin's Anti-Tank settles
@@ -467,6 +472,51 @@ it: indirect out to three, **no minimum range**, and it counters.
 Two guns within reach answer each other, which AW forbids and history does not.
 Artillery caught at one tile still cannot answer, because 1 is not inside
 `[2, 5]` — the property worth keeping survives with no rule naming it.
+
+### A shot from behind is never answered
+
+The only place facing changes shooting — `computeDamage` cannot see it, so
+position affects *who may answer*, never what a shot does.
+
+⚠️ **`wouldCounter`'s signature did not change to say so.** A `Unit` already
+carries its facing, so the rule went inside the predicate and both callers
+inherited it untouched: `resolveBattle` for the exchange, and the client's
+`attackForecast` for the panel.
+
+⚠️ **It negates the counter rather than shrinking it, and the panel is why.**
+The counter's magnitude is deliberately absent from the preview (below), so a
+counter that was merely *reduced* would be invisible at the moment of choosing —
+the panel would say "they return fire" either way and the benefit would only be
+learnable over many games. An absence is already in its vocabulary.
+
+⚠️ **It only ever subtracts, and only where a counter was possible.** A gun
+firing from outside the defender's band is unanswered whichever way anyone
+looks. And in a head-on meeting it changes nothing at all: deployment points
+each army at the other, so armies arrive front-to-front and the rear is
+something manoeuvre earns.
+
+`coordinate.ts` classifies:
+
+```ts
+attackSide(defenderFacing, defenderAt, attackerAt) → 'front' | 'flank' | 'rear'
+```
+
+⚠️ **`attackerAt` is measured *from* the defender.** The direction from a unit
+to its attacker equalling its facing means it is *looking at* the shot, which is
+`front`. Read the other way round — as the direction the shot travels — every
+case inverts and no individual result looks wrong. Both ends are asserted rather
+than one, because a single example is satisfied by the inverted reading.
+Diagonals inherit `facingToward`'s tie-break, so a gun off the axis is
+classified by the same rule that decides which way the attacker turns.
+
+⚠️ **`flank` is returned and read by nothing.** Only `rear` is wired; charge
+wants all three. The one place `shared/` knowingly describes more than the game
+uses. A flanking *damage* bonus does not exist — see the roadmap for why it was
+refused rather than forgotten.
+
+⚠️ **The test fixture's `facing` is a rule input.** `makeState` defaults units
+to `south`, which decides whether a counter happens at all, so anything
+asserting one states the defender's facing rather than inheriting it.
 
 ⚠️ **`hasActed` is not consulted.** That flag stops a unit *acting* twice in its
 own turn; answering an attack is not acting, so a spent unit still counters.

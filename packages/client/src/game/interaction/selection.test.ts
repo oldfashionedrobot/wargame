@@ -398,10 +398,14 @@ describe('readActionClick', () => {
 
 describe('the panel, and what it is told', () => {
   // b1 infantry at (1,1); an enemy two north, which infantry can reach.
+  // ⚠️ The enemy's facing is stated rather than inherited: b1 attacks from the
+  // south, and a shot from directly behind is never answered, so leaving it to
+  // the fixture default would make "they return fire" depend on something these
+  // tests do not mention.
   const field = () =>
     makeState(7, [
       { id: 'b1', col: 1, row: 1 },
-      { id: 'r1', col: 1, row: 3, owner: 'red' },
+      { id: 'r1', col: 1, row: 3, owner: 'red', facing: 'south' },
     ]);
   const panel = (state: GameState) =>
     chooseTarget(confirmRoute(state, withB1Pinned(state, at(1, 1))), unitAt(state, 'r1'));
@@ -420,6 +424,29 @@ describe('the panel, and what it is told', () => {
   it('says they return fire when the target can reach back', () => {
     const state = field();
     expect(attackForecast(state, panel(state))?.answered).toBe(true);
+  });
+
+  // ⚠️ The panel got the rear rule without being edited for it -- it reads
+  // `wouldCounter`, which reads facing, so the same shot against a target
+  // looking away simply stops promising return fire. That is what this asserts:
+  // not that the rule is right, which `combat.test.ts` owns, but that the
+  // forecast is wired to the rule the server will actually resolve.
+  it('says nothing about return fire when the target is looking away', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 3, owner: 'red', facing: 'north' },
+    ]);
+    const chosen = chooseTarget(
+      confirmRoute(state, withB1Pinned(state, at(1, 1))),
+      unitAt(state, 'r1'),
+    );
+    expect(attackForecast(state, chosen)?.answered).toBe(false);
+    // ⚠️ And the damage is untouched: facing changes who may answer, never what
+    // the shot does. A flanking bonus would show up right here, and does not --
+    // the same shot against the same unit turned around forecasts the same
+    // number, which is the assertion that would have to be deleted to add one.
+    const head = field();
+    expect(attackForecast(state, chosen)?.low).toBe(attackForecast(head, panel(head))?.low);
   });
 
   // The whole point of outranging someone: a gun firing from four is never
