@@ -871,6 +871,54 @@ and the body is a three-way `||` on phase names. Single-sourcing the list fixes
 the comment's claim. It is no longer a *prerequisite* — that was mitigation for
 adding a phase, and no phase is being added — but it is still worth doing.
 
+#### The pre-check, against the tree after the groundwork
+
+⚠️ **`commitAttack` disappears rather than the hook gaining mode setters.** Both
+commits become tile clicks — Hold on a facing tile, Fire on the second click of a
+target — so `commitAttack(withTarget: boolean)`, a boolean-blind parameter called
+as `commitAttack(true)` and `commitAttack(false)`, goes. One `chooseAction(kind)`
+replaces it and the hook stays at three functions.
+
+⚠️ **`handleTileClick`'s early return needs no change.** `if (selection.phase ===
+'destinationChosen') return selection;` already covers every mode, because every
+mode *is* that phase. Flagged earlier as a silent-bug site; absorbing
+`targetChosen` instead of adding a phase makes it correct for free.
+
+⚠️ **`anchorTo` survives untouched.** Its comment rests on "only one is ever up",
+and that stays true: confirm pane, action panel, forecast panel — never two at
+once.
+
+⚠️ **`confirmRoute` loses its `state` parameter but the read *relocates*, it does
+not vanish** — an earlier note here overstated it. Mode entry is a panel click
+that needs fresh state to compute that mode's tiles, so `server.getState()` moves
+from the arrival callback to the mode handler. The win is real but smaller: two
+of three sets are never computed, and each is built when it is needed.
+
+⚠️ **`Arrived` collapses to a synonym for `DestinationChosen` and is deleted** —
+one name per thing.
+
+⚠️ **The `PINNED_PHASES` guard fires on this commit**, its first real case:
+removing `targetChosen` leaves a stale name in the array and `satisfies` rejects
+it.
+
+**New code step 4 needs that does not exist:** `canFire(state, unit, from)` —
+*is there anything worth shooting* — because `attackTilesFor` gives the band, not
+whether anything stands in it, and the panel must decide whether to offer Fire at
+all. 10a needs the `canCharge` twin. ⚠️ Unavailable options are **omitted**,
+following AW, accepting that a player cannot then tell "nothing in range" from
+"I misread the menu" and that the menu changes height between units. Greying says
+more and costs a disabled state to design; revisit if omitting reads badly.
+
+⚠️ **The sweep is fifty references** — 28 in `selection.test.ts`, 22 in
+`useGameSession.test.ts`. `GameCanvas.test.tsx` has none of them but **four
+assertions on the hint copy** `/the unit to hold/`, one carrying the note *"The
+buttons were the only thing naming the gestures"*. That file is the only place
+the menu is asserted end to end, and it rests entirely on copy step 4 rewrites.
+
+**Two commits, not one**: the `step` refactor keeping today's copy and buttons,
+so the sweep is isolated and a failure is unambiguously the state machine; then
+the panel. Keeping the sweep away from the UI work is worth the extra commit.
+
 **Before 10a, not after.** Charge becomes a third button and a fourth tile set
 that land on a settled shape, instead of a shape being rebuilt under them.
 
