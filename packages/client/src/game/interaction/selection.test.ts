@@ -11,7 +11,7 @@ import {
   isPlan,
   readActionClick,
   facingChoiceAt,
-  facingChoiceOrigin,
+  destinationOf,
   handleTileClick,
   initialSelectionState,
   moveCommandFor,
@@ -229,7 +229,7 @@ describe('a destination arrived at', () => {
   });
 
   it('lights the four directions around the destination, not the origin', () => {
-    expect(facingChoiceOrigin(withB1Arrived(board(), at(1, 3)))).toEqual(at(1, 3));
+    expect(destinationOf(withB1Arrived(board(), at(1, 3)))).toEqual(at(1, 3));
   });
 
   // Confirming carries the plan across untouched -- only the phase moves, so
@@ -488,8 +488,12 @@ describe('the panel, and what it is told', () => {
     expect(back.attackTiles).toEqual(panel(state).attackTiles);
   });
 
-  // ⚠️ The check that catches a fourth phase being forgotten: every phase that
-  // carries a path is a plan a board change must discard.
+  // ⚠️ **Behaviour, now that the compiler owns the bookkeeping.** `Pinned` is
+  // `Extract`ed on carrying a path and the runtime list is asserted complete
+  // against it in both directions, so a forgotten phase fails the build rather
+  // than this test. What is left for a test is the thing types cannot say: that
+  // "carries a path" is the *right* property to mean "uncommitted plan" -- so
+  // this walks every phase and says which side it falls on.
   it('counts as an uncommitted plan, like every other phase carrying a path', () => {
     const state = field();
     expect(isPlan(panel(state))).toBe(true);

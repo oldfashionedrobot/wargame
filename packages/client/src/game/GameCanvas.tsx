@@ -2,12 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { getCurrentPlayer, isOver } from '@vod/shared';
 import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
 import { useGameSession } from './useGameSession';
-import {
-  attackForecast,
-  facingChoiceOrigin,
-  isPlan,
-  pinnedDestination,
-} from './interaction/selection';
+import { attackForecast, isPlan, destinationOf } from './interaction/selection';
 import type { SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
 import { createGameRenderer } from './render/renderer';
@@ -35,7 +30,7 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
 
   // The tiles around the unit *are* the menu, and only once it has walked: an
   // inert lit tile invites a click that does nothing.
-  renderer.setFacingChoices(arrived ? facingChoiceOrigin(selection) : null);
+  renderer.setFacingChoices(arrived ? destinationOf(selection) : null);
   renderer.setAttackRange(arrived ? selection.attackTiles : []);
 
   // ⚠️ The unit's own tile, never the pin. A pinned route has not been walked,
@@ -197,7 +192,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
     }
     renderer.anchorTo(
       awaitingConfirm ? confirmPaneRef.current : null,
-      awaitingConfirm ? pinnedDestination(selection) : null,
+      awaitingConfirm ? destinationOf(selection) : null,
     );
   }, [awaitingConfirm, choosing, selection]);
 

@@ -68,39 +68,65 @@ export type DestinationChosen = Extract<SelectionState, { phase: 'destinationCho
 export type TargetChosen = Extract<SelectionState, { phase: 'targetChosen' }>;
 
 /**
- * Both phases that carry a path. They hold identical data and differ only in
- * whether the unit has walked it yet, so everything reading a path takes this.
+ * Every phase that carries a path -- an uncommitted plan, in other words,
+ * something a board change has to discard.
+ *
+ * ⚠️ **The type asks the *shape*, not a list.** `Pinned` used to be a hand-written
+ * `|` of three phase names sitting beside `isPlan`'s `||` of the same three --
+ * two independent statements of one rule, which is what `isPlan`'s own comment
+ * already claimed it had fixed and had not. Carrying a path is the actual
+ * property, so `Extract` reads it off the union and a new phase with a path
+ * joins automatically.
+ *
+ * ⚠️ The array exists only because a *type* cannot be asked at runtime, and it is
+ * pinned to the type from both directions -- see the assertion below.
+ *
+ * ⚠️ The cast is unavoidable and harmless: `includes` on a `readonly [...]` of
+ * literals will not accept an arbitrary `string`, and widening it here is what
+ * lets the predicate take any `SelectionState`. The `satisfies` below is what
+ * keeps the names honest.
  */
-export type Pinned = RoutePinned | DestinationChosen | TargetChosen;
+export type Pinned = Extract<SelectionState, { path: Coordinate[] }>;
+
+const PINNED_PHASES = [
+  'routePinned',
+  'destinationChosen',
+  'targetChosen',
+] as const satisfies readonly Pinned['phase'][];
+
+/**
+ * ⚠️ **The other half of the guard, and the half `satisfies` cannot give.**
+ * `satisfies` checks every name in the array *is* a phase; it says nothing about
+ * names left out, so deleting one would leave the type and the predicate
+ * consistently wrong and still compile. This fails the build if any phase
+ * carrying a path is missing from the array -- the same `never` trick
+ * `applyEvents` uses on its event union, pointed at a list instead of a switch.
+ */
+type NoPinnedPhaseForgotten =
+  Exclude<Pinned['phase'], (typeof PINNED_PHASES)[number]> extends never ? true : never;
+const allPinnedPhasesListed: NoPinnedPhaseForgotten = true;
+void allPinnedPhasesListed;
 
 /** The unit has walked and is choosing what to do: the menu, or the panel. */
 export type Arrived = DestinationChosen | TargetChosen;
 
-/** Where a pinned unit is standing, really or in preview. */
-function destinationOf(selection: Pinned): Coordinate {
+/**
+ * Where a pinned unit is standing, really or in preview -- which is also the
+ * tile a second click has to land on to commit the route, and the tile the
+ * facing choices are drawn around.
+ *
+ * ⚠️ **One function, where there were three.** `pinnedDestination` and
+ * `facingChoiceOrigin` were this body under two other names, distinguished only
+ * by what the caller meant to do next. That is a comment's job, not a
+ * function's: three names for one line is three things to keep in step, and the
+ * argument type already says which selections may be asked.
+ */
+export function destinationOf(selection: Pinned): Coordinate {
   return selection.path[selection.path.length - 1];
 }
 
-/** The tile a second click has to land on to commit the route. */
-export function pinnedDestination(selection: Pinned): Coordinate {
-  return destinationOf(selection);
-}
-
-/**
- * Is this an uncommitted plan -- something a board change has to discard?
- *
- * ⚠️ **One statement, because the caller was listing phases by name** and a
- * third phase would simply have been forgotten there: a pinned route and an
- * arrived unit were checked, and a target picked on top of them was not. The
- * union already knows which phases carry a path; this asks it rather than
- * restating it.
- */
 export function isPlan(selection: SelectionState): selection is Pinned {
-  return (
-    selection.phase === 'routePinned' ||
-    selection.phase === 'destinationChosen' ||
-    selection.phase === 'targetChosen'
-  );
+  return (PINNED_PHASES as readonly string[]).includes(selection.phase);
 }
 
 /** A target is picked: the panel opens over it, and nothing is sent yet. */
@@ -246,17 +272,12 @@ export function handleTileClick(
 }
 
 /**
- * Where the unit is standing while it chooses -- the renderer lights the four
- * tiles around this, clipping to the board itself, since the grid's bounds are
- * its business. A unit on the top row simply has three choices, and facing off
- * the board would be a strictly worse one anyway.
- */
-export function facingChoiceOrigin(selection: Arrived): Coordinate {
-  return destinationOf(selection);
-}
-
-/**
  * Which way this click means, or null if it was not one of the four.
+ *
+ * The four tiles themselves are drawn around `destinationOf`, clipped to the
+ * board by the renderer, since the grid's bounds are its business. A unit on
+ * the top row simply has three choices, and facing off the board would be a
+ * strictly worse one anyway.
  *
  * ⚠️ Answers `null` for the destination *itself*, since `directionBetween`
  * wants a step of exactly one tile. That is what lets the caller tell "keep the

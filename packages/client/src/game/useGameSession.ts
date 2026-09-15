@@ -17,7 +17,7 @@ import {
   isPlan,
   facingForTarget,
   moveCommandFor,
-  pinnedDestination,
+  destinationOf,
   readActionClick,
   unpinDestination,
 } from './interaction/selection';
@@ -260,7 +260,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       // wasted render, and no walk. Dispatch order, exactly like the menu's.
       if (
         selection.phase === 'routePinned' &&
-        coordinatesEqual(coordinate, pinnedDestination(selection))
+        coordinatesEqual(coordinate, destinationOf(selection))
       ) {
         setWalking(true);
         void callbacksRef.current

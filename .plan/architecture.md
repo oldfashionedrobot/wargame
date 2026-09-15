@@ -928,17 +928,23 @@ snap is caught and logged; the commit always happens.
 
 ```ts
 handleTileClick(state, selection, coordinate) → SelectionState
-pinnedDestination(pinned)                     → Coordinate
+destinationOf(pinned)                         → Coordinate
 confirmRoute(routePinned)                     → DestinationChosen
-facingChoiceOrigin(arrived)                   → Coordinate
 facingChoiceAt(arrived, coordinate)           → Facing | null
 holdFacing(state, arrived)                    → Facing | null
 unpinDestination(pinned)                      → SelectionState
 moveCommandFor(arrived, facing)               → Command
 ```
 
-⚠️ `pinned` above is **either** phase carrying a path; `arrived` is only the one
-that has walked. `unpinDestination` is the sole helper serving both, because
+⚠️ **`destinationOf` was three functions.** `pinnedDestination` and
+`facingChoiceOrigin` were the same one-line body under other names, separated
+only by what the caller meant to do next — the tile a second click must land on
+to commit, and the tile the facing choices are drawn around. Both are just *where
+the unit is standing*; the intent is a comment's job, and three names for one
+line is three things to keep in step.
+
+⚠️ `pinned` above is **any** phase carrying a path; `arrived` is only those that
+have walked. `unpinDestination` is the sole helper serving both, because
 backing out means the same thing in both modes and nothing else does.
 
 `handleTileClick` **never produces a command** — it picks a destination, and
@@ -958,10 +964,20 @@ paired return would carry no information.
 `movement` is the whole `exploreMovement` result, snapshotted at selection time.
 `reachable` decides whether a click pins; `pathTo` builds the path.
 
-⚠️ **`isPlan` asks whether a phase carries a path**, rather than the callers
-listing them by name — which is how `targetChosen` would have been forgotten in
-the poll handler that discards a plan when the board moves under it, and in the
-End Turn guard. Adding a fifth phase cannot silently miss either.
+⚠️ **`Pinned` is `Extract`ed on carrying a path**, not hand-written as a union of
+phase names — so a phase with a path joins it by existing. That matters because
+listing them by name is how `targetChosen` was forgotten once already, in the
+poll handler that discards a plan when the board moves under it and in the End
+Turn guard.
+
+⚠️ **`isPlan` needs a runtime list, and the list is pinned to the type from both
+directions.** `satisfies readonly Pinned['phase'][]` rejects a name that is not a
+phase; a `never` assertion beside it rejects a phase left *out* — which
+`satisfies` cannot see, and which would otherwise leave the type and the
+predicate consistently wrong and still compile. Same trick `applyEvents` uses on
+its event union, pointed at a list instead of a switch. The test that walks every
+phase is left doing the thing types cannot: saying that *carrying a path* is the
+right property to mean "uncommitted plan".
 
 ⚠️ **Three modes, five phases.** *Movement selection* is `unitSelected` and
 `routePinned` — the range is lit and both answer clicks identically, which is
