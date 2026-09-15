@@ -57,7 +57,7 @@ packages/
     move.ts           the move command
     endTurn.ts        the end-turn command
     turns.ts          the action budget, and whose turn is next
-    combat.ts         the damage formula, ranges, and the counter rule
+    combat.ts         both attacks: damage, ranges, the counter rule, charge
     victory.ts        who has won, and whether anyone has
     applyEvents.ts    the event fold
     protocol.ts       the GameServer interface, the wire shapes, and parsing
@@ -65,8 +65,9 @@ packages/
     index.ts          the barrel
     data/             the static content tables — unit types, terrain, combat
   shared/scripts/
-    matchups.ts       prints hits-to-kill; the one importer of shared/ that is
-                      neither server nor client, which only purity allows
+    matchups.ts       prints hits-to-kill; the one kind of importer of shared/
+    charges.ts        prints charge odds against the repel band
+                      that is neither server nor client — which only purity allows
   server/
     src/
       http.ts         createServer() — Bun.serve routes, /api/* plus the client build
@@ -118,7 +119,7 @@ package and loses the single root `.env`.
 
 ```ts
 validateCommand(state, command, actor)  → { ok: true, action } | { ok: false, reason }
-resolveAction(state, action, roll)      → GameEvent[]
+resolveAction(state, action, rolls)     → GameEvent[]
 applyEvents(state, events)              → GameState
 ```
 
@@ -192,7 +193,8 @@ Unit        { id, position, facing, unitTypeId, owner, health, hasActed }
 GameState   { grid, units, players, currentTurn,
               winner }                               // grid is [row][col]; winner is null while playing
 
-Command       MoveCommand { type, unitId, path, facing, targetUnitId? } | EndTurnCommand { type }
+Command       MoveCommand { type, unitId, path, facing, targetUnitId?, attackKind? }
+            | EndTurnCommand { type }
 Action        (MoveCommand & Validated) | (EndTurnCommand & Validated)
               -- a union of intersections, not Command & { actor }: the
               latter would admit an endTurn carrying a path
@@ -498,6 +500,28 @@ Two guns within reach answer each other, which AW forbids and history does not.
 Artillery caught at one tile still cannot answer, because 1 is not inside
 `[2, 5]` — the property worth keeping survives with no rule naming it.
 
+### Facing, and the one thing it changes
+
+⚠️ **Advance Wars has no facing; this is ours**, and it earns its place on theme
+as much as on mechanics — the period's tactics *are* line, flank and rear, and it
+gives cavalry's speed a purpose beyond arriving sooner.
+
+⚠️ **It does exactly two things**, and no more: a shot from directly behind goes
+unanswered, and it adjusts a charge's threshold. `computeDamage` cannot see it at
+all. ⚠️ **No small shooting modifier as a compromise**, which was considered and
+refused: either it is large enough to change decisions — and then every turn owes
+it a thought — or it is too small to change one, and it is pure tax. A modifier
+that never changes a choice should not exist.
+
+⚠️ **And it prices facing proportionally.** Eight units a side, each acting every
+turn, is sixteen moves a round that would otherwise each owe a facing decision
+whether or not it changed anything. Bound to the two rules above, it is thought
+about when the thing it governs is being contemplated.
+
+**One quiet payoff:** the single-element path — legal at cost 0, and justified
+until then only as *wait in place* — becomes **turn in place**, a real defensive
+action.
+
 ### A shot from behind is never answered
 
 The only place facing changes shooting — `computeDamage` cannot see it, so
@@ -562,11 +586,20 @@ with health banded the spread comes from band crossings rather than a clean
 range. `answered` is read at the **worst** roll, where the defender is likeliest
 to survive — so it means *they will fire back unless you kill them*.
 
-`Rolls` is `{ attack, counter }`: named rather than a tuple, and two because two
-is the maximum anything needs. ⚠️ **Both are drawn whether or not both are
-used** — deciding first and rolling second would make the *number of draws*
-depend on the rules, which is the coupling that keeping randomness out of
-`shared/` exists to avoid.
+⚠️ **Preview the formula, never the dice.** The client is told the *shape* of the
+outcome and never which of the ten it will be, which is what makes running the
+server's own function on the client safe rather than a second implementation of
+it. It is also why a range is shown rather than a point: a single number would be
+one the server was always going to miss.
+
+`Rolls` is `FireRolls | ChargeRolls` — named members rather than a tuple, since
+`rolls[0]` is anonymous and `rolls[2]` is `undefined`, which is `NaN` damage.
+A shot draws `{ attack, counter }`; a charge draws `{ charge }` alone. ⚠️ **Both
+of a shot's are drawn whether or not both are used** — deciding first and rolling
+second would make the *number of draws* depend on the rules, which is the
+coupling that keeping randomness out of `shared/` exists to avoid. ⚠️ Picking the
+*member* does not breach that, because the attack kind comes from the **command**
+and reading a command is not running a rule. See *Charge* for the rest.
 
 ⚠️ **`from` is where the attacker *ends up*, not where it stands.** A command is
 move-then-attack, so a range measured against `attacker.position` measures a
@@ -616,7 +649,7 @@ full target in both schemes — which is what lets AW's matchup numbers transfer
 unchanged. Only the HP terms move.
 
 ⚠️ **Luck is added last and flat.** It is therefore worth proportionally *more*
-the weaker the attacker is — nine points on a crippled volley of 18 is half again
+the weaker the attacker is — nine points on a crippled shot of 18 is half again
 as much of it. A dead attacker is guarded explicitly, because `band(0)` zeroes
 the base but luck would sail past it and land 9.
 
@@ -696,6 +729,12 @@ needs no constant. Forest costs an attacker 2–7 points of chance and a mountai
 otherwise produce a silent 0%, and a long shot is not a wall. It doubles as what
 makes `chance` safe to divide by, and at `chance = 100` there are no failing
 rolls at all, since `roll < chance` with `roll ∈ [0, 99]`.
+
+⚠️ **Two tables, and the split is the point: the threshold says how *likely* a
+charge is, the repel says what *failing* costs.** Neither does the other's job,
+which is why `CHARGE_REPEL` is keyed by the defender alone — what a unit does when
+cavalry hits its line is about its own equipment, not about who is arriving, and
+the attacker-versus-defender dimension is already spent on the threshold.
 
 ⚠️ **Repel is flat plus a small term, never a multiplier** — the same shape
 `computeDamage` uses for luck. `REPEL_DIVISOR` is 10 so the term tops out at +9

@@ -378,9 +378,11 @@ export function chargeThreshold(attacker: UnitTypeId, defender: UnitTypeId): num
  * contradict the design -- cavalry into a full-health line is a long shot, not a
  * wall. That floor also makes `chance` safe to divide by, which the repel does.
  *
- * ⚠️ **`directionalMultiplier` is pinned at 1 until 10b.** Charge and facing are
- * the two mechanics with no reference behaviour, and two untested dials inside
- * one expression cannot be told apart by any observation.
+ * ⚠️ **The directional term shipped separately from the rest of this**, and the
+ * reason is worth keeping: charge and facing were the two mechanics with no
+ * reference behaviour, and two untested dials inside one expression cannot be
+ * told apart by any observation. Head-on was tuned first, against a formula with
+ * one unknown in it.
  */
 export function chargeChance(state: GameState, attacker: Unit, defender: Unit): number | null {
   const threshold = chargeThreshold(attacker.unitTypeId, defender.unitTypeId);

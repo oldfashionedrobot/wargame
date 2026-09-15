@@ -48,7 +48,7 @@ export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
  *
  * ⚠️ **Additive, never multiplicative, and applied last** -- see `computeDamage`,
  * where getting this wrong twice is documented. It makes weak attacks the swingy
- * ones: 9 points on a volley of 18 is +50%, the same 9 on artillery's 67 is
+ * ones: 9 points on a shot of 18 is +50%, the same 9 on artillery's 67 is
  * +13%. A crippled unit's best roll is most of its remaining threat.
  *
  * ⚠️ **Never negative.** Base AW luck is a bonus only -- "bad luck" belongs to
