@@ -159,9 +159,9 @@ export function refuseAttack(
  *
  * ⚠️ **Not a discriminated union yet, and the question it was waiting on is now
  * answered.** This asked whether a failed charge's repel damage is rolled
- * separately -- `{ charge }` or `{ charge, repel }`. It is not: 10a scales the
- * repel by `roll / chance`, reusing the very roll that decided success, so a
- * charge draws **once**. The union becomes
+ * separately -- `{ charge }` or `{ charge, repel }`. It is not: 10a adds a term
+ * derived from how far that same roll overshot `chance`, so a charge draws
+ * **once**. The union becomes
  * `{ attack, counter } | { charge }` when 10a lands.
  *
  * ⚠️ **Making it a union does not contradict the note below**, which says the

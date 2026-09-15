@@ -476,45 +476,37 @@ artillery's 60 was tuned as *ranged* fire, and borrowing it at contact asserts a
 battery is as dangerous close as far, which is the opposite of what `min: 2`
 exists to say. Its own table says what canister does without disturbing what
 round shot does. **Tuning count goes from seventeen to twenty.**
-⚠️ **Settled: `roll / chance`, clamped, with the table as the ceiling.**
+⚠️ **Settled: a flat cost, plus a small term from how far the roll overshot.**
 
 ```
-repel = floor(CHARGE_REPEL[defender] × clamp(roll / chance, 1, REPEL_CAP) / REPEL_CAP)
+repel = CHARGE_REPEL[defender] + floor((roll − chance) / REPEL_DIVISOR)
 ```
 
-⚠️ **The same roll that decided success**, so there is no second draw — which is
-what settles `Rolls` as a single `{ charge }` member for a charge, the question
-`combat.ts` has been waiting on.
+⚠️ **Additive, never multiplicative** — the same shape `computeDamage` already
+uses for luck, and for the same reason. The base is what a failed charge costs;
+the overshoot adds a little on top. Several multiplicative forms were worked
+through first — `roll/chance` clamped, then squared — and every one of them
+turned a small variable piece into a 1–9× swing that dragged the whole mechanic
+somewhere it was not meant to go. **The variance is a garnish, not the dish.**
 
-⚠️ **One term, both behaviours.** This was written up as a choice between "barely
-failed, barely hurt" and "wilder charge, worse mauling" — ⚠️ **they are not
-alternatives.** A roll just over `chance` is a near miss and costs the floor; and
-because a wild charge leaves a *wider* window to fail into, its expected
-overshoot is larger. One ratio gives both.
+⚠️ **`REPEL_DIVISOR 10` needs no cap, which is why it is 10.** The overshoot
+cannot exceed 99, so dividing by ten tops the term out at **+9** on its own —
+the same 0–9 band as `LUCK_MAX`, so charge introduces no second, differently
+scaled idea of variance. Halving the divisor doubles the swing; doubling it
+halves it.
 
-⚠️ **Flanking makes failure cheaper as well as rarer**, and it falls out rather
-than being a rule. Same target at 70 health, `CHARGE_REPEL 25`: head-on breaks
-12% of the time and costs ~24 when it does; from the rear it breaks 40% and costs
-~19. One geometric fact, two benefits, which is what "the multipliers have to be
-worth manoeuvring for" was asking for.
+⚠️ **The swing narrows by itself as the odds improve**, with no rule saying so.
+At 3% the overshoot can reach 96, so the term reaches +9; at 79% it can only
+reach 20, so the term reaches +2. A wild charge is both worse on average and more
+variable, purely because it leaves a wider window to fail into.
 
-⚠️ **It saturates, and that is the honest cost.** At 3% odds **97% of failures
-hit the cap**, so a hopeless charge is effectively flat at the worst case; the
-near-miss relief only grades above roughly 35% odds. Defensible — a 3% charge
-that fails, fails decisively — but it means the cap is doing most of the work
-down there, and the mechanic is closer to *twice as bad if you were reckless*
-than to a smooth ratio.
+⚠️ **It reuses the roll that decided success**, so a charge draws **once** — which
+is what settles `Rolls` as a single `{ charge }` member, the question `combat.ts`
+was waiting on.
 
-⚠️ **Dividing by `REPEL_CAP` is what makes the table the ceiling**, and that is a
-readability decision rather than arithmetic: `CHARGE_REPEL[artillery] = 20` means
-*canister at point-blank costs at most 20*, a sentence that can be checked
-against intuition. Without it the same number means *at least 20, up to 40*, and
-every entry has to be read as half of what is meant.
-
-⚠️ **`chance` is never zero, so the division is safe for free** — the `max(1, …)`
-floor exists so integer rounding cannot produce a silent 0%, and it also stops
-this dividing by zero. ⚠️ And at `chance = 100` there are no failing rolls at
-all (`roll < chance` with `roll ∈ [0, 99]`), so the expression is never reached.
+⚠️ **`chance` is never zero and never divided by here**, but the `max(1, …)` floor
+still matters: at `chance = 100` there are no failing rolls at all, since
+`roll < chance` with `roll ∈ [0, 99]`, so the expression is simply never reached.
 
 Fire and charge are **different resolutions, dispatched once** on an `attackKind` discriminant — fire produces damage, charge produces death-plus-displacement or a backfire. Two self-contained functions, not conditionals threaded through one.
 
@@ -572,12 +564,12 @@ without luck; artillery has no row:
 | **cavalry** | 25 | 25 | 60 |
 | **infantry** | 20 | 15 | 45 |
 
-`CHARGE_REPEL`, keyed by **who is being charged** — the worst a failed charge
-costs, with a near miss costing half:
+`CHARGE_REPEL`, keyed by **who is being charged** — the flat cost of a failed
+charge, before the overshoot term adds up to 9 more:
 
 | infantry | cavalry | artillery |
 |---|---|---|
-| 25 | 12 | 20 |
+| 10 | 5 | 8 |
 
 ⚠️ **This table was missing from the first cut entirely** — every other one was
 here and this was not, so the first tuning run would have had nothing to print
@@ -588,14 +580,24 @@ simply being run into. ⚠️ Artillery at 20 is deliberately **well under its
 ranged 60** — borrowing that number would assert a battery is as dangerous at
 contact as at reach, which is the opposite of what `min: 2` exists to say.
 
-⚠️ **The level was picked against the crossover, not by feel.** At these numbers a
-cavalry charge into infantry is a losing bet below about 28% odds and a winning
-one above it — at 3% it risks 24 to win 100, at 50% it risks 9 to win 40. That
-puts charge where it belongs, as a **finisher rather than an opener**, and it is
-the property to re-measure first when these move. Doubling the table pushes the
-crossover right and makes charging rare; halving it makes charging free.
+⚠️ **The level was picked against the crossover, not by feel.** Charging is a
+losing bet below roughly these odds and a winning one above:
 
-`FLANK_MULTIPLIER 1.5`, `REAR_MULTIPLIER 2`, `REPEL_CAP 2`, `luckMax 9` — the
+| | into infantry | into cavalry | into artillery |
+|---|---|---|---|
+| **cavalry charges** | 19% | 11% | 16% |
+| **infantry charges** | 20% | 14% | 12% |
+
+That puts charge where it belongs — a **finisher you can reach for**, not an
+opener and not a last resort — and it is the property to re-measure first when
+these numbers move. Doubling the table pushes every crossover right and makes
+charging rare; halving it makes charging nearly free.
+
+⚠️ **The multiplicative drafts all pushed this to 40%+**, which would have made a
+six-entry threshold table a lot of tuning for something seldom done. That is the
+symptom to watch for.
+
+`FLANK_MULTIPLIER 1.5`, `REAR_MULTIPLIER 2`, `REPEL_DIVISOR 10`, `luckMax 9` — the
 last matching AW exactly, since `baseDamage` is a percentage in both schemes.
 
 ⚠️ **The triangle closes in the charge table, not the damage one.** Cavalry
@@ -909,8 +911,9 @@ one formula cannot be read apart, not because the geometry might be wrong.
 #### Three decisions 10a cannot make for itself
 
   ⚠️ ~~**Which direction does repel scaling run?**~~ ✅ **Settled** — see *Charge*
-  above. `roll / chance` clamped, table as the ceiling, and `Rolls` gains a single
-  `{ charge }` member because the repel reuses the roll that decided success.
+  above. A flat cost plus `floor((roll − chance) / 10)`, and `Rolls` gains a
+  single `{ charge }` member because the repel reuses the roll that decided
+  success.
 
   ⚠️ ~~**Which two unit types can charge?**~~ ✅ **Infantry and cavalry.**
   Artillery has no row, which is how "cannot charge" is said — a `Partial` whose
