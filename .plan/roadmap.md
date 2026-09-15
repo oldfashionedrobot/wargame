@@ -737,113 +737,142 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
 Selection doesn't need it: `canSelectUnit` is a game fact ("may this unit act"), and the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
 
-### 9.9 — The action menu splits in two ⬜
+### 9.9 — The action panel picks the intent ⬜
 
-`destinationChosen` does three jobs at once: it is the attack menu, the facing
-menu, and the confirm. Splitting it gives **attack selection** and **facing
-selection** as separate lit-tile steps, with a back-stack.
+When the ghost arrives, a panel offers **Fire · Hold** (and Charge from 10a).
+The player says what they mean *first*; only then do the relevant tiles light.
 
 ```
-move selection      click a tile (or your own) → pins a route
-                    second click on it         → walks, and becomes ↓
-attack selection    all red, the whole range band
-                    an enemy                   → the panel
-                    your own tile              → facing selection
-                    anywhere dark              → back to move selection (un-walks)
-facing selection    the four beside you
-                    one of them                → face that way and commit
-                    your own tile              → keep this facing and commit
-                    anywhere dark              → back to attack selection
+move selection    click a tile (or your own)  → pins a route
+                  second click on it          → walks, and the panel opens ↓
+the panel         no tiles lit; buttons only
+  Fire            → tiles in range light red
+                     a lit enemy       → pinned, forecast shown over it
+                     that enemy again  → fire
+                     another lit enemy → re-pin
+  Hold            → the four neighbours and your own tile light
+                     a neighbour       → face that way and commit
+                     your own tile     → keep this facing and commit
+  anywhere dark, in any mode  → back to the panel
+  anywhere dark, at the panel → back to move selection (un-walks)
 ```
 
-⚠️ **It deletes more than it adds, and the first deletion is a bug class.**
-`readActionClick` exists in its current shape for one reason: an adjacent enemy
-is *also* a facing choice, and whichever question ran first won. That collision
-was found and fixed by forcing the order inside a single reader. With facing in
-its own phase **the ambiguity cannot be expressed** — the two readings are never
-live at the same time. The careful ordering stops being load-bearing.
+#### Why this shape and not a smarter click reader
 
-⚠️ **`attackTilesFor`'s filter dies with it.** It exists only to punch holes in
-the red so teal facing tiles show through; "all red" collapses it to
-`tilesInRange`.
+⚠️ **Assuming intent costs quadratically; asking for it costs linearly.** Every
+action a tile click could mean is another reading to disambiguate against all the
+others — *n* actions is *n(n−1)/2* orderings that have to be got right. That
+failure already happened at **n = 2**: an adjacent enemy is also a facing choice,
+whichever question ran first won, and the fix was to force the order inside a
+single reader. Charge would have made it three. Capture, entrench, dismount and
+resupply would each add a row to that triangle. Picking the intent first makes a
+new action **one menu entry and one tile set, colliding with nothing.**
 
-⚠️ **And the panel loses Hold**, which becomes the facing step. That leaves one
-button until charge arrives — a pure confirm — which is accepted rather than
-overlooked: 10a makes it a real choice, and the alternative (an enemy click
-firing immediately) removes the only place a forecast can be read before
-committing.
+⚠️ **So `readActionClick` does not get split — it dissolves.** Each mode has
+exactly one kind of tile, so there is no question left to answer. The bug class
+goes with it.
 
-⚠️ **The expensive half is already built.** Cancelling out of the action menu
-already calls `unpinDestination` with `onPreview(null)`, which walks the ghost
-unit back to where it started — so "click out goes back a step" exists and works
-for the *deep* step. Facing → attack is cheaper still: no un-walk, just a phase
-change. Panel → attack selection already behaves this way.
+⚠️ **`attackTilesFor`'s filter dies too.** It exists only to punch holes in the
+red where facing tiles need to show through; the two sets are never lit together
+now. It becomes three separate one-purpose functions — the range band, the four
+neighbours, and chargeable tiles in 10a — none filtering against another.
 
-⚠️ **Clicking your own tile in move selection already pins it**, too.
-`handleTileClick` branches on it *before* consulting `reachable`, precisely so
-that set excluding the unit's own tile does not matter. Acting without moving
-needs no new gesture.
+⚠️ **And the charge overlay conflict never exists.** Charge tiles would have had
+to be *disjoint* from attack tiles to avoid blending two ground quads at the same
+height. They are never on screen together, so the constraint is gone rather than
+satisfied.
 
-**What is actually new**: one phase in the union, two transitions,
-`readActionClick` splitting into two simpler readers, a fourth tile overlay for
-charge, and a case each in the overlay sync and the hint text.
+#### Two idioms, each learned once
 
-⚠️ **The cost is a click, on the most common action in the game.** A plain move
-goes from four to five: select, pin, confirm, click the destination, click it
-again. Accepted knowingly — the phases stop overlapping, which is what buys the
-deletions above — and it is the thing to revisit first if the flow ever feels
-slow.
+⚠️ **Buttons pick intent; tiles pick targets.** A clean split, and it is what
+keeps the panel from growing confirm buttons that duplicate what a tile click
+already says.
 
-⚠️ **The bulk of the diff is the test sweep.** Around thirty references across
-`selection.test.ts` and `useGameSession.test.ts` assume the current click count,
-and every flow reaching a commit grows a step.
+⚠️ **A target pins and confirms exactly like a route**: first click pins it and
+shows the forecast, second click on the same one commits, a click on a different
+lit enemy re-pins. That is the gesture 8.999 established for touch, reused rather
+than reinvented — and charge inherits it in 10a for free. The forecast panel is
+therefore *informational*, like the route's "click again to confirm" pane, and
+carries no button.
 
-⚠️ **Charge tiles are a fourth overlay, not a layer over the third.** Both are
-ground quads at a height, so drawing one over the other blends or z-fights: the
-attack set must *exclude* what the charge set draws.
-
-#### The pre-check: what a new phase actually costs
-
-⚠️ **`SelectionState` has no exhaustiveness guard, and it is enumerated in
-seventeen places.** Unlike `GameEvent`, which a `never` binding in `applyEvents`
-makes a compile error to extend, every phase check here is an `if` that silently
-does nothing for a name it has not heard of. Adding a sixth phase is therefore
-**not** a change the compiler will walk you through — it is a change that
-typechecks clean and misbehaves. Three of those seventeen are membership tests
-where being left out is a *silent* bug, not a visible one:
-
-- ⚠️ `isPlan` — a phase missing here is not a plan, so **End Turn becomes
-  enabled while a facing choice is still open**, submitting around it. That flag
-  exists specifically to stop this.
-- ⚠️ `handleTileClick`'s early return for `destinationChosen` — a phase that
-  falls past it gets treated as a *tile* click and re-pins a route under the
-  menu. `targetChosen` avoids this only because `clickTile` intercepts it first,
-  which is a second mechanism for one rule and worth noticing before adding a
-  third phase that has to pick one.
-- ⚠️ `GameCanvas`'s `arrived` — drives both `setFacingChoices` and
-  `setAttackRange`, and splitting it is the visible half of this whole step.
-
-⚠️ **`isPlan`'s comment already claims a fix it did not make.** It says the union
-"already knows which phases carry a path; this asks it rather than restating it"
-— and the body is a three-way `||` on phase names, which is restating it. The
-comment describes the intention; the code is the thing it warns about.
-
-**So the first commit is not the split.** Single-source the membership list:
+#### The state
 
 ```ts
-const PINNED_PHASES = ['routePinned', 'destinationChosen', 'targetChosen'] as const;
-export type Pinned = Extract<SelectionState, { phase: (typeof PINNED_PHASES)[number] }>;
-export function isPlan(s: SelectionState): s is Pinned { … }
+destinationChosen  step:
+  | { kind: 'choosing' }                       // panel up, nothing lit
+  | { kind: 'firing'; target: Unit | null }    // null until one is pinned
+  | { kind: 'holding' }
+  // 10a adds { kind: 'charging'; target: Unit | null }
 ```
 
-One array, and the type and the predicate both follow it — so a new phase is
-added once rather than remembered twice. That makes `isPlan` do what it already
-says it does, and it converts the worst of the three silent sites into a typo
-the compiler catches.
+⚠️ **`targetChosen` is absorbed, so this is four phases — one fewer than
+today** — while gaining two modes and a place for every future action. Its
+existing justification survives intact: its comment calls the open panel *a
+mode*, and it still is, now a sibling of the other modes rather than a phase of
+its own.
 
-**Before 10a, not after.** Charge adds a third panel option and that fourth
-overlay, and both land on a settled shape rather than a shape being rebuilt
-under them.
+⚠️ **That is what keeps the pre-check's headline risk from mattering.**
+`SelectionState` has **no exhaustiveness guard** and is enumerated in seventeen
+places — a new phase typechecks clean and misbehaves. Adding none means the
+fourteen "have we arrived / is this a plan" sites keep working untouched. `Arrived`
+collapses into `DestinationChosen`, `Pinned` drops to two members, and `isPlan`
+becomes a two-way check.
+
+⚠️ **`target` is nullable inside `firing` rather than a fourth step kind.**
+`unitSelected` and `routePinned` are separate *phases* because they differ in
+more than the path; firing-with and firing-without a target differ in exactly one
+field, so a nullable one is the honest encoding. `attackForecast` already returns
+`Forecast | null`.
+
+⚠️ **Click-out is two rules, not a chain**: any dark click in a mode returns to
+the panel, and a dark click at the panel returns to move selection. Changing
+target is not a back-step — it is a click on another lit enemy, the same way a
+route re-pins.
+
+#### What already exists
+
+⚠️ **Cancelling the action menu already un-walks the ghost**, via
+`unpinDestination` with `onPreview(null)` — the deep back-step works today.
+⚠️ **`handleTileClick` already pins a click on the unit's own tile**, branching
+on it *before* consulting `reachable`, so acting without moving needs no new
+gesture. ⚠️ **`anchorTo` already puts DOM over a tile**, used by both the confirm
+pane and today's panel. ⚠️ And `chooseTarget`/`clearTarget` are already the
+transitions this needs; they set `step` instead of `phase`.
+
+#### Costs, accepted knowingly
+
+⚠️ **Move-and-wait is five steps** — select, pin, confirm, Hold, own tile — and
+firing is six. Chosen over a Hold that commits immediately with a separate
+"Face…" entry, because facing is a real mechanic now that a rear shot goes
+unanswered, and making it part of stopping is worth the click.
+
+⚠️ **You see one tile set at a time.** Today the menu shows what you can shoot
+*and* where you can face at once, so weighing "fire or reposition" now costs a
+menu round trip. This is AW's tradeoff too and it is survivable, but it is a
+loss and not an oversight.
+
+⚠️ **The panel's contents are state-dependent** — Fire only when something is in
+range, Charge only when there is a chargeable adjacent enemy. Omitted rather than
+greyed, following AW, which means the menu changes height between units.
+
+⚠️ **The panel becomes the primary interaction**, not a confirm box, and wants
+more visual weight than today's small dark rectangle.
+
+⚠️ **The test sweep is the bulk of the diff** — around thirty references across
+`selection.test.ts` and `useGameSession.test.ts` assume the current click count.
+Notably *not* expensive: only one test names `targetChosen` at all, because the
+suites already go through `chooseTarget`/`clearTarget` rather than the phase.
+
+#### One tidy that stands on its own
+
+⚠️ **`isPlan`'s comment claims a fix its body did not make.** It says the union
+"already knows which phases carry a path; this asks it rather than restating it",
+and the body is a three-way `||` on phase names. Single-sourcing the list fixes
+the comment's claim. It is no longer a *prerequisite* — that was mitigation for
+adding a phase, and no phase is being added — but it is still worth doing.
+
+**Before 10a, not after.** Charge becomes a third button and a fourth tile set
+that land on a settled shape, instead of a shape being rebuilt under them.
 
 ### 10 — Combat depth
 
@@ -854,6 +883,12 @@ Two steps on the pipeline **phase 9** proved: the mechanic that cannot be checke
 - **10a** Charge, `CHARGE_THRESHOLD`, and its own tuning pass. ⚠️ **Invariant 9 constrains its events**: a successful charge emits `unitDied` **plus** `unitMoved`, two independently-applicable events, not one compound event carrying both effects. (Moved here from 9f, which has no charge in it.) It gets its own step because it is the riskiest mechanic in the game: **the one part of combat with no reference behaviour to check against**, an untuned threshold per matchup, an untuned failure-damage function, and a success case that emits two events and displaces a unit. Everything else in phases 9–10 can be checked against AW; this can only be played.
 
   ⚠️ **Tune it head-on first, then add the rear-charge threshold reduction.** Facing is the other mechanic with no AW precedent, and a rear charge puts both unknowns inside one expression — every observation would be adjusting two dials at once. Front-on charge until it feels right, directional term second.
+
+  ⚠️ **9.9 leaves charge nothing to design.** It is a third button on the action
+  panel and a fourth tile set, and it inherits the pin-then-confirm gesture for
+  picking a target rather than needing one of its own. The overlay conflict that
+  would have existed — charge tiles blending with attack tiles at the same
+  height — cannot arise, because the two are never lit together.
 
 - **10b** ⬜ **The combat cutaway.** A view that takes over, shows both units, plays the exchange, and hands back — AW's battle screen. ⚠️ **Here rather than in phase 9 because two of its four scenes are charge**: volley-unanswered, volley-answered, charge-broke-through and charge-repelled. Building it earlier means building half of it and extending it, and the half that is missing is the half with no reference behaviour.
 
