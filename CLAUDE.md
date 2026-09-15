@@ -96,18 +96,20 @@ the client's overlay and the server's check cannot disagree.
 - **`http.test.ts` is a black box** over real `fetch` against `createServer`.
   Keep it that way — it survived a routing rewrite untouched precisely because
   nothing in it knows how URLs dispatch.
-- **`shared/`'s own test files are not typechecked** — nothing imports them
-  into a program `tsc -b` builds. They are verified by running. `server/` and
-  `client/` test files *are* checked.
 - **Tests must not touch the real dev database.** Server suites use `:memory:`;
   `db.test.ts` uses a temp directory. A relative `file:` URL resolves against
   the repo root, so a careless one opens `packages/server/vod.db`.
 - **`http.test.ts` serves a fixture dist, never the real build.** `dist/` is
   gitignored and `bun run test` does not build it, so tests written against it
   quietly change meaning depending on whether someone ran a build.
-- `strict` is on in every program `tsc -b` builds — `server`, and both client
-  configs. `shared` has no program of its own; its source is checked inside
-  the two that import it, and its `tsconfig.json` exists for editors.
+- `strict` is on in every program `tsc -b` builds. **`shared` has two configs
+  and they check different halves.** Its `tsconfig.json` is for editors and has
+  no program — the *rulebook* is checked inside `server` and `client`, which
+  import it. `tsconfig.dev.json` is a real program, referenced from the root, and
+  covers the parts nothing imports: `scripts/` and `src/**/*.test.ts`. So every
+  file is checked, and giving that config bun types does not weaken invariant 2 —
+  the client program checks `src` too and has no bun globals at all, so
+  `process.env` in the rulebook still fails the build.
   `erasableSyntaxOnly` forbids constructor parameter properties;
   `verbatimModuleSyntax` requires explicit `import type`.
 

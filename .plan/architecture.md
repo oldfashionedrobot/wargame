@@ -57,7 +57,8 @@ packages/
     move.ts           the move command
     endTurn.ts        the end-turn command
     turns.ts          the action budget, and whose turn is next
-    combat.ts         the damage formula — nothing commands an attack yet
+    combat.ts         the damage formula, ranges, and the counter rule
+    victory.ts        who has won, and whether anyone has
     applyEvents.ts    the event fold
     protocol.ts       the GameServer interface, the wire shapes, and parsing
     testing.ts        fixtures, imported by tests only
@@ -464,7 +465,7 @@ the one place that decides whether a tile can be entered and what it costs.
 
 ## Combat
 
-`shared/src/combat.ts` holds three functions and no state:
+`shared/src/combat.ts` holds five functions and no state:
 
 ```ts
 refuseAttack(state, attacker, from, targetUnitId) → string | null
@@ -1472,8 +1473,9 @@ Every package is tested. `bun test` runs `shared` and `server`, Vitest runs
 check, and the `/run-app` skill drives the app headlessly for that. `App.tsx` is
 a route table with no logic of its own.
 
-⚠️ **`shared/`'s own test files are not typechecked** — see *Accepted limits*
-in the roadmap. `server`'s and `client`'s test files are.
+⚠️ **Every test file is typechecked**, `shared`'s included — `tsconfig.dev.json`
+is what pulls its tests and scripts into a program, and the root references it.
+See below for why that config exists and why it does not weaken invariant 2.
 
 **Typechecking** reads `shared`'s source directly: `server` and `client` resolve
 `@vod/shared` through its `exports` and pull that source into their own
