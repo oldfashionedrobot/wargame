@@ -195,6 +195,49 @@ describe('useGameSession', () => {
     });
   });
 
+  // ⚠️ **The kind is read off the step at the one place that builds a command**,
+  // rather than branched on through the dispatch. These two assert the whole
+  // difference between the modes: same clicks, same gesture, different word.
+  describe('committing an attack', () => {
+    const contested = makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+    ]);
+    const aimAt = async (
+      result: ReturnType<typeof renderSession>['result'],
+      kind: 'firing' | 'charging',
+    ) => {
+      act(() => result.current.clickTile(at(1, 1)));
+      await act(async () => result.current.clickTile(at(1, 1)));
+      await act(async () => result.current.clickTile(at(1, 1)));
+      act(() => result.current.chooseAction(kind));
+      act(() => result.current.clickTile(at(1, 2)));
+      await act(async () => result.current.clickTile(at(1, 2)));
+    };
+
+    it('sends fire from firing mode', async () => {
+      const fake = fakeServer(contested);
+      const { result } = renderSession(fake, callbacks());
+      await act(async () => {});
+      fake.respond({ ok: true, seq: 1, events: [], state: contested });
+      await aimAt(result, 'firing');
+      expect(fake.submissions).toEqual([
+        expect.objectContaining({ targetUnitId: 'r1', attackKind: 'fire' }),
+      ]);
+    });
+
+    it('sends charge from charging mode', async () => {
+      const fake = fakeServer(contested);
+      const { result } = renderSession(fake, callbacks());
+      await act(async () => {});
+      fake.respond({ ok: true, seq: 1, events: [], state: contested });
+      await aimAt(result, 'charging');
+      expect(fake.submissions).toEqual([
+        expect.objectContaining({ targetUnitId: 'r1', attackKind: 'charge' }),
+      ]);
+    });
+  });
+
   it('forwards events to onEvents', async () => {
     const fake = fakeServer(board);
     const cb = callbacks();

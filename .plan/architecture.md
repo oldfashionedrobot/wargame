@@ -465,13 +465,17 @@ the one place that decides whether a tile can be entered and what it costs.
 
 ## Combat
 
-`shared/src/combat.ts` holds five functions and no state:
+`shared/src/combat.ts` holds the rules of both attacks and no state:
 
 ```ts
 refuseAttack(state, attacker, from, targetUnitId) → string | null
+refuseCharge(state, attacker, from, targetUnitId) → string | null
 tilesInRange(unit, from, gridWidth, gridHeight)   → Coordinate[]
 wouldCounter(defender, from)                      → boolean
-resolveBattle(state, attacker, defender, rolls)   → BattleResolvedEvent
+chargeThreshold(attackerType, defenderType)       → number | null   // null = cannot charge
+chargeChance(state, attacker, defender)           → number | null
+resolveBattle(state, attacker, defender, rolls)   → BattleResolvedEvent   // fire
+resolveCharge(state, attacker, defender, rolls)   → BattleResolvedEvent   // charge
 computeDamage(state, attacker, defender, roll)    → number
 ```
 
@@ -664,6 +668,75 @@ storing it would store something the log already contains.
 Verified against an independent reimplementation of the AW specification across
 113,400 combinations of terrain, matchup, both healths and roll. Sources are in
 the module's doc comment, with a note on which wins where they disagree.
+
+### Charge
+
+A second attack, chosen instead of firing and spending the turn either way.
+
+```
+margin = max(0, targetHealth + terrainDefense − CHARGE_THRESHOLD[attacker][defender])
+chance = max(1, round(100 × 0.5 ^ (margin / CHARGE_HALF_LIFE)))
+success = roll < chance                                    // roll is 0..99
+repel   = CHARGE_REPEL[defender] + floor((roll − chance) / REPEL_DIVISOR)
+```
+
+⚠️ **Capability is a missing row, not a flag.** `CHARGE_THRESHOLD` is a
+`Partial`, and artillery has none — which says *artillery cannot charge* once,
+where a `canCharge` boolean on the unit catalog would say it a second time and
+could drift. Any unit is still a valid **target**.
+
+⚠️ **Terrain adds to the target's health rather than moving the threshold.** The
+expression already asks *how far is health above the threshold*, so cover
+finishes that sentence instead of being a second mechanism beside it. It also
+needs no constant. Forest costs an attacker 2–7 points of chance and a mountain
+4–13; plains needs no special case, being a ~4% relative change that rounds away.
+
+⚠️ **The 1% floor is stated rather than emergent** — integer rounding would
+otherwise produce a silent 0%, and a long shot is not a wall. It doubles as what
+makes `chance` safe to divide by, and at `chance = 100` there are no failing
+rolls at all, since `roll < chance` with `roll ∈ [0, 99]`.
+
+⚠️ **Repel is flat plus a small term, never a multiplier** — the same shape
+`computeDamage` uses for luck. `REPEL_DIVISOR` is 10 so the term tops out at +9
+without a cap, the overshoot being at most 99. One term gives both behaviours: a
+roll just over `chance` is a near miss and costs the base, and a wild charge
+leaves a wider window to fail into so its expected overshoot is larger.
+
+⚠️ **A charge never consults the counter rule**, so `answered` means *repelled*.
+That rule asks whether the attacker is inside the defender's *range*, which is a
+question about shooting — applying it would make charging artillery free, since
+`min: 2` means a battery cannot answer at contact, and the one unit cavalry
+exists to punish would be the only one unable to punish back. The repel **is**
+the defence, and every defender has one.
+
+⚠️ **Success is damage to zero, not "it dies"**, which is what lets a charge be
+an ordinary `battleResolved` with no special case in the reducer.
+
+⚠️ **The displacement is a second `unitMoved`, appended after the battle.** The
+defender leaves the board when its health hits zero, so displacing first would
+put the attacker on an occupied tile — breaking invariant 9's *makes sense
+against the state immediately before it*. It is the only place two `unitMoved`
+for one unit appear in one batch. `playEvents` skips a move whose mesh already
+stands at the destination, which is true of the previewed approach and false of
+the displacement; that asymmetry is what makes it work.
+
+⚠️ **`Rolls` is a union whose member the *command* picks, not the rules.** The
+server knows the attack kind before it rolls because the client said so, and
+reading a command is not running a rule — which is why this does not breach the
+rule that a counter is drawn whether or not it is used. A charge draws **once**,
+on 0..99, since the same number decides success and sizes the repel. Both
+resolvers throw on a mismatched shape: the kind and the rolls are checked
+together, so a mismatch is a broken pipeline rather than a bad request.
+
+⚠️ **`terrainAdmits` is split out of `entryCost` for this.** A successful charge
+displaces onto the target's tile, so the attacker must be able to stand there —
+and `entryCost` refuses that tile for being *enemy-held*, the one objection a
+charge is not troubled by. Sharing the terrain half is what stops movement and
+charge disagreeing about what ground a unit may be on.
+
+⚠️ **`directionalMultiplier` is not yet in the formula.** 10a pins it at 1 and
+`attackSide`'s `flank` stays unread; 10b wires both. Two untested dials in one
+expression cannot be told apart by any observation.
 
 ## Victory
 
@@ -931,7 +1004,7 @@ handleTileClick(state, selection, coordinate) → SelectionState
 destinationOf(pinned)                         → Coordinate
 confirmRoute(routePinned)                     → DestinationChosen
 enterMode(state, arrived, kind)               → DestinationChosen   // a mode's tiles
-readFireClick(state, firing, coordinate)      → Unit | null
+readAimClick(state, aim, coordinate)          → Unit | null        // fire or charge
 readHoldClick(state, arrived, coordinate)     → Facing | null
 chooseTarget(firing, target)                  → Aiming
 clearStep(arrived)                            → DestinationChosen   // back to the panel
@@ -979,8 +1052,9 @@ paired return would carry no information.
 
 MenuStep
   | { kind: 'choosing' }                     // panel up, nothing lit
-  | { kind: 'firing'; tiles; target | null } // the band; null until one is pinned
-  | { kind: 'holding'; tiles }               // the four beside it
+  | { kind: 'firing'; tiles; target | null }   // the band; null until one is pinned
+  | { kind: 'charging'; tiles; target | null } // the neighbours it may charge
+  | { kind: 'holding'; tiles }                 // the four beside it
 ```
 
 `movement` is the whole `exploreMovement` result, snapshotted at selection time.
@@ -1031,10 +1105,13 @@ order inside one reader. Asking the player first makes a new action one member o
 `MenuStep` and one tile set, colliding with nothing — which is what makes charge,
 capture, entrench and dismount rows in a menu rather than new guesses.
 
-⚠️ **So there is no single click reader.** `readFireClick` answers *is this an
-enemy I may shoot*, `readHoldClick` answers *which way is this*, and neither can
-be asked in the other's mode. The collision is unrepresentable rather than
-merely avoided.
+⚠️ **So there is no single click reader.** `readAimClick` answers *is this an
+enemy I may attack, by the rule of the mode I am in*, `readHoldClick` answers
+*which way is this*, and neither can be asked in the other's mode. The collision
+is unrepresentable rather than merely avoided. ⚠️ The two attack modes share one
+reader because they differ only in which refusal they ask -- `refuseAttack` or
+`refuseCharge` -- so the same adjacent enemy is a target for one and not the
+other, decided by what the player chose rather than by what the click carries.
 
 ⚠️ **Buttons pick intent; tiles pick targets.** A target pins and confirms
 exactly like a route — first click pins it and shows the forecast, second commits,
@@ -1055,10 +1132,33 @@ stood on them, because both sets were lit at once and the colours had to be spli
 somehow. Facing is its own mode, so reach is simply reach.
 
 **The forecast reads through the step.** `attackForecast` and `facingForTarget`
-take an `Aiming` — `destinationChosen` with `step.kind === 'firing'` and a target
-pinned — which `isFiring` and `isAiming` narrow to. ⚠️ Two predicates, so no
-caller spells the two-level check by hand; that is what absorbing `targetChosen`
-costs, paid once.
+take an `Aiming` — an attack mode with a target pinned — which `isAim` and
+`isAiming` narrow to. ⚠️ Two predicates, so no caller spells the two-level check
+by hand; that is what absorbing `targetChosen` costs, paid once.
+
+⚠️ **`Aim` covers firing and charging together**, because everything between
+picking a mode and committing is identical: the same pin-then-confirm gesture,
+the same re-pin, the same second click. The kind is read off `step.kind` at the
+single place that builds the command, rather than branched on through the
+dispatch.
+
+⚠️ **`Forecast` is a union, because the two attacks are knowable to different
+degrees.** A shot's damage is a *range* — luck is added last and the roll is
+unknown. A charge's odds are **exact**, `chance` being a pure function of state
+with no roll in it, and it is the *repel* that comes as a band. Flattening both
+into one shape would force the charge to present its certainty as an estimate.
+⚠️ That band narrows on its own as the odds improve — a likely charge leaves a
+narrow window to fail into — which falls out of `99 − chance` rather than a rule.
+
+⚠️ **The charge overlay lights targets, not reach**, the opposite of the shooting
+band and deliberately. Red means *in range* for a shot because reach is what a
+shot is planned against; a charge is contact-only, so it has no reach to show and
+a lit tile that could not be charged would promise nothing.
+
+⚠️ **`canCharge` is `canFire`'s twin and asks `refuseCharge`** — the rule the
+click will ask — so the menu row and the board cannot disagree. Capability comes
+through the same path: artillery has no threshold row, so the rule refuses every
+target and the row never appears.
 
 Either pinned phase is a **plan, not a submission** — nothing has been sent, and
 a click that means nothing else discards it without the server hearing.

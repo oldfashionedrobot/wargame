@@ -16,12 +16,12 @@ import {
   handleTileClick,
   initialSelectionState,
   isAiming,
-  isFiring,
+  isAim,
   isPlan,
   facingForTarget,
   moveCommandFor,
   destinationOf,
-  readFireClick,
+  readAimClick,
   readHoldClick,
   unpinDestination,
 } from './interaction/selection';
@@ -119,7 +119,7 @@ export interface GameSession {
    * what stops a new action from being another reading a click has to be
    * disambiguated against.
    */
-  chooseAction: (kind: 'firing' | 'holding') => void;
+  chooseAction: (kind: 'firing' | 'charging' | 'holding') => void;
   /** End the turn outright, without committing whatever is being planned. */
   endTurn: () => void;
 }
@@ -306,25 +306,27 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
         // itself, and `readFireClick` wants the whole thing -- so asking the
         // predicate does both jobs where the inline check does one and then
         // needs the predicate anyway.
-        if (isFiring(selection)) {
+        if (isAim(selection)) {
           // A second click on the pinned target is what fires it -- the same
           // gesture a route uses, read before `readFireClick` for the same
           // reason: re-pinning the target onto itself is a wasted render and no
           // shot. Dispatch order, exactly like the route's.
           if (isAiming(selection) && coordinatesEqual(coordinate, selection.step.target.position)) {
             void submitCommand(
-              moveCommandFor(
-                selection,
-                facingForTarget(state, selection),
-                selection.step.target.id,
-              ),
+              moveCommandFor(selection, facingForTarget(state, selection), {
+                targetUnitId: selection.step.target.id,
+                // ⚠️ The one place the two attack modes diverge. Everything
+                // between picking a mode and committing is identical, so the
+                // kind is read off the step here rather than branched on above.
+                attackKind: selection.step.kind === 'charging' ? 'charge' : 'fire',
+              }),
               initialSelectionState,
               unpinDestination(selection),
             );
             return;
           }
 
-          const target = readFireClick(state, selection, coordinate);
+          const target = readAimClick(state, selection, coordinate);
           // A different lit enemy re-pins, exactly as a route does.
           if (target) {
             setSelection(chooseTarget(selection, target));
@@ -380,7 +382,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
    * so without a button there is no way to turn toward someone without shooting.
    */
   const chooseAction = useCallback(
-    (kind: 'firing' | 'holding'): void => {
+    (kind: 'firing' | 'charging' | 'holding'): void => {
       if (pendingRef.current) return;
       setSelection((current) =>
         current.phase === 'destinationChosen'

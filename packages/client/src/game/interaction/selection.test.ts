@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { makeState, route, unitAt } from '@vod/shared/testing';
-import { LUCK_MAX } from '@vod/shared';
+import { chargeChance, LUCK_MAX } from '@vod/shared';
 import type { Coordinate, GameState } from '@vod/shared';
 import {
   attackForecast,
+  canCharge,
   canFire,
   enterMode,
   chooseTarget,
@@ -11,9 +12,9 @@ import {
   confirmRoute,
   facingForTarget,
   isAiming,
-  isFiring,
+  isAim,
   isPlan,
-  readFireClick,
+  readAimClick,
   readHoldClick,
   facingChoiceAt,
   destinationOf,
@@ -23,7 +24,7 @@ import {
   unpinDestination,
   holdFacing,
 } from './selection';
-import type { Aiming, DestinationChosen, Firing, RoutePinned, SelectionState } from './selection';
+import type { Aim, Aiming, DestinationChosen, RoutePinned, SelectionState } from './selection';
 
 // The pure half of the client: state and a coordinate in, a new selection out.
 // No React, no Babylon, no server. `handleTileClick` never produces a command
@@ -57,10 +58,17 @@ const withB1Arrived = (state: GameState, destination: Coordinate): DestinationCh
   confirmRoute(withB1Pinned(state, destination));
 
 /** …and then pick Fire from the panel, which is what lights the band. */
-function withB1Firing(state: GameState, destination: Coordinate): Firing {
+function withB1Firing(state: GameState, destination: Coordinate): Aim {
   const firing = enterMode(state, withB1Arrived(state, destination), 'firing');
-  if (!isFiring(firing)) throw new Error('expected firing mode');
+  if (!isAim(firing)) throw new Error('expected firing mode');
   return firing;
+}
+
+/** …or pick Charge, which lights the neighbours it could actually charge. */
+function withB1Charging(state: GameState, destination: Coordinate): Aim {
+  const charging = enterMode(state, withB1Arrived(state, destination), 'charging');
+  if (!isAim(charging)) throw new Error('expected charging mode');
+  return charging;
 }
 
 /** …and then pick Hold, which is what lights the four beside it. */
@@ -359,7 +367,7 @@ describe('a lit tile means what the mode says', () => {
   // asked for, and neither reading can leak into the other's mode.
   it('reads an adjacent enemy as a target in firing mode', () => {
     const state = field();
-    expect(readFireClick(state, withB1Firing(state, at(1, 1)), at(2, 1))?.id).toBe('adjacent');
+    expect(readAimClick(state, withB1Firing(state, at(1, 1)), at(2, 1))?.id).toBe('adjacent');
   });
 
   it('reads that same tile as a facing in holding mode', () => {
@@ -370,22 +378,22 @@ describe('a lit tile means what the mode says', () => {
   describe('firing', () => {
     it('reads an enemy further off but still in range as a target', () => {
       const state = field();
-      expect(readFireClick(state, withB1Firing(state, at(1, 1)), at(3, 1))?.id).toBe('distant');
+      expect(readAimClick(state, withB1Firing(state, at(1, 1)), at(3, 1))?.id).toBe('distant');
     });
 
     it('reads an enemy out of range as nothing', () => {
       const state = field();
-      expect(readFireClick(state, withB1Firing(state, at(1, 1)), at(5, 5))).toBeNull();
+      expect(readAimClick(state, withB1Firing(state, at(1, 1)), at(5, 5))).toBeNull();
     });
 
     it('reads a friend as nothing, however close', () => {
       const state = field();
-      expect(readFireClick(state, withB1Firing(state, at(1, 1)), at(1, 2))).toBeNull();
+      expect(readAimClick(state, withB1Firing(state, at(1, 1)), at(1, 2))).toBeNull();
     });
 
     it('reads empty ground as nothing', () => {
       const state = field();
-      expect(readFireClick(state, withB1Firing(state, at(1, 1)), at(0, 1))).toBeNull();
+      expect(readAimClick(state, withB1Firing(state, at(1, 1)), at(0, 1))).toBeNull();
     });
 
     // Artillery cannot hit what has reached it: the band, not adjacency, is
@@ -395,7 +403,7 @@ describe('a lit tile means what the mode says', () => {
         { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
         { id: 'adjacent', col: 2, row: 1, owner: 'red' },
       ]);
-      expect(readFireClick(gunline, withB1Firing(gunline, at(1, 1)), at(2, 1))).toBeNull();
+      expect(readAimClick(gunline, withB1Firing(gunline, at(1, 1)), at(2, 1))).toBeNull();
     });
   });
 
@@ -427,6 +435,14 @@ describe('a lit tile means what the mode says', () => {
 });
 
 describe('the panel, and what it is told', () => {
+  /** ⚠️ Narrows and asserts in one: a charge forecast reaching these would
+      otherwise read as a missing property rather than the wrong kind. */
+  const fireForecast = (state: GameState, selection: Aiming) => {
+    const forecast = attackForecast(state, selection);
+    if (forecast?.kind !== 'fire') throw new Error('expected a fire forecast');
+    return forecast;
+  };
+
   // b1 infantry at (1,1); an enemy two north, which infantry can reach.
   // ⚠️ The enemy's facing is stated rather than inherited: b1 attacks from the
   // south, and a shot from directly behind is never answered, so leaving it to
@@ -443,16 +459,14 @@ describe('the panel, and what it is told', () => {
   // zero-roll result is the true floor and the spread is exactly LUCK_MAX.
   it('forecasts a range whose width is the luck band', () => {
     const state = field();
-    const forecast = attackForecast(state, panel(state));
-    expect(forecast).not.toBeNull();
-    if (!forecast) return;
+    const forecast = fireForecast(state, panel(state));
     expect(forecast.high - forecast.low).toBe(LUCK_MAX);
     expect(forecast.low).toBeGreaterThan(0);
   });
 
   it('says they return fire when the target can reach back', () => {
     const state = field();
-    expect(attackForecast(state, panel(state))?.answered).toBe(true);
+    expect(fireForecast(state, panel(state)).answered).toBe(true);
   });
 
   // ⚠️ The panel got the rear rule without being edited for it -- it reads
@@ -466,13 +480,13 @@ describe('the panel, and what it is told', () => {
       { id: 'r1', col: 1, row: 3, owner: 'red', facing: 'north' },
     ]);
     const chosen = withB1Aiming(state, at(1, 1), 'r1');
-    expect(attackForecast(state, chosen)?.answered).toBe(false);
+    expect(fireForecast(state, chosen).answered).toBe(false);
     // ⚠️ And the damage is untouched: facing changes who may answer, never what
     // the shot does. A flanking bonus would show up right here, and does not --
     // the same shot against the same unit turned around forecasts the same
     // number, which is the assertion that would have to be deleted to add one.
     const head = field();
-    expect(attackForecast(state, chosen)?.low).toBe(attackForecast(head, panel(head))?.low);
+    expect(fireForecast(state, chosen).low).toBe(fireForecast(head, panel(head)).low);
   });
 
   // The whole point of outranging someone: a gun firing from four is never
@@ -483,7 +497,7 @@ describe('the panel, and what it is told', () => {
       { id: 'r1', col: 1, row: 5, owner: 'red' },
     ]);
     const chosen = withB1Aiming(state, at(1, 1), 'r1');
-    expect(attackForecast(state, chosen)?.answered).toBe(false);
+    expect(fireForecast(state, chosen).answered).toBe(false);
   });
 
   it('points the unit at its target, however far off it is', () => {
@@ -580,6 +594,168 @@ describe('the tiles holding mode lights', () => {
   });
 });
 
+describe('charging, which shares every gesture with firing', () => {
+  // b1 cavalry with an enemy beside it and another two tiles off.
+  const field = () =>
+    makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+      { id: 'adjacent', col: 1, row: 2, owner: 'red' },
+      { id: 'distant', col: 1, row: 3, owner: 'red' },
+    ]);
+
+  // ⚠️ **Targets, not reach — the opposite of the shooting band, deliberately.**
+  // Red means *in range* for a shot because reach is what a shot is planned
+  // against. A charge is contact-only, so there is no reach to show and a lit
+  // tile that could not be charged would promise nothing.
+  it('lights only the neighbours it could actually charge', () => {
+    const state = field();
+    const tiles = withB1Charging(state, at(1, 1)).step.tiles;
+    expect(tiles).toEqual([at(1, 2)]);
+  });
+
+  it('lights nothing when no enemy is in contact', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+      { id: 'distant', col: 1, row: 3, owner: 'red' },
+    ]);
+    expect(withB1Charging(state, at(1, 1)).step.tiles).toEqual([]);
+  });
+
+  it('reads a lit neighbour as a target', () => {
+    const state = field();
+    expect(readAimClick(state, withB1Charging(state, at(1, 1)), at(1, 2))?.id).toBe('adjacent');
+  });
+
+  // ⚠️ **The same tile, read by two rules.** An enemy two off is a legal shot and
+  // an illegal charge, and which answer you get depends on the mode chosen —
+  // not on anything the click itself carries.
+  //
+  // ⚠️ Infantry, not cavalry, and that is the whole reason this fixture differs:
+  // **cavalry's range is `{1,1}`**, so for a horseman Fire and Charge light the
+  // identical tile and the distinction cannot be seen at all. Infantry reaches
+  // two and charges at one.
+  it('refuses an enemy the shooting band would have accepted', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'distant', col: 1, row: 3, owner: 'red' },
+    ]);
+    expect(readAimClick(state, withB1Charging(state, at(1, 1)), at(1, 3))).toBeNull();
+    expect(readAimClick(state, withB1Firing(state, at(1, 1)), at(1, 3))?.id).toBe('distant');
+  });
+
+  it('pins and re-pins exactly as firing does', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+      { id: 'r2', col: 2, row: 1, owner: 'red' },
+    ]);
+    const first = chooseTarget(withB1Charging(state, at(1, 1)), unitAt(state, 'r1'));
+    expect(isAiming(first)).toBe(true);
+    const second = chooseTarget(first, unitAt(state, 'r2'));
+    expect(second.step.target.id).toBe('r2');
+    expect(second.step.kind).toBe('charging');
+  });
+});
+
+describe('the charge forecast', () => {
+  const contact = (health: number) =>
+    makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+      { id: 'r1', col: 1, row: 2, owner: 'red', health },
+    ]);
+  const aimed = (state: GameState) => {
+    const aim = chooseTarget(withB1Charging(state, at(1, 1)), unitAt(state, 'r1'));
+    const forecast = attackForecast(state, aim);
+    if (forecast?.kind !== 'charge') throw new Error('expected a charge forecast');
+    return forecast;
+  };
+
+  // ⚠️ **The bug a browser found and the tests had not.** Aiming a charge showed
+  // "Fire — 25–34 damage · they return fire", because the forecast computed
+  // damage without ever asking which mode it was in.
+  it('is a charge forecast, not a damage range', () => {
+    expect(aimed(contact(40)).chance).toBeGreaterThan(0);
+  });
+
+  // ⚠️ Exact where a shot's is a range: no roll enters `chance`, so this is the
+  // truth rather than an estimate, and the panel can say so.
+  it('agrees exactly with the rule that will resolve it', () => {
+    const state = contact(40);
+    expect(aimed(state).chance).toBe(chargeChance(state, unitAt(state, 'b1'), unitAt(state, 'r1')));
+  });
+
+  it('gets harder as the target gets healthier', () => {
+    expect(aimed(contact(90)).chance).toBeLessThan(aimed(contact(40)).chance);
+  });
+
+  // ⚠️ The band narrows on its own as the odds improve, because a likely charge
+  // leaves a narrow window to fail into. Nothing states that; it falls out of
+  // `99 - chance`.
+  it('quotes a repel band that narrows with better odds', () => {
+    const longShot = aimed(contact(100));
+    const likely = aimed(contact(40));
+    expect(longShot.repelLow).toBe(likely.repelLow);
+    expect(longShot.repelHigh - longShot.repelLow).toBeGreaterThan(
+      likely.repelHigh - likely.repelLow,
+    );
+  });
+});
+
+describe('canCharge, which decides whether the panel offers it', () => {
+  const arrived = (state: GameState) => withB1Arrived(state, at(1, 1));
+
+  it('is true with an enemy in contact', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+    ]);
+    expect(canCharge(state, arrived(state))).toBe(true);
+  });
+
+  // ⚠️ The distinction the two rows exist for: the same board offers Fire and
+  // not Charge, because infantry shoots two tiles and charges at one. ⚠️ It has
+  // to be infantry — **cavalry's range is `{1,1}`**, so a horseman's two rows
+  // always appear and disappear together.
+  it('is false when the only enemy is a tile too far, where Fire is true', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 3, owner: 'red' },
+    ]);
+    expect(canCharge(state, arrived(state))).toBe(false);
+    expect(canFire(state, arrived(state))).toBe(true);
+  });
+
+  // The other half of that, stated so the coincidence is not mistaken for a bug:
+  // at contact a horseman may do either, and both rows show.
+  it('offers both to cavalry at contact, whose ranges coincide', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+    ]);
+    expect(canCharge(state, arrived(state))).toBe(true);
+    expect(canFire(state, arrived(state))).toBe(true);
+  });
+
+  // ⚠️ Capability comes through the same rule rather than a separate check:
+  // artillery has no threshold row, so `refuseCharge` says no for every target
+  // and the row never appears.
+  it('is false for artillery, which cannot charge at all', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+    ]);
+    expect(canCharge(state, arrived(state))).toBe(false);
+  });
+
+  it('is false when the neighbour is a friend', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+      { id: 'b2', col: 1, row: 2 },
+    ]);
+    expect(canCharge(state, arrived(state))).toBe(false);
+  });
+});
+
 describe('canFire, which decides whether the panel offers it', () => {
   const arrived = (state: GameState) => withB1Arrived(state, at(1, 1));
 
@@ -664,7 +840,7 @@ describe('the tiles firing mode lights', () => {
       { id: 'b2', col: 1, row: 2 },
     ]);
     expect(has(tilesFor(state), 1, 2)).toBe(true);
-    expect(readFireClick(state, withB1Firing(state, at(1, 1)), at(1, 2))).toBeNull();
+    expect(readAimClick(state, withB1Firing(state, at(1, 1)), at(1, 2))).toBeNull();
   });
 
   // Artillery cannot shoot what has reached it, so its band starts two out --

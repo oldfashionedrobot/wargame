@@ -26,6 +26,7 @@ beforeEach(() => {
     setSelectedTile: vi.fn(),
     setRange: vi.fn(),
     setAttackRange: vi.fn(),
+    setChargeTargets: vi.fn(),
     setRoute: vi.fn(),
     anchorTo: vi.fn(),
     playEvents: vi.fn(() => Promise.resolve()),

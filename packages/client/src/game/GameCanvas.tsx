@@ -3,7 +3,14 @@ import type { ReactElement } from 'react';
 import { getCurrentPlayer, isOver } from '@vod/shared';
 import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
 import { useGameSession } from './useGameSession';
-import { attackForecast, canFire, isAiming, isPlan, destinationOf } from './interaction/selection';
+import {
+  attackForecast,
+  canCharge,
+  canFire,
+  isAiming,
+  isPlan,
+  destinationOf,
+} from './interaction/selection';
 import type { SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
 import { createGameRenderer } from './render/renderer';
@@ -36,6 +43,7 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
   const step = arrived ? selection.step : null;
   renderer.setFacingChoices(step?.kind === 'holding' ? step.tiles : []);
   renderer.setAttackRange(step?.kind === 'firing' ? step.tiles : []);
+  renderer.setChargeTargets(step?.kind === 'charging' ? step.tiles : []);
 
   // ⚠️ The unit's own tile, never the pin. A pinned route has not been walked,
   // so highlighting its destination would claim the unit is somewhere it is
@@ -297,6 +305,14 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             {canFire(gameState, selection) && (
               <MenuItem label="Fire" onClick={() => chooseAction('firing')} />
             )}
+            {/* ⚠️ Offered on the same terms as Fire and for the same reason:
+                `canCharge` asks `refuseCharge`, the rule the click will ask, so
+                the row and the board cannot disagree. Artillery has no threshold
+                row, so this is false for it against every target and the entry
+                simply never appears. */}
+            {canCharge(gameState, selection) && (
+              <MenuItem label="Charge" onClick={() => chooseAction('charging')} />
+            )}
             <MenuItem label="Hold" onClick={() => chooseAction('holding')} />
           </div>
         )}
@@ -326,11 +342,21 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
                 -- and for the same reason. Buttons pick intent; tiles pick
                 targets. A second click on the target is what fires, which is the
                 gesture the route already taught. */}
-            <span>
-              Fire — {forecast.low}
-              {forecast.high > forecast.low && `–${forecast.high}`} damage
-              {forecast.answered && ' · they return fire'}
-            </span>
+            {forecast.kind === 'fire' ? (
+              <span>
+                Fire — {forecast.low}
+                {forecast.high > forecast.low && `–${forecast.high}`} damage
+                {forecast.answered && ' · they return fire'}
+              </span>
+            ) : (
+              /* ⚠️ An exact figure where a shot gets a range, because no roll
+                 enters `chance` -- and the cost of failing is the band, which is
+                 the reverse of how a shot reads. */
+              <span>
+                Charge — {forecast.chance}% to break · {forecast.repelLow}
+                {forecast.repelHigh > forecast.repelLow && `–${forecast.repelHigh}`} if it fails
+              </span>
+            )}
             <span style={{ opacity: 0.75 }}>Click again to confirm</span>
           </div>
         )}
@@ -384,9 +410,11 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             tile click at once, which is the thing the panel exists to stop. */}
         {selection.phase === 'destinationChosen' && selection.step.kind !== 'choosing' && (
           <span>
-            {selection.step.kind === 'firing'
-              ? 'Click an enemy in range, then click it again to fire. Click elsewhere to go back.'
-              : 'Click a tile beside the unit to face that way, or the unit to keep its facing.'}
+            {selection.step.kind === 'holding'
+              ? 'Click a tile beside the unit to face that way, or the unit to keep its facing.'
+              : selection.step.kind === 'charging'
+                ? 'Click an enemy beside the unit, then click again to charge. Click elsewhere to go back.'
+                : 'Click an enemy in range, then click it again to fire. Click elsewhere to go back.'}
           </span>
         )}
         {rejection && <span style={{ color: '#c0392b' }}> rejected: {rejection}</span>}

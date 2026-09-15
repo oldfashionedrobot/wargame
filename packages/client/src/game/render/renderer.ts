@@ -119,6 +119,15 @@ const FACING_COLOR = new Color3(1, 0.82, 0.35);
 const ATTACK_COLOR = new Color3(0.95, 0.2, 0.24);
 const ATTACK_ALPHA = 0.8;
 const ATTACK_HEIGHT = 0.016;
+// ⚠️ **A deeper red than the shooting band, not a different hue.** A charge is
+// an attack, so it should read as one at a glance; what it must not do is read
+// as *the same* attack, because the two are never offered together and a player
+// arriving at a lit board needs to know which question is being asked. Same
+// alpha and height for the same reason the attack band needed 0.8 -- red over
+// this teal ground blends toward grey at anything less.
+const CHARGE_COLOR = new Color3(0.62, 0.08, 0.12);
+const CHARGE_ALPHA = 0.8;
+const CHARGE_HEIGHT = 0.016;
 const FACING_ALPHA = 0.55;
 const FACING_HEIGHT = 0.02;
 
@@ -135,6 +144,15 @@ export interface GameRenderer {
    * `setFacingChoices` -- is decided in `selection.ts`, where the board is.
    */
   setAttackRange(tiles: Coordinate[]): void;
+  /**
+   * Light the tiles a unit may charge, or clear them.
+   *
+   * ⚠️ **Targets, not reach.** Unlike the shooting band, which shows *range*,
+   * every tile lit here is one a charge could actually be launched at -- a
+   * charge is contact-only, so there is no reach to communicate and an
+   * unclickable lit tile would promise nothing.
+   */
+  setChargeTargets(tiles: Coordinate[]): void;
   /**
    * Draw a pinned route, or clear it.
    *
@@ -469,6 +487,16 @@ export async function createGameRenderer(
     gridWidth,
     gridHeight,
   });
+  const chargeOverlay = createTileOverlay(scene, {
+    name: 'charge-targets',
+    color: CHARGE_COLOR,
+    alpha: CHARGE_ALPHA,
+    height: CHARGE_HEIGHT,
+    surfaceAt,
+    gridWidth,
+    gridHeight,
+  });
+
   const facingOverlay = createTileOverlay(scene, {
     name: 'facing-choices',
     color: FACING_COLOR,
@@ -634,6 +662,9 @@ export async function createGameRenderer(
     },
     setAttackRange(tiles) {
       attackOverlay.setTiles(tiles);
+    },
+    setChargeTargets(tiles) {
+      chargeOverlay.setTiles(tiles);
     },
     anchorTo(element, coordinate) {
       anchorElement = element;

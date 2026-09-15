@@ -1,5 +1,9 @@
 import {
   canSelectUnit,
+  chargeChance,
+  CHARGE_REPEL,
+  refuseCharge,
+  REPEL_DIVISOR,
   computeDamage,
   facingToward,
   LUCK_MAX,
@@ -14,7 +18,15 @@ import {
   getUnitType,
   isWithinGrid,
 } from '@vod/shared';
-import type { Command, Coordinate, Facing, GameState, Movement, Unit } from '@vod/shared';
+import type {
+  AttackKind,
+  Command,
+  Coordinate,
+  Facing,
+  GameState,
+  Movement,
+  Unit,
+} from '@vod/shared';
 
 // A discriminated union rather than nullable fields: "reachable tiles with no
 // selected unit" was representable and meaningless. Phase 9 adds an attack
@@ -80,6 +92,10 @@ type MenuStep =
   // the same gesture a route uses -- first click pins and shows the forecast,
   // second commits, another lit enemy re-pins.
   | { kind: 'firing'; tiles: Coordinate[]; target: Unit | null }
+  // ⚠️ Identical in shape to `firing`, and that is the point: a charge picks a
+  // target with the same pin-then-confirm gesture, so it needs no interaction
+  // of its own. What differs is which tiles light and what the command says.
+  | { kind: 'charging'; tiles: Coordinate[]; target: Unit | null }
   // The four beside the unit, and its own tile for keeping the facing it has.
   | { kind: 'holding'; tiles: Coordinate[] };
 
@@ -144,13 +160,20 @@ export function isPlan(selection: SelectionState): selection is Pinned {
   return (PINNED_PHASES as readonly string[]).includes(selection.phase);
 }
 
-type FiringStep = Extract<MenuStep, { kind: 'firing' }>;
+type AimingStep = Extract<MenuStep, { kind: 'firing' | 'charging' }>;
 
-/** Firing mode is up: the band is lit, and a click on a lit enemy pins it. */
-export type Firing = DestinationChosen & { step: FiringStep };
+/**
+ * An attack mode is up: its tiles are lit, and a click on a lit enemy pins one.
+ *
+ * ⚠️ **Covers firing and charging together**, because everything between picking
+ * a mode and committing is identical for both -- the same gesture, the same
+ * re-pin, the same second click. Only the command differs, and that is read off
+ * `step.kind` at the one place that builds it.
+ */
+export type Aim = DestinationChosen & { step: AimingStep };
 
-/** A target is pinned: the forecast is up, and a second click on it commits. */
-export type Aiming = DestinationChosen & { step: FiringStep & { target: Unit } };
+/** A target is pinned: the preview is up, and a second click on it commits. */
+export type Aiming = DestinationChosen & { step: AimingStep & { target: Unit } };
 
 /**
  * ⚠️ **Two predicates, so no caller writes the two-level narrowing by hand.**
@@ -158,12 +181,15 @@ export type Aiming = DestinationChosen & { step: FiringStep & { target: Unit } }
  * than at every `phase === 'destinationChosen' && step.kind === 'firing' &&
  * step.target !== null` a reader would otherwise spell out.
  */
-export function isFiring(selection: SelectionState): selection is Firing {
-  return selection.phase === 'destinationChosen' && selection.step.kind === 'firing';
+export function isAim(selection: SelectionState): selection is Aim {
+  return (
+    selection.phase === 'destinationChosen' &&
+    (selection.step.kind === 'firing' || selection.step.kind === 'charging')
+  );
 }
 
 export function isAiming(selection: SelectionState): selection is Aiming {
-  return isFiring(selection) && selection.step.target !== null;
+  return isAim(selection) && selection.step.target !== null;
 }
 
 /**
@@ -176,7 +202,7 @@ export function isAiming(selection: SelectionState): selection is Aiming {
 export function enterMode(
   state: GameState,
   selection: DestinationChosen,
-  kind: 'firing' | 'holding',
+  kind: 'firing' | 'charging' | 'holding',
 ): DestinationChosen {
   // ⚠️ Built here rather than snapshotted on arrival: two of these would never
   // be looked at, and the state a mode is entered from is fresher than the state
@@ -186,14 +212,13 @@ export function enterMode(
   if (kind === 'holding') {
     return { ...selection, step: { kind: 'holding', tiles: facingTilesFor(state, destination) } };
   }
-  return {
-    ...selection,
-    step: {
-      kind: 'firing',
-      tiles: unit ? attackTilesFor(state, { ...unit, position: destination }, destination) : [],
-      target: null,
-    },
-  };
+  const moved = unit ? { ...unit, position: destination } : null;
+  const tiles = !moved
+    ? []
+    : kind === 'charging'
+      ? chargeTilesFor(state, moved, destination)
+      : attackTilesFor(state, moved, destination);
+  return { ...selection, step: { kind, tiles, target: null } };
 }
 
 /**
@@ -210,15 +235,56 @@ export function enterMode(
  * to sixty tiles is the cheaper loop, and it needs no grid bounds.
  */
 export function canFire(state: GameState, selection: DestinationChosen): boolean {
+  return canAttack(state, selection, refuseAttack);
+}
+
+/**
+ * Is there anything this unit could charge from where it stopped?
+ *
+ * ⚠️ `canFire`'s twin, and it asks `refuseCharge` for the same reason `canFire`
+ * asks `refuseAttack`: the menu row and the click that follows it must be
+ * answered by one rule, or the panel offers what the board then refuses. It
+ * covers capability too -- artillery has no threshold row, so this is false for
+ * every target and the row never appears.
+ */
+export function canCharge(state: GameState, selection: DestinationChosen): boolean {
+  return canAttack(state, selection, refuseCharge);
+}
+
+type Refusal = (
+  state: GameState,
+  attacker: Unit,
+  from: Coordinate,
+  targetUnitId: string,
+) => string | null;
+
+function canAttack(state: GameState, selection: DestinationChosen, refuse: Refusal): boolean {
   const from = destinationOf(selection);
   const unit = getUnit(state, selection.unitId);
   if (!unit) return false;
   const moved: Unit = { ...unit, position: from };
-  return state.units.some((target) => refuseAttack(state, moved, from, target.id) === null);
+  return state.units.some((target) => refuse(state, moved, from, target.id) === null);
+}
+
+/**
+ * Which tiles charging mode lights: the neighbours holding something this unit
+ * could actually charge.
+ *
+ * ⚠️ **Targets, not reach — the opposite of the firing band, and deliberately.**
+ * Red means *in range* because reach is the information a shot is planned
+ * against; a charge has no reach to show, being contact-only, so lighting all
+ * four neighbours would light tiles that do nothing. Here the lit set *is* the
+ * legal set.
+ */
+function chargeTilesFor(state: GameState, unit: Unit, from: Coordinate): Coordinate[] {
+  return facingTilesFor(state, from).filter((tile) => {
+    const occupant = getUnitAt(state, tile);
+    return occupant !== undefined && refuseCharge(state, unit, from, occupant.id) === null;
+  });
 }
 
 /** A target is pinned: the forecast opens over it, and nothing is sent yet. */
-export function chooseTarget(selection: Firing, target: Unit): Aiming {
+export function chooseTarget(selection: Aim, target: Unit): Aiming {
   return { ...selection, step: { ...selection.step, target } };
 }
 
@@ -436,9 +502,9 @@ export function readHoldClick(
  * ⚠️ `refuseAttack` is compared against `null` and never against its text -- the
  * reason belongs to the server and changes without the answer changing.
  */
-export function readFireClick(
+export function readAimClick(
   state: GameState,
-  selection: Firing,
+  selection: Aim,
   coordinate: Coordinate,
 ): Unit | null {
   const destination = destinationOf(selection);
@@ -446,16 +512,43 @@ export function readFireClick(
   const target = getUnitAt(state, coordinate);
   if (!unit || !target) return null;
   const from = { ...unit, position: destination };
-  return refuseAttack(state, from, destination, target.id) === null ? target : null;
+  const refuse = selection.step.kind === 'charging' ? refuseCharge : refuseAttack;
+  return refuse(state, from, destination, target.id) === null ? target : null;
 }
 
-export interface Forecast {
-  /** Damage at the worst roll, and at the best. The true outcome is one of them. */
-  low: number;
-  high: number;
-  /** Whether the target can shoot back from where you are standing. */
-  answered: boolean;
-}
+/**
+ * What the panel promises before you commit.
+ *
+ * ⚠️ **A union, because the two attacks are knowable to different degrees.** A
+ * shot's damage is a *range*, since luck is added last and the roll is unknown;
+ * a charge's odds are an **exact** figure, because `chance` is a pure function of
+ * state with no roll in it. Flattening both into one shape would force the
+ * charge to pretend its certainty is an estimate.
+ */
+export type Forecast =
+  | {
+      kind: 'fire';
+      /** Damage at the worst roll, and at the best. The true outcome is one of them. */
+      low: number;
+      high: number;
+      /** Whether the target can shoot back from where you are standing. */
+      answered: boolean;
+    }
+  | {
+      kind: 'charge';
+      /** ⚠️ Exact, not an estimate -- no roll enters this. */
+      chance: number;
+      /**
+       * What failing costs: the flat repel, up to the flat repel plus whatever
+       * the overshoot can reach from here.
+       *
+       * ⚠️ **The band narrows as the odds improve, and nothing says so** -- a
+       * likely charge leaves a narrow window to fail into, so its overshoot
+       * cannot get far. That falls out of `99 - chance` rather than being a rule.
+       */
+      repelLow: number;
+      repelHigh: number;
+    };
 
 /**
  * The numbers on the panel, run through the same formula the server will.
@@ -484,10 +577,22 @@ export function attackForecast(state: GameState, selection: Aiming): Forecast | 
   const from = destinationOf(selection);
   const moved: Unit = { ...attacker, position: from };
 
+  if (selection.step.kind === 'charging') {
+    const chance = chargeChance(state, moved, target);
+    if (chance === null) return null;
+    const flat = CHARGE_REPEL[target.unitTypeId];
+    return {
+      kind: 'charge',
+      chance,
+      repelLow: flat,
+      repelHigh: flat + Math.floor((99 - chance) / REPEL_DIVISOR),
+    };
+  }
+
   const low = computeDamage(state, moved, target, 0);
   const high = computeDamage(state, moved, target, LUCK_MAX);
   const survivor: Unit = { ...target, health: Math.max(0, target.health - low) };
-  return { low, high, answered: wouldCounter(survivor, from) };
+  return { kind: 'fire', low, high, answered: wouldCounter(survivor, from) };
 }
 
 /** Which way the unit ends up looking once it commits from the panel. */
@@ -516,7 +621,13 @@ export function unpinDestination(selection: Pinned): SelectionState {
 export function moveCommandFor(
   selection: DestinationChosen,
   facing: Facing,
-  targetUnitId?: string,
+  /**
+   * The attack, if there is one. ⚠️ **A pair rather than two optional
+   * parameters**, because they are only ever meaningful together: a kind with no
+   * target is refused by the server, and a target with no kind is a shot. One
+   * argument makes the invalid halves unrepresentable at the call site.
+   */
+  attack?: { targetUnitId: string; attackKind: AttackKind },
 ): Command {
   const command: Command = {
     type: 'move',
@@ -526,6 +637,9 @@ export function moveCommandFor(
   };
   // Absent rather than undefined: the wire shape is optional, and a key holding
   // undefined is a different thing from a key that is not there.
-  if (targetUnitId !== undefined) command.targetUnitId = targetUnitId;
+  if (attack) {
+    command.targetUnitId = attack.targetUnitId;
+    command.attackKind = attack.attackKind;
+  }
   return command;
 }

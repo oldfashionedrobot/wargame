@@ -4,6 +4,7 @@
 // are reached through their union.
 
 export type {
+  AttackKind,
   Command,
   Coordinate,
   Facing,

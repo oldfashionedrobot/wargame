@@ -889,102 +889,22 @@ The *classifier* is now proven, so what is unknown is only the multipliers —
 still worth tuning head-on first, but for the smaller reason that two dials in
 one formula cannot be read apart, not because the geometry might be wrong.
 
-- **10a** ⬜ **Charge, head-on.** `directionalMultiplier` is **pinned at 1** and
-  `attackSide` stays unread — everything else lands: the resolver, the events,
-  the constants, the menu row, the tile set, and a tuning pass on
-  `CHARGE_THRESHOLD` and `CHARGE_REPEL` against a formula with one unknown in it.
+- **10a** ✅ **Shipped**, and gone from here: the charge tables, both formulas,
+  `resolveCharge`, the dispatch on `attackKind`, the `Rolls` union, `terrainAdmits`,
+  the Charge row and its overlay — see *Charge* under *Combat*, and the client
+  half under *Client*, in [`architecture.md`](architecture.md).
+  `scripts/charges.ts` prints the odds against the repel band, head-on and on
+  road, which is the artefact its tuning pass reads.
 
-  It gets its own
-  step because it is the riskiest mechanic in the game: **the one part of combat
-  with no reference behaviour to check against**, an untuned threshold per
-  matchup, an untuned failure-damage function, and a success case that emits two
-  events and displaces a unit. Everything else in phases 9–10 can be checked
-  against AW; this can only be played.
+  ⚠️ **`directionalMultiplier` is still absent from the formula**, not pinned in
+  it — 10b adds the term rather than changing a 1 to a variable.
 
-  ⚠️ **Tune it head-on first, then add the directional term.** Two dials in one
-  formula cannot be read apart — every observation would be adjusting both.
-
-  ⚠️ **There is no `unitDied` event**, and this entry used to say a successful
-  charge emits one. 9f settled it: `health: 0` inside `battleResolved` is the
-  marker, said once, so a flag beside the number cannot disagree with it — which
-  is what lets a charge be an ordinary `battleResolved` with no special case in
-  the reducer. The two events are `battleResolved` and `unitMoved`.
-
-  ⚠️ **And their order is load-bearing.** Approach `unitMoved`, then
-  `battleResolved` taking the defender to zero, then a one-step `unitMoved` onto
-  the vacated tile. Displace before the kill and the attacker lands on an
-  occupied tile, which breaks invariant 9's *makes sense against the state
-  immediately before it*. ⚠️ That is **two `unitMoved` for one unit in one
-  batch**, which no client code has seen: `previewMove` and `playEvents` both
-  assume one walk per unit per batch.
-
-#### What the codebase already says about 10a
-
-  ⚠️ **`entryCost` refuses the very tile charge has to ask about.** The rule is
-  *the attacker must be able to enter the target's tile*, and `entryCost` answers
-  `is held by an enemy` for exactly that tile. Charge cannot call it, and
-  duplicating the terrain lookup is the one-rule-two-spellings shape this
-  codebase has corrected repeatedly. Split out the terrain-passability question
-  and have `entryCost` call it too.
-
-  ⚠️ **`refuseAttack` measures the range band; charge is contact.** Infantry
-  reaches two, so reusing it would permit a "charge" from two tiles off. Cavalry's
-  `{1,1}` coincides with contact only by accident.
-
-  ⚠️ **`canCharge` is `canFire`'s twin**, and 9.9 built the pattern: ask the rule
-  that will refuse the click, never the tile set, so the menu row and the click
-  cannot disagree.
-
-  ⚠️ **Making `Rolls` a discriminated union looks like it contradicts its own
-  comment**, which says deciding what to roll before rolling is the coupling that
-  keeping RNG on the server exists to avoid. It does not: the attack *kind* comes
-  from the **command**, not from the rules, so the server knows it before it
-  rolls. Worth writing down rather than rediscovering.
-
-  ⚠️ **9j's victory fold needs no change.** It folds whatever events resolution
-  produced, so a charge that kills the last unit ends the game for free.
-
-  ⚠️ **9.9 leaves the interaction nothing to design.** A third menu row, one tile
-  set, and the pin-then-confirm gesture inherited from firing. The overlay
-  conflict that would have existed — charge tiles blending with attack tiles at
-  the same height — cannot arise, because no two modes are ever lit together.
-
-  ⚠️ **`attackSide` is built, tested, and returns `flank` to nobody.** Charge is
-  the reader it was written for.
-
-#### Three decisions 10a cannot make for itself
-
-  ⚠️ ~~**Which direction does repel scaling run?**~~ ✅ **Settled** — see *Charge*
-  above. A flat cost plus `floor((roll − chance) / 10)`, and `Rolls` gains a
-  single `{ charge }` member because the repel reuses the roll that decided
-  success.
-
-  ⚠️ ~~**Which two unit types can charge?**~~ ✅ **Infantry and cavalry.**
-  Artillery has no row, which is how "cannot charge" is said — a `Partial` whose
-  missing key is the rule, rather than a `canCharge` flag on the catalog saying
-  the same thing a second time. Any unit can still be a *target*. ⚠️ This was
-  already answered in *The first cut*, which prints the table with two rows and
-  says "artillery has no row" — and was raised here as open anyway, because the
-  spec above describes the table's *shape* and never points at the section
-  holding its values. Worth knowing the two halves of a table live apart.
-
-  ⚠️ ~~**Does 10a ship in one piece or two?**~~ ✅ **Two** — see the split below.
-  Twelve untuned numbers with no reference behaviour, and the tuning advice is to
-  move one dial at a time; splitting is what makes that literal rather than a
-  note to be careful about.
-
-- ~~**A facing marker on the board.**~~ ❌ **Declined**, not deferred. 9i moved a
-  ground chevron here on the grounds that nothing read facing yet; 9k then made a
-  rear shot go unanswered, so the premise expired — and the conclusion survived
-  it anyway. **`setUnitFacing` rotates the model, so facing is already drawn**,
-  and a chevron would be a second drawing of a fact the piece already shows.
-
-  ⚠️ Worth keeping if it is ever reopened: the case *for* one was never about
-  your own unit, which is under the cursor and unambiguous. It was about reading
-  an **enemy's** facing at a glance across the board, which is the thing a
-  flanking decision actually needs. If circling for the rear ever feels like
-  guesswork in play, that is the symptom, and the fix is a marker rather than a
-  camera change.
+  ⚠️ **A browser found what the tests did not**: aiming a *charge* showed the
+  *fire* forecast, because `attackForecast` computed damage without asking which
+  mode it was in. The panel had been specified to show exact odds and was not
+  built that way. Pinned by a test now, but the renderer has no unit coverage and
+  this was one layer above it — the lesson is that a specified-but-unbuilt
+  surface reads as done until something looks at it.
 
 - **10b** ⬜ **The directional term.** `FLANK_MULTIPLIER` and `REAR_MULTIPLIER`
   wired into the threshold, which is `attackSide`'s second reader and the first
