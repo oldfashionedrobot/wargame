@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'bun:test';
 import { resolveAction, validateCommand } from './action';
 import { makeState, route } from './testing';
-import type { Command } from './types';
+import type { Command, MoveCommand } from './types';
 
 const at = (col: number, row: number) => ({ col, row });
 
 // b1 starts at (0,0). A real route, not an endpoint pair -- validatePath
 // walks every step in 6c, so a fixture describing a straight jump would be
 // describing a move no client can make.
-const to = (col: number, row: number): Command => ({
+// ⚠️ `MoveCommand`, not `Command`. Spreading a *union* and adding `actor`
+// produces something assignable to neither member, which is what the smuggled-
+// actor test below needs to build.
+const to = (col: number, row: number): MoveCommand => ({
   type: 'move',
   unitId: 'b1',
   path: route({ col: 0, row: 0 }, { col, row }),
+  facing: 'north',
 });
 
 /** validateCommand is the only Action constructor, so tests go through it too. */
@@ -34,7 +38,12 @@ describe('validateCommand', () => {
   });
 
   it('refuses a unit that does not exist', () => {
-    const ghost: Command = { type: 'move', unitId: 'ghost', path: [{ col: 0, row: 0 }] };
+    const ghost: Command = {
+      type: 'move',
+      unitId: 'ghost',
+      path: [{ col: 0, row: 0 }],
+      facing: 'north',
+    };
     expect(validateCommand(state, ghost, 'blue')).toEqual({
       ok: false,
       reason: 'unit not found',
@@ -42,7 +51,9 @@ describe('validateCommand', () => {
   });
 
   it('refuses an empty path', () => {
-    expect(validateCommand(state, { type: 'move', unitId: 'b1', path: [] }, 'blue')).toEqual({
+    expect(
+      validateCommand(state, { type: 'move', unitId: 'b1', path: [], facing: 'north' }, 'blue'),
+    ).toEqual({
       ok: false,
       reason: 'path is empty',
     });
@@ -70,7 +81,12 @@ describe('validateCommand', () => {
       { id: 'b1', col: 0, row: 0 },
       { id: 'r1', col: 5, row: 5, owner: 'red' },
     ]);
-    const command: Command = { type: 'move', unitId: 'r1', path: route(at(5, 5), at(5, 4)) };
+    const command: Command = {
+      type: 'move',
+      unitId: 'r1',
+      path: route(at(5, 5), at(5, 4)),
+      facing: 'north',
+    };
     expect(validateCommand(mixed, command, 'blue')).toEqual({
       ok: false,
       reason: 'that unit is not yours',
@@ -80,7 +96,12 @@ describe('validateCommand', () => {
   // A client that picks destinations from `reachable` and paths from `pathTo`
   // cannot produce these; anything that does is broken, hostile, or stale.
   it('refuses a path that jumps rather than walks', () => {
-    const jump: Command = { type: 'move', unitId: 'b1', path: [at(0, 0), at(0, 2)] };
+    const jump: Command = {
+      type: 'move',
+      unitId: 'b1',
+      path: [at(0, 0), at(0, 2)],
+      facing: 'north',
+    };
     expect(validateCommand(state, jump, 'blue')).toMatchObject({
       ok: false,
       reason: expect.stringContaining('jumps'),
@@ -88,7 +109,12 @@ describe('validateCommand', () => {
   });
 
   it('refuses a path that does not start where the unit is', () => {
-    const elsewhere: Command = { type: 'move', unitId: 'b1', path: route(at(2, 2), at(2, 3)) };
+    const elsewhere: Command = {
+      type: 'move',
+      unitId: 'b1',
+      path: route(at(2, 2), at(2, 3)),
+      facing: 'north',
+    };
     expect(validateCommand(state, elsewhere, 'blue')).toEqual({
       ok: false,
       reason: 'path does not start at the unit',
@@ -137,6 +163,9 @@ describe('resolveAction', () => {
     expect(moved).toEqual({
       type: 'unitMoved',
       unitId: 'b1',
+      // ⚠️ Asserted, not omitted. Leaving it out made this pass for any facing
+      // at all -- invisible while these files were outside every program.
+      facing: 'north',
       // Every step, not just the destination: the renderer walks these one
       // tween per tile.
       path: [

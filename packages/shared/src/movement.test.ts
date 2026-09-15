@@ -3,6 +3,7 @@ import { exploreMovement, validatePath } from './movement';
 import { makeState, route, unitAt } from './testing';
 import type { UnitSpec } from './testing';
 import type { Coordinate, GameState } from './types';
+import type { MovementType } from './data/unitTypes';
 
 const has = (tiles: Coordinate[], col: number, row: number) =>
   tiles.some((t) => t.col === col && t.row === row);
@@ -12,8 +13,15 @@ const at = (col: number, row: number): Coordinate => ({ col, row });
 // The budget and movement type are arguments to the search, not properties of
 // the fixture -- so these tests state the numbers they are about and stay
 // unaffected by tuning any unit type in the catalog.
-const explore = (state: GameState, id: string, movementRange = 3, movementType = 'foot' as const) =>
-  exploreMovement(state, unitAt(state, id), movementRange, movementType);
+// ⚠️ Typed `MovementType`, not `'foot' as const` -- the assertion narrowed the
+// *parameter* to a single literal, so every call passing 'wheels' or 'horse' was
+// a type error nobody saw while these files were outside every program.
+const explore = (
+  state: GameState,
+  id: string,
+  movementRange = 3,
+  movementType: MovementType = 'foot',
+) => exploreMovement(state, unitAt(state, id), movementRange, movementType);
 
 const reachable = (state: GameState, id: string, movementRange = 3) =>
   explore(state, id, movementRange).reachable;
@@ -207,9 +215,9 @@ describe('exploreMovement: pathTo', () => {
 // client picking destinations from `reachable` and paths from `pathTo`
 // cannot trip them.
 describe('validatePath', () => {
-  const board = (map: string[] | number, units: UnitSpec[]) => {
+  const board = (map: Parameters<typeof makeState>[0], units: UnitSpec[]) => {
     const state = makeState(map, units);
-    return (path: Coordinate[], range = 3, type = 'foot' as const) =>
+    return (path: Coordinate[], range = 3, type: MovementType = 'foot') =>
       validatePath(state, unitAt(state, 'b1'), path, range, type);
   };
 

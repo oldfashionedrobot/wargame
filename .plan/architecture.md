@@ -1219,13 +1219,23 @@ programs. `shared` emits nothing. `strict`, `noUnusedLocals`, `noUnusedParameter
 and its source is checked inside the two programs that import it.
 
 The root `tsconfig.json` is a solution file over **three** projects: `server`,
-`client`, and `shared/tsconfig.scripts.json`. ⚠️ That third one covers
-`scripts/` **alone**, with its own `types: ["node"]` for `console` — which is
-how a directory of `shared`'s can be typechecked without putting node or bun
-types anywhere near the rulebook. Types are per-program, so `src`'s config is
-untouched and purity is unaffected. It needs no `composite: true` and no new
-dependency, and it could not have been added before the first script existed:
-an `include` matching an empty directory is `TS18003` and a non-zero exit.
+`client`, and `shared/tsconfig.dev.json`. ⚠️ That third one covers everything in
+`shared` that is **not the rulebook** — `scripts/` and `src/**/*.test.ts` — with
+its own `types: ["bun"]`, which is what gives the harness `console` and the
+tests `bun:test`.
+
+⚠️ **Types are per-program, so this does not weaken invariant 2.** `src`'s own
+config is untouched, and purity is enforced by the **client** program, which
+also checks `src` and has no node or bun globals at all. Giving test files bun
+types cannot let `process.env` into the rulebook, because the client still
+rejects it.
+
+⚠️ It could not have existed before the first script did: an `include` matching
+an empty directory is `TS18003` and a non-zero exit. And **`@types/bun` is now a
+devDependency of `shared`** — the one package whose defining property is having
+none. Paid deliberately: with the test files outside every program, a helper
+missing a required field and seven calls left at the wrong arity all compiled,
+and *twenty* errors surfaced the moment they were covered.
 
 ## Deployment
 

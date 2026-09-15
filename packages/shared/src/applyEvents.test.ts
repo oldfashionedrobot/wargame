@@ -23,6 +23,7 @@ const move = (unitId: string, from: Coordinate, to: Coordinate): Command => ({
   type: 'move',
   unitId,
   path: route(from, to),
+  facing: 'north',
 });
 
 const battle = (

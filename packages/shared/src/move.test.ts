@@ -61,7 +61,12 @@ describe('validateMove', () => {
   // Ownership is checked before the route, so an opponent's unit is refused as
   // theirs rather than for whatever is wrong with the path.
   it('checks who may act before it checks the route', () => {
-    const nonsense: MoveCommand = { type: 'move', unitId: 'r1', path: [at(9, 9)] };
+    const nonsense: MoveCommand = {
+      type: 'move',
+      unitId: 'r1',
+      path: [at(9, 9)],
+      facing: 'north',
+    };
     expect(validateMove(board, nonsense)).toBe('that unit is not yours');
   });
 });
