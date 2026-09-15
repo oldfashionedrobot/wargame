@@ -889,7 +889,12 @@ The *classifier* is now proven, so what is unknown is only the multipliers —
 still worth tuning head-on first, but for the smaller reason that two dials in
 one formula cannot be read apart, not because the geometry might be wrong.
 
-- **10a** Charge, `CHARGE_THRESHOLD`, and its own tuning pass. It gets its own
+- **10a** ⬜ **Charge, head-on.** `directionalMultiplier` is **pinned at 1** and
+  `attackSide` stays unread — everything else lands: the resolver, the events,
+  the constants, the menu row, the tile set, and a tuning pass on
+  `CHARGE_THRESHOLD` and `CHARGE_REPEL` against a formula with one unknown in it.
+
+  It gets its own
   step because it is the riskiest mechanic in the game: **the one part of combat
   with no reference behaviour to check against**, an untuned threshold per
   matchup, an untuned failure-damage function, and a success case that emits two
@@ -963,10 +968,10 @@ one formula cannot be read apart, not because the geometry might be wrong.
   spec above describes the table's *shape* and never points at the section
   holding its values. Worth knowing the two halves of a table live apart.
 
-  ⚠️ **Does 10a ship in one piece or two?** Roughly twelve untuned numbers with
-  no reference behaviour, and the tuning advice above is to move one dial at a
-  time. That reads like two steps — the mechanic head-on, then the directional
-  term — which would push the cutaway to 10c.
+  ⚠️ ~~**Does 10a ship in one piece or two?**~~ ✅ **Two** — see the split below.
+  Twelve untuned numbers with no reference behaviour, and the tuning advice is to
+  move one dial at a time; splitting is what makes that literal rather than a
+  note to be careful about.
 
 - ~~**A facing marker on the board.**~~ ❌ **Declined**, not deferred. 9i moved a
   ground chevron here on the grounds that nothing read facing yet; 9k then made a
@@ -981,7 +986,22 @@ one formula cannot be read apart, not because the geometry might be wrong.
   guesswork in play, that is the symptom, and the fix is a marker rather than a
   camera change.
 
-- **10b** ⬜ **The combat cutaway.** A view that takes over, shows both units,
+- **10b** ⬜ **The directional term.** `FLANK_MULTIPLIER` and `REAR_MULTIPLIER`
+  wired into the threshold, which is `attackSide`'s second reader and the first
+  thing to consult its `flank` case.
+
+  ⚠️ **Separate so that each observation moves one dial.** Front-on charge until
+  the curve feels right, then the directional term against a curve that already
+  does — otherwise every reading is adjusting two untested numbers at once, and
+  neither can be told apart from the other.
+
+  ⚠️ **A base value wants checking at all three multipliers, not head-on alone.**
+  A threshold that reads reasonable front-on can saturate at the flank and make
+  the rear distinction dead weight — `cavalry → artillery 60` already runs
+  60 / 90 / automatic, which is deliberate and is the shape to watch for
+  accidentally elsewhere.
+
+- **10c** ⬜ **The combat cutaway.** A view that takes over, shows both units,
   plays the exchange, and hands back — AW's battle screen. ⚠️ **Here rather than
   in phase 9 because half of it is charge**: building it earlier means building
   half and extending it, and the missing half is the one with no reference
