@@ -98,4 +98,56 @@ export interface TurnEndedEvent {
   nextPlayer: PlayerId;
 }
 
-export type GameEvent = UnitMovedEvent | TurnEndedEvent;
+/** One side of a battle, and what it has left afterwards. */
+export interface BattleParticipant {
+  unitId: string;
+  /** Resulting, never damage dealt -- invariant 9. Zero means it leaves the board. */
+  health: number;
+}
+
+/**
+ * One exchange, resolved. **Not one event per effect.**
+ *
+ * ⚠️ Split events when the parts are independently meaningful; keep them
+ * together when they are one fact. A charge's displacement is a separate
+ * `unitMoved`, because a move is a fact on its own. But a counter-attack exists
+ * *only because* the attack happened -- it is half of one fact, and splitting it
+ * would leave the client inferring which damage belongs to which exchange from
+ * position in a batch, which a multi-action catch-up breaks.
+ *
+ * Invariant 9 holds: both healths are absolute, applying it twice is a no-op,
+ * and it makes sense against the state immediately before it. The invariant
+ * forbids **deltas** and **interdependence**, not cohesion.
+ *
+ * ⚠️ There is no `unitDied` and no `died` flag: `health: 0` is the marker, said
+ * once, and a flag beside the number could disagree with it.
+ */
+export interface BattleResolvedEvent {
+  type: 'battleResolved';
+  /**
+   * ⚠️ Carried because the client never sees the `Action`. A volley and a
+   * charge end in the same arithmetic and look nothing alike, and the kind
+   * lives only in the command.
+   */
+  kind: 'volley' | 'charge';
+  attacker: BattleParticipant;
+  defender: BattleParticipant;
+  /**
+   * The defender hit back -- a counter, or a charge repelled.
+   *
+   * ⚠️ **A decision, not a duplicate.** It appears nowhere else, and
+   * reconstructing it means re-running the counter predicate against a rebuilt
+   * state. Three reasons that is worth a boolean: the log outlives the rules
+   * (charge already ignores the counter rule, and a later change would make a
+   * replay describe an old match with new rules); a client deriving it would
+   * work from a reconstruction, correct only if its local fold is right; and
+   * `resolutions.events` is a consumer the moment this is written, where a row
+   * that *says* the defender answered is self-describing.
+   *
+   * ⚠️ It cannot contradict the healths. `true` with the attacker's health
+   * unchanged means they fired and it did nothing, which is a real outcome.
+   */
+  answered: boolean;
+}
+
+export type GameEvent = UnitMovedEvent | TurnEndedEvent | BattleResolvedEvent;

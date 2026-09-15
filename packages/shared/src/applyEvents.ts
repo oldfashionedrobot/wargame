@@ -50,6 +50,31 @@ function applyEvent(state: GameState, event: GameEvent): GameState {
       };
     }
 
+    case 'battleResolved': {
+      // ⚠️ **A unit at zero health leaves the board**, said once, here. That is
+      // why there is no `unitDied` event and no `died` flag: `health: 0` is the
+      // marker, and a flag beside the number could disagree with it.
+      //
+      // The filter is deliberately broader than "whoever this event killed" --
+      // nothing else can be sitting at zero, since anything that reached it was
+      // removed by the event that put it there. Stating the rule rather than
+      // the special case is what keeps applying this twice a no-op.
+      const after = new Map([
+        [event.attacker.unitId, event.attacker.health],
+        [event.defender.unitId, event.defender.health],
+      ]);
+
+      return {
+        ...state,
+        units: state.units
+          .map((unit): Unit => {
+            const health = after.get(unit.id);
+            return health === undefined ? unit : { ...unit, health };
+          })
+          .filter((unit) => unit.health > 0),
+      };
+    }
+
     case 'turnEnded':
       // Only the incoming player's units refresh; the outgoing player's stay
       // spent, which is what stops a unit acting twice across the boundary.
@@ -61,10 +86,15 @@ function applyEvent(state: GameState, event: GameEvent): GameState {
         ),
       };
 
-    default:
-      // Same reasoning as applyAction's default: events arrive as JSON from the
-      // database and over the wire, where types guarantee nothing. Ignoring an
-      // unknown event would silently desync a replay, so refuse loudly.
-      throw new Error(`unknown event type: ${String((event as GameEvent).type)}`);
+    default: {
+      // ⚠️ Two jobs. `never` makes a new member of the union a **compile error
+      // here** until it is handled -- without it, adding an event type
+      // typechecks cleanly and silently falls through to the throw below, which
+      // is the one place that would never be noticed. The throw is still
+      // needed: events arrive as JSON from the database and over the wire,
+      // where types guarantee nothing, and ignoring one would desync a replay.
+      const unhandled: never = event;
+      throw new Error(`unknown event type: ${String((unhandled as GameEvent).type)}`);
+    }
   }
 }

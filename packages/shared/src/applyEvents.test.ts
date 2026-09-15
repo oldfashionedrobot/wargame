@@ -25,6 +25,73 @@ const move = (unitId: string, from: Coordinate, to: Coordinate): Command => ({
   path: route(from, to),
 });
 
+const battle = (
+  attacker: [string, number],
+  defender: [string, number],
+  answered = false,
+  kind: 'volley' | 'charge' = 'volley',
+): GameEvent => ({
+  type: 'battleResolved',
+  kind,
+  attacker: { unitId: attacker[0], health: attacker[1] },
+  defender: { unitId: defender[0], health: defender[1] },
+  answered,
+});
+
+describe('applyEvents, battleResolved', () => {
+  const state = makeState(8, [
+    { id: 'b1', col: 0, row: 0 },
+    { id: 'b2', col: 1, row: 0 },
+    { id: 'r1', col: 2, row: 0, owner: 'red' },
+  ]);
+
+  it('writes both healths and leaves everyone else alone', () => {
+    const next = applyEvents(state, [battle(['b1', 91], ['r1', 44], true)]);
+    expect(unitAt(next, 'b1').health).toBe(91);
+    expect(unitAt(next, 'r1').health).toBe(44);
+    expect(unitAt(next, 'b2').health).toBe(unitAt(state, 'b2').health);
+  });
+
+  // ⚠️ The rule stated once: zero health leaves the board. It is why there is no
+  // `unitDied` event -- a second event carrying the same fact could disagree
+  // with the number beside it.
+  it('removes a unit the battle took to zero', () => {
+    const next = applyEvents(state, [battle(['b1', 100], ['r1', 0])]);
+    expect(next.units.map((unit) => unit.id)).toEqual(['b1', 'b2']);
+  });
+
+  it('removes the attacker too, when a counter kills it', () => {
+    const next = applyEvents(state, [battle(['b1', 0], ['r1', 70], true)]);
+    expect(next.units.map((unit) => unit.id)).toEqual(['b2', 'r1']);
+  });
+
+  // Invariant 9: absolute values, so at-least-once delivery is safe and a
+  // replaying client needs no exactly-once bookkeeping.
+  it('is a no-op applied twice, whether or not anyone died', () => {
+    const survived = battle(['b1', 80], ['r1', 30], true);
+    expect(applyEvents(state, [survived, survived])).toEqual(applyEvents(state, [survived]));
+
+    const fatal = battle(['b1', 100], ['r1', 0]);
+    expect(applyEvents(state, [fatal, fatal])).toEqual(applyEvents(state, [fatal]));
+  });
+
+  // Independently applicable: it makes sense against the state immediately
+  // before it, with no knowledge of siblings -- which is what lets a log replay
+  // to any point and a client fold as it animates.
+  it('applies against a state where the attacker has already moved', () => {
+    const afterMove = applyEvents(state, [moved('b1', [0, 0], [0, 2])]);
+    const next = applyEvents(afterMove, [battle(['b1', 100], ['r1', 55])]);
+    expect(unitAt(next, 'b1').position).toEqual({ col: 0, row: 2 });
+    expect(unitAt(next, 'r1').health).toBe(55);
+  });
+
+  it('carries kind and answered without either touching state', () => {
+    const volley = applyEvents(state, [battle(['b1', 90], ['r1', 40], true, 'volley')]);
+    const charge = applyEvents(state, [battle(['b1', 90], ['r1', 40], false, 'charge')]);
+    expect(volley).toEqual(charge);
+  });
+});
+
 describe('applyEvents', () => {
   const state = makeState(8, [
     { id: 'b1', col: 0, row: 0 },
