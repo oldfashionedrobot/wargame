@@ -479,8 +479,17 @@ damage   = floor(floor(base × band(attackerHP) / 10)
            + luck                           // last, flat, unscaled
 ```
 
-⚠️ **Both health terms read the ten-point band, never the raw value**, which is
-what AW does and is load-bearing rather than a rounding preference. Health is
+**Health is stored and shown 0–100, where AW stores 100 and displays 1–10.**
+⚠️ That display was a GBA screen constraint, and inheriting it would mean
+permanently explaining why a "9 HP" unit died to 15 damage. Three things people
+know AW by follow from *its* choice and not from ours: exact health cannot be
+read off the board, chip damage accumulates invisibly until a bar drops, and
+counters reliably under-deliver against the preview because the defender answers
+on real internal HP while the preview used the rounded display.
+
+⚠️ **Diverging on the display does not mean diverging on the arithmetic.** Both
+health terms in the formula read the ten-point band, never the raw value — which
+is what AW does, and is load-bearing rather than a rounding preference. Health is
 stored and displayed 0–100 here, but feeding raw health to the formula makes a
 unit on one point attack at 1% instead of 10%, and the floors swallow it:
 measured, cavalry at 4 health or less dealt **zero** to infantry in forest even
@@ -488,6 +497,13 @@ on a maximum roll, so two wounded units could be permanently unable to kill each
 other. AW has no minimum-damage rule and needs none — the banding is what it has
 instead. The cost is accepted: a unit at 91 health and one at 100 fight
 identically while the bar shows two different numbers.
+
+⚠️ **Do not port AW's published line literally.** It divides HP by 10 because
+its HP is 1–10; taken at face value here, 4 stars against a full-health defender
+computes `100 − 4 × 10 × 10 = −300`, and mountains would *heal* whatever stood on
+them. `baseDamage` itself needs no rescaling, because it is a percentage of a
+full target in both schemes — which is what lets AW's matchup numbers transfer
+unchanged. Only the HP terms move.
 
 ⚠️ **Luck is added last and flat.** It is therefore worth proportionally *more*
 the weaker the attacker is — nine points on a crippled volley of 18 is half again

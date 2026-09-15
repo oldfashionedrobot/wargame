@@ -11,88 +11,6 @@ behaviour.
 
 Modelled on Advance Wars' actual mechanics. What follows is the reference behaviour with sources, then where we intend to diverge — kept together because the divergences only make sense against what they're diverging from.
 
-### The damage formula
-
-Stripping CO modifiers (which we don't have), AW reduces to this — ⚠️ **written in AW's units, where HP is the displayed 1–10 and not our 0–100. Do not implement this line:**
-
-```
-damage = baseDamage × (attackerHP / 10) × ((100 − terrainStars × 10 × defenderHP / 10) / 100)
-```
-
-**Ours** — the only version to build from:
-
-```
-band(hp) = ceil(hp / 10)                      // 1..10, never 0 while alive
-damage   = floor(floor(baseDamage × band(attackerHP) / 10)
-                 × (100 − terrainStars × band(defenderHP)) / 100)
-           + luck                              // last, flat, unscaled
-```
-
-⚠️ **Both HP terms read the ten-point band, not the raw value — and this is load-bearing, not a rounding preference.** AW's formula reads *displayed* HP, which is `ceil(internal / 10)`, so a unit on 1 internal point still attacks at 1/10 strength. We store and display 0–100 (see the next section) but the formula still reads the band, because feeding it raw health makes a living unit attack at 1% and the floors swallow it: **measured, cavalry at 4 health or less dealt zero to infantry in forest even on a maximum roll.** Two wounded units could then be permanently unable to kill each other, and elimination is the only way a match ends.
-
-⚠️ **AW has no minimum-damage rule and needs none** — the banding *is* the mechanism. Zero stays reachable at the extremes, which is faithful; it is just no longer a predictable band. A `Math.max(1, …)` clamp was the alternative and was rejected: it invents a rule to paper over dropping one AW already had.
-
-⚠️ **One rule, both sides.** Applying the band to the attacker alone would be half of AW's formula with no principle choosing which half. The cost is real and is accepted: a unit at 91 health and one at 100 fight identically while the bar shows two different numbers — AW's arithmetic without AW's rounded display to hide it.
-
-Taking the AW line literally is a separate trap and not a rounding difference either: at 4 stars with a full-health defender, `100 − 4 × 10 × 10 = −300`, so mountains would *heal* the unit standing on them. `baseDamage` stays a percentage of a full-health target, exactly as AW's tables give it, so the matchup numbers transfer unchanged.
-
-Every step rounds down. Three things fall out of it:
-
-- **A wounded attacker hits softer** — by ten-point band, not smoothly. Four of them can share a step, and the bar will show four different numbers while they fight identically.
-- **A wounded defender loses its cover.** Terrain defence scales by *defender* HP, so a 4-star mountain protects a full-health unit far more than a nearly-dead one. This accelerates kills and stops damaged units turtling on good ground.
-- **Terrain is not a minor modifier.** Four stars at full health is a 40% reduction. Tuning a matchup table with defence stubbed to zero would produce numbers to throw away — which is why terrain comes first.
-
-**Luck** adds 0 to +9, and needs **no rescaling** — the 0–9 is already in our units, because `baseDamage` is a percentage in both schemes.
-
-⚠️ **It is added last, flat, and scaled by nothing.** This doc twice said the opposite — that luck folds into the base before the health multiplier and therefore narrows as an attacker weakens. A [ROM-derived reconstruction](https://github.com/geno55/advance-wars-advisor) of the GBA engine finds luck applied *after* every multiplication and truncation, as a plain addition of true hitpoints. Wikis describing luck as scaling with HP disagree with the ROM, and the ROM wins.
-
-⚠️ **The difference is not cosmetic, and it points the other way from the old claim.** Folded in, a weak attacker's luck shrinks with it. Added last, **luck is worth proportionally more the weaker the attacker is** — at the current table a full-strength volley of 27 carries the same ±9 as a crippled one of 18, which is half again as much of it. A nearly-dead unit's best roll is most of its remaining threat, and damaged units are *swingier*, not steadier.
-
-#### ⚠️ Flat luck, measured — and why the alternative was refused
-
-Both formulas were built and compared cell by cell before keeping this one. **At full health they are indistinguishable** — one point apart, from rounding — so nothing about a healthy exchange turns on the choice. Hits-to-kill barely moves either: 6/4 against infantry with cavalry under both.
-
-They differ entirely at the bottom of the health scale:
-
-| cavalry → infantry, plains | full health | band 1 |
-|---|---|---|
-| flat (kept) | 18–27 | **1–10** |
-| folded in | 18–26 | **1–1** |
-
-⚠️ **Folding does not narrow luck at low health, it annihilates it.** `floor((20 + 9) × 1/10)` and `floor(20 × 1/10)` are both 2 — the integer divide swallows the whole roll. **There is no version where luck narrows but stays meaningful**: the two options are a full lottery and nothing at all, and the middle does not exist.
-
-**What luck buys, and its price.** The governing ratio is `LUCK_MAX ÷ (base/10)`, so a roll is worth 1.2 bands of health against artillery's 75 and 4.5 against cavalry's 20. Measured as *how many bands of health advantage a good roll overturns*:
-
-| | overturn, flat | folded |
-|---|---|---|
-| artillery → infantry (75) | 1 | 1 |
-| infantry → infantry (30) | 3 | 2 |
-| cavalry → infantry (20) | **5** | 3 |
-
-A cavalry unit at 10 health rolling well matches one at 60 health rolling badly. ⚠️ **Note this was made worse by widening the damage table** — the old floor of 40 put luck at 2.25 bands, the new floor of 20 puts it at 4.5. Spreading damage narrowed reliability.
-
-**Kept anyway, because the texture is worth it.** Reliability becomes a unit trait nobody designed: artillery is precise, infantry moderate, cavalry a lottery. Carbines from horseback being erratic is right, and it gives three units a second axis of difference beyond raw damage. ⚠️ A crippled unit can never match a *full-health* one in any matchup — band 1 at its best is 10 against a full-health worst of 18 — so the swing is between neighbours on the scale, not a reversal of it.
-
-⚠️ **If five bands ever proves too much, the lever is `LUCK_MAX`, not the ordering.** Lowering it turns overturn down everywhere at once and keeps the reliability texture; folding the roll back in only moves the bottom of the scale, and moves it to zero.
-
-### HP representation — where we diverge ⚠️
-
-**AW stores 100 internally and displays 1–10.** A displayed "9" is anywhere from 81 to 90. Three consequences people know the game by:
-
-- You cannot read exact health off the board.
-- **Counter-attacks reliably under-deliver** versus the preview, because the defender counters on its real internal HP while the preview used the rounded display.
-- Chip damage accumulates invisibly until a bar drops.
-
-**We keep 100 internal and display 100.** The 1–10 display was a GBA screen constraint, and inheriting it means permanently explaining why a "9 HP" unit died to 15 damage. The counter-attack surprise is arguably good texture, but it should be a choice rather than an inherited artefact.
-
-This is upstream of the formula, the preview, the health bar, and the tuning harness — which is why it's settled here rather than discovered later.
-
-### Terrain defence
-
-Each star is 10% reduction *at full defender HP*. **The values live in the terrain table (`architecture.md`) and this section does not restate them**, because it used to and drifted: the old table here was AW's, listing `Woods` (our `forest`), plus `City` and `HQ`, which are buildings the roadmap puts out of scope for v1. A second table in a second vocabulary is exactly how a defence value gets tuned in one place and read from the other.
-
-For reference while reading the formula above: our six terrains run 0 stars (road, bridge, river) through 1 (plains), 2 (forest), to 4 (mountain).
-
 ### The numbers, and the shape they have to take
 
 ⚠️ **No attack stat and no defence stat, following AW** — which has neither. A
@@ -285,16 +203,6 @@ shooting and taking a counter it might not survive. It is also the only thing
 artillery can do to something that has reached it — `min: 2` means it cannot
 fire, and it has no charge.
 
-### Counter-attacks
-
-**Iff the attacker is inside the defender's own range**, and the defender survives. One predicate, no categories. The defender counters using its post-damage HP.
-
-⚠️ **AW's rule looks categorical and is not.** It reads "both units must be direct", but that is equivalent to *the attacker is adjacent and the defender can fight at adjacency* — because in AW a direct unit can only ever attack from range 1, so "direct attacker" and "adjacent attacker" are the same statement. Days of Ruin's Anti-Tank is the proof: indirect out to three, but **no minimum range**, and it counters. Under the category reading that needs a special case; under the geometric one it falls out.
-
-⚠️ Ours differs from AW's in exactly one case, deliberately: **counter-battery**. Two guns at a range each can reach answer each other, which AW forbids and history does not. Artillery caught at one tile still cannot answer, because 1 is not in its band — the property worth keeping survives without a rule naming it.
-
-**Not a special case.** A counter is `computeDamage` applied in the other direction with the defender's reduced HP — the same function, called twice. If it becomes a branch inside the attack resolver rather than a second call, that's the smell.
-
 ### Damage preview
 
 The sharp edge of invariant 8, and AW shows one before you commit. The client runs the same `computeDamage` the server will, with the roll set to zero.
@@ -399,8 +307,9 @@ That property costs nothing to keep and is what 10b will need.
 base, hidden at full health, extinguishing rather than dimming — bands are
 discrete, so a segment going dark is honest where a fade would imply a
 continuum. ⚠️ Ten segments for ten bands means **the display cannot promise
-precision the rules do not have**, which is the question *HP representation* left
-open. AW shows a number on the board and keeps the bar for the cutaway; this is
+precision the rules do not have** — which is what keeping a 0-100 display while
+adopting AW's banded arithmetic would otherwise cost. See *Combat* in
+[`architecture.md`](architecture.md). AW shows a number on the board and keeps the bar for the cutaway; this is
 the same split with different furniture. An exact figure belongs to a
 selected-unit info panel, later.
 
@@ -437,18 +346,6 @@ same either way.
 precisely so a repelled charge and a countered volley can be told apart, since
 they end in identical arithmetic and look nothing alike.
 
-
-### Range — no categories at all
-
-```ts
-range: { min, max }
-```
-
-⚠️ **"Direct" and "indirect" do not exist here**, not even as a category that falls out of the numbers. They are AW's name for three properties that happen to move together in *its* roster — minimum range, whether you may move and fire, and whether you counter — and no AW unit breaks the correlation, so it is impossible to tell from behaviour which is causal.
-
-We decouple all three. **Everything may move and fire**, so `canMoveAndAttack` does not exist. **Counters are geometric**, so nothing tests a category. What is left is two numbers: a gun with `min: 2` is *described*, and no branch anywhere asks what kind of unit it is.
-
-No line-of-sight system. AW never had one either.
 
 ### Charge
 
@@ -728,7 +625,8 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   ⚠️ Two decisions they forced are **not** there, because they are still
   forward-looking and stayed in this file: old matches are expendable until
   phase 11 (*Known compromises*), and luck's flat ordering with the
-  measurements behind it (*The damage formula*).
+  measurements behind it, which now live in *Combat* in
+  [`architecture.md`](architecture.md) and in `git log`.
 
 - **9f** ✅ **Shipped**, and gone from here: `MoveCommand` gains an optional
   `targetUnitId`, `battleResolved` joins the event union, `resolveAction` takes a
