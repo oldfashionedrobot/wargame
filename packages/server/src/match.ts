@@ -33,8 +33,13 @@ const LIST_LIMIT = 50;
  * ⚠️ **And no `rolls` column either.** Luck is added last and flat, so the roll
  * is recoverable from the log as `actualDamage − computeDamage(preState, …, 0)`
  * -- storing it would be storing something the log already contains.
+ *
+ * Exported only so it can be tested. `Math.random() * LUCK_MAX` instead of
+ * `* (LUCK_MAX + 1)` is a one-character bug that means **the best roll never
+ * happens** -- damage stays in a legal range, nothing throws, and nobody would
+ * find it. Three lines are worth four lines of test for that.
  */
-function rollLuck(): number {
+export function rollLuck(): number {
   return Math.floor(Math.random() * (LUCK_MAX + 1));
 }
 

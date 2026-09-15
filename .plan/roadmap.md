@@ -767,12 +767,20 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   1. `distance` in `coordinate.ts` — one function, used by everything after it
   2. the event and the reducer — pure, testable, no integration
   3. the command, its resolution, and the roll
-  4. `moveCommandFor` carrying a target — the only client change
+  4. **verify the chain end to end** — see below
+
+  ⚠️ **Step 4 was written as "`moveCommandFor` carrying a target" and that was
+  wrong**: nothing can call it with one until 9h, so it would have been an
+  unread parameter — the thing this phase has refused four times already. **The
+  client needs no change at all.** Both places that switch on an event type
+  handle a new member correctly: `animatedTiles` scores it zero, `playEvents`
+  skips it, and `syncUnits` moves the ring and removes the dead from state it
+  already reads.
 
   ⚠️ **9f ships unplayable**, and that is expected rather than a gap: nothing in
-  the UI can *name* a target until 9h. Verification is tests and a hand-made
-  request, not a browser. The ring will move when a battle resolves, because
-  `syncUnits` already sets it from state — no client work is needed for that.
+  the UI can *name* a target until 9h. So step 4 is verification — a hand-made
+  request against a real match, which is also the **only way 9e's removal branch
+  has ever run**.
 
   ⚠️ **Step 3 is the densest point in the phase and wants its own commit.** It is
   where `hasActed`, turn-ending and death first interact: a counter can kill the

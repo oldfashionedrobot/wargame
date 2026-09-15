@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { route } from '@vod/shared/testing';
 import type { Command } from '@vod/shared';
+import { LUCK_MAX } from '@vod/shared';
 import { createDb, migrate } from './db';
-import { createMatchStore } from './match';
+import { createMatchStore, rollLuck } from './match';
 import type { MatchStore } from './match';
 import { getMap } from './maps';
 import { createMatchState } from './matchState';
@@ -276,5 +277,28 @@ describe('storage guarantees', () => {
     const log = await store.since(id, 0);
     const folded = applyEvents(JSON.parse(rows[0].initial_state as string), log!.events);
     expect(folded).toEqual(JSON.parse(rows[0].current_state as string));
+  });
+});
+
+describe('rollLuck', () => {
+  // ⚠️ Statistical, but not flaky: at ten equally likely values, missing either
+  // end across two thousand draws has a probability of about 0.9^2000.
+  const draws = Array.from({ length: 2000 }, () => rollLuck());
+
+  it('only ever produces whole numbers', () => {
+    expect(draws.every(Number.isInteger)).toBe(true);
+  });
+
+  it('stays inside the luck band', () => {
+    expect(Math.min(...draws)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...draws)).toBeLessThanOrEqual(LUCK_MAX);
+  });
+
+  // ⚠️ The one that earns this suite. `Math.random() * LUCK_MAX` instead of
+  // `* (LUCK_MAX + 1)` keeps every value legal and simply never returns the
+  // best one -- an attack that can never roll well, with nothing to notice.
+  it('reaches both ends of it', () => {
+    expect(draws).toContain(0);
+    expect(draws).toContain(LUCK_MAX);
   });
 });

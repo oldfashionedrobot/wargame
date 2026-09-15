@@ -20,6 +20,22 @@ describe('parseCommand', () => {
       });
     });
 
+    // ⚠️ The field has to survive a parser whose whole job is building a fresh
+    // literal and discarding everything it does not recognise -- see "strips
+    // arbitrary extra properties" below, which is exactly the fate this would
+    // have had if `parseCommand` had not been widened.
+    it('a move carrying a target', () => {
+      expect(
+        parseCommand({ type: 'move', unitId: 'u1', path, facing: 'north', targetUnitId: 'r3' }),
+      ).toEqual({ type: 'move', unitId: 'u1', path, facing: 'north', targetUnitId: 'r3' });
+    });
+
+    it('a move with no target at all, which is every move before 9h', () => {
+      const parsed = parseCommand({ type: 'move', unitId: 'u1', path, facing: 'north' });
+      expect(parsed).not.toBeNull();
+      expect(Object.keys(parsed ?? {})).not.toContain('targetUnitId');
+    });
+
     it('an endTurn command', () => {
       expect(parseCommand({ type: 'endTurn' })).toEqual({ type: 'endTurn' });
     });
@@ -67,6 +83,15 @@ describe('parseCommand', () => {
     it('a move whose facing is not one of the four', () => {
       expect(parseCommand({ type: 'move', unitId: 'u1', path, facing: 'up' })).toBeNull();
       expect(parseCommand({ type: 'move', unitId: 'u1', path, facing: 0 })).toBeNull();
+    });
+
+    // ⚠️ Refused rather than dropped. Silently discarding a malformed target
+    // would turn an attack into a plain move: the command would succeed and do
+    // something the player never asked for.
+    it('a move whose target is present but not a string', () => {
+      expect(
+        parseCommand({ type: 'move', unitId: 'u1', path, facing: 'north', targetUnitId: 7 }),
+      ).toBeNull();
     });
 
     it('a path longer than MAX_PATH_STEPS', () => {
