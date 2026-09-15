@@ -210,7 +210,7 @@ export function enterMode(
   const destination = destinationOf(selection);
   const unit = getUnit(state, selection.unitId);
   if (kind === 'holding') {
-    return { ...selection, step: { kind: 'holding', tiles: facingTilesFor(state, destination) } };
+    return { ...selection, step: { kind: 'holding', tiles: neighboursOf(state, destination) } };
   }
   const moved = unit ? { ...unit, position: destination } : null;
   const tiles = !moved
@@ -277,7 +277,7 @@ function canAttack(state: GameState, selection: DestinationChosen, refuse: Refus
  * legal set.
  */
 function chargeTilesFor(state: GameState, unit: Unit, from: Coordinate): Coordinate[] {
-  return facingTilesFor(state, from).filter((tile) => {
+  return neighboursOf(state, from).filter((tile) => {
     const occupant = getUnitAt(state, tile);
     return occupant !== undefined && refuseCharge(state, unit, from, occupant.id) === null;
   });
@@ -310,19 +310,24 @@ function attackTilesFor(state: GameState, unit: Unit, from: Coordinate): Coordin
 }
 
 /**
- * The four tiles a unit may turn to look at, clipped to the board.
+ * The four orthogonal neighbours of a tile, clipped to the board.
+ *
+ * ⚠️ **Named for what it returns, not for who wants it.** It was
+ * `facingTilesFor` when facing was the only caller; charge then wanted the same
+ * shape for an unrelated reason -- the tiles it might reach -- and a charge
+ * asking `facingTilesFor` reads as a mistake. Two callers, one name for the
+ * thing itself.
  *
  * ⚠️ **Moved out of the renderer, which used to derive these from a single
  * coordinate.** Which tiles light is a question about the *selection*, not about
- * painting -- the renderer's job is to colour a list. It also means this logic
- * is testable for the first time: the renderer has no unit tests at all, being
- * WebGL, so "a unit on the top row has three choices" was asserted nowhere.
+ * painting -- the renderer's job is to colour a list. It also made this testable
+ * for the first time: the renderer has no unit tests at all, being WebGL, so "a
+ * unit on the top row has three choices" was asserted nowhere.
  *
- * Clipping belongs here rather than at the edge of the grid check, because a
- * facing that points off the board is a strictly worse choice than one that does
- * not, and offering it would be offering nothing.
+ * Clipping belongs here rather than in a caller, because neither a facing that
+ * points off the board nor a charge into it is a choice worth offering.
  */
-function facingTilesFor(state: GameState, around: Coordinate): Coordinate[] {
+function neighboursOf(state: GameState, around: Coordinate): Coordinate[] {
   const height = state.grid.length;
   const width = state.grid[0]?.length ?? 0;
   return [

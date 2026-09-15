@@ -303,12 +303,12 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
 
         // ⚠️ The predicate, not a bare `step.kind === 'firing'`. TypeScript
         // narrows `selection.step` on a nested discriminant but not `selection`
-        // itself, and `readFireClick` wants the whole thing -- so asking the
+        // itself, and `readAimClick` wants the whole thing -- so asking the
         // predicate does both jobs where the inline check does one and then
         // needs the predicate anyway.
         if (isAim(selection)) {
           // A second click on the pinned target is what fires it -- the same
-          // gesture a route uses, read before `readFireClick` for the same
+          // gesture a route uses, read before `readAimClick` for the same
           // reason: re-pinning the target onto itself is a wasted render and no
           // shot. Dispatch order, exactly like the route's.
           if (isAiming(selection) && coordinatesEqual(coordinate, selection.step.target.position)) {

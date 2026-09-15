@@ -52,7 +52,6 @@ export {
   chargeChance,
   chargeThreshold,
   computeDamage,
-  isChargeRoll,
   refuseAttack,
   refuseCharge,
   tilesInRange,

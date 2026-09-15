@@ -368,6 +368,21 @@ describe('resolveMove, charging', () => {
     expect(displacement.unitId).toBe('b1');
   });
 
+  // ⚠️ **The claim that charge being contact-only is load-bearing.** The command
+  // carries a facing pointing at the target, and the displacement is one step
+  // onto that same tile -- so "face the target" and "face the way you travelled"
+  // are necessarily the same direction, and no second decision is needed. A
+  // ranged charge would break that silently, which is why it is asserted rather
+  // than left as reasoning in a doc.
+  it('ends facing the way it charged, on both events', () => {
+    const events = play(field(30), 0);
+    const [approach, , displacement] = events;
+    if (approach.type !== 'unitMoved' || displacement.type !== 'unitMoved')
+      throw new Error('shape');
+    expect(approach.facing).toBe('north');
+    expect(displacement.facing).toBe('north');
+  });
+
   it('emits no displacement when the charge is repelled', () => {
     const state = field(100);
     const events = play(state, 99);

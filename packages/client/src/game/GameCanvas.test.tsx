@@ -297,6 +297,41 @@ describe('GameCanvas', () => {
     expect(screen.getByRole('button', { name: /^Hold/ })).toBeTruthy();
   });
 
+  // ⚠️ **Exactly one overlay is lit, and the mode is what guarantees it.** With
+  // three attack-ish sets now -- the shooting band, the charge targets, the
+  // facing tiles -- "they never coincide" stops being obvious by inspection, and
+  // a second lit set would read as a board offering two questions at once.
+  it('lights one tile set per mode and clears the others', async () => {
+    const contested = makeState(5, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+    ]);
+    const serve = () =>
+      fakeServer({
+        getState: () => contested,
+        subscribe: vi.fn((onUpdate) => {
+          onUpdate([], contested);
+          return () => {};
+        }),
+      });
+    await renderCanvas(serve());
+
+    await act(async () => clickTile({ col: 1, row: 1 }));
+    await act(async () => clickTile({ col: 1, row: 1 })); // pins
+    await act(async () => clickTile({ col: 1, row: 1 })); // confirms
+
+    await act(async () => screen.getByRole('button', { name: /^Charge/ }).click());
+    expect(vi.mocked(renderer.setChargeTargets).mock.lastCall?.[0]).toEqual([{ col: 1, row: 2 }]);
+    expect(renderer.setAttackRange).toHaveBeenLastCalledWith([]);
+    expect(renderer.setFacingChoices).toHaveBeenLastCalledWith([]);
+
+    // And back the other way, so neither is merely never set.
+    await act(async () => clickTile({ col: 4, row: 4 })); // dark: back to the panel
+    await act(async () => screen.getByRole('button', { name: /^Fire/ }).click());
+    expect(vi.mocked(renderer.setAttackRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
+    expect(renderer.setChargeTargets).toHaveBeenLastCalledWith([]);
+  });
+
   it('clears the overlays when the selection is dropped', async () => {
     await renderCanvas(fakeServer());
     await act(async () => clickTile({ col: 1, row: 1 })); // select

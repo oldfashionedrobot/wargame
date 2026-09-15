@@ -832,7 +832,7 @@ describe('the tiles firing mode lights', () => {
   });
 
   // ⚠️ Lit is not the same as clickable, and that is deliberate -- the same
-  // line `settled` and `reachable` already draw for movement. `readFireClick`
+  // line `settled` and `reachable` already draw for movement. `readAimClick`
   // is what refuses; this only says what the band is.
   it('lights ground it cannot legally shoot at, because reach is the point', () => {
     const state = makeState(7, [
