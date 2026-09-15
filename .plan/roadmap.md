@@ -737,6 +737,114 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
 Selection doesn't need it: `canSelectUnit` is a game fact ("may this unit act"), and the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
 
+### 9.9 — The action menu splits in two ⬜
+
+`destinationChosen` does three jobs at once: it is the attack menu, the facing
+menu, and the confirm. Splitting it gives **attack selection** and **facing
+selection** as separate lit-tile steps, with a back-stack.
+
+```
+move selection      click a tile (or your own) → pins a route
+                    second click on it         → walks, and becomes ↓
+attack selection    all red, the whole range band
+                    an enemy                   → the panel
+                    your own tile              → facing selection
+                    anywhere dark              → back to move selection (un-walks)
+facing selection    the four beside you
+                    one of them                → face that way and commit
+                    your own tile              → keep this facing and commit
+                    anywhere dark              → back to attack selection
+```
+
+⚠️ **It deletes more than it adds, and the first deletion is a bug class.**
+`readActionClick` exists in its current shape for one reason: an adjacent enemy
+is *also* a facing choice, and whichever question ran first won. That collision
+was found and fixed by forcing the order inside a single reader. With facing in
+its own phase **the ambiguity cannot be expressed** — the two readings are never
+live at the same time. The careful ordering stops being load-bearing.
+
+⚠️ **`attackTilesFor`'s filter dies with it.** It exists only to punch holes in
+the red so teal facing tiles show through; "all red" collapses it to
+`tilesInRange`.
+
+⚠️ **And the panel loses Hold**, which becomes the facing step. That leaves one
+button until charge arrives — a pure confirm — which is accepted rather than
+overlooked: 10a makes it a real choice, and the alternative (an enemy click
+firing immediately) removes the only place a forecast can be read before
+committing.
+
+⚠️ **The expensive half is already built.** Cancelling out of the action menu
+already calls `unpinDestination` with `onPreview(null)`, which walks the ghost
+unit back to where it started — so "click out goes back a step" exists and works
+for the *deep* step. Facing → attack is cheaper still: no un-walk, just a phase
+change. Panel → attack selection already behaves this way.
+
+⚠️ **Clicking your own tile in move selection already pins it**, too.
+`handleTileClick` branches on it *before* consulting `reachable`, precisely so
+that set excluding the unit's own tile does not matter. Acting without moving
+needs no new gesture.
+
+**What is actually new**: one phase in the union, two transitions,
+`readActionClick` splitting into two simpler readers, a fourth tile overlay for
+charge, and a case each in the overlay sync and the hint text.
+
+⚠️ **The cost is a click, on the most common action in the game.** A plain move
+goes from four to five: select, pin, confirm, click the destination, click it
+again. Accepted knowingly — the phases stop overlapping, which is what buys the
+deletions above — and it is the thing to revisit first if the flow ever feels
+slow.
+
+⚠️ **The bulk of the diff is the test sweep.** Around thirty references across
+`selection.test.ts` and `useGameSession.test.ts` assume the current click count,
+and every flow reaching a commit grows a step.
+
+⚠️ **Charge tiles are a fourth overlay, not a layer over the third.** Both are
+ground quads at a height, so drawing one over the other blends or z-fights: the
+attack set must *exclude* what the charge set draws.
+
+#### The pre-check: what a new phase actually costs
+
+⚠️ **`SelectionState` has no exhaustiveness guard, and it is enumerated in
+seventeen places.** Unlike `GameEvent`, which a `never` binding in `applyEvents`
+makes a compile error to extend, every phase check here is an `if` that silently
+does nothing for a name it has not heard of. Adding a sixth phase is therefore
+**not** a change the compiler will walk you through — it is a change that
+typechecks clean and misbehaves. Three of those seventeen are membership tests
+where being left out is a *silent* bug, not a visible one:
+
+- ⚠️ `isPlan` — a phase missing here is not a plan, so **End Turn becomes
+  enabled while a facing choice is still open**, submitting around it. That flag
+  exists specifically to stop this.
+- ⚠️ `handleTileClick`'s early return for `destinationChosen` — a phase that
+  falls past it gets treated as a *tile* click and re-pins a route under the
+  menu. `targetChosen` avoids this only because `clickTile` intercepts it first,
+  which is a second mechanism for one rule and worth noticing before adding a
+  third phase that has to pick one.
+- ⚠️ `GameCanvas`'s `arrived` — drives both `setFacingChoices` and
+  `setAttackRange`, and splitting it is the visible half of this whole step.
+
+⚠️ **`isPlan`'s comment already claims a fix it did not make.** It says the union
+"already knows which phases carry a path; this asks it rather than restating it"
+— and the body is a three-way `||` on phase names, which is restating it. The
+comment describes the intention; the code is the thing it warns about.
+
+**So the first commit is not the split.** Single-source the membership list:
+
+```ts
+const PINNED_PHASES = ['routePinned', 'destinationChosen', 'targetChosen'] as const;
+export type Pinned = Extract<SelectionState, { phase: (typeof PINNED_PHASES)[number] }>;
+export function isPlan(s: SelectionState): s is Pinned { … }
+```
+
+One array, and the type and the predicate both follow it — so a new phase is
+added once rather than remembered twice. That makes `isPlan` do what it already
+says it does, and it converts the worst of the three silent sites into a typo
+the compiler catches.
+
+**Before 10a, not after.** Charge adds a third panel option and that fourth
+overlay, and both land on a settled shape rather than a shape being rebuilt
+under them.
+
 ### 10 — Combat depth
 
 ⚠️ **This is where everything original lands**, facing and charge together, because facing is read by charge and by nothing else. Phase 9 is Advance Wars and checkable against it; this phase is not checkable against anything and has to be played.
