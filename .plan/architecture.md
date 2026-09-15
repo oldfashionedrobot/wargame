@@ -1171,7 +1171,18 @@ is off.
   a *legibility* bound rather than a picking one: `screenToTile` searches every
   surface height, so a click stays right however low the camera gets, and what
   degrades is only how much board a raised tile hides.
-- **Tile lookup is math, not mesh-picking** — but no longer against *one* plane.
+- **Tile lookup is math, not mesh-picking**, and the pointer event has to agree
+  with that. ⚠️ **The handler listens for `POINTERTAP`, never `POINTERPICK`.**
+  Babylon emits `POINTERPICK` only when its ray hits a **pickable mesh** — and
+  the terrain sets `isPickable = false`, precisely because lookup here is plane
+  arithmetic. So `POINTERPICK` meant clicks arrived only where some *other*
+  pickable mesh happened to be: a unit, a decoration, or a lit overlay quad, with
+  bare ground swallowing them. Measured at one tile in sixteen on a sweep of the
+  board. It survived unnoticed because almost every meaningful click lands on a
+  unit or a lit tile; it stopped surviving the moment *a click on the dark* became
+  a rule. `POINTERTAP` fires for any tap that is not a drag, which is what the
+  arithmetic always assumed.
+- Heights: tile lookup is no longer against *one* plane.
   `screenToTile` tries each distinct surface height the board has, **tallest
   first**, and takes the first answer that agrees with itself: the tile found at
   height `h` must be a tile whose surface is at `h`. Tallest first is what lets

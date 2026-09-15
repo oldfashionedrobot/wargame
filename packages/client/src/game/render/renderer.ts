@@ -581,7 +581,18 @@ export async function createGameRenderer(
       return;
     }
 
-    if (pointerInfo.type === PointerEventTypes.POINTERPICK && clickHandler) {
+    // ⚠️ **`POINTERTAP`, not `POINTERPICK`, and the difference is a bug that
+    // shipped.** Babylon only emits `POINTERPICK` when its ray actually hits a
+    // *pickable mesh* -- and the terrain sets `isPickable = false`, precisely
+    // because picking here is plane arithmetic and wants no ray at a mesh. So
+    // clicks only ever arrived where some other pickable mesh happened to be:
+    // a unit, a tree, or a lit overlay quad. Bare ground swallowed them.
+    //
+    // That was survivable while every meaningful click was on a unit or a lit
+    // tile, which is why it went unnoticed; it is not survivable now that "a
+    // click on the dark backs out" is a rule. `POINTERTAP` fires for any tap
+    // that is not a drag, which is what the plane arithmetic always assumed.
+    if (pointerInfo.type === PointerEventTypes.POINTERTAP && clickHandler) {
       const coordinate = hoveredCoordinate();
       if (coordinate) clickHandler(coordinate);
     }
