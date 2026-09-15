@@ -170,6 +170,8 @@ describe('every event is idempotent', () => {
   const cases: [string, GameEvent][] = [
     ['unitMoved', moved('b1', [0, 0], [2, 0])],
     ['turnEnded', { type: 'turnEnded', nextPlayer: 'red' }],
+    ['battleResolved', battle(['b1', 80], ['r1', 40], true)],
+    ['gameEnded', { type: 'gameEnded', winner: 'blue' }],
   ];
 
   for (const [name, event] of cases) {
@@ -179,6 +181,34 @@ describe('every event is idempotent', () => {
       expect(twice).toEqual(once);
     });
   }
+});
+
+describe('applyEvents, gameEnded', () => {
+  const state = makeState(8, [
+    { id: 'b1', col: 0, row: 0 },
+    { id: 'r1', col: 7, row: 7, owner: 'red' },
+  ]);
+  const ended: GameEvent = { type: 'gameEnded', winner: 'blue' };
+
+  it('records the winner', () => {
+    expect(applyEvents(state, [ended]).winner).toBe('blue');
+  });
+
+  // ⚠️ The whole reason the marker is additive. `getCurrentPlayer` throws when
+  // `currentTurn` names nobody, and the client's turn label calls it every
+  // render -- so a reducer that cleared it here would crash the board at the
+  // exact moment it should be showing a result.
+  it('leaves currentTurn intact', () => {
+    expect(applyEvents(state, [ended]).currentTurn).toBe(state.currentTurn);
+  });
+
+  // It is a marker, not a sweep: the board is left exactly as the battle that
+  // produced it left the board.
+  it('removes nothing and refreshes nothing', () => {
+    const after = applyEvents(state, [ended]);
+    expect(after.units).toEqual(state.units);
+    expect(after.grid).toEqual(state.grid);
+  });
 });
 
 // Idempotent is not commutative. Ordering comes from (seq, index) and is not

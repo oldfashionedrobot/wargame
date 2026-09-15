@@ -20,6 +20,12 @@ export const Matches = sqliteTable('matches', {
   // provenance, like initial_state. No foreign key: maps are code modules, and
   // their ids are immutable so this cannot come to mean something else.
   mapId: text('map_id').notNull().default('classic'),
+  // Denormalised out of current_state for the same reason as current_turn: the
+  // lobby has to say whether a match is finished without parsing a board per
+  // row. ⚠️ Nullable, and that is the fact rather than a gap -- null means still
+  // being played, which is why this took no default where map_id did. There is
+  // no sensible finished-ness to backfill an existing row with.
+  winner: text('winner').$type<PlayerId>(),
 });
 
 /**

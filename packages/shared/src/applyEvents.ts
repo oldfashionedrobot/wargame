@@ -86,6 +86,13 @@ function applyEvent(state: GameState, event: GameEvent): GameState {
         ),
       };
 
+    case 'gameEnded':
+      // ⚠️ `currentTurn` is deliberately left alone. `getCurrentPlayer` throws
+      // when it names nobody and the client's turn label calls it every render,
+      // so clearing it would crash the board at the exact moment it should be
+      // showing a result. The marker is additive; readers check it first.
+      return { ...state, winner: event.winner };
+
     default: {
       // ⚠️ Two jobs. `never` makes a new member of the union a **compile error
       // here** until it is handled -- without it, adding an event type

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { resolveAction, validateCommand } from './action';
+import { actionEndsTurn } from './turns';
 import { makeState, route } from './testing';
 import type { Command, MoveCommand } from './types';
 
@@ -154,6 +155,51 @@ describe('validateCommand', () => {
   });
 });
 
+describe('validateCommand, once the game is over', () => {
+  // The same board twice, differing only in the marker: what isolates the
+  // refusal as the cause rather than anything else about the position.
+  const board = (winner: string | null) =>
+    makeState(
+      8,
+      [
+        { id: 'b1', col: 0, row: 0 },
+        { id: 'r1', col: 0, row: 3, owner: 'red' },
+      ],
+      'blue',
+      winner,
+    );
+
+  it('accepts what it would otherwise accept', () => {
+    expect(validateCommand(board(null), to(2, 0), 'blue').ok).toBe(true);
+  });
+
+  it('refuses a move', () => {
+    const result = validateCommand(board('blue'), to(2, 0), 'blue');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('the game is over');
+  });
+
+  // ⚠️ The point of putting it above the dispatch rather than in each
+  // validator: `validateEndTurn` takes no arguments and cannot see the state at
+  // all, so a rule written per-command would have had to change its signature
+  // to refuse this one.
+  it('refuses ending a turn, which is otherwise always legal', () => {
+    const result = validateCommand(board('blue'), { type: 'endTurn' }, 'blue');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('the game is over');
+  });
+
+  // ⚠️ Sender identity still comes first. Over or not, a player who was never
+  // entitled to give an order should hear why they were not, and a winner's
+  // opponent asking for something should not be told the game is over as though
+  // that were the only problem.
+  it('still answers the wrong player with whose turn it is', () => {
+    const result = validateCommand(board('blue'), to(2, 0), 'red');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('not your turn');
+  });
+});
+
 describe('resolveAction', () => {
   const state = makeState(6, [
     { id: 'b1', col: 0, row: 0 },
@@ -220,5 +266,100 @@ describe('resolveAction', () => {
       typeof resolveAction
     >[1];
     expect(() => resolveAction(state, bogus, NO_LUCK)).toThrow('unknown action type: teleport');
+  });
+});
+
+describe('resolveAction, when a resolution ends the game', () => {
+  // A gun that kills in one shot, and a defender low enough to be killed by it.
+  const shot = (unitId: string): MoveCommand => ({
+    type: 'move',
+    unitId,
+    path: [at(0, 0)],
+    facing: 'north',
+    targetUnitId: 'r1',
+  });
+
+  const lastStand = (blueUnits: { id: string; col: number; row: number }[]) =>
+    makeState(8, [
+      ...blueUnits.map((u) => ({ ...u, unitTypeId: 'artillery' as const })),
+      { id: 'r1', col: 0, row: 3, owner: 'red', health: 3 },
+    ]);
+
+  const kinds = (state: ReturnType<typeof makeState>, command: MoveCommand) =>
+    resolveAction(state, accept(state, command), NO_LUCK).map((event) => event.type);
+
+  it('emits gameEnded naming the side still standing', () => {
+    const state = lastStand([{ id: 'b1', col: 0, row: 0 }]);
+    const events = resolveAction(state, accept(state, shot('b1')), NO_LUCK);
+    const ended = events.find((event) => event.type === 'gameEnded');
+    expect(ended).toEqual({ type: 'gameEnded', winner: 'blue' });
+  });
+
+  // ⚠️ The assertion the early return exists for, and it only means something
+  // because this turn *would* have ended: blue has one unit, so its budget is
+  // one, so the shot spends the turn. Give blue a second unit and this passes
+  // whether or not the suppression works.
+  it('emits no turnEnded beside it, on a turn that would otherwise have ended', () => {
+    const state = lastStand([{ id: 'b1', col: 0, row: 0 }]);
+    expect(actionEndsTurn(state)).toBe(true);
+    expect(kinds(state, shot('b1'))).toEqual(['unitMoved', 'battleResolved', 'gameEnded']);
+  });
+
+  // The other side of the same branch: a kill that leaves the loser something
+  // on the board is an ordinary action, and the turn ends as it always did.
+  it('ends the turn as usual when the kill was not the last unit', () => {
+    const state = makeState(8, [
+      { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
+      { id: 'r1', col: 0, row: 3, owner: 'red', health: 3 },
+      { id: 'r2', col: 5, row: 5, owner: 'red' },
+    ]);
+    expect(kinds(state, shot('b1'))).toEqual(['unitMoved', 'battleResolved', 'turnEnded']);
+  });
+
+  // ⚠️ Fired at full health, so nothing dies: the fold has to be able to answer
+  // "nobody yet" as readily as it names a winner, or every attack would end the
+  // game as soon as one side was down to its last unit.
+  it('says nothing when the shot was survived', () => {
+    const state = makeState(8, [
+      { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
+      { id: 'r1', col: 0, row: 3, owner: 'red' },
+    ]);
+    expect(kinds(state, shot('b1'))).toEqual(['unitMoved', 'battleResolved', 'turnEnded']);
+  });
+
+  // ⚠️ An attacker killed by the counter loses the game for its own side, on its
+  // own turn. Worth its own case because every other route here has the mover
+  // winning, and "the sole survivor" is the only spelling that gets this right
+  // without asking whose turn it was.
+  it('names the defender when the counter killed the last attacker', () => {
+    const state = makeState(8, [
+      { id: 'b1', col: 0, row: 2, health: 1 },
+      { id: 'r1', col: 0, row: 3, owner: 'red', facing: 'south' },
+    ]);
+    const events = resolveAction(
+      state,
+      accept(state, {
+        type: 'move',
+        unitId: 'b1',
+        path: [at(0, 2)],
+        facing: 'north',
+        targetUnitId: 'r1',
+      }),
+      { attack: 0, counter: 0 },
+    );
+    expect(events.find((event) => event.type === 'gameEnded')).toEqual({
+      type: 'gameEnded',
+      winner: 'red',
+    });
+  });
+
+  // Ending a turn cannot end a game, so it does not ask -- and this is what
+  // would notice if the check were ever hoisted out of the move branch without
+  // a condition that could trigger on an empty action.
+  it('leaves endTurn alone', () => {
+    const state = lastStand([{ id: 'b1', col: 0, row: 0 }]);
+    expect(resolveAction(state, accept(state, { type: 'endTurn' }), NO_LUCK)).toEqual([
+      { type: 'turnEnded', nextPlayer: 'red' },
+    ]);
   });
 });

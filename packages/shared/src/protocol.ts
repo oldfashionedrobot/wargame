@@ -61,6 +61,14 @@ export interface MatchSummary {
   currentTurn: PlayerId;
   /** Which board it was built from, so a list of matches can be told apart. */
   mapId: string;
+  /**
+   * Who won, or `null` for a match still being played.
+   *
+   * ⚠️ The lobby needs this, not `currentTurn`, to describe a finished match --
+   * `currentTurn` is never cleared, so a row reading it alone would say *blue's
+   * turn* forever.
+   */
+  winner: PlayerId | null;
 }
 
 /** GET /api/maps -- what a new match can be started on. */

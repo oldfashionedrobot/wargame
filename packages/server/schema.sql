@@ -5,7 +5,8 @@ CREATE TABLE `matches` (
 	`current_state` text NOT NULL,
 	`current_seq` integer NOT NULL,
 	`current_turn` text NOT NULL,
-	`map_id` text DEFAULT 'classic' NOT NULL
+	`map_id` text DEFAULT 'classic' NOT NULL,
+	`winner` text
 );
 
 CREATE TABLE `resolutions` (

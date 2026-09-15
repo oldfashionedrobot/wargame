@@ -98,7 +98,11 @@ export function StartScreen() {
             <li key={match.id}>
               <Link to={`/${match.id}`}>{match.id.slice(0, 8)}</Link>
               {' — '}
-              {match.currentTurn}
+              {/* ⚠️ The winner displaces the turn rather than joining it.
+                  `currentTurn` is never cleared, so a finished match reading it
+                  would say whose turn it is forever -- and it is still whose
+                  turn it would have been, which is true and useless. */}
+              {match.winner === null ? match.currentTurn : `${match.winner} won`}
               {' · '}
               {match.mapId}
               {match.seq === 0 ? ' · not started' : ` · ${match.seq} moves`}

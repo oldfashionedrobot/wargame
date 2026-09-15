@@ -654,11 +654,11 @@ option, and both cost a few lines against a table's seeding machinery.
 
 ## Remaining phases
 
-### 9 — Combat: the smallest thing you can win
+### 9 — Combat: the smallest thing you can win ✅
 
 Terrain and pathing already exist, so the numbers mean something. The integration risk here is the chain — command → resolve → events → animate → death → mesh removal → victory — not the damage formula.
 
-⚠️ **Nothing original is in this phase.** Facing and charge — the only two mechanics here with no reference behaviour — both land together in phase 10, so everything below can be checked against Advance Wars. That is the point of splitting them out: a phase that can be wrong in a way a reference will tell you about, followed by a phase that cannot.
+⚠️ **Almost nothing original was in this phase, and that was the point** — a phase that can be wrong in a way a reference will tell you about, before one that cannot. ⚠️ **9k is the exception, added late**: a shot from directly behind goes unanswered, which is the first rule in the game to read facing. It was allowed in because it costs no new constants and reuses the counter predicate that was already there; charge, the other original mechanic, still waits for phase 10 in full.
 
 - **9a** — *moved to 6a.* The `UnitType` catalog wiring is a prerequisite of the terrain cost table, not a consequence of combat; see phase 6's hard dependencies.
 - **9b–9e** ✅ **Shipped**, and gone from here rather than ticked: `health` on
@@ -719,57 +719,13 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   ⚠️ **One writer: `syncUnits` snaps it, and the ring never tweens.** An earlier draft had `playEvents` animating segments out as damage landed, which would have made the ring the damage animation. It is not — **the cutaway is**, and the ring is the persistent state beside it. That removes a hazard as well as work: a tween on the ring is a different animation target from the unit node, so `scene.stopAnimation(mesh)` would not have reached it and a snap could have landed on a value still in motion. No tween, no orphan.
 
   ⚠️ **And this step moves ahead of the combat command.** It is scheduled after 9f here for historical reasons and that ordering is wrong: the ring *is* the damage animation, so shipping combat first means shipping it with no feedback at all — health changing invisibly, units vanishing mid-frame, and the database as the only way to tell an attack happened. It is also what makes 9f checkable in a browser, which is the renderer's only check.
-- **9j** Victory conditions. Elimination first: a player with no units loses. `GameState` gains a terminal marker so "finished" is a fact rather than re-derived, `validateCommand` refuses everything once set, and a `gameEnded` event tells clients to stop.
-
-  ⚠️ **The refusal goes in `validateCommand` and nowhere else.** It is already *the only place legality is decided* and already does the actor check before dispatching to `refuse`, so one line beside that check covers every command that will ever exist. `endTurn.ts` currently predicts the rule "lands here and in `validateMove` alike" — that comment is **wrong and should be corrected as this ships**, because two sites is two sites to forget.
-
-  ⚠️ **The lobby is a second surface, and it needs a column.** `StartScreen` renders `match.currentTurn` raw, and `MatchSummary` carries no result — so a finished match would sit in the list saying *player-blue's turn* forever. A `winner` column on `matches`, denormalised beside `currentTurn` and `mapId` for the same reason (listing must not parse a board per row), and `MatchSummary` gains it. **That is the third migration**, after `0000_silent_prodigy` and `0001_far_roulette`.
-
-  ⚠️ **`currentTurn` is never cleared.** The marker is additive — `winner: PlayerId | null` — so `getCurrentPlayer`, which *throws* when `currentTurn` names nobody and is called by the client's turn label every render, keeps working. A terminal state that blanked it would crash the board instead of showing a winner. The client checks the winner first and falls through to the turn label.
-
-  ⚠️ **`nextPlayer` needs no elimination logic, *because there are two players*.** It is `(current + 1) % players.length` and knows nothing about who is alive. With elimination victory and two sides, a roster empties and the game ends in the same resolution, so it never sees a dead player. Recorded as resting on the player count rather than as generally true: a third player would need it.
-
-  ⚠️ **It carries the winner, and `playerEliminated` is the event that will
-  carry a loser.** With two players "red is eliminated" and "blue won" are one
-  fact stated twice, so emitting both would be redundancy in the log rather than
-  structure. With three they stop being the same fact, and that is when a
-  `playerEliminated` companion earns its place — purely additive, because
-  nothing in `GameState` marks elimination (units vanish via `battleResolved`'s
-  filter), so no field exists for an absent event to desync and old logs replay
-  identically.
-
-  ⚠️ **Which makes one implementation detail load-bearing: derive the winner as
-  *the sole player still holding units*, never as "the one who isn't the
-  loser".** Identical code today. But `players.find(p => p.id !== loser)` is
-  two-player-only and would need rewriting the moment a third arrives, whereas
-  sole-survivor is already the N-player predicate. That is what makes
-  `playerEliminated` a companion later rather than a rework.
-
-  ⚠️ **At most one player can be eliminated per resolution**, which is what makes
-  sole-survivor safe to compute without handling an empty board. It falls out of
-  code that already exists: `wouldCounter` is false at zero health, so a defender
-  that dies never ripostes, so a single battle kills exactly one unit. Mutual
-  destruction is unreachable.
-
-  ⚠️ **`winner` is nullable on `GameState` and not on the event.** `null` there
-  means *still playing*, which is a real state; the event exists only because
-  somebody won. Different nullability for different reasons — stated so the next
-  reader does not "fix" one to match the other.
-
-  ⚠️ **`gameEnded` alone, never `turnEnded` beside it.** There is no reason to
-  hand the turn to a player who has already lost. One condition in
-  `resolveAction`: the turn-end check is skipped when the resolution ended the
-  game. It composes with `currentTurn` never being cleared — `getCurrentPlayer`
-  keeps working, so the board renders a winner instead of crashing on a blank
-  turn. The marker is **absolute like every other event payload** (invariant 9) — it carries the winner, not "the game ended", so applying it twice is a no-op.
-
-- **9k** ✅ **Shipped**, and gone from here: `attackSide` in `coordinate.ts`,
-  read by `wouldCounter` — see *Combat* in [`architecture.md`](architecture.md).
-  ⚠️ **`flank` is classified and wired to nothing**, waiting for 10a; a flanking
-  *damage* bonus was refused, not forgotten, and the facing section above says
-  why.
-
-Without 9j the board reaches a state where one side has nothing left and End Turn keeps working forever.
+- **9j** ✅ **Shipped**, and gone from here: `soleSurvivor` and `isOver` in
+  `victory.ts`, the `gameEnded` event, `winner` on `GameState` and on the
+  `matches` row — see *Victory* in [`architecture.md`](architecture.md).
+  ⚠️ **`playerEliminated` is deliberately unbuilt**: with two players it would
+  state the same fact as `gameEnded` twice. It becomes the right shape with
+  three, and is purely additive when it comes, because nothing in `GameState`
+  marks elimination for an absent event to desync.
 
 **Does 9f roll?** Yes. The step reads "damage from a table" and also "plus rolls", which is a contradiction worth settling in favour of rolling: the rolls plumbing — the server generating them, `Action` carrying them, resolution taking them as an argument so `shared/` stays pure — is the only *structurally* new thing in 9f, and it is what makes 9j's preview mean anything. A deterministic first cut would defer exactly the part worth proving.
 

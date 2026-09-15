@@ -115,6 +115,11 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   // would otherwise have to be remembered here too.
   const planning = isPlan(selection);
 
+  // ⚠️ Looked up rather than shown raw. `winner` is a `PlayerId`, and the board
+  // has always named players by their display name -- the lobby shows the id
+  // because it has no roster to resolve it against, and this does.
+  const winner = gameState.players.find((player) => player.id === gameState.winner);
+
   // ⚠️ Only while the route is still a plan, and not while it is being walked:
   // the pane invites a click, and clicks are refused until the mesh arrives.
   const awaitingConfirm = selection.phase === 'routePinned' && !walking;
@@ -264,10 +269,21 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
         )}
       </div>
       <div>
-        <span>{getCurrentPlayer(gameState).name}&apos;s turn</span>{' '}
+        {/* ⚠️ The winner is checked first and `getCurrentPlayer` is not called
+            at all once there is one -- it throws when `currentTurn` names
+            nobody, and this runs every render. Today `currentTurn` is never
+            cleared so both would work; the ordering is what keeps that from
+            being load-bearing. */}
+        {winner ? (
+          <strong>{winner.name} wins</strong>
+        ) : (
+          <span>{getCurrentPlayer(gameState).name}&apos;s turn</span>
+        )}{' '}
         {/* Disabled while anything is pinned: ending the turn there would
-            submit around a plan the player has not answered for yet. */}
-        <button type="button" onClick={endTurn} disabled={planning}>
+            submit around a plan the player has not answered for yet. And once
+            the game is over: the server refuses every command, so an enabled
+            button would only ever produce a rejection. */}
+        <button type="button" onClick={endTurn} disabled={planning || winner !== undefined}>
           End Turn
         </button>{' '}
         {import.meta.env.DEV && (

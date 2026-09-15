@@ -70,6 +70,16 @@ describe('create', () => {
     expect(match.createdAt).toBeGreaterThan(0);
   });
 
+  it('starts with no winner, in the summary and in the column', async () => {
+    const match = await store.create();
+    expect(match.winner).toBeNull();
+    const { rows } = await sql.execute({
+      sql: 'SELECT winner FROM matches WHERE id = ?',
+      args: [match.id],
+    });
+    expect(rows[0].winner).toBeNull();
+  });
+
   it('gives each match its own id', async () => {
     const [a, b] = [await store.create(), await store.create()];
     expect(a.id).not.toBe(b.id);
@@ -312,5 +322,48 @@ describe('rollLuck', () => {
   it('reaches both ends of it', () => {
     expect(draws).toContain(0);
     expect(draws).toContain(LUCK_MAX);
+  });
+});
+
+// ⚠️ Reaching a real victory here would mean playing sixteen units to death, so
+// the terminal state is written straight into the row instead. That is a
+// deliberate trade: `resolveAction` emitting `gameEnded` is covered in the
+// rulebook's own suite, and what is left for this layer is the plumbing --
+// whether a finished match survives the column, the summary and the refusal.
+describe('a finished match', () => {
+  const finish = async (winner: string) => {
+    const { id } = await store.create();
+    const state = { ...createMatchState(getMap('classic')), winner };
+    await sql.execute({
+      sql: 'UPDATE matches SET current_state = ?, winner = ? WHERE id = ?',
+      args: [JSON.stringify(state), winner, id],
+    });
+    return id;
+  };
+
+  it('reports the winner in the listing without loading the game', async () => {
+    await finish(RED);
+    const [summary] = await store.list();
+    expect(summary.winner).toBe(RED);
+    // ⚠️ And `current_turn` is untouched beside it, which is what the lobby's
+    // "winner displaces the turn" rendering rests on -- the column still holds
+    // a live-looking value, so a row that read it alone would look unfinished.
+    expect(summary.currentTurn).toBe(BLUE);
+  });
+
+  it('refuses a command that would otherwise be legal', async () => {
+    const id = await finish(BLUE);
+    const result = await store.submit(id, { type: 'endTurn' }, BLUE);
+    expect(result).toEqual({ ok: false, reason: 'the game is over' });
+  });
+
+  it('writes nothing when it refuses', async () => {
+    const id = await finish(BLUE);
+    await store.submit(id, { type: 'endTurn' }, BLUE);
+    const { rows } = await sql.execute({
+      sql: 'SELECT COUNT(*) c FROM resolutions WHERE match_id = ?',
+      args: [id],
+    });
+    expect(rows[0].c).toBe(0);
   });
 });

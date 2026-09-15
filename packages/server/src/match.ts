@@ -103,9 +103,10 @@ export function createMatchStore({ db }: Database): MatchStore {
         currentSeq: 0,
         currentTurn: state.currentTurn,
         mapId,
+        winner: state.winner,
       });
 
-      return { id, createdAt, seq: 0, currentTurn: state.currentTurn, mapId };
+      return { id, createdAt, seq: 0, currentTurn: state.currentTurn, mapId, winner: state.winner };
     },
 
     async list() {
@@ -118,6 +119,7 @@ export function createMatchStore({ db }: Database): MatchStore {
           seq: Matches.currentSeq,
           currentTurn: Matches.currentTurn,
           mapId: Matches.mapId,
+          winner: Matches.winner,
         })
         .from(Matches)
         .orderBy(desc(Matches.createdAt))
@@ -203,6 +205,10 @@ export function createMatchStore({ db }: Database): MatchStore {
               currentState: nextState,
               currentSeq: nextSeq,
               currentTurn: nextState.currentTurn,
+              // Written every time rather than only when it changes: it is a
+              // copy of a field on the state being written beside it, so
+              // deriving when to skip it is how the two come to disagree.
+              winner: nextState.winner,
             })
             // Optimistic concurrency: refuse to write over a row that moved
             // since we read it.

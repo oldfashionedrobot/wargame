@@ -1,6 +1,8 @@
+import { applyEvents } from './applyEvents';
 import { resolveEndTurn, validateEndTurn } from './endTurn';
 import { actionEndsTurn } from './turns';
 import { resolveMove, validateMove } from './move';
+import { isOver, soleSurvivor } from './victory';
 import type { Rolls } from './combat';
 import type { Command, EndTurnCommand, GameEvent, GameState, MoveCommand, PlayerId } from './types';
 
@@ -46,6 +48,12 @@ export function validateCommand(
   // Sender identity first: everything below assumes the actor is allowed to be
   // giving orders at all.
   if (actor !== state.currentTurn) return { ok: false, reason: 'not your turn' };
+
+  // ⚠️ **Every command, in one line, because this is the only place legality is
+  // decided.** Put in the individual validators it would be a rule to remember
+  // for each new command type; here a command that does not exist yet is
+  // already refused.
+  if (isOver(state)) return { ok: false, reason: 'the game is over' };
 
   const reason = refuse(state, command);
   if (reason) return { ok: false, reason };
@@ -104,10 +112,29 @@ export function resolveAction(state: GameState, action: Action, rolls: Rolls): G
       // player's* roster, so a defender dying here cannot move it. A counter
       // killing the **attacker** would -- shrinking the roster and moving both
       // terms of that `min` at once, mid-resolution.
+      // ⚠️ **The only fold in resolution, and it has to be one.** Elimination is
+      // "a player has no units left", and units leave the board in
+      // `applyEvents` -- `resolveBattle` only says what each side *has*. So the
+      // question cannot be answered from `state`, which predates the death, nor
+      // from the events, which would mean re-deriving what the reducer already
+      // does. Cheap: one pass over a roster that is about to shrink.
+      const winner = soleSurvivor(applyEvents(state, events));
+      if (winner !== null) {
+        // ⚠️ **`gameEnded` alone, and this early return is what guarantees it.**
+        // There is nothing to hand to a player who has already lost, and a
+        // `turnEnded` beside it would refresh the loser's `hasActed` flags for a
+        // turn that will never come.
+        events.push({ type: 'gameEnded', winner });
+        return events;
+      }
       if (actionEndsTurn(state)) events.push(...resolveEndTurn(state));
       return events;
     }
     case 'endTurn':
+      // ⚠️ Cannot end the game, and so does not ask: ending a turn removes no
+      // units, and elimination is the only victory condition. A condition that
+      // could trigger on an empty action -- a turn limit, say -- would move the
+      // check out here to cover both branches.
       return resolveEndTurn(state);
     default:
       throw new Error(`unknown action type: ${String((action as Action).type)}`);

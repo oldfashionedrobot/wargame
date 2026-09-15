@@ -116,6 +116,41 @@ describe('useGameSession', () => {
     expect(result.current.gameState).toEqual(next);
   });
 
+  // ⚠️ The board goes quiet when the game does. The server refuses every command
+  // once there is a winner, so a click that still selected would draw a route
+  // and walk a preview, all of it rolled back by a rejection the player never
+  // asked for. This stops the asking; `validateCommand` is still what refuses.
+  describe('once the game is over', () => {
+    const won = makeState(7, [{ id: 'b1', col: 1, row: 1 }], 'blue', 'blue');
+
+    it('ignores a click that would otherwise select a unit', async () => {
+      const fake = fakeServer(won);
+      const { result } = renderSession(fake);
+      act(() => result.current.clickTile({ col: 1, row: 1 }));
+      expect(result.current.selection.phase).toBe('idle');
+    });
+
+    // The same click on the same board, differing only in the marker: what
+    // isolates the guard as the cause rather than anything else about the setup.
+    it('selects that same unit while the game is still on', async () => {
+      const fake = fakeServer(board);
+      const { result } = renderSession(fake);
+      act(() => result.current.clickTile({ col: 1, row: 1 }));
+      expect(result.current.selection.phase).toBe('unitSelected');
+    });
+
+    // ⚠️ It reads the server's live state, not the React one. A guard on the
+    // rendered copy would still let a click through in the render where the
+    // winning batch has arrived but not yet committed.
+    it('goes quiet as soon as the winning state lands', async () => {
+      const fake = fakeServer(board);
+      const { result } = renderSession(fake);
+      await act(async () => fake.push([], won));
+      act(() => result.current.clickTile({ col: 1, row: 1 }));
+      expect(result.current.selection.phase).toBe('idle');
+    });
+  });
+
   it('forwards events to onEvents', async () => {
     const fake = fakeServer(board);
     const cb = callbacks();

@@ -51,6 +51,19 @@ export interface GameState {
   units: Unit[];
   players: Player[];
   currentTurn: PlayerId;
+  /**
+   * Who won, or `null` while the game is still being played.
+   *
+   * ⚠️ **Additive: `currentTurn` is never cleared beside it.** `getCurrentPlayer`
+   * throws when `currentTurn` names nobody and the client's turn label calls it
+   * every render, so a terminal state that blanked it would crash the board
+   * instead of showing a result. Readers check this first and fall through.
+   *
+   * ⚠️ **Nullable here and not on the event.** `null` is a real state -- still
+   * playing -- whereas `gameEnded` exists only because somebody won. Different
+   * nullability for different reasons; neither is the other one unfinished.
+   */
+  winner: PlayerId | null;
 }
 
 // --- Commands: what a client asks for -------------------------------------
@@ -164,4 +177,23 @@ export interface BattleResolvedEvent {
   answered: boolean;
 }
 
-export type GameEvent = UnitMovedEvent | TurnEndedEvent | BattleResolvedEvent;
+/**
+ * The game is over, and who won it.
+ *
+ * ⚠️ **It carries the winner, and a future `playerEliminated` will carry a
+ * loser.** With two players "red is eliminated" and "blue won" are one fact
+ * stated twice, so emitting both would be redundancy in the log rather than
+ * structure. With three they stop being the same fact, and that is when the
+ * companion event earns its place -- purely additive, because nothing in
+ * `GameState` marks elimination, so no field exists for an absent event to
+ * desync and today's logs will replay identically.
+ *
+ * ⚠️ **Never accompanied by `turnEnded`.** There is nothing to hand to a player
+ * who has already lost.
+ */
+export interface GameEndedEvent {
+  type: 'gameEnded';
+  winner: PlayerId;
+}
+
+export type GameEvent = UnitMovedEvent | TurnEndedEvent | BattleResolvedEvent | GameEndedEvent;

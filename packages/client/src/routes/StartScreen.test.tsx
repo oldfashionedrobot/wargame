@@ -31,6 +31,7 @@ const summary = (over: Partial<MatchSummary> = {}): MatchSummary => ({
   seq: 0,
   currentTurn: 'player-blue',
   mapId: 'classic',
+  winner: null,
   ...over,
 });
 
@@ -56,6 +57,22 @@ describe('StartScreen', () => {
     expect(await screen.findByText('aaaaaaaa')).toBeTruthy();
     expect(screen.getByText(/3 moves/)).toBeTruthy();
     expect(screen.getByText(/not started/)).toBeTruthy();
+  });
+
+  it('names whose turn it is while a match is unfinished', async () => {
+    list.mockResolvedValue([summary({ currentTurn: 'player-red' })]);
+    renderScreen();
+    expect(await screen.findByText(/player-red/)).toBeTruthy();
+  });
+
+  // ⚠️ Displaced, not appended. `currentTurn` is never cleared, so a finished
+  // row that showed both would read "player-blue · player-red won" -- true,
+  // since it is still whose turn it would have been, and useless.
+  it('shows the winner instead of the turn once a match is finished', async () => {
+    list.mockResolvedValue([summary({ currentTurn: 'player-blue', winner: 'player-red' })]);
+    renderScreen();
+    expect(await screen.findByText(/player-red won/)).toBeTruthy();
+    expect(screen.queryByText(/player-blue/)).toBeNull();
   });
 
   it('says so when there are none', async () => {

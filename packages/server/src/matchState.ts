@@ -69,8 +69,10 @@ export function createMatchState(map: GameMap): GameState {
         position: owner === 0 ? { col, row } : { col: width - 1 - col, row: height - 1 - row },
         // ⚠️ Toward the enemy, which is the opposite of what this used to say.
         // Row index increases north and owner 0 starts at row 0, so giving it
-        // `south` pointed both armies off their own edge -- invisible while no
-        // rule reads facing, and a damage factor from 10a onward.
+        // `south` pointed both armies off their own edge. A rule reads this now:
+        // a shot from directly behind goes unanswered, so the sign being wrong
+        // would hand every opening counter to whoever moved second -- and it
+        // becomes a damage factor as well when charge lands.
         facing: owner === 0 ? 'north' : 'south',
         unitTypeId: placement.unitTypeId,
         owner: player.id,
@@ -80,5 +82,5 @@ export function createMatchState(map: GameMap): GameState {
     }),
   );
 
-  return { grid, units, players: PLAYERS, currentTurn: PLAYERS[0].id };
+  return { grid, units, players: PLAYERS, currentTurn: PLAYERS[0].id, winner: null };
 }

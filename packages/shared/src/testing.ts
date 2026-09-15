@@ -5,7 +5,7 @@ import { TERRAIN } from './data/terrain';
 import { MAX_HEALTH } from './data/unitTypes';
 import type { UnitTypeId } from './data/unitTypes';
 import { parseTerrainGrid } from './terrainGrid';
-import type { Coordinate, Facing, GameState, Unit } from './types';
+import type { Coordinate, Facing, GameState, PlayerId, Unit } from './types';
 
 export interface UnitSpec {
   id: string;
@@ -54,6 +54,8 @@ export function makeState(
   map: number | { cols: number; rows: number } | string[],
   units: UnitSpec[],
   currentTurn = 'blue',
+  /** A finished game, for the rules that only apply to one. */
+  winner: PlayerId | null = null,
 ): GameState {
   return {
     grid: parseTerrainGrid(mapRows(map)),
@@ -71,6 +73,7 @@ export function makeState(
       hasActed: u.hasActed ?? false,
     })),
     currentTurn,
+    winner,
   };
 }
 

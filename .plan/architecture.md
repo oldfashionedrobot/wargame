@@ -135,8 +135,17 @@ matchup grid with no server and no browser.
 | `Action` | inside the server | An accepted `Command`, plus `actor`. Carries a `unique symbol` brand that is never exported, so it can only come from `validateCommand`. |
 | `GameEvent` | server → clients | A fact that already happened. What clients animate. |
 
-`validateCommand` checks `actor === state.currentTurn` first, then dispatches to
-the per-command validator. `resolveAction` accepts nothing but an `Action`.
+`validateCommand` checks `actor === state.currentTurn` first, then refuses
+everything if the game is over, then dispatches to the per-command validator.
+`resolveAction` accepts nothing but an `Action`.
+
+⚠️ **The terminal refusal is one line above the dispatch, not a rule each
+validator remembers.** It therefore covers command types that do not exist yet —
+and `validateEndTurn` takes no arguments at all, so a per-command spelling would
+have had to change its signature to refuse anything. ⚠️ The *order* matters:
+identity first, so a player who was never entitled to give an order still hears
+whose turn it is rather than being told the game is over as though that were the
+only problem.
 
 ## Rules that hold
 
@@ -179,7 +188,8 @@ PlayerId    string                                   // never a union of colours
 PlayerColor 'blue' | 'red' | 'green' | 'yellow'      // the renderer keys on it
 Player      { id, name, color }                      // colour is display-only
 Unit        { id, position, facing, unitTypeId, owner, health, hasActed }
-GameState   { grid, units, players, currentTurn }    // grid is [row][col]
+GameState   { grid, units, players, currentTurn,
+              winner }                               // grid is [row][col]; winner is null while playing
 
 Command       MoveCommand { type, unitId, path, facing, targetUnitId? } | EndTurnCommand { type }
 Action        (MoveCommand & Validated) | (EndTurnCommand & Validated)
@@ -189,12 +199,14 @@ GameEvent     UnitMovedEvent { type, unitId, path, facing }
             | TurnEndedEvent { type, nextPlayer }
             | BattleResolvedEvent { type, kind, attacker, defender, answered }
               -- attacker/defender are { unitId, health }, resulting
+            | GameEndedEvent { type, winner }
+              -- never emitted beside a TurnEndedEvent
 
 ValidationResult  { ok: true, action } | { ok: false, reason }
 CommandResult     { ok: true, seq, events, state } | { ok: false, reason }
 StateResponse     { seq, state }
 EventsResponse    { seq, events, state? }
-MatchSummary      { id, createdAt, seq, currentTurn, mapId }
+MatchSummary      { id, createdAt, seq, currentTurn, mapId, winner }
 MapSummary        { id, name }                       // GET /api/maps
 ErrorResponse     { error }                          // the body of every non-2xx
 ```
@@ -249,6 +261,14 @@ the job Advance Wars' own `End` does. At a budget of 1 it is a pass.
 Turn order is array rotation over `GameState.players`, wrapping via modulo.
 `hasActed` is one flag per unit, set by `unitMoved` and reset by `turnEnded` for
 the incoming player only.
+
+`winner` is `null` until somebody wins, and **additive: `currentTurn` is never
+cleared beside it**. `getCurrentPlayer` throws when `currentTurn` names nobody
+and the client's turn label calls it every render, so a terminal state that
+blanked it would crash the board at the moment it should be showing a result.
+⚠️ It is **nullable on the state and not on the event**: `null` is a real state —
+still playing — whereas `gameEnded` exists only because somebody won. Neither is
+the other one left unfinished.
 
 `facing` is **carried, not derived**. The player picks it, so it need not agree
 with the direction of travel — a unit can end a move looking somewhere it did not
@@ -644,6 +664,68 @@ Verified against an independent reimplementation of the AW specification across
 113,400 combinations of terrain, matchup, both healths and roll. Sources are in
 the module's doc comment, with a note on which wins where they disagree.
 
+## Victory
+
+`shared/src/victory.ts`:
+
+```ts
+soleSurvivor(state) → PlayerId | null    // who has won, by elimination
+isOver(state)       → boolean            // whether the marker is set
+```
+
+Elimination is the only condition: **a player with no units has lost**.
+
+⚠️ **`soleSurvivor` is the roster; `isOver` is the marker.** A board can satisfy
+the condition before any resolution has recorded it — that gap is exactly the
+moment `resolveAction` asks. One produces the fact; the other reads it.
+
+⚠️ **Sole survivor, never "the one who isn't the loser".** With two players those
+are the same answer, and `players.find(p => p.id !== loser)` is the shorter way
+to write it — and two-player-only, needing a rewrite the day a third arrives.
+This predicate is already the N-player one, which is what lets a future
+`playerEliminated` event be a *companion* rather than a rework. An empty board
+answers `null` rather than guessing, and is unreachable anyway: at most one
+player can be eliminated per resolution, because `wouldCounter` is false at zero
+health, so a defender that dies never ripostes, so a single battle kills exactly
+one unit.
+
+⚠️ **`resolveAction` folds to ask.** Units leave the board in `applyEvents` —
+`resolveBattle` only says what each side *has* — so the question cannot be
+answered from `state`, which predates the death, nor from the events, which would
+mean re-deriving what the reducer already does. It is the only fold in
+resolution. ⚠️ `endTurn` does not ask, because ending a turn removes no units; a
+condition that could trigger on an empty action, such as a turn limit, would move
+the check out to cover both branches.
+
+⚠️ **`gameEnded` is emitted alone, never with `turnEnded`.** An early return
+guarantees it. There is nothing to hand to a player who has already lost, and a
+`turnEnded` beside it would refresh the loser's `hasActed` flags for a turn that
+will never come.
+
+⚠️ **`isOver` exists so the question is spelled once.** The refusal in
+`validateCommand` and the client's "can I still play" both need it, and two
+inlined `winner !== null` checks is two spellings of one rule.
+
+### What each surface does with it
+
+⚠️ **The board goes quiet, in `clickTile`.** The server refuses every command
+once there is a winner, so a click that still selected would draw a route and
+walk a preview, all of it rolled back by a rejection the player never asked for.
+Selection is the input surface, not the rules: this stops the *asking*, and
+`validateCommand` is still what refuses. It reads the **live** state rather than
+the rendered copy, so it takes effect in the render where the winning batch
+arrives rather than the one after.
+
+⚠️ **The status bar checks the winner before calling `getCurrentPlayer`**, which
+throws when `currentTurn` names nobody and runs every render. `currentTurn` is
+never cleared today, so both orders would work — the ordering is what keeps that
+from being load-bearing. End Turn is disabled beside it.
+
+⚠️ **In the lobby the winner *displaces* the turn rather than joining it.** A
+finished row showing both would read *player-blue · player-red won* — true, since
+it is still whose turn it would have been, and useless. The board resolves the id
+to a display name; the lobby shows the id, having no roster to resolve against.
+
 ## HTTP
 
 Plain request/response over `Bun.serve`'s own `routes` table. No SSE, no
@@ -698,7 +780,7 @@ between a local file and hosted Turso.
 
 ```sql
 matches      (id, created_at, initial_state JSON, current_state JSON,
-              current_seq, current_turn, map_id, PRIMARY KEY (id))
+              current_seq, current_turn, map_id, winner, PRIMARY KEY (id))
 resolutions  (match_id, seq, actor, action JSON, events JSON, created_at,
               PRIMARY KEY (match_id, seq),
               FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE)
@@ -709,6 +791,14 @@ events are authoritative. `current_turn` is denormalised so listing matches
 parses no boards. `map_id` is read only to label a match in the list — replay
 never needs it, because `initial_state` already holds the instantiated board.
 `action` is written and never read.
+
+⚠️ **`winner` is denormalised for the same reason as `current_turn`** — the lobby
+must say whether a match is finished without parsing a board per row — and is
+**nullable**, where `map_id` took a default. That is the fact rather than a gap:
+null means *still being played*, and there is no sensible finished-ness to
+backfill an existing row with. It is written on **every** submit rather than only
+when it changes, because it is a copy of a field on the state being written
+beside it, and deriving when to skip it is how the two come to disagree.
 
 **Paths:** a relative `file:` URL in `DATABASE_URL` resolves against the repo
 root, not the cwd. `DEFAULT_DB_URL` lives in `src/const.ts`, and

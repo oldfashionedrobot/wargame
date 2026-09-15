@@ -7,7 +7,7 @@ import type {
   GameServer,
   GameState,
 } from '@vod/shared';
-import { coordinatesEqual } from '@vod/shared';
+import { coordinatesEqual, isOver } from '@vod/shared';
 import {
   chooseTarget,
   clearTarget,
@@ -229,6 +229,14 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
   const clickTile = useCallback(
     (coordinate: Coordinate): void => {
       if (pendingRef.current) return;
+
+      // ⚠️ The board goes quiet when the game does. The server refuses every
+      // command once there is a winner, so without this a click would still
+      // select, draw a route and walk a preview -- all of it rolled back by a
+      // rejection the player did not ask for. Selection is the input surface,
+      // not the rules: this stops the *asking*, and `validateCommand` is still
+      // what refuses.
+      if (isOver(server.getState())) return;
 
       // ⚠️ Nothing is answerable while the preview walks: `playEvents` skips a
       // move only once its mesh stands at the destination, so committing early

@@ -51,6 +51,7 @@ export {
 } from './coordinate';
 export { getCurrentPlayer, getUnit, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';
+export { isOver, soleSurvivor } from './victory';
 export { exploreMovement } from './movement';
 export type { Movement } from './movement';
 export { resolveAction, validateCommand } from './action';
