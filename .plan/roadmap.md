@@ -658,7 +658,7 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 | **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Four of them, picked from at match creation | A `maps` table once maps stop being written by developers. ⚠️ The other condition — enough maps to choose among — has already been met, so this is due a re-read rather than a wait; see below |
 | **Elevation is visual only, and capped at 0.5** | Height is a look, never data. A mesa and a bridge deck raise where a unit *stands*, but `shared/` has no idea: there is no height on a tile, `entryCost` never asks about one, and no rule reads one. ⚠️ Both halves of the old technical objection are now gone — `screenToTile` tries every surface height tallest-first, so a click finds a peak where it is drawn, and `surfaceAt` is a lookup that knows each tile's height. What caps height now is the *camera*: at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and past about half a tile it occupies its neighbour | ⚠️ **Nothing — this is where it stays.** It was once written here as waiting on machinery, which stopped being true when picking learned about height, and elevation as a *rule* is now declined for v1 rather than queued. Mesas are enough at this board size. The reasons, and the two findings worth keeping if it is ever reopened, are in *Out of scope for v1* |
 | **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
-| **`shared/`'s test files are not typechecked** | Nothing imports them, so they never enter a program `tsc -b` builds. Verified both ways: a deliberate type error in a `shared` test passes the typecheck, the same error in a source file fails it. They are verified by running instead. ⚠️ **A directory of `shared`'s own *can* be checked without touching purity**, which this entry used to imply was impossible: a sibling tsconfig with its own `types` covers `include: ["scripts"]` alone, leaving `src`'s config untouched. That is how the tuning harness gets checked — no `composite: true`, no new dependency | `bun:test` types in a `shared` program, which today means `@types/bun` as a dependency of the package whose defining property is having none — and that would also let `import … from 'bun'` typecheck inside the rulebook. Either a hand-written minimal declaration plus a lint rule closing the purity hole, or leave it |
+| **`shared/`'s test files are not typechecked** ⚠️ **and this has now bitten twice in two steps**, both silently: a command helper missing its required `facing`, and a `resolveAction` call left at two arguments after it grew a third. The entry below says the fix would let `import 'bun'` typecheck inside the rulebook — **that half is now known to be false.** The scripts program proved a directory of `shared`'s can have its own `types` without touching `src`'s config, and purity survives regardless because it is the **client** program, unchanged, that forbids the environment. What it really costs is a visible devDependency on the package whose defining property is having none. Worth paying; a separate change, not folded into a phase step | Nothing imports them, so they never enter a program `tsc -b` builds. Verified both ways: a deliberate type error in a `shared` test passes the typecheck, the same error in a source file fails it. They are verified by running instead. ⚠️ **A directory of `shared`'s own *can* be checked without touching purity**, which this entry used to imply was impossible: a sibling tsconfig with its own `types` covers `include: ["scripts"]` alone, leaving `src`'s config untouched. That is how the tuning harness gets checked — no `composite: true`, no new dependency | `bun:test` types in a `shared` program, which today means `@types/bun` as a dependency of the package whose defining property is having none — and that would also let `import … from 'bun'` typecheck inside the rulebook. Either a hand-written minimal declaration plus a lint rule closing the purity hole, or leave it |
 | **Migrations run at boot** | `migrate()` on startup, fine for one instance and ~0.4 ms once nothing is pending. Drizzle lists runtime migration as a first-class flow for monoliths, so this is a choice rather than a shortcut | `bun run db:migrate` as a deploy step, once there is more than one instance, a rolling deploy, or a reason to deny the runtime DDL rights |
 | **Two reads per command** | `resolveActor` needs state to stamp `actor = currentTurn`, but `submit` owns the read | Phase 11 — `resolveActor` becomes a session lookup and the extra read disappears |
 
@@ -753,6 +753,38 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
   ⚠️ **It wants a test anyway**, precisely because it holds by arithmetic rather than by intent: nothing in `actionsAllowed` says it must stay whole under a mid-turn death, and the next person to touch that `min` will not know.
 
+  ⚠️ **`clampHealth` lands with this step.** Health has no upper bound anywhere:
+  `MAX_HEALTH` is read at deployment and in `band()`, and the only clamp is a
+  literal `Math.max(0, …)` inside `resolveBattle`. The bug is not the missing
+  half so much as **the bounds being written inline**, so the next person to
+  compute a health writes their own. One helper beside `MAX_HEALTH` —
+  `Math.min(MAX_HEALTH, Math.max(0, value))` — makes "0 to `MAX_HEALTH`" a thing
+  nobody can write half of. A counter is the first code to write an *attacker's*
+  health, which is why it surfaces here.
+
+  ⚠️ **Not in `applyEvents`**, tempting though it is as the only mutator. It
+  would *silently correct* a bad event rather than refusing it, and this codebase
+  refuses loudly — `getUnitType` throws, the reducer throws on unknown events. A
+  health out of range can only come from a resolution bug, and quietly healing it
+  buries that bug in the log for good. Clamp where the number is produced.
+
+  ⚠️ **The attacker's blow lands even when the counter kills it.** It struck
+  first, so its damage is already done — the mirror of the rule that a dead
+  defender never answers. Both healths ride in one event, so nothing about the
+  ordering is ambiguous once it is said.
+
+  ⚠️ **`wouldCounter` does not look at `hasActed`.** That flag exists to stop a
+  unit *acting* twice in its own turn; answering an attack is not acting. A spent
+  unit still counters, which is AW's behaviour and falls out of the predicate
+  being purely geometric — but it reads as a bug the first time it is noticed, so
+  it is written down rather than left to be rediscovered.
+
+  ⚠️ **`applyEvents.test.ts:240` calls `resolveAction` with two arguments** and
+  has done since 9f made it three. It compiles only because `shared/`'s test
+  files are not typechecked, so the roll arrives as `undefined` — harmless there
+  because that test only moves, and `NaN` damage the moment it does not. **Fix it
+  before this step**, not during.
+
   ⚠️ **Rolls become `{ attack, counter }`** — a named object, not a tuple, and **not a discriminated union yet**. Two is the maximum any resolution needs: a volley draws once or twice, and a charge never has a counter because it does not consult the counter rule. The union is probably right eventually, but its charge member cannot be written correctly today — **whether a failed charge's repel damage is rolled is undecided**, and if it is, a charge needs `{ charge, repel }` rather than `{ charge }`. Writing that member now would bake an unasked question into a type, where it would look settled. 10a picks the shape with both members real, and will also have to settle that the two are different *kinds* of number: luck is `0..9` added to a result, a charge roll is `0..99` compared against a percentage.
 - **9h** ⚠️ **Mostly built, and smaller than it was.** Phases 7, 7.999 and 8.999 delivered the whole destination-and-action interaction: pinning, the confirm step and its pane, the client-side walk, and a `destinationChosen` whose lit tiles *are* the menu — the unit itself waits, a tile beside it faces that way, anything else cancels. **What remains is one more reading of a click already being read**: an enemy this unit can attack from the pinned tile. ⚠️ **No `choosingTarget` member** — that was the old plan and it is explicitly dropped; a target is a click in the state that exists, not a state of its own. What it does need is an attack-range overlay in a **reddish** tint, so a target is told from a facing choice by colour rather than by a rule.
 
@@ -774,6 +806,19 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   ```
 
   One place, one order, and the ambiguity becomes unrepresentable rather than avoided by convention. It matches `handleTileClick`, already one function returning one answer, and it is testable as a table of clicks to readings — where the old shape could only test that three functions were called in the right sequence. ⚠️ The pure decision belongs in `interaction/selection.ts`; the *dispatch* stays in `clickTile`, which is what has kept `handleTileClick` selection-only through two reworks.
+
+  ⚠️ **The reddish range wants desaturating.** The palette already holds white
+  hover, amber selection and facing, pale blue range, near-white route — and the
+  health ring's **orange-red**. A saturated red attack range beside that ring is
+  the clash. Large tinted areas want low saturation anyway and the ring is small,
+  bright and persistent, so the range gives way rather than the ring. The ring's
+  own colour took two attempts; budget the same here.
+
+  ⚠️ **`clickTile` will hold two order-dependent reads, and they should stay
+  apart.** The movement one is about *phases* — the confirm must be read before
+  `handleTileClick`, which is already documented there. The action one is about
+  *readings within a phase*, and `readActionClick` is what retires it. Folding
+  them together would make one function answer two unrelated questions.
 
   ⚠️ **`refuseAttack` answers with a reason string, which is the wrong shape for an overlay.** Painting a range means asking per tile, and a reason-producing function in a loop invites comparing reason *text* — which this repo warns against outright, since the wording belongs to the server and changes without the failure mode changing. A boolean predicate beside it, or the overlay derived from the range arithmetic directly.
 
