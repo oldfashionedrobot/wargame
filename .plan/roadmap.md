@@ -439,7 +439,11 @@ changes a decision. ×1.5 and ×2 move the curve enough to be a reason to ride
 around someone.
 
 - **Success**: the target takes damage equal to its remaining health, and the
-  attacker displaces onto the vacated tile. ⚠️ Expressed as *damage to zero*
+  attacker displaces onto the vacated tile. ⚠️ **The attacker's facing needs no
+  second decision, because charge is contact-only.** The command carries a facing
+  pointing at the target, and the displacement is one step onto that same tile —
+  so *face the target* and *face the way you travelled* are the same direction,
+  necessarily. On failure the attacker stays put, still facing the target. ⚠️ Expressed as *damage to zero*
   rather than "it dies", which is what lets a charge be an ordinary
   `battleResolved` with no special case in the reducer.
 - **Failure**: the attacker takes `CHARGE_REPEL` scaled by how badly the charge
@@ -507,6 +511,25 @@ was waiting on.
 ⚠️ **`chance` is never zero and never divided by here**, but the `max(1, …)` floor
 still matters: at `chance = 100` there are no failing rolls at all, since
 `roll < chance` with `roll ∈ [0, 99]`, so the expression is simply never reached.
+
+⚠️ **The panel can show the odds exactly**, which the fire forecast cannot do for
+its counter. `chance` is a pure function of state — matchup, target health,
+facing — with no roll in it, so *Charge — 25%* is the truth rather than an
+estimate. ⚠️ The **repel** is a range, since it depends on how far the roll
+overshoots, so a charge preview is one exact number and one band where a shot is
+one band and a yes/no.
+
+⚠️ **Open: does terrain affect a charge at all?** Today's spec reads the terrain
+table only to ask whether the attacker can *enter* the target's tile, so a formed
+line in a forest is exactly as breakable as one on a road. ⚠️ That contradicts
+what terrain means everywhere else — `computeDamage` reads `defense`, which runs
+0 on road and bridge, 1 on plains, 2 in forest, 4 on a mountain — and *cover
+against a charge* is the most intuitive reading of terrain there is. Against it:
+the threshold expression already has a matchup dial and a directional dial, both
+untuned and with no reference behaviour, and terrain would be a third moving at
+the same time. **Deferring it is defensible; not noticing it is not.** If it does
+land, it belongs as a term on the threshold, alongside the directional multiplier
+and for the same reason — scale-free, so retuning the base table does not drag it.
 
 Fire and charge are **different resolutions, dispatched once** on an `attackKind` discriminant — fire produces damage, charge produces death-plus-displacement or a backfire. Two self-contained functions, not conditionals threaded through one.
 
