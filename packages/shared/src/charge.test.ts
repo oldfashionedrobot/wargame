@@ -87,6 +87,90 @@ describe('chargeChance', () => {
   });
 });
 
+describe('chargeChance, by which side it arrives on', () => {
+  // ⚠️ The *defender's* facing decides the side, so the approach is set by
+  // turning the target rather than by moving the charger. b1 always comes from
+  // the south: `south` is looking at it, `north` is looking away, `east` takes
+  // it on the flank.
+  const facing = (look: 'south' | 'east' | 'north', health = 70) =>
+    makeState(
+      ['...', '.-.', '.-.'],
+      [
+        { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+        { id: 'r1', col: 1, row: 2, owner: 'red', health, facing: look },
+      ],
+    );
+  const odds = (state: GameState) => chargeChance(state, unit(state, 'b1'), unit(state, 'r1'))!;
+
+  it('is easier from the flank than head-on, and easier still from behind', () => {
+    expect(odds(facing('east'))).toBeGreaterThan(odds(facing('south')));
+    expect(odds(facing('north'))).toBeGreaterThan(odds(facing('east')));
+  });
+
+  // ⚠️ Worth manoeuvring for, which is the bar the multipliers were set against:
+  // ×1.15 moved 20% to 23%, inside the noise and never worth a decision.
+  it('moves the curve enough to be a reason to ride around someone', () => {
+    expect(odds(facing('north'))).toBeGreaterThanOrEqual(odds(facing('south')) * 2);
+  });
+
+  // Both flanks are the same side: the classifier does not tell left from right,
+  // and neither should this.
+  it('treats either flank alike', () => {
+    expect(odds(facing('east'))).toBe(
+      chargeChance(
+        makeState(
+          ['...', '.-.', '.-.'],
+          [
+            { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+            { id: 'r1', col: 1, row: 2, owner: 'red', health: 70, facing: 'west' },
+          ],
+        ),
+        unit(facing('east'), 'b1'),
+        { ...unit(facing('east'), 'r1'), facing: 'west' },
+      )!,
+    );
+  });
+
+  // ⚠️ **Read from where the attacker will be standing, not where it started.**
+  // Both callers hand over the moved unit; pricing a charge by where the ride
+  // began would let a unit circle to the rear and be charged as though it had
+  // not. Same board, same target, two different attacker positions.
+  it('reads the side from the attacker’s destination', () => {
+    const board = makeState(
+      ['....', '.--.', '.--.', '....'],
+      [
+        { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+        { id: 'r1', col: 1, row: 2, owner: 'red', health: 70, facing: 'south' },
+      ],
+    );
+    const fromSouth = unit(board, 'b1'); // where it stands: head-on
+    const fromEast = { ...fromSouth, position: { col: 2, row: 2 } }; // the flank
+    expect(chargeChance(board, fromEast, unit(board, 'r1'))!).toBeGreaterThan(
+      chargeChance(board, fromSouth, unit(board, 'r1'))!,
+    );
+  });
+
+  // The two terms are independent: cover still helps a defender taken in the
+  // rear, and facing still helps an attacker charging into cover.
+  it('composes with terrain rather than replacing it', () => {
+    const open = makeState(
+      ['...', '.-.', '.-.'],
+      [
+        { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+        { id: 'r1', col: 1, row: 2, owner: 'red', health: 70, facing: 'north' },
+      ],
+    );
+    const wood = makeState(
+      ['...', '.-.', '.f.'],
+      [
+        { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+        { id: 'r1', col: 1, row: 2, owner: 'red', health: 70, facing: 'north' },
+      ],
+    );
+    expect(odds(wood)).toBeLessThan(odds(open));
+  });
+});
+
 describe('refuseCharge', () => {
   const b1 = (state: GameState) => unit(state, 'b1');
 

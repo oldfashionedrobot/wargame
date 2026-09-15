@@ -674,7 +674,8 @@ the module's doc comment, with a note on which wins where they disagree.
 A second attack, chosen instead of firing and spending the turn either way.
 
 ```
-margin = max(0, targetHealth + terrainDefense − CHARGE_THRESHOLD[attacker][defender])
+threshold = floor(CHARGE_THRESHOLD[attacker][defender] × directionalMultiplier)
+margin = max(0, targetHealth + terrainDefense − threshold)
 chance = max(1, round(100 × 0.5 ^ (margin / CHARGE_HALF_LIFE)))
 success = roll < chance                                    // roll is 0..99
 repel   = CHARGE_REPEL[defender] + floor((roll − chance) / REPEL_DIVISOR)
@@ -734,9 +735,29 @@ and `entryCost` refuses that tile for being *enemy-held*, the one objection a
 charge is not troubled by. Sharing the terrain half is what stops movement and
 charge disagreeing about what ground a unit may be on.
 
-⚠️ **`directionalMultiplier` is not yet in the formula.** 10a pins it at 1 and
-`attackSide`'s `flank` stays unread; 10b wires both. Two untested dials in one
-expression cannot be told apart by any observation.
+⚠️ **`directionalMultiplier` multiplies the threshold; it does not add to it.**
+An additive constant stops meaning anything the moment the table underneath it
+moves — halve every threshold and a flat `+20` goes from a nudge to an override.
+A multiplier is scale-free, so `CHARGE_THRESHOLD` can be retuned without dragging
+`FLANK_MULTIPLIER` and `REAR_MULTIPLIER` behind it, and it reads as what it is: a
+rear charge is *twice as likely to break them*, not twenty more points of
+something.
+
+⚠️ **The side is read from where the attacker will be standing.** Both callers
+hand over the moved unit — `resolveMove` builds it, and the client's forecast
+builds the same one — so a charge is priced by where the ride *ends*. Read
+against the origin, a unit could circle to the rear and be charged as though it
+had not.
+
+⚠️ **This is `attackSide`'s second reader and the first to consult `flank`**; the
+rear-fire rule uses only its `rear` case.
+
+⚠️ **A multiplied threshold can exceed 100, and the charge is then automatic at
+any health.** That is the mechanic's signature moment where it is meant —
+cavalry into the rear of a battery — and a dead dial where it is not, because a
+base value that reads reasonable head-on can saturate at the *flank* and leave
+the rear distinction doing nothing. The two look identical in a head-on column,
+which is why `scripts/charges.ts` prints all three.
 
 ## Victory
 

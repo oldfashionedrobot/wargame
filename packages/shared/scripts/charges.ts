@@ -13,12 +13,12 @@
  * charge harder, and plains -- which is where units mostly stand -- costs the
  * attacker a point or two that this table deliberately does not show.
  *
- * ⚠️ **Head-on only, because 10a pins `directionalMultiplier` at 1.** A base
- * value wants checking at all three multipliers before it is trusted: one that
- * reads reasonable front-on can saturate at the flank and leave the rear
- * distinction doing nothing. `cavalry → artillery` is already automatic at 55
- * health head-on, which is deliberate and is the shape to watch for arriving
- * somewhere it was not intended.
+ * ⚠️ **All three approaches, because head-on alone cannot be trusted.** A base
+ * value that reads reasonable front-on can saturate at the flank and leave the
+ * rear distinction doing nothing -- the multiplied threshold passes 100 and every
+ * health becomes automatic. That is the mechanic's signature moment where it is
+ * intended and a dead dial where it is not, and the two look identical in a
+ * head-on column.
  */
 import { chargeChance, chargeThreshold } from '../src/combat';
 import { CHARGE_REPEL, REPEL_DIVISOR } from '../src/data/combat';
@@ -29,28 +29,47 @@ const CHARGERS: UnitTypeId[] = ['cavalry', 'infantry'];
 const TARGETS: UnitTypeId[] = ['infantry', 'cavalry', 'artillery'];
 const HEALTHS = [100, 85, 70, 55, 40, 25];
 
-const board = (attacker: UnitTypeId, defender: UnitTypeId, health: number) =>
+/**
+ * ⚠️ The **defender's** facing decides the side, so the approach is set by
+ * turning the target rather than by moving the attacker: `south` looks straight
+ * at a charger coming from the south, `north` looks away, `east` takes it on
+ * the flank.
+ */
+const FACING = { 'head-on': 'south', flank: 'east', rear: 'north' } as const;
+
+const board = (
+  attacker: UnitTypeId,
+  defender: UnitTypeId,
+  health: number,
+  facing: (typeof FACING)[keyof typeof FACING],
+) =>
   makeState(
     ['...', '.-.', '.-.'],
     [
       { id: 'b1', col: 1, row: 1, unitTypeId: attacker },
-      { id: 'r1', col: 1, row: 2, owner: 'red', unitTypeId: defender, health },
+      { id: 'r1', col: 1, row: 2, owner: 'red', unitTypeId: defender, health, facing },
     ],
   );
 
-console.log(`odds to break, on road, head-on.  repel is flat + overshoot/${REPEL_DIVISOR}\n`);
-console.log(`${''.padEnd(22)}${HEALTHS.map((h) => `${h}hp`.padStart(7)).join('')}   failing costs`);
+console.log(`odds to break, on road.  repel is flat + overshoot/${REPEL_DIVISOR}\n`);
 
-for (const attacker of CHARGERS) {
-  for (const defender of TARGETS) {
-    if (chargeThreshold(attacker, defender) === null) continue;
-    const odds = HEALTHS.map((health) => {
-      const state = board(attacker, defender, health);
-      return `${chargeChance(state, state.units[0], state.units[1])!}%`.padStart(7);
-    });
-    const repel = CHARGE_REPEL[defender];
-    console.log(
-      `${`${attacker} → ${defender}`.padEnd(22)}${odds.join('')}   ${repel}–${repel + 9}`,
-    );
+for (const [approach, facing] of Object.entries(FACING)) {
+  console.log(`  ${approach}`);
+  console.log(
+    `${''.padEnd(24)}${HEALTHS.map((h) => `${h}hp`.padStart(7)).join('')}   failing costs`,
+  );
+  for (const attacker of CHARGERS) {
+    for (const defender of TARGETS) {
+      if (chargeThreshold(attacker, defender) === null) continue;
+      const odds = HEALTHS.map((health) => {
+        const state = board(attacker, defender, health, facing);
+        return `${chargeChance(state, state.units[0], state.units[1])!}%`.padStart(7);
+      });
+      const repel = CHARGE_REPEL[defender];
+      console.log(
+        `${`${attacker} → ${defender}`.padEnd(24)}${odds.join('')}   ${repel}–${repel + 9}`,
+      );
+    }
   }
+  console.log();
 }

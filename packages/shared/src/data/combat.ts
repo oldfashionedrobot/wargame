@@ -133,3 +133,29 @@ export const CHARGE_HALF_LIFE = 15;
  * Halving it doubles the swing.
  */
 export const REPEL_DIVISOR = 10;
+
+/**
+ * What a charge into an unready side is worth, as a **multiplier on the
+ * threshold**.
+ *
+ * ⚠️ **Multiplied, never added, and the reason is retuning.** An additive
+ * constant stops meaning anything the moment the table underneath it moves --
+ * halve every threshold and a flat `+20` goes from a nudge to an override. A
+ * multiplier is scale-free, so `CHARGE_THRESHOLD` can be retuned without
+ * dragging these behind it. They also read as what they are: a rear charge is
+ * *twice as likely to break them*, not *twenty more points of something*.
+ *
+ * ⚠️ **They have to be worth manoeuvring for.** At ×1.15 the flank moved 20% to
+ * 23% -- inside the noise, a rule to learn that never changes a decision. These
+ * move the curve enough to be a reason to ride around someone.
+ *
+ * ⚠️ **A multiplied threshold can exceed 100**, and the charge is then automatic
+ * against any health at all. That is deliberate and it is the mechanic's
+ * signature moment -- cavalry into the rear of a battery -- but it is also why a
+ * base value wants checking at *all three* multipliers rather than head-on
+ * alone: one that reads reasonable front-on can saturate at the flank and leave
+ * the rear distinction doing nothing. `scripts/charges.ts` prints all three for
+ * exactly that.
+ */
+export const FLANK_MULTIPLIER = 1.5;
+export const REAR_MULTIPLIER = 2;

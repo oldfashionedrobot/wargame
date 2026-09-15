@@ -639,6 +639,23 @@ symptom to watch for.
 `FLANK_MULTIPLIER 1.5`, `REAR_MULTIPLIER 2`, `REPEL_DIVISOR 10`, `luckMax 9` — the
 last matching AW exactly, since `baseDamage` is a percentage in both schemes.
 
+⚠️ **Measured, not predicted: `cavalry → artillery 60` saturates at the flank.**
+With the multipliers wired, that row reads 16/31/63/100/100/100 head-on,
+63/100/100/… from the flank, and 100% at every health from the rear. So flank and
+rear differ only against a full-health battery, and the rear multiplier does
+nothing in the row it was most meant for. ⚠️ The intent was *60 / 90 /
+automatic* — cavalry into the rear of a battery as the signature moment — and
+what arrived is *automatic / automatic*, because 60 × 1.5 is already 90 and the
+health scale only runs to 100.
+
+**Three ways out, none taken yet, because nothing has been played:** lower the
+base so the multipliers have room (40 gives roughly 3 / 22 / 63 at full health);
+or accept that closing with a battery is simply decisive from any side and let
+the *threat* be the mechanic rather than the angle; or cap the effective
+threshold below 100 so a charge is never automatic, which would also touch the
+signature moment deliberately rather than by accident. ⚠️ The same shape is worth
+checking in `infantry → artillery 45`, which saturates one column later.
+
 ⚠️ **The triangle closes in the charge table, not the damage one.** Cavalry
 loses the shooting exchange with artillery (55 out against 75 back), so it has
 to close; `cavalry→artillery 60` then runs 60 / 90 / automatic across head-on,
@@ -906,20 +923,19 @@ one formula cannot be read apart, not because the geometry might be wrong.
   this was one layer above it — the lesson is that a specified-but-unbuilt
   surface reads as done until something looks at it.
 
-- **10b** ⬜ **The directional term.** `FLANK_MULTIPLIER` and `REAR_MULTIPLIER`
-  wired into the threshold, which is `attackSide`'s second reader and the first
-  thing to consult its `flank` case.
+- **10b** ✅ **Shipped**, and gone from here: `FLANK_MULTIPLIER` and
+  `REAR_MULTIPLIER` multiplying the threshold inside `chargeChance`, and
+  `scripts/charges.ts` printing all three approaches — see *Charge* under
+  *Combat* in [`architecture.md`](architecture.md). No client change was needed:
+  the panel calls `chargeChance`, so its odds picked facing up for free.
 
-  ⚠️ **Separate so that each observation moves one dial.** Front-on charge until
-  the curve feels right, then the directional term against a curve that already
-  does — otherwise every reading is adjusting two untested numbers at once, and
-  neither can be told apart from the other.
-
-  ⚠️ **A base value wants checking at all three multipliers, not head-on alone.**
-  A threshold that reads reasonable front-on can saturate at the flank and make
-  the rear distinction dead weight — `cavalry → artillery 60` already runs
-  60 / 90 / automatic, which is deliberate and is the shape to watch for
-  accidentally elsewhere.
+  ⚠️ **The harness earned itself on the first run.** `cavalry → artillery` at a
+  base of 60 saturates: the flank is 100% from 85 health down and the rear is
+  100% everywhere, so the two are distinguishable only against a full-health
+  battery. The rear multiplier is doing nothing in that row. That is precisely
+  the dead dial this step was told to watch for, it is invisible in a head-on
+  column, and it is a **tuning** finding rather than a bug — the numbers were
+  written down to be argued with. See *Tuning* for where it stands.
 
 - **10c** ⬜ **The combat cutaway.** A view that takes over, shows both units,
   plays the exchange, and hands back — AW's battle screen. ⚠️ **Here rather than

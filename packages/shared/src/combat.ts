@@ -5,6 +5,8 @@ import {
   CHARGE_HALF_LIFE,
   CHARGE_REPEL,
   CHARGE_THRESHOLD,
+  FLANK_MULTIPLIER,
+  REAR_MULTIPLIER,
   REPEL_DIVISOR,
 } from './data/combat';
 import { clampHealth, getUnitType } from './data/unitTypes';
@@ -384,8 +386,15 @@ export function chargeChance(state: GameState, attacker: Unit, defender: Unit): 
   const threshold = chargeThreshold(attacker.unitTypeId, defender.unitTypeId);
   if (threshold === null) return null;
 
+  // ⚠️ **Read from where the attacker will be standing**, which is what the
+  // callers already hand over: `resolveMove` builds the moved unit, and the
+  // client's forecast builds the same one. Facing read against the *origin*
+  // would price a charge by where the ride started.
+  const side = attackSide(defender.facing, defender.position, attacker.position);
+  const directional = side === 'rear' ? REAR_MULTIPLIER : side === 'flank' ? FLANK_MULTIPLIER : 1;
+
   const { defense } = getTerrain(state.grid[defender.position.row][defender.position.col]);
-  const margin = Math.max(0, defender.health + defense - threshold);
+  const margin = Math.max(0, defender.health + defense - Math.floor(threshold * directional));
   return Math.max(1, Math.round(100 * 0.5 ** (margin / CHARGE_HALF_LIFE)));
 }
 
