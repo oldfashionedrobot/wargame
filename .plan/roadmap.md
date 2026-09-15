@@ -1048,9 +1048,22 @@ one formula cannot be read apart, not because the geometry might be wrong.
   skips three. 9f predicted this and recorded it *in 9f*, where nobody building
   the cutaway would look.
 
-  **A way to turn it off.** The *automatic* skip already works — `worthAnimating`
-  false means `playEvents` is never called and `syncUnits` corrects — so what is
-  missing is only a player preference.
+  ⚠️ ~~**A way to turn it off.**~~ ❌ **Declined**, and the argument for it was
+  wrong. It was justified here as *"cheaper to design in now than to retrofit"*,
+  which is backwards: `worthAnimating` is a single gate that already exists, so a
+  preference later is one condition inside it. Building it now means inventing a
+  settings surface — there is **no preference storage anywhere in the client** —
+  for one toggle.
+
+  ⚠️ **And the case that would make you want it is already covered.** What makes
+  a skip necessary is *many battles at once*, which is a catch-up after being
+  away — and that is `animatedTiles` with a battle priced into it. A single 1.5s
+  cutaway on your own turn is the drama the thing exists for.
+
+  It was asserted from AW's precedent without checking whether AW's conditions
+  hold. They mostly do not: AW plays ~3s animations across a twenty-mission
+  campaign you have seen hundreds of times, where this is one hot-seat match at
+  half the length. Revisit if play says otherwise — the gate is waiting.
 
   #### The camera, measured against the renderer as it is
 
