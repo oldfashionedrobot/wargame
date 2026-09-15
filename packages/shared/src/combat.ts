@@ -155,10 +155,19 @@ export function refuseAttack(
  *
  * ⚠️ **Two, because two is the maximum anything needs.** A volley draws once or
  * twice; a charge never has a counter, because it does not consult the counter
- * rule at all. ⚠️ **Not a discriminated union yet**: the charge member cannot be
- * written correctly until 10a says whether a failed charge's repel damage is
- * rolled. `{ charge }` or `{ charge, repel }` is an open question, and putting
- * either in a type now would make it look answered.
+ * rule at all.
+ *
+ * ⚠️ **Not a discriminated union yet, and the question it was waiting on is now
+ * answered.** This asked whether a failed charge's repel damage is rolled
+ * separately -- `{ charge }` or `{ charge, repel }`. It is not: 10a scales the
+ * repel by `roll / chance`, reusing the very roll that decided success, so a
+ * charge draws **once**. The union becomes
+ * `{ attack, counter } | { charge }` when 10a lands.
+ *
+ * ⚠️ **Making it a union does not contradict the note below**, which says the
+ * number of draws must not depend on the rules. It depends on the *command* --
+ * the server knows the attack kind before it rolls, because the client said so.
+ * Reading a command is not running a rule.
  *
  * ⚠️ `counter` is drawn whether or not it is used. Deciding first and rolling
  * second would make the *number of draws* depend on the rules, which is exactly
