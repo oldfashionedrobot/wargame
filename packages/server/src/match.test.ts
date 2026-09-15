@@ -288,6 +288,68 @@ describe('storage guarantees', () => {
     const folded = applyEvents(JSON.parse(rows[0].initial_state as string), log!.events);
     expect(folded).toEqual(JSON.parse(rows[0].current_state as string));
   });
+
+  // ⚠️ The same invariant across the event type that is hardest to reach. Three
+  // ordinary moves above never produce a `gameEnded`, so the newest member of
+  // the union was in no log this claim folded -- and this claim is the one the
+  // whole event design rests on.
+  //
+  // ⚠️ **Both states are rewritten, not just `current_state`.** Surgery on the
+  // checkpoint alone desyncs it from the anchor, and folding from an anchor that
+  // never held this position would fail for that reason rather than for
+  // anything about `gameEnded`. Rewriting the pair keeps them a matched
+  // beginning, which is what makes the fold meaningful.
+  it('still holds when the log ends in a gameEnded', async () => {
+    const { id } = await store.create();
+    const base = createMatchState(getMap('classic'));
+    const lastStand = {
+      ...base,
+      units: [
+        { ...base.units.find((unit) => unit.id === 'blue-1')!, position: { col: 5, row: 0 } },
+        {
+          ...base.units.find((unit) => unit.id === 'red-1')!,
+          position: { col: 5, row: 3 },
+          health: 1,
+        },
+      ],
+    };
+    await sql.execute({
+      sql: 'UPDATE matches SET initial_state = ?, current_state = ? WHERE id = ?',
+      args: [JSON.stringify(lastStand), JSON.stringify(lastStand), id],
+    });
+
+    // blue-1 is the artillery on the flank: range 2..5, so it kills from three
+    // tiles off without moving, and a one-health defender does not survive it.
+    const result = await store.submit(
+      id,
+      {
+        type: 'move',
+        unitId: 'blue-1',
+        path: [{ col: 5, row: 0 }],
+        facing: 'north',
+        targetUnitId: 'red-1',
+      },
+      BLUE,
+    );
+    expect(result?.ok).toBe(true);
+
+    const log = await store.since(id, 0);
+    expect(log!.events.map((event) => event.type)).toEqual([
+      'unitMoved',
+      'battleResolved',
+      'gameEnded',
+    ]);
+
+    const { applyEvents } = await import('@vod/shared');
+    const { rows } = await sql.execute({
+      sql: 'SELECT initial_state, current_state FROM matches WHERE id = ?',
+      args: [id],
+    });
+    const folded = applyEvents(JSON.parse(rows[0].initial_state as string), log!.events);
+    expect(folded).toEqual(JSON.parse(rows[0].current_state as string));
+    // And the thing the fold had to carry across: the marker, not just the board.
+    expect(folded.winner).toBe(BLUE);
+  });
 });
 
 describe('rollLuck', () => {

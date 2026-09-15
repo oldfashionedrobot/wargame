@@ -117,7 +117,13 @@ export function resolveAction(state: GameState, action: Action, rolls: Rolls): G
       // `applyEvents` -- `resolveBattle` only says what each side *has*. So the
       // question cannot be answered from `state`, which predates the death, nor
       // from the events, which would mean re-deriving what the reducer already
-      // does. Cheap: one pass over a roster that is about to shrink.
+      // does.
+      //
+      // ⚠️ **It folds on every move, including ones with no target**, which
+      // cannot kill anyone -- so the obvious saving is to ask only when
+      // `targetUnitId` is set. Not taken: that puts "only attacks kill" in a
+      // second place, where it is a rule this function has no business
+      // restating, and the cost it saves is a copy of sixteen units.
       const winner = soleSurvivor(applyEvents(state, events));
       if (winner !== null) {
         // ⚠️ **`gameEnded` alone, and this early return is what guarantees it.**
