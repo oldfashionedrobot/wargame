@@ -36,6 +36,41 @@ describe('parseCommand', () => {
       expect(Object.keys(parsed ?? {})).not.toContain('targetUnitId');
     });
 
+    // ⚠️ **The same whitelist, and a worse failure if it is forgotten.** A
+    // dropped `targetUnitId` loses an attack; a dropped `attackKind` turns a
+    // *charge* into a shot, which resolves, succeeds, and does something the
+    // player never asked for.
+    it('carries an attack kind through', () => {
+      expect(
+        parseCommand({
+          type: 'move',
+          unitId: 'u1',
+          path,
+          facing: 'north',
+          targetUnitId: 'r3',
+          attackKind: 'charge',
+        }),
+      ).toMatchObject({ attackKind: 'charge' });
+    });
+
+    it('leaves the key off entirely when none was sent', () => {
+      const parsed = parseCommand({ type: 'move', unitId: 'u1', path, facing: 'north' });
+      expect(Object.keys(parsed ?? {})).not.toContain('attackKind');
+    });
+
+    it('refuses a kind it does not know rather than dropping it', () => {
+      expect(
+        parseCommand({
+          type: 'move',
+          unitId: 'u1',
+          path,
+          facing: 'north',
+          targetUnitId: 'r3',
+          attackKind: 'bayonet',
+        }),
+      ).toBeNull();
+    });
+
     it('an endTurn command', () => {
       expect(parseCommand({ type: 'endTurn' })).toEqual({ type: 'endTurn' });
     });

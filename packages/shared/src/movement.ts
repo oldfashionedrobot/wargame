@@ -1,6 +1,7 @@
 import { coordinatesEqual, coordinateKey } from './coordinate';
 import { getTerrain } from './data/terrain';
 import type { MovementType } from './data/unitTypes';
+import type { TileType } from './data/terrain';
 import { getTileAt, getUnitAt } from './queries';
 import type { Coordinate, GameState, Unit } from './types';
 
@@ -25,6 +26,20 @@ const nameOf = (coordinate: Coordinate) => `(${coordinate.col},${coordinate.row}
  * already answers `undefined` there, so asking for the terrain and asking
  * whether the tile exists are one question.
  */
+/**
+ * May this movement type be on this terrain at all, at any price?
+ *
+ * ⚠️ **Split out of `entryCost` because charge needs this half and not the
+ * other.** A successful charge displaces onto the *target's* tile, so it has to
+ * ask whether that ground admits the attacker -- and `entryCost` answers "held by
+ * an enemy" for exactly that tile, which is the one thing a charge is not
+ * troubled by. Duplicating the terrain lookup instead would be a second spelling
+ * of one rule, which is the shape this codebase keeps correcting.
+ */
+export function terrainAdmits(tile: TileType, movementType: MovementType): boolean {
+  return getTerrain(tile).cost[movementType] !== null;
+}
+
 function entryCost(
   state: GameState,
   unit: Unit,
@@ -39,10 +54,14 @@ function entryCost(
     return { ok: false, reason: `${nameOf(coordinate)} is held by an enemy` };
   }
 
-  const cost = getTerrain(tile).cost[movementType];
-  if (cost === null) return { ok: false, reason: `${movementType} cannot cross ${tile}` };
+  // ⚠️ Asked through `terrainAdmits` so charge and movement cannot disagree
+  // about what ground a unit may be on; the cost is read here because only
+  // movement spends it.
+  if (!terrainAdmits(tile, movementType)) {
+    return { ok: false, reason: `${movementType} cannot cross ${tile}` };
+  }
 
-  return { ok: true, cost };
+  return { ok: true, cost: getTerrain(tile).cost[movementType]! };
 }
 
 export interface Movement {

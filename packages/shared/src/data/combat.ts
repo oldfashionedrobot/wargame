@@ -59,3 +59,77 @@ export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
  * `baseDamage` is a percentage in both schemes.
  */
 export const LUCK_MAX = 9;
+
+/**
+ * Target health at or below which a charge is **certain**, attacker down the
+ * side. A percentage, read against the defender's raw health.
+ *
+ * ⚠️ **`Partial`, and the missing row is the rule.** Artillery has none, which is
+ * how "artillery cannot charge" is said -- rather than a `canCharge` flag on the
+ * unit catalog saying the same thing a second time, where the two could drift.
+ * Any unit can still be a *target*.
+ *
+ * ⚠️ **The triangle closes here, not in `BASE_DAMAGE`.** Cavalry loses the
+ * shooting exchange with artillery -- 30 out against 60 back -- so it has to
+ * close, and `cavalry → artillery 60` is what makes closing pay. Against
+ * infantry it is 25: a frontal charge needs a nearly-dead target, which is what
+ * "infantry beats cavalry by not breaking" has to mean numerically.
+ *
+ * ⚠️ `infantry → cavalry 15` is the lowest number in either table on purpose.
+ * Charging cavalry on foot should almost never be the right call, and a number
+ * says so more cheaply than a rule forbidding it.
+ *
+ * ⚠️ **Untuned.** Nothing has been played. These exist so the harness has
+ * something to print and so tuning starts from a position rather than a blank.
+ */
+export const CHARGE_THRESHOLD: Partial<Record<UnitTypeId, Record<UnitTypeId, number>>> = {
+  cavalry: { infantry: 25, cavalry: 25, artillery: 60 },
+  infantry: { infantry: 20, cavalry: 15, artillery: 45 },
+};
+
+/**
+ * What a **failed** charge costs the attacker, keyed by who was charged.
+ *
+ * ⚠️ **Keyed by the defender only, never by the matchup.** What a unit does when
+ * cavalry hits its line is about its own equipment, not about who is arriving --
+ * and the attacker-versus-defender dimension is already spent on
+ * `CHARGE_THRESHOLD`. The split is the point: **the threshold says how likely,
+ * the repel says what failing costs.** Two questions, two tables, neither doing
+ * the other's job.
+ *
+ * ⚠️ **Not the defender's own `BASE_DAMAGE` row**, which was considered and
+ * refused: artillery's 60 was tuned as *ranged* fire, and borrowing it at contact
+ * would assert a battery is as dangerous close as far -- the opposite of what
+ * `range.min: 2` exists to say. Hence 8 here against 60 there.
+ *
+ * ⚠️ **This is not the "defence stat" the damage design refuses.** That refusal
+ * is about *damage*, where a scalar defence forces a transitive ordering and
+ * makes a triangle impossible. Repel takes no part in the damage formula and
+ * orders nothing: it is a punishment, not a toughness.
+ */
+export const CHARGE_REPEL: Record<UnitTypeId, number> = {
+  infantry: 10,
+  cavalry: 5,
+  artillery: 8,
+};
+
+/**
+ * Every this many points of health above the threshold **halves** the odds.
+ *
+ * ⚠️ **Exponential decay, and the shape is the point** -- one dial with a
+ * sentence you can say out loud. At or below the threshold a charge is certain;
+ * above it the curve falls away but never reaches zero, so cavalry into a
+ * full-health line is a long shot rather than a wall.
+ */
+export const CHARGE_HALF_LIFE = 15;
+
+/**
+ * What a failed charge's overshoot is divided by before being added to the flat
+ * repel cost.
+ *
+ * ⚠️ **Ten, so that no cap is needed.** The overshoot cannot exceed 99, so this
+ * tops the term out at **+9** on its own -- the same band as `LUCK_MAX`, which
+ * keeps charge from introducing a second, differently scaled idea of variance.
+ * Halving it doubles the swing.
+ */
+export const REPEL_DIVISOR = 10;

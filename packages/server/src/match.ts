@@ -40,7 +40,19 @@ const LIST_LIMIT = 50;
  * happens** -- damage stays in a legal range, nothing throws, and nobody would
  * find it. Three lines are worth four lines of test for that.
  */
-export function rollLuck(): Rolls {
+export function rollLuck(command: Command): Rolls {
+  // ⚠️ **Reads the command, never the rules.** The note below forbids letting
+  // the *rules* decide how many draws to make -- which is why a counter is drawn
+  // whether or not it turns out to be used. Asking the command is a different
+  // thing: the client already said which attack it is making, and reading that
+  // is not running a rule.
+  if (command.type === 'move' && command.attackKind === 'charge') {
+    // ⚠️ 0..99, not 0..LUCK_MAX. A charge rolls against a *percentage*, and the
+    // same draw decides success and sizes the repel -- so one number, on the
+    // scale the chance is expressed in.
+    return { charge: Math.floor(Math.random() * 100) };
+  }
+
   const draw = () => Math.floor(Math.random() * (LUCK_MAX + 1));
   // ⚠️ Both drawn whether or not both are used. Deciding first and rolling
   // second would make the *number of draws* depend on the rules, which is the
@@ -166,7 +178,7 @@ export function createMatchStore({ db }: Database): MatchStore {
       const validation = validateCommand(match.state, command, actor);
       if (!validation.ok) return { ok: false, reason: validation.reason };
 
-      const events = resolveAction(match.state, validation.action, rollLuck());
+      const events = resolveAction(match.state, validation.action, rollLuck(command));
 
       // Reducers return events, not state. Folding them here is the only way a
       // new state is ever produced, so what gets stored and what a replay of

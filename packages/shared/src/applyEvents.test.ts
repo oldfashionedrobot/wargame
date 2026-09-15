@@ -2,7 +2,15 @@ import { describe, expect, it } from 'bun:test';
 import { resolveAction, validateCommand } from './action';
 import { applyEvents } from './applyEvents';
 import { makeState, route, unitAt } from './testing';
-import type { Command, Coordinate, Facing, GameEvent, GameState, PlayerId } from './types';
+import type {
+  AttackKind,
+  Command,
+  Coordinate,
+  Facing,
+  GameEvent,
+  GameState,
+  PlayerId,
+} from './types';
 
 const pos = (col: number, row: number) => ({ col, row });
 
@@ -30,7 +38,7 @@ const battle = (
   attacker: [string, number],
   defender: [string, number],
   answered = false,
-  kind: 'volley' | 'charge' = 'volley',
+  kind: AttackKind = 'fire',
 ): GameEvent => ({
   type: 'battleResolved',
   kind,
@@ -102,9 +110,9 @@ describe('applyEvents, battleResolved', () => {
   });
 
   it('carries kind and answered without either touching state', () => {
-    const volley = applyEvents(state, [battle(['b1', 90], ['r1', 40], true, 'volley')]);
+    const shot = applyEvents(state, [battle(['b1', 90], ['r1', 40], true, 'fire')]);
     const charge = applyEvents(state, [battle(['b1', 90], ['r1', 40], false, 'charge')]);
-    expect(volley).toEqual(charge);
+    expect(shot).toEqual(charge);
   });
 });
 

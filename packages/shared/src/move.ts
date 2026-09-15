@@ -1,5 +1,6 @@
-import { refuseAttack, resolveBattle } from './combat';
+import { isChargeRoll, refuseAttack, refuseCharge, resolveBattle, resolveCharge } from './combat';
 import type { Rolls } from './combat';
+import { directionBetween } from './coordinate';
 import { getUnitType } from './data/unitTypes';
 import { canSelectUnit } from './legality';
 import { validatePath } from './movement';
@@ -33,13 +34,20 @@ export function validateMove(state: GameState, command: MoveCommand): string | n
   if (unwalkable) return unwalkable;
 
   // A plain move, which is every move until 9h can name a target.
-  if (command.targetUnitId === undefined) return null;
+  // ⚠️ A kind with nothing to attack is refused rather than ignored: dropping it
+  // silently would let a malformed command read as a plain move.
+  if (command.targetUnitId === undefined) {
+    return command.attackKind === undefined ? null : 'an attack kind needs a target';
+  }
 
   // ⚠️ **From the destination, not from `unit.position`.** The route has already
   // been proven walkable above, so the last tile is where this unit will be
-  // standing when it fires -- and range measured anywhere else is measuring a
-  // tile the attack does not happen from.
-  return refuseAttack(state, unit, command.path[command.path.length - 1], command.targetUnitId);
+  // standing when it attacks -- and distance measured anywhere else is measuring
+  // a tile the attack does not happen from.
+  const from = command.path[command.path.length - 1];
+  return command.attackKind === 'charge'
+    ? refuseCharge(state, unit, from, command.targetUnitId)
+    : refuseAttack(state, unit, from, command.targetUnitId);
 }
 
 /**
@@ -75,6 +83,42 @@ export function resolveMove(state: GameState, action: MoveAction, rolls: Rolls):
     position: action.path[action.path.length - 1],
     facing: action.facing,
   };
+  // ⚠️ **Dispatched once, on the kind, into two self-contained resolvers.** Fire
+  // produces damage and a possible counter; a charge produces
+  // death-plus-displacement or a backfire, and never consults the counter rule.
+  // Threading conditionals through one function would put two mechanics in one
+  // body and make every later change ask which it belonged to.
+  //
+  // ⚠️ The roll shape and the command's kind are checked *together*: the server
+  // draws for the kind it was sent, so a mismatch is a broken pipeline rather
+  // than a bad request.
+  if (action.attackKind === 'charge') {
+    if (!isChargeRoll(rolls)) throw new Error('resolved a charge with fire rolls');
+    const battle = resolveCharge(state, moved, defender, rolls);
+    events.push(battle);
+
+    // ⚠️ **Appended after the battle, never before it.** The defender leaves the
+    // board in `applyEvents` when its health hits zero, so displacing first
+    // would put the attacker on an occupied tile -- which breaks invariant 9's
+    // "makes sense against the state immediately before it".
+    //
+    // ⚠️ A *second* `unitMoved` for one unit in one batch, which nothing else
+    // produces. `playEvents` skips a move whose mesh already stands at the
+    // destination -- true of the approach, which was previewed, and false of
+    // this, which was not. The asymmetry is correct and is why it works.
+    if (battle.defender.health <= 0) {
+      const facing = directionBetween(moved.position, defender.position) ?? action.facing;
+      events.push({
+        type: 'unitMoved',
+        unitId: moved.id,
+        path: [moved.position, defender.position],
+        facing,
+      });
+    }
+    return events;
+  }
+
+  if (isChargeRoll(rolls)) throw new Error('resolved a shot with charge rolls');
   events.push(resolveBattle(state, moved, defender, rolls));
   return events;
 }

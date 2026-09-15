@@ -165,7 +165,7 @@ describe('resolveMove', () => {
     expect(battle.defender.unitId).toBe('r1');
     expect(battle.defender.health).toBeLessThan(MAX_HEALTH);
     expect(battle.attacker.unitId).toBe('b1');
-    expect(battle.kind).toBe('volley');
+    expect(battle.kind).toBe('fire');
   });
 
   // ⚠️ Clamped, because the event says what the defender *has* -- a negative
@@ -316,5 +316,119 @@ describe('resolveMove', () => {
     const lucky = resolved(lane(4), command, { attack: LUCK_MAX, counter: 0 })[1];
     if (unlucky.type !== 'battleResolved' || lucky.type !== 'battleResolved') throw new Error();
     expect(lucky.defender.health).toBeLessThan(unlucky.defender.health);
+  });
+});
+
+describe('resolveMove, charging', () => {
+  const at_ = (col: number, row: number) => ({ col, row });
+  const field = (health: number, rows?: string[]) =>
+    makeState(rows ?? 7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+      { id: 'r1', col: 1, row: 2, owner: 'red', health, facing: 'south' },
+    ]);
+  const charge = (): MoveCommand => ({
+    type: 'move',
+    unitId: 'b1',
+    path: [at_(1, 1)],
+    facing: 'north',
+    targetUnitId: 'r1',
+    attackKind: 'charge',
+  });
+  const play = (state: ReturnType<typeof field>, roll: number) => {
+    const validation = validateCommand(state, charge() as Command, 'blue');
+    if (!validation.ok) throw new Error(`expected legal, got: ${validation.reason}`);
+    return resolveMove(state, validation.action as Parameters<typeof resolveMove>[1], {
+      charge: roll,
+    });
+  };
+
+  // ⚠️ **The order is the invariant.** The defender leaves the board when its
+  // health hits zero, so displacing before the battle would put the attacker on
+  // an occupied tile -- which breaks "each event makes sense against the state
+  // immediately before it".
+  it('breaks through as battle-then-displacement, in that order', () => {
+    const state = field(30);
+    const events = play(state, 0);
+    expect(events.map((e) => e.type)).toEqual(['unitMoved', 'battleResolved', 'unitMoved']);
+    const [, battle, displacement] = events;
+    if (battle.type !== 'battleResolved' || displacement.type !== 'unitMoved')
+      throw new Error('shape');
+    expect(battle.defender.health).toBe(0);
+    expect(displacement.path.at(-1)).toEqual(at_(1, 2));
+  });
+
+  // ⚠️ A *second* `unitMoved` for one unit in one batch, which nothing else
+  // produces. It is one step, from where the charge was launched onto the tile
+  // that was just vacated.
+  it('displaces exactly one step, onto the tile it emptied', () => {
+    const events = play(field(30), 0);
+    const displacement = events.at(-1);
+    if (displacement?.type !== 'unitMoved') throw new Error('shape');
+    expect(displacement.path).toEqual([at_(1, 1), at_(1, 2)]);
+    expect(displacement.unitId).toBe('b1');
+  });
+
+  it('emits no displacement when the charge is repelled', () => {
+    const state = field(100);
+    const events = play(state, 99);
+    expect(events.map((e) => e.type)).toEqual(['unitMoved', 'battleResolved']);
+  });
+
+  // ⚠️ Charge never asks the counter rule, so a defender that could not have
+  // shot back still repels. Artillery is the case that proves it: `min: 2`
+  // means a battery cannot answer at contact, and charging one must not be free.
+  it('is repelled by artillery, which could never have countered', () => {
+    const guns = makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+      { id: 'r1', col: 1, row: 2, owner: 'red', unitTypeId: 'artillery' },
+    ]);
+    const validation = validateCommand(guns, charge() as Command, 'blue');
+    if (!validation.ok) throw new Error(validation.reason);
+    const events = resolveMove(guns, validation.action as Parameters<typeof resolveMove>[1], {
+      charge: 99,
+    });
+    const battle = events[1];
+    if (battle.type !== 'battleResolved') throw new Error('shape');
+    expect(battle.answered).toBe(true);
+    expect(battle.attacker.health).toBeLessThan(MAX_HEALTH);
+  });
+
+  // ⚠️ The roll shape and the command kind are checked together: the server
+  // draws for the kind it was sent, so a mismatch is a broken pipeline rather
+  // than a bad request, and it should be loud.
+  it('throws rather than resolving a charge with fire rolls', () => {
+    const state = field(30);
+    const validation = validateCommand(state, charge() as Command, 'blue');
+    if (!validation.ok) throw new Error(validation.reason);
+    expect(() =>
+      resolveMove(state, validation.action as Parameters<typeof resolveMove>[1], {
+        attack: 0,
+        counter: 0,
+      }),
+    ).toThrow(/charge with fire rolls/);
+  });
+
+  it('throws rather than resolving a shot with charge rolls', () => {
+    const state = field(30);
+    const shot = { ...charge(), attackKind: undefined } as Command;
+    const validation = validateCommand(state, shot, 'blue');
+    if (!validation.ok) throw new Error(validation.reason);
+    expect(() =>
+      resolveMove(state, validation.action as Parameters<typeof resolveMove>[1], { charge: 0 }),
+    ).toThrow(/shot with charge rolls/);
+  });
+});
+
+describe('validateMove, charging', () => {
+  it('refuses an attack kind with nothing to attack', () => {
+    const state = makeState(7, [{ id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' }]);
+    const stray: MoveCommand = {
+      type: 'move',
+      unitId: 'b1',
+      path: [{ col: 1, row: 1 }],
+      facing: 'north',
+      attackKind: 'charge',
+    };
+    expect(validateMove(state, stray)).toBe('an attack kind needs a target');
   });
 });

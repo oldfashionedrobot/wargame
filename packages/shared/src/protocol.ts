@@ -164,11 +164,21 @@ export function parseCommand(input: unknown): Command | null {
       // ⚠️ Refused when present and wrong, rather than dropped. Silently
       // discarding a malformed target would turn an attack into a plain move --
       // the command would succeed and do something the player did not ask for.
-      const { targetUnitId } = input;
+      const { targetUnitId, attackKind } = input;
       if (targetUnitId !== undefined && typeof targetUnitId !== 'string') return null;
+
+      // ⚠️ **Same rule, and the failure it prevents is worse here.** A dropped
+      // `attackKind` does not merely lose an attack -- it turns a *charge* into
+      // a shot, which resolves, succeeds, and does something the player did not
+      // ask for. This parser whitelists fields, so anything added to `Command`
+      // and forgotten here is silently discarded.
+      if (attackKind !== undefined && attackKind !== 'fire' && attackKind !== 'charge') {
+        return null;
+      }
 
       const command: Command = { type: 'move', unitId: input.unitId, path, facing: input.facing };
       if (targetUnitId !== undefined) command.targetUnitId = targetUnitId;
+      if (attackKind !== undefined) command.attackKind = attackKind;
       return command;
     }
     case 'endTurn':
