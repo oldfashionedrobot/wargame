@@ -47,7 +47,7 @@ rather than look for a list here.
 packages/
   shared/src/
     types.ts          every shared type: coordinates, units, state, commands, events
-    coordinate.ts     grid arithmetic and directions
+    coordinate.ts     grid arithmetic, directions, and the one tile distance
     queries.ts        lookups over a GameState
     legality.ts       what may be selected
     movement.ts       the search, the path check, and the cost model both call
@@ -116,10 +116,18 @@ package and loses the single root `.env`.
 ## The pipeline
 
 ```ts
-validateCommand(state, command, actor) → { ok: true, action } | { ok: false, reason }
-resolveAction(state, action)           → GameEvent[]
-applyEvents(state, events)             → GameState
+validateCommand(state, command, actor)  → { ok: true, action } | { ok: false, reason }
+resolveAction(state, action, roll)      → GameEvent[]
+applyEvents(state, events)              → GameState
 ```
+
+⚠️ **`roll` is an argument, never a field on `Action`.** `validateCommand` is the
+only constructor of an Action and has no business generating or receiving dice,
+and `shared/` may not produce randomness at all (invariant 2) — so the server
+rolls and passes it in. `endTurn` ignores it, deliberately: the alternative
+spreads the decision over two places to spare one branch an unused parameter.
+That the roll is an *input* is also what lets the tuning harness drive the whole
+matchup grid with no server and no browser.
 
 | | Direction | Contents |
 |---|---|---|
@@ -173,11 +181,14 @@ Player      { id, name, color }                      // colour is display-only
 Unit        { id, position, facing, unitTypeId, owner, health, hasActed }
 GameState   { grid, units, players, currentTurn }    // grid is [row][col]
 
-Command       MoveCommand { type, unitId, path, facing } | EndTurnCommand { type }
+Command       MoveCommand { type, unitId, path, facing, targetUnitId? } | EndTurnCommand { type }
 Action        (MoveCommand & Validated) | (EndTurnCommand & Validated)
               -- a union of intersections, not Command & { actor }: the
               latter would admit an endTurn carrying a path
-GameEvent     UnitMovedEvent { type, unitId, path, facing } | TurnEndedEvent { type, nextPlayer }
+GameEvent     UnitMovedEvent { type, unitId, path, facing }
+            | TurnEndedEvent { type, nextPlayer }
+            | BattleResolvedEvent { type, kind, attacker, defender, answered }
+              -- attacker/defender are { unitId, health }, resulting
 
 ValidationResult  { ok: true, action } | { ok: false, reason }
 CommandResult     { ok: true, seq, events, state } | { ok: false, reason }
@@ -415,10 +426,27 @@ the one place that decides whether a tile can be entered and what it costs.
 
 ## Combat
 
-`computeDamage(state, attacker, defender, roll)` in `shared/src/combat.ts`, and
-nothing calls it yet — no command carries an attack. It is pure, and the roll is
-an **input**, which is what lets the tuning harness run the whole grid with no
-server and no browser.
+`shared/src/combat.ts` holds three functions and no state:
+
+```ts
+refuseAttack(state, attacker, from, targetUnitId) → string | null
+resolveBattle(state, attacker, defender, roll)    → BattleResolvedEvent
+computeDamage(state, attacker, defender, roll)    → number
+```
+
+⚠️ **`from` is where the attacker *ends up*, not where it stands.** A command is
+move-then-attack, so a range measured against `attacker.position` measures a
+tile the shot does not happen from. `validateMove` passes the last tile of the
+path, having already proven the route walkable.
+
+⚠️ **`resolveBattle` is given the attacker as it is *after* moving.** Nothing in
+a first strike reads its position — only its health, and the defender's terrain
+— but a counter-attack reads the *attacker's* terrain, which is the
+destination's. Building the moved unit at the call site means counters inherit
+the right tile rather than retrofitting one.
+
+All three are pure, and the roll is an **input**, which is what lets the tuning
+harness run the whole grid with no server and no browser.
 
 ```
 band(hp) = ceil(hp / 10)                    // 1..10, never 0 while alive
@@ -445,6 +473,40 @@ the base but luck would sail past it and land 9.
 Three behaviours fall out rather than being rules: a wounded attacker hits
 softer, a wounded defender loses its cover (the terrain term scales by *defender*
 band, so damaged units cannot turtle on a peak), and striking first compounds.
+
+**One battle is one event.** `battleResolved` carries both resulting healths,
+the `kind`, and `answered`. ⚠️ Split events when the parts are independently
+meaningful; keep them together when they are one fact — a move stands alone, but
+a counter-attack exists *only because* the attack happened. Splitting it would
+leave the client inferring which damage belongs to which exchange from position
+in a batch, which a multi-action catch-up breaks.
+
+⚠️ **There is no `unitDied` and no `died` flag.** *A unit at zero health leaves
+the board* is stated once, in `applyEvents`, so a second event carrying the same
+fact cannot disagree with the number beside it. That reducer's filter is
+deliberately broader than "whoever this event killed" — nothing else can be
+sitting at zero — which is what keeps applying the event twice a no-op.
+
+⚠️ **`answered` is a decision, not a duplicate.** It appears nowhere else, and
+reconstructing it means re-running the counter predicate against a rebuilt
+state. The log outlives the rules, a deriving client works from a reconstruction
+that is only right if its fold is, and `resolutions.events` is a consumer the
+moment it is written.
+
+⚠️ **The event union is exhaustively checked.** `applyEvents`' default branch
+assigns to `never` before throwing, so a new member is a **compile error** until
+it is handled. Without it, adding an event type typechecks cleanly and falls
+through to a runtime throw — the one place a missing case would never be
+noticed. The throw stays, because events arrive as JSON where types guarantee
+nothing.
+
+**Randomness lives in `server/match.ts`**, in `rollLuck` — the only
+`Math.random()` in the codebase, because `shared/` is not allowed any.
+⚠️ **No seed, and that is invariant 9 paying off**: events carry resulting
+values rather than inputs, so a replay reads what happened and never re-rolls.
+⚠️ **And no `rolls` column.** Luck is added last and flat, so a roll is
+recoverable from the log as `actualDamage − computeDamage(preState, …, 0)` —
+storing it would store something the log already contains.
 
 Verified against an independent reimplementation of the AW specification across
 113,400 combinations of terrain, matchup, both healths and roll. Sources are in

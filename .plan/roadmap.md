@@ -730,86 +730,19 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   phase 11 (*Known compromises*), and luck's flat ordering with the
   measurements behind it (*The damage formula*).
 
-- **9f** `MoveCommand` gains an **optional** attack — path, facing, and a target, atomic.
+- **9f** ✅ **Shipped**, and gone from here: `MoveCommand` gains an optional
+  `targetUnitId`, `battleResolved` joins the event union, `resolveAction` takes a
+  roll, and `rollLuck` in `match.ts` is the only randomness in the codebase. What
+  it all does now lives in [`architecture.md`](architecture.md) under *Combat*
+  and *The pipeline*.
 
-  ⚠️ **There is no distance function anywhere.** `coordinate.ts` has
-  `coordinatesEqual`, `isWithinGrid`, `directionBetween` and `coordinateKey` —
-  nothing that measures. Range checking needs one, `wouldCounter` needs the same
-  one at 9g, and targeting needs it again at 9h. It lands **once, here**, or it
-  lands three times as inline arithmetic.
+  ⚠️ **It also settled two things this doc had wrong.** The snap budget needs no
+  combat term — `animatedTiles` scoring a battle zero is correct while nothing
+  animates one, and it becomes 10b's problem when the cutaway lands. And the
+  client needed **no change at all**: both places that switch on an event type
+  already handle a new member, and `syncUnits` moves the ring and removes the
+  dead from state it reads anyway.
 
-  ⚠️ **Range is measured from the destination, not from the unit.** The command
-  is *move-then-attack*, so legality is `distance(path.at(-1), target)` inside
-  the attacker's range. `validateMove` today only ever reads `unit.position`, so
-  taking the obvious route validates against where the unit *started* and
-  silently accepts impossible shots.
-
-  ⚠️ **`applyEvents` throws on an unknown event type and `playEvents` shrugs.**
-  The reducer refuses loudly on purpose — ignoring an event would desync a
-  replay — while the renderer's loop `continue`s past anything that is not a
-  move. So one `battleResolved` reaching stale client code is a **hard crash in
-  the reducer and a silent no-op in the renderer**: the same event with two
-  opposite failure modes. Consistent with old matches being expendable, but it
-  is a crash rather than a degrade and that is worth knowing before it happens.
-
-  ⚠️ **`resolveMove` takes only the action today** — no state — and damage needs terrain and both units, so the signature changes rather than just the body. The shape to aim for is orchestration: `resolveMove` emits the move, then delegates to a `resolveBattle` in `combat.ts` beside `computeDamage`. Combat resolution should not accumulate inside a file named for the move command.
-
-  ⚠️ **The preview does *not* conflict with attacking**, though it looks like it should. A pre-check raised it and walking it through retired it: the preview finishes before action selection opens, `clickTile` refuses everything while `walking`, and `playEvents` skips the `unitMoved` positionally — so by the time a `battleResolved` arrives the mesh is parked and there is nothing to collide with. Recorded because the worry is a natural one to have twice.
-
-  **Eleven files in four layers**, which is what "four places" undercounted — it
-  was counting the command's shape, not the chain. Shared types (`types.ts`,
-  `protocol.ts`), shared rules (`move.ts`, `combat.ts`, `applyEvents.ts`,
-  `action.ts`, `coordinate.ts`), the server (`match.ts`), and the client
-  (`selection.ts`, `useGameSession.ts`, `renderer.ts`).
-
-  **Build it in this order**, each gateable alone:
-
-  1. `distance` in `coordinate.ts` — one function, used by everything after it
-  2. the event and the reducer — pure, testable, no integration
-  3. the command, its resolution, and the roll
-  4. **verify the chain end to end** — see below
-
-  ⚠️ **Step 4 was written as "`moveCommandFor` carrying a target" and that was
-  wrong**: nothing can call it with one until 9h, so it would have been an
-  unread parameter — the thing this phase has refused four times already. **The
-  client needs no change at all.** Both places that switch on an event type
-  handle a new member correctly: `animatedTiles` scores it zero, `playEvents`
-  skips it, and `syncUnits` moves the ring and removes the dead from state it
-  already reads.
-
-  ⚠️ **9f ships unplayable**, and that is expected rather than a gap: nothing in
-  the UI can *name* a target until 9h. So step 4 is verification — a hand-made
-  request against a real match, which is also the **only way 9e's removal branch
-  has ever run**.
-
-  ⚠️ **Step 3 is the densest point in the phase and wants its own commit.** It is
-  where `hasActed`, turn-ending and death first interact: a counter can kill the
-  *attacker*, which shrinks the roster, which changes `actionsAllowed` — and
-  `actionsTaken` counts `hasActed` among *surviving* units, so both terms of that
-  `min` move at once. Riding it along with plumbing is how that goes unnoticed.
-
-  **What is genuinely easy**, for contrast: `moveCommandFor` has one non-test
-  call site, `parseCommand`'s move branch returns a literal so an optional field
-  is additive, and `canSelectUnit` is untouched — it answers *may this act*,
-  which attacking does not change.
-
-  ⚠️ **The snap budget needs nothing, and an earlier draft of this step said it did.** `animatedTiles` scores zero for anything that is not a move, which looked like a defect — a catch-up of ten battles clearing the threshold and playing back to back. It is only a defect if battles *take time*, and they do not: **the ring does not tween**, so `playEvents` has no battle branch at all and a battle costs nothing to "animate". The budget measures walking because walking is the only thing that waits. ⚠️ It becomes 10b's problem the moment the cutaway exists, and that is where the term belongs. ⚠️ Called `UnitActionCommand` here for years, which oversold it: an optional field is *additive*, so the wire stays compatible, `parseCommand` keeps its existing branch and no stored row changes meaning. Whether the rename earns its churn is a real question and the answer is probably no. Simplest resolution: `computeDamage` from 9c, a target inside the range 9d gave the attacker, no counter yet and no charge. Damage and death events. ⚠️ **Facing is not read here and `computeDamage` takes no direction** — that moved to 10a with charge, which is the only thing that reads it. The command carries `facing` as it already does, and nothing does anything with it. Touches **four** places, not the three this used to claim: `parseCommand` for the wire shape, `validateMove`'s successor for legality, `resolveMove`'s for the events — and `moveCommandFor` in `interaction/selection.ts`, which is what actually builds the command on the client and changes shape with it.
-
-  ⚠️ **Rolls are a third argument to `resolveAction`, not a field on `Action`.** The doc has said both. They cannot live on `Action`: `validateCommand` is its only constructor and has no business generating or receiving a roll.
-
-  ⚠️ **One roll here, not a sequence.** 9f has no counter and no charge, so it needs exactly one number — building the second slot early is the thing this phase condemns elsewhere. When 9g adds the counter it becomes a **named object**, `{ attack, counter }`, widening to `{ attack, counter, charge }` in 10a. Named rather than a tuple: `rolls[0]` is positional and anonymous where `rolls.attack` says what it is, and 10a's third draw extends cleanly instead of adding a nameless slot. Either way an *array* is refused — `rolls[2]` is `undefined`, which is `NaN` damage, the same silent shape as a stored unit with no `health`.
-
-  ⚠️ **The charge roll is a different kind of number.** Damage luck is `0..LUCK_MAX` added to a result; the charge roll is `0..99` compared against a percentage. They share a bag and nothing else.
-
-  ⚠️ **One signature, and `endTurn` ignores its rolls.** The alternative — only the attack resolver taking them, with the dispatcher pulling the argument apart — spreads the decision across two places to spare one branch an unused parameter. Taken deliberately; it is a wart either way and this is the smaller one.
-
-  **`Math.random()` on the server is sufficient, and that is invariant 9 paying off.** Events carry *resulting* values rather than inputs, so a replay reads what happened and never re-rolls. There is nothing to reproduce: no seed, no PRNG inside `shared/`, no determinism machinery. Most games need all three.
-
-  ⚠️ **No `rolls` column, and the reason is a decision already made.** An earlier draft wanted one so an outcome could be decomposed into base, terrain and luck. It is unnecessary: luck is added **last and flat**, so `roll = actualDamage − computeDamage(preState, attacker, defender, 0)`, and the pre-state replays from the log while the damage comes from the event. **The log already contains the roll.** That removes a schema change, a write path, and a migration — which would have been the *third*, not the second: `0000_silent_prodigy` and `0001_far_roulette` both exist.
-
-  ⚠️ **Invariant 9 constrains the events.** `unitDamaged { unitId, health }` carries the *resulting* HP, not the damage dealt — a delta applied twice deals it twice. Damage is `before − after`, which the client can compute from the state preceding the event. ⚠️ Named for the effect rather than the act, because **three different things reduce HP**: the attack, the counter, and a failed charge's backfire — and the last two land on the *attacker*. `unitAttacked` implies a direction the event does not have. ⚠️ **`applyEvents.ts` has not heard about the rename.** Its doc comment is the canonical statement of invariant 9 — the place somebody reads to learn the rule — and it still says `unitAttacked` must carry the resulting HP. Drift this doc created, and it is fixed here or not at all.
-
-  ⚠️ One nuance the client will hit here, parked by 5b with its answer attached: in a multi-resolution catch-up batch, "the state preceding event *k*" is the pre-batch replica folded through events 1..k−1 — a second hit on the same unit computes its damage number from the intermediate HP, not the pre-batch one. If the animation needs that, thread a **locally** folded state through the animation walk (`applyEvents` as a plain helper inside the queue task) — never per-event React commits, never a callback-signature change. Large batches snap without animating anyway (5b's threshold), so this only matters for small ones.
 - **9g** Counter-attacks, and `wouldCounter(state, attacker, defender)` — ⚠️ **in `combat.ts`, not `legality.ts`.** That file is *what may be selected*, a question about command legality; whether a defender can answer is a combat rule and belongs beside the formula deciding what the answer costs. One definition, called by the server to resolve and by the client when the cutaway needs it. ⚠️ **Fires iff the attacker is inside the defender's own range** and the defender survives — one predicate, and "both units are direct" is gone with the category it named. `computeDamage` called a second time in the other direction, on the defender's post-damage HP. **If it becomes a branch inside the attack resolver rather than a second call, that is the smell** the Combat section warns about.
 
   ⚠️ **This is what makes the matchup numbers mean anything.** Attacking in AW is an *exchange*: the question is never "can I kill it" but "is the trade worth it". Without a counter, every attack is free and hits-to-kill says nothing about whether to throw the punch.
