@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { getCurrentPlayer } from '@vod/shared';
+import { getCurrentPlayer, isOver } from '@vod/shared';
 import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
 import { useGameSession } from './useGameSession';
 import {
@@ -115,9 +115,18 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   // would otherwise have to be remembered here too.
   const planning = isPlan(selection);
 
-  // ⚠️ Looked up rather than shown raw. `winner` is a `PlayerId`, and the board
-  // has always named players by their display name -- the lobby shows the id
-  // because it has no roster to resolve it against, and this does.
+  // ⚠️ **Two questions, and the rule is the first one.** `isOver` decides whether
+  // the game is finished; the lookup only decides what to *call* the winner. Key
+  // the rule off the lookup instead and a `winner` naming somebody outside
+  // `players` would leave the board showing a live turn label and an enabled
+  // button for a finished game -- unreachable today, since `soleSurvivor` picks
+  // from `players`, and exactly the sort of thing that stops being unreachable
+  // quietly.
+  //
+  // The name is resolved because the board has always named players by their
+  // display name; the lobby shows the raw id, having no roster to resolve
+  // against.
+  const over = isOver(gameState);
   const winner = gameState.players.find((player) => player.id === gameState.winner);
 
   // ⚠️ Only while the route is still a plan, and not while it is being walked:
@@ -274,8 +283,8 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             nobody, and this runs every render. Today `currentTurn` is never
             cleared so both would work; the ordering is what keeps that from
             being load-bearing. */}
-        {winner ? (
-          <strong>{winner.name} wins</strong>
+        {over ? (
+          <strong>{winner ? `${winner.name} wins` : 'game over'}</strong>
         ) : (
           <span>{getCurrentPlayer(gameState).name}&apos;s turn</span>
         )}{' '}
@@ -283,7 +292,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             submit around a plan the player has not answered for yet. And once
             the game is over: the server refuses every command, so an enabled
             button would only ever produce a rejection. */}
-        <button type="button" onClick={endTurn} disabled={planning || winner !== undefined}>
+        <button type="button" onClick={endTurn} disabled={planning || over}>
           End Turn
         </button>{' '}
         {import.meta.env.DEV && (

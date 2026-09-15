@@ -153,6 +153,16 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     ): Promise<void> => {
       if (pendingRef.current) return;
 
+      // ⚠️ **One guard for every command, because there is one rule.** Each of
+      // the three callers below had its own answer to "may I still play": a
+      // click checked `isOver`, End Turn relied on its button carrying
+      // `disabled`, and an open attack panel relied on being unreachable. Two of
+      // those are not rules, and a keyboard shortcut or a panel still open when
+      // an opponent's winning move lands would slip straight past them. The
+      // server refuses all three anyway; this stops the pointless round trip and
+      // the rejection banner it would raise.
+      if (isOver(server.getState())) return;
+
       pendingRef.current = true;
       setSelection(nextSelection);
 
@@ -230,12 +240,10 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     (coordinate: Coordinate): void => {
       if (pendingRef.current) return;
 
-      // ⚠️ The board goes quiet when the game does. The server refuses every
-      // command once there is a winner, so without this a click would still
-      // select, draw a route and walk a preview -- all of it rolled back by a
-      // rejection the player did not ask for. Selection is the input surface,
-      // not the rules: this stops the *asking*, and `validateCommand` is still
-      // what refuses.
+      // ⚠️ The board goes quiet when the game does. `submitCommand` already
+      // refuses to send, so this is not about the wire -- it is that a click
+      // would still *select*, draw a route and walk a preview, none of which
+      // submits anything and all of which is a board pretending to be playable.
       if (isOver(server.getState())) return;
 
       // ⚠️ Nothing is answerable while the preview walks: `playEvents` skips a

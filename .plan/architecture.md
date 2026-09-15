@@ -709,18 +709,32 @@ inlined `winner !== null` checks is two spellings of one rule.
 
 ### What each surface does with it
 
-⚠️ **The board goes quiet, in `clickTile`.** The server refuses every command
-once there is a winner, so a click that still selected would draw a route and
-walk a preview, all of it rolled back by a rejection the player never asked for.
-Selection is the input surface, not the rules: this stops the *asking*, and
-`validateCommand` is still what refuses. It reads the **live** state rather than
-the rendered copy, so it takes effect in the render where the winning batch
-arrives rather than the one after.
+⚠️ **One guard, in `submitCommand`, covering all three callers.** Every command
+the client sends goes through it, so End Turn, an attack and a move inherit the
+same answer to "may I still play". The alternative had each caller answer for
+itself — a click checking `isOver`, End Turn relying on its button carrying
+`disabled`, an open attack panel relying on being unreachable — and two of those
+are presentation, not rules. A keyboard shortcut, or a panel still open when an
+opponent's winning move lands, walks straight past a `disabled` attribute.
 
-⚠️ **The status bar checks the winner before calling `getCurrentPlayer`**, which
-throws when `currentTurn` names nobody and runs every render. `currentTurn` is
-never cleared today, so both orders would work — the ordering is what keeps that
-from being load-bearing. End Turn is disabled beside it.
+⚠️ **`clickTile` keeps a guard of its own, and it is not redundant.** Selecting a
+unit, drawing a route and walking a preview submit nothing, so `submitCommand`
+never sees them — without this the board would stay fully interactive and merely
+refuse at the end. It reads the **live** state rather than the rendered copy, so
+it takes effect in the render where the winning batch arrives rather than the one
+after.
+
+Neither is the rule. `validateCommand` is still what refuses; these stop the
+pointless round trip and the rejection banner it would raise.
+
+⚠️ **The status bar asks `isOver`, not whether the winner resolved to a player.**
+Two questions: whether the game is finished, and what to *call* the winner. Key
+the rule off the lookup and a `winner` naming somebody outside `players` leaves a
+live turn label and an enabled button on a finished game — unreachable, since
+`soleSurvivor` picks from `players`, and exactly the sort of thing that stops
+being unreachable quietly. Asking `isOver` first also keeps `getCurrentPlayer`
+out of a terminal render, which matters because it *throws* when `currentTurn`
+names nobody and runs every frame. End Turn is disabled off the same answer.
 
 ⚠️ **In the lobby the winner *displaces* the turn rather than joining it.** A
 finished row showing both would read *player-blue · player-red won* — true, since

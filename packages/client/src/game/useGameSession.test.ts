@@ -149,6 +149,48 @@ describe('useGameSession', () => {
       act(() => result.current.clickTile({ col: 1, row: 1 }));
       expect(result.current.selection.phase).toBe('idle');
     });
+
+    // ⚠️ The button carries `disabled`, which is presentation -- a shortcut key
+    // or a test reaching the callback directly goes straight past it. The rule
+    // lives in `submitCommand`, so every caller inherits it.
+    it('sends no endTurn, whatever reaches the callback', async () => {
+      const fake = fakeServer(won);
+      const { result } = renderSession(fake);
+      act(() => result.current.endTurn());
+      expect(fake.submissions).toEqual([]);
+    });
+
+    // ⚠️ The same guard from the caller that used to rely on being unreachable.
+    // The panel is opened *first*, then the winning state arrives -- which is
+    // the multiplayer shape: an opponent's last unit dies while this client
+    // still has a target chosen. The selection is left standing, so without the
+    // guard the Fire button submits straight into a refusal.
+    it('sends no attack from a panel that was already open', async () => {
+      const contested = makeState(7, [
+        { id: 'b1', col: 1, row: 1 },
+        { id: 'r1', col: 1, row: 4, owner: 'red' },
+      ]);
+      const fake = fakeServer(contested);
+      const { result } = renderSession(fake);
+      await act(async () => {});
+
+      await reachMenu(result);
+      act(() => result.current.clickTile(at(1, 4)));
+      // The precondition, asserted: without it this test would pass on
+      // `commitAttack`'s own early return and prove nothing.
+      expect(result.current.selection.phase).toBe('targetChosen');
+
+      await act(async () => fake.push([], { ...contested, winner: 'blue' }));
+      act(() => result.current.commitAttack(true));
+      expect(fake.submissions).toEqual([]);
+    });
+
+    it('still sends one while the game is on', async () => {
+      const fake = fakeServer(board);
+      const { result } = renderSession(fake);
+      await act(async () => result.current.endTurn());
+      expect(fake.submissions).toEqual([{ type: 'endTurn' }]);
+    });
   });
 
   it('forwards events to onEvents', async () => {
