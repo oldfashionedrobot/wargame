@@ -14,7 +14,7 @@ import {
 import type { SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
 import { createGameRenderer } from './render/renderer';
-import type { GameRenderer } from './render/renderer';
+import type { CutawayScene, CutawaySide as CutawaySideData, GameRenderer } from './render/renderer';
 
 // Pushes a selection to the renderer. Module-level so there's one place that
 // knows how a selection is displayed -- attacking adds a third overlay here.
@@ -68,6 +68,69 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
   const ranged = selection.phase === 'unitSelected' || pinned;
   renderer.setRange(ranged ? selection.movement.settled : []);
   renderer.setRoute(awaitingConfirm ? selection.path : []);
+}
+
+/**
+ * One combatant's readout, printed over its staged view.
+ *
+ * ⚠️ **A full bar showing the true health, with the number beside it**, not the
+ * board's ten bands. The ring is banded because it is a *glanceable* element
+ * where ten segments stop it over-promising precision the formula lacks; this is
+ * a *focused* view where the exact figure is the point. ⚠️ The band lines are
+ * still drawn on the bar, so the structure the formula reads stays visible
+ * without the value being rounded to it.
+ */
+function CutawaySide({ side, align }: { side: CutawaySideData; align: 'left' | 'right' }) {
+  // ⚠️ **Mounted at the before-value, moved to the after one frame later.** A
+  // bar mounted straight at its destination has nothing to transition from and
+  // simply appears there. ⚠️ The initial value comes from `useState` rather than
+  // from an effect correcting it, which is why the caller keys this on the
+  // battle: a component that persisted across battles would have to reset
+  // synchronously inside an effect, and that is a cascading render.
+  const [shown, setShown] = useState(side.before);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setShown(side.after));
+    return () => cancelAnimationFrame(frame);
+  }, [side.after]);
+
+  return (
+    <div style={{ flex: 1, padding: '0 24px', textAlign: align, alignSelf: 'flex-end' }}>
+      <div style={{ fontSize: '13px', opacity: 0.85, marginBottom: '4px' }}>
+        {side.unitTypeId}
+        {side.defense > 0 && ` · ${'★'.repeat(side.defense)}`}
+      </div>
+      <div
+        style={{
+          position: 'relative',
+          height: '12px',
+          borderRadius: '2px',
+          background: 'rgba(0, 0, 0, 0.45)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            width: `${shown}%`,
+            height: '100%',
+            background: side.color === 'blue' ? '#4a7fd4' : '#d4534a',
+            transition: 'width 700ms ease-out',
+          }}
+        />
+        {/* The ten bands the damage formula actually reads, drawn over the bar. */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage:
+              'repeating-linear-gradient(to right, transparent 0 calc(10% - 1px), rgba(0,0,0,0.5) calc(10% - 1px) 10%)',
+          }}
+        />
+      </div>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: '15px', marginTop: '4px' }}>
+        {shown}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -183,6 +246,11 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   // why `anchorTo` taking a single element is enough.
   // The panel is up when the unit has arrived and has not yet been told what
   // to do. It is the only affordance in that moment: no tile is lit.
+  // What the cutaway is showing, or null between battles. ⚠️ Pushed by the
+  // renderer rather than derived here: the *before* healths live in what it last
+  // drew, and nothing above it has them once the batch has been folded.
+  const [cutaway, setCutaway] = useState<CutawayScene | null>(null);
+
   const menuOpen = selection.phase === 'destinationChosen' && selection.step.kind === 'choosing';
   const aiming = isAiming(selection) ? selection : null;
   const forecast = aiming ? attackForecast(server.getState(), aiming) : null;
@@ -215,6 +283,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
       }
       rendererRef.current = renderer;
       renderer.onTileClick((coordinate) => clickTileRef.current(coordinate));
+      renderer.onCutaway(setCutaway);
     });
 
     return () => {
@@ -276,6 +345,44 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             the only verbs until now -- a preview with numbers in it cannot be a
             tile, and Hold cannot be one either, since the only tile that faces
             an enemy is the one they are standing on. */}
+        {/* ⚠️ **Full-canvas and it eats pointer events**, which is not decoration:
+            a click during a cutaway is read against authoritative state the
+            board is not yet showing, so it would act on a position the player
+            cannot see. Swallowing it here costs one property and needs no flag
+            threaded up from the renderer. */}
+        {cutaway && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              color: '#f2f4f7',
+              textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
+              pointerEvents: 'auto',
+            }}
+          >
+            {/* ⚠️ Pinned to the band's own bottom edge rather than laid out in
+                flow. The band is a *viewport* -- 30% to 70% measured from the
+                bottom of the canvas, which is 30% to 70% from the top -- so the
+                readout belongs at 70%, and a spacer only approximates it. */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '60%',
+                left: 0,
+                right: 0,
+                display: 'flex',
+                alignItems: 'flex-end',
+              }}
+            >
+              <CutawaySide key={`a${cutaway.id}`} side={cutaway.attacker} align="left" />
+              <div style={{ fontSize: '13px', opacity: 0.75, paddingBottom: '18px' }}>
+                {cutaway.kind === 'charge' ? 'charge' : 'fire'}
+              </div>
+              <CutawaySide key={`d${cutaway.id}`} side={cutaway.defender} align="right" />
+            </div>
+          </div>
+        )}
+
         {menuOpen && (
           <div
             ref={menuRef}

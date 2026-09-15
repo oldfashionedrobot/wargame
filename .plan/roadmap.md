@@ -939,179 +939,19 @@ one formula cannot be read apart, not because the geometry might be wrong.
   column, and it is a **tuning** finding rather than a bug — the numbers were
   written down to be argued with. See *Tuning* for where it stands.
 
-- **10c** ⬜ **The combat cutaway.** A view that takes over, shows both units,
-  plays the exchange, and hands back — AW's battle screen. ⚠️ **Here rather than
-  in phase 9 because half of it is charge**: building it earlier means building
-  half and extending it, and the missing half is the one with no reference
-  behaviour.
+- **10c** ✅ **Shipped**, and gone from here: `render/cutaway.ts`, the
+  `battleResolved` branch in `playEvents`, and the DOM readout — see *The combat
+  cutaway* under *Combat* in [`architecture.md`](architecture.md).
 
-  Phase 9 is playable without it: the board ring is the feedback, and it is the
-  *persistent* half — "how hurt is that battery" while you are deciding — which a
-  transient view cannot replace. The cutaway is the drama, not the information.
+  ⚠️ **Three composition defects only a browser could find**, each fixed by
+  measuring rather than guessing again: the figures were thumbnails adrift in
+  their half of the band, then sunk to the floor with dead air above them, and
+  the readout crossed their feet. The framing is taken from the built meshes'
+  bounding box now, and the readout's strip is reserved in the camera.
 
-  ⚠️ **It is a minimal first expression and is expected to grow.** Everything
-  below is the smallest thing that reads as a battle screen; model animation,
-  richer staging and better art are all later.
-
-  #### The shape
-
-  **Two views, one per combatant, side by side.** ⚠️ **Split because the distance
-  between them is variable** — two units five tiles apart do not belong in one
-  framed space, and pretending otherwise is what forces a staging compromise.
-  Each view is self-contained, so nothing has to frame a pair.
-
-  Each view holds **one unit model standing on one tile of its terrain type**.
-  ⚠️ **The tile is a *representation*, not a window onto the board** — it says
-  *this unit is in forest*, so it needs no neighbours, no road continuation and
-  no slice of the real grid. An earlier draft proposed a 3×3 cut-out to keep
-  roads connecting, which solved a board problem in a view that is not the board.
-
-  Beside each: **a full health bar, 0–100, showing the true value**, animating as
-  damage lands, with the number beside it. ⚠️ **Not banded, and that does not
-  contradict the ring.** The ring is banded because it is a *glanceable board*
-  element where ten segments stop the display over-promising precision the
-  formula does not have; the cutaway is a *focused* view where the exact figure
-  is the point. Different jobs, different precision. ⚠️ Segment lines on the bar
-  mark the ten bands, so the structure the formula reads is visible without the
-  value being rounded to it.
-
-  And **the terrain's defence value**, which is a direct read of the same
-  `defense` the damage formula uses, so it cannot drift from what was applied.
-  Stars for now; the presentation is not settled.
-
-  #### Four scenes are one view and a script
-
-  ⚠️ **The cutaway never branches on `kind` or `answered`.** What differs between
-  volley-unanswered, volley-answered, charge-broke-through and charge-repelled is
-  only *which participants took damage, and in what order*:
-
-  > emit a beat for each participant whose health changed, defender first.
-
-  Both resulting healths are on `battleResolved` and the before-healths are on
-  the replica, so the script falls out of the data. That is what keeps *this*
-  version cheap: a third attack type adds no scene and no branch.
-
-  ⚠️ **But only the health script is kind-agnostic — the animation layer will not
-  be.** A volley is two units shooting across at each other; a charge is one
-  riding into the other and either breaking through or being thrown back. Those
-  are different animations, and `kind` is what picks them. ⚠️ That is already the
-  stated reason the flag is on the event at all — *"a volley and a charge end in
-  the same arithmetic and look nothing alike, and the kind lives only in the
-  command"* — so nothing here should read as `kind` being cosmetic or droppable.
-  It is unread **in this version only**, because this version has no model
-  animation.
-
-  #### What is already there
-
-  ⚠️ **`playEvents` returns a promise**, so the cutaway is one more thing it
-  awaits. That is the whole integration.
-
-  ⚠️ **`createTerrainMesh(scene, models, cells)` takes a cells array**, so a
-  one-tile patch is the same function with a smaller argument — and it builds the
-  cell's props, so a forest tile arrives with its own trees. ⚠️ **Unit models come
-  from an already-loaded `AssetContainer` via `instantiateModelsToScene`**, so
-  staging two more is a call, not a load.
-
-  ⚠️ **A second camera is simpler than DOM thumbnails**, which is the opposite of
-  what this entry used to assume. Babylon renders multiple cameras with viewport
-  rectangles in one scene natively; thumbnails need render-to-texture, readback
-  and image plumbing. So: two cameras, two viewports, two staging positions, and
-  a DOM overlay for bars, numbers and defence.
-
-  #### What it needs that does not exist
-
-  ⚠️ **Far less than this entry used to claim, and the claim was wrong.** It said
-  building the beat script in `useGameSession` "keeps the renderer ignorant of
-  game state, which is how it is built everywhere else". The renderer is *not*
-  ignorant of game state: `syncUnits(state: GameState)` hands it the whole state
-  on every commit and it reads units, ids, positions and health out of it.
-
-  ⚠️ **The before-health is free, because of the order the queue already runs
-  in.** `onEvents` is awaited *before* `onSnap`:
-
-  ```
-  if (worthAnimating(events)) await onEvents(events)   // → playEvents
-  onSnap(state)                                        // → syncUnits
-  ```
-
-  So at cutaway time the renderer's **last-synced state is the before-state**. It
-  needs one remembered reference — *what I last drew* — and then no script type,
-  no change to `onEvents`, no change to `playEvents`, and no previous-state ref
-  in the hook. The baseline exists too: the renderer is handed `initialState` at
-  construction, so there is never a gap. ⚠️ A skipped batch still advances it,
-  because `syncUnits` runs whether or not the animation did.
-
-  ⚠️ ~~**A tile-cost for a battle.**~~ ✅ **Gone, with the model that needed
-  one.** The gate counted *tiles* — `animatedTiles` summing `unitMoved` path
-  lengths against a 28-tile budget — so a `battleResolved` scored zero and a
-  catch-up of ten battles would have played ten cutaways. It now counts
-  **events**, capped at four, and a battle is an event.
-
-  ⚠️ **Two things retired the tile model.** Its premise was *tiles are what cost
-  time*, true while every animation was a walk and false the moment a cutaway
-  costs the same second and a half whatever any path length is. And it measured
-  the wrong question: twelve resolutions arriving together means twelve turns
-  went by while this client was away, and the tile gate **animated** them, while
-  three resolutions means barely behind and it **snapped**. The gate is a
-  *backlog* question, not a duration one.
-
-  ⚠️ **Its variance was also mostly synthetic.** A legal path is bounded by
-  `movementRange`, at most four — so the twelve- and twenty-eight-step moves its
-  tests used are inputs the rules cannot produce.
-
-  ⚠️ **Four is derived, not chosen**: one action's maximum — approach, battle,
-  displacement, turn-end — and it preserves the old ceiling, two firing actions
-  being two cutaways and two moves, about the four seconds 28 tiles came to.
-
-  ⚠️ ~~**A way to turn it off.**~~ ❌ **Declined**, and the argument for it was
-  wrong. It was justified here as *"cheaper to design in now than to retrofit"*,
-  which is backwards: `worthAnimating` is a single gate that already exists, so a
-  preference later is one condition inside it. Building it now means inventing a
-  settings surface — there is **no preference storage anywhere in the client** —
-  for one toggle.
-
-  ⚠️ **And the case that would make you want it is already covered.** What makes
-  a skip necessary is *many battles at once*, which is a catch-up after being
-  away — and that is `animatedTiles` with a battle priced into it. A single 1.5s
-  cutaway on your own turn is the drama the thing exists for.
-
-  It was asserted from AW's precedent without checking whether AW's conditions
-  hold. They mostly do not: AW plays ~3s animations across a twenty-mission
-  campaign you have seen hundreds of times, where this is one hot-seat match at
-  half the length. Revisit if play says otherwise — the gate is waiting.
-
-  #### The camera, measured against the renderer as it is
-
-  ⚠️ **Never give the main camera a viewport.** `holdTheBoard` computes aspect
-  from `canvas.clientWidth / clientHeight` every frame, so a viewport would leave
-  its ortho extents sized for a shape that is not being drawn. Draw the cutaway
-  camera's band **over** the board instead: the main camera keeps the full canvas
-  and the clamp needs no change at all.
-
-  ⚠️ **A second camera is smaller than moving the one we have**, which sounds
-  backwards and is not. Moving the existing camera fights three mechanisms at
-  once — `lowerRadiusLimit === upperRadiusLimit`, the beta clamp, and
-  `holdTheBoard` re-clamping the target every frame — and then has to restore all
-  three exactly.
-
-  ⚠️ **A second *scene* is the wrong call**: `loadUnitModels(scene)` binds the
-  `AssetContainer` to a scene, so a second scene loads every model twice.
-
-  ⚠️ **`placeAnchor` is already viewport-aware** — it projects through
-  `camera.viewport.toGlobal(…)`. But it reads `scene.getTransformMatrix()`, which
-  with two active cameras is whichever rendered *last*. Nothing is anchored while
-  a cutaway is up, so this is latent rather than live; building the matrix from
-  `camera` explicitly is the one-line hardening.
-
-  #### Two things that fall out
-
-  ⚠️ **The cutaway is its own branch, not part of the `unitMoved` one.** That
-  branch skips a move whose mesh already stands at the destination — true of a
-  previewed approach — and a charge's cutaway would be skipped along with it.
-
-  **Charge ordering needs no arranging.** The events are `[approach,
-  battleResolved, displacement]` and `playEvents` awaits in order, so the cutaway
-  plays between the approach and the displacement on its own.
+  ⚠️ **Model animation is still absent**, which was always this version's scope:
+  the figures stand. `battleResolved.kind` is what will pick between a volley
+  animation and a charge one, and it is carried for that.
 
 The **Open questions** entry on counter-attacks for `min > 1` units belongs to 9g and moved into phase 9 with it — it was decided when indirect fire and immobility were the same thing, and 9d separates them.
 

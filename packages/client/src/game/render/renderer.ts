@@ -10,9 +10,20 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import type { Coordinate, Facing, GameEvent, GameState } from '@vod/shared';
+import type {
+  AttackKind,
+  BattleResolvedEvent,
+  Coordinate,
+  Facing,
+  GameEvent,
+  GameState,
+  PlayerColor,
+  UnitTypeId,
+} from '@vod/shared';
+import { getTerrain } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
+import { createCutaway } from './cutaway';
 import { createTileHighlight, setHighlightTile } from './highlight';
 import { createHealthRing } from './healthRing';
 import type { HealthRing } from './healthRing';
@@ -87,6 +98,9 @@ const HOVER_ALPHA = 0.6;
 const HOVER_HEIGHT = 0.02;
 
 const SELECTED_COLOR = new Color3(1, 0.85, 0.1);
+/** How long a cutaway holds before handing the canvas back. */
+const CUTAWAY_MS = 1500;
+
 const SELECTED_ALPHA = 0.55;
 const SELECTED_HEIGHT = 0.025;
 
@@ -130,6 +144,39 @@ const CHARGE_ALPHA = 0.8;
 const CHARGE_HEIGHT = 0.016;
 const FACING_ALPHA = 0.55;
 const FACING_HEIGHT = 0.02;
+
+/**
+ * What a cutaway is showing, for the DOM half to print over it.
+ *
+ * ⚠️ **Both healths, before and after**, because a bar counting down needs the
+ * value it counts *from* and `battleResolved` carries only results (invariant
+ * 9). The before-value comes from `lastDrawn()` -- the queue animates before it
+ * snaps, so mid-cutaway the last sync is still the previous turn.
+ */
+export interface CutawaySide {
+  unitTypeId: UnitTypeId;
+  color: PlayerColor;
+  before: number;
+  after: number;
+  /** The defence the terrain under this unit is worth. */
+  defense: number;
+}
+
+export interface CutawayScene {
+  /**
+   * Which battle this is, counting up.
+   *
+   * ⚠️ Carried so the DOM half can *remount* per battle rather than mutate. A
+   * health bar that animates has to start at the before-value, and a component
+   * that persists across battles would have to correct itself after mounting --
+   * which is a synchronous `setState` in an effect, and a cascading render.
+   * Nothing else reads it.
+   */
+  id: number;
+  kind: AttackKind;
+  attacker: CutawaySide;
+  defender: CutawaySide;
+}
 
 export interface GameRenderer {
   onTileClick(handler: (coordinate: Coordinate) => void): void;
@@ -209,6 +256,15 @@ export interface GameRenderer {
    * it, and every reader wanting authority reads `server.getState()` as before.
    */
   lastDrawn(): GameState;
+  /**
+   * Called when a battle's cutaway opens and closes, with what to print over it.
+   *
+   * ⚠️ **The staged models are Babylon's; the numbers are React's.** Health bars
+   * and figures want text, layout and transitions, which is DOM's job and not
+   * something to rebuild in a 3D scene. So the renderer raises the views and
+   * hands the caller everything it would otherwise have had to re-derive.
+   */
+  onCutaway(handler: (scene: CutawayScene | null) => void): void;
   /**
    * Walk a unit to a destination it has not actually moved to. Resolves when
    * the preview **settles** -- which is when the walk finishes, but also when
@@ -620,6 +676,62 @@ export async function createGameRenderer(
     anchorElement.style.transform = `translate(${screen.x * scale}px, ${screen.y * scale}px) translate(-50%, -100%)`;
   };
 
+  const cutaway = createCutaway(scene, models, terrainModels, camera);
+  let cutawayHandler: ((scene: CutawayScene | null) => void) | null = null;
+  let battleCount = 0;
+
+  /**
+   * Play one battle: raise the views, hold, drop them.
+   *
+   * ⚠️ **Its own branch, never part of the `unitMoved` one.** That branch skips a
+   * move whose mesh already stands at its destination -- true of an approach the
+   * player previewed -- and a charge's cutaway would be skipped along with it.
+   */
+  const playBattle = async (event: BattleResolvedEvent): Promise<void> => {
+    const before = drawn;
+    const side = (id: string, after: number): CutawaySide | null => {
+      const unit = before.units.find((u) => u.id === id);
+      const owner = before.players.find((p) => p.id === unit?.owner);
+      if (!unit || !owner) return null;
+      return {
+        unitTypeId: unit.unitTypeId,
+        color: owner.color,
+        before: unit.health,
+        after,
+        defense: getTerrain(before.grid[unit.position.row][unit.position.col]).defense,
+      };
+    };
+
+    const attacker = side(event.attacker.unitId, event.attacker.health);
+    const defender = side(event.defender.unitId, event.defender.health);
+    // A participant the last-drawn state does not know is a desync, not a
+    // drawable battle. Skipping beats staging a blank.
+    if (!attacker || !defender) return;
+
+    const attackerUnit = before.units.find((u) => u.id === event.attacker.unitId)!;
+    const defenderUnit = before.units.find((u) => u.id === event.defender.unitId)!;
+    cutaway.show(
+      {
+        unitTypeId: attacker.unitTypeId,
+        color: attacker.color,
+        facing: attackerUnit.facing,
+        cell: cells[attackerUnit.position.row][attackerUnit.position.col],
+      },
+      {
+        unitTypeId: defender.unitTypeId,
+        color: defender.color,
+        facing: defenderUnit.facing,
+        cell: cells[defenderUnit.position.row][defenderUnit.position.col],
+      },
+    );
+    cutawayHandler?.({ id: (battleCount += 1), kind: event.kind, attacker, defender });
+
+    await new Promise((resolve) => setTimeout(resolve, CUTAWAY_MS));
+
+    cutaway.hide();
+    cutawayHandler?.(null);
+  };
+
   let clickHandler: ((coordinate: Coordinate) => void) | null = null;
   scene.onPointerObservable.add((pointerInfo) => {
     if (pointerInfo.type === PointerEventTypes.POINTERMOVE) {
@@ -692,8 +804,15 @@ export async function createGameRenderer(
       // previous position and corrects a frame later reads as a jump.
       placeAnchor();
     },
+    onCutaway(handler) {
+      cutawayHandler = handler;
+    },
     async playEvents(events) {
       for (const event of events) {
+        if (event.type === 'battleResolved') {
+          await playBattle(event);
+          continue;
+        }
         if (event.type !== 'unitMoved') continue;
         const mesh = unitMeshes.get(event.unitId);
         if (!mesh) continue;

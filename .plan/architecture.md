@@ -759,6 +759,59 @@ base value that reads reasonable head-on can saturate at the *flank* and leave
 the rear distinction doing nothing. The two look identical in a head-on column,
 which is why `scripts/charges.ts` prints all three.
 
+### The combat cutaway
+
+Two staged close-ups drawn over the board while a battle resolves, with a DOM
+readout printed under them. `render/cutaway.ts` owns the staging;
+`playEvents` plays it as its own branch on `battleResolved`.
+
+⚠️ **Two views, not one framed pair.** Two units five tiles apart do not belong
+in one space, and every attempt to stage them together becomes a compromise
+about distance. Each combatant gets its own camera looking at its own patch, so
+nothing has to frame a pair.
+
+⚠️ **A second camera — not a second scene, and not the board's camera moved.** A
+second scene would load every unit model again, `loadUnitModels` binding its
+container to one scene. Moving the board's camera would fight its locked radius,
+its clamped tilt and `holdTheBoard` re-clamping the target every frame, then have
+to restore all three. ⚠️ **And the board's camera never gets a viewport**:
+`holdTheBoard` sizes its ortho extents from the *canvas* aspect every frame, so a
+viewport would leave the board fitted to a shape nobody is drawing. The staged
+cameras draw over the full-canvas board instead.
+
+⚠️ **The tile is a representation, not a window onto the board.** It says *this
+unit is in forest*, so it needs no neighbours and no road continuation.
+`createTerrainMesh` takes a cells array, so one tile is the same call with a
+smaller argument — props included, so a wood arrives with its own trees. The cell
+is the board's own, taken from `composeTerrain`'s result.
+
+⚠️ **The figure is framed from its own bounding box, not from constants.** An
+earlier pass carried a fixed extent and a guessed centre; both were wrong in a
+browser — first a thumbnail adrift in its half of the band, then a figure sunk to
+the floor. Measuring what was built is the discipline `topOf` already uses, and
+it survives a new model or a changed `PIECE_SCALE`. ⚠️ The readout's strip is
+reserved in the **camera**, not left to layout: the figures fill their views, so
+a bar inside the band crosses their feet and a bar below it lands on the board.
+
+⚠️ **A backdrop plane, because the board otherwise shows through** and the whole
+thing reads as two figures floating over the map. It is geometry rather than a
+DOM layer for the obvious reason: the models are drawn by Babylon, so anything
+behind them has to be in the scene.
+
+⚠️ **Built on show and torn down on hide.** A battle is a second and a half and
+the models come from already-loaded containers, so instantiating two is a call
+rather than a load — where keeping them would mean caching by type and colour.
+
+**The readout is DOM.** Health bars and figures want text, layout and
+transitions. ⚠️ **A full bar at the true health with the number beside it**, not
+the board's ten bands — the ring is banded because it is *glanceable*, this is
+*focused*, and the band lines are still drawn so the structure the formula reads
+stays visible. ⚠️ It carries a battle **id** so each side remounts rather than
+correcting itself in an effect, which would be a synchronous `setState` and a
+cascading render. ⚠️ And it **swallows pointer events**: a click during a cutaway
+is read against authoritative state the board is not yet showing, so it would act
+on a position the player cannot see.
+
 ## Victory
 
 `shared/src/victory.ts`:

@@ -4,7 +4,7 @@ import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
 import type { ConnectionStatus } from '../net/gameServer';
 import { makeState } from '@vod/shared/testing';
 import { GameCanvas } from './GameCanvas';
-import type { GameRenderer } from './render/renderer';
+import type { CutawayScene, GameRenderer } from './render/renderer';
 
 // The renderer is the seam: it builds a Babylon engine, which needs WebGL that
 // happy-dom does not have. Everything below is the wiring around it -- the
@@ -32,6 +32,7 @@ beforeEach(() => {
     playEvents: vi.fn(() => Promise.resolve()),
     syncUnits: vi.fn(),
     lastDrawn: vi.fn(() => board),
+    onCutaway: vi.fn(),
     setFacingChoices: vi.fn(),
     previewMove: vi.fn(() => Promise.resolve()),
     cancelPreview: vi.fn(),
@@ -331,6 +332,93 @@ describe('GameCanvas', () => {
     await act(async () => screen.getByRole('button', { name: /^Fire/ }).click());
     expect(vi.mocked(renderer.setAttackRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
     expect(renderer.setChargeTargets).toHaveBeenLastCalledWith([]);
+  });
+
+  // ⚠️ **The half of the cutaway that can be tested.** The staged models are
+  // Babylon and this renderer has no unit coverage at all; what is testable is
+  // the readout it hands up — which is also where the numbers a player actually
+  // reads come from.
+  describe('the cutaway readout', () => {
+    const scene: CutawayScene = {
+      id: 1,
+      kind: 'fire',
+      attacker: {
+        unitTypeId: 'cavalry' as const,
+        color: 'blue' as const,
+        before: 100,
+        after: 86,
+        defense: 0,
+      },
+      defender: {
+        unitTypeId: 'infantry' as const,
+        color: 'red' as const,
+        before: 60,
+        after: 27,
+        defense: 2,
+      },
+    };
+    const raise = async (next: CutawayScene | null) => {
+      const handler = vi.mocked(renderer.onCutaway).mock.calls[0]?.[0];
+      if (!handler) throw new Error('nothing subscribed to onCutaway');
+      await act(async () => handler(next));
+    };
+
+    it('shows nothing until a battle raises one', async () => {
+      await renderCanvas(fakeServer());
+      expect(screen.queryByText('infantry')).toBeNull();
+    });
+
+    // ⚠️ **The before-value, not the after.** A bar mounted at its destination has
+    // nothing to count down from, so the first frame has to be the health the
+    // unit had — which is the whole reason the renderer keeps what it last drew.
+    //
+    // ⚠️ The frame is stubbed out rather than awaited, because jsdom runs
+    // `requestAnimationFrame` inside `act` and the countdown would be over
+    // before anything could look. Holding it open is the only way to see the
+    // value the bar starts from.
+    it('opens at the health each unit had before the battle', async () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => {
+        frames.push(fn);
+        return frames.length;
+      });
+      try {
+        await renderCanvas(fakeServer());
+        await raise(scene);
+        expect(screen.getByText('100')).toBeTruthy();
+        expect(screen.getByText('60')).toBeTruthy();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('counts down to what the battle left them at', async () => {
+      await renderCanvas(fakeServer());
+      await raise(scene);
+      expect(screen.getByText('86')).toBeTruthy();
+      expect(screen.getByText('27')).toBeTruthy();
+    });
+
+    it('names the kind, so a charge does not read as a shot', async () => {
+      await renderCanvas(fakeServer());
+      await raise({ ...scene, kind: 'charge' });
+      expect(screen.getByText('charge')).toBeTruthy();
+    });
+
+    // Terrain's contribution is shown because it is part of why the numbers came
+    // out as they did, and it is the same `defense` the formula read.
+    it('shows the defender’s cover and not the attacker’s bare ground', async () => {
+      await renderCanvas(fakeServer());
+      await raise(scene);
+      expect(screen.getByText(/★★/)).toBeTruthy();
+    });
+
+    it('comes down when the battle ends', async () => {
+      await renderCanvas(fakeServer());
+      await raise(scene);
+      await raise(null);
+      expect(screen.queryByText('cavalry')).toBeNull();
+    });
   });
 
   it('clears the overlays when the selection is dropped', async () => {

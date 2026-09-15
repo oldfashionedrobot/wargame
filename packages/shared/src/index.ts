@@ -5,6 +5,7 @@
 
 export type {
   AttackKind,
+  BattleResolvedEvent,
   Command,
   Coordinate,
   Facing,
