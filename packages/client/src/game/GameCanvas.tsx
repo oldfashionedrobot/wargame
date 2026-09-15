@@ -42,8 +42,13 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
   // The range stays lit for as long as the pin can still move -- which includes
   // the walk, since the phase only turns over on arrival -- and comes down as
   // the menu lights, so the handover reads as one moment rather than as a gap.
+  //
+  // ⚠️ `settled`, not `reachable`: the overlay is about *reach*, and a hole
+  // punched in it where a friendly unit happens to stand reads as out of range
+  // rather than as occupied. Not every lit tile is clickable, which is fine --
+  // `handleTileClick` asks `reachable`, and a click on a friend selects it.
   const ranged = selection.phase === 'unitSelected' || pinned;
-  renderer.setRange(ranged ? selection.movement.reachable : []);
+  renderer.setRange(ranged ? selection.movement.settled : []);
   renderer.setRoute(awaitingConfirm ? selection.path : []);
 }
 

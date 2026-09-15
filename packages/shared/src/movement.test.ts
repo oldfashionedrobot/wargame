@@ -26,6 +26,75 @@ const explore = (
 const reachable = (state: GameState, id: string, movementRange = 3) =>
   explore(state, id, movementRange).reachable;
 
+describe('exploreMovement: settled, which is what the overlay draws', () => {
+  // ⚠️ The invariant that makes `settled` meaningful rather than just a second
+  // array: it is *exactly* the set `pathTo` answers for. If they ever diverge,
+  // the overlay is lighting tiles no route can reach or hiding ones it can.
+  it('is exactly the set pathTo answers for', () => {
+    const state = makeState(['...', '.f.', '...'], [{ id: 'b1', col: 0, row: 0 }]);
+    const movement = explore(state, 'b1');
+    const key = (c: Coordinate) => `${c.col},${c.row}`;
+    const inSettled = new Set(movement.settled.map(key));
+
+    for (let col = 0; col < 3; col++) {
+      for (let row = 0; row < 3; row++) {
+        const tile = { col, row };
+        expect(movement.pathTo(tile) !== null).toBe(inSettled.has(key(tile)));
+      }
+    }
+  });
+
+  // The whole reason for the split: a friend's tile is in reach and cannot be
+  // stopped on, and the overlay should say the first rather than imply neither.
+  it('includes a friendly tile that reachable excludes', () => {
+    const state = makeState(6, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'friend', col: 1, row: 0 },
+    ]);
+    const { reachable, settled } = explore(state, 'b1');
+    const has = (list: Coordinate[], col: number, row: number) =>
+      list.some((c) => c.col === col && c.row === row);
+
+    expect(has(settled, 1, 0)).toBe(true);
+    expect(has(reachable, 1, 0)).toBe(false);
+  });
+
+  it('includes the unit’s own tile, which reachable also excludes', () => {
+    const state = makeState(6, [{ id: 'b1', col: 2, row: 2 }]);
+    const { reachable, settled } = explore(state, 'b1');
+    const has = (list: Coordinate[], col: number, row: number) =>
+      list.some((c) => c.col === col && c.row === row);
+
+    expect(has(settled, 2, 2)).toBe(true);
+    expect(has(reachable, 2, 2)).toBe(false);
+  });
+
+  // An enemy blocks the tile *and* the route, so it is never settled at all --
+  // which is why the overlay showing everything settled cannot leak a tile the
+  // unit has no business reaching.
+  it('never includes an enemy’s tile', () => {
+    const state = makeState(6, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'r1', col: 1, row: 0, owner: 'red' },
+    ]);
+    const { settled } = explore(state, 'b1');
+    expect(settled.some((c) => c.col === 1 && c.row === 0)).toBe(false);
+  });
+
+  it('is a superset of reachable, always', () => {
+    const state = makeState(
+      ['....', '.ff.', '....'],
+      [
+        { id: 'b1', col: 0, row: 0 },
+        { id: 'friend', col: 1, row: 0 },
+      ],
+    );
+    const { reachable, settled } = explore(state, 'b1');
+    const inSettled = new Set(settled.map((c) => `${c.col},${c.row}`));
+    for (const tile of reachable) expect(inSettled.has(`${tile.col},${tile.row}`)).toBe(true);
+  });
+});
+
 describe('exploreMovement: where a unit may stop', () => {
   it('excludes the unit its own tile -- which is what makes clicking it a deselect', () => {
     const state = makeState(7, [{ id: 'b1', col: 3, row: 3 }]);

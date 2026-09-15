@@ -47,10 +47,26 @@ function entryCost(
 
 export interface Movement {
   /**
-   * Where this unit may legally **stop** -- the overlay. Excludes its own
-   * tile and any tile another unit is standing on.
+   * Where this unit may legally **stop**. Excludes its own tile and any tile
+   * another unit is standing on.
+   *
+   * ⚠️ This is the *legality* set, not the overlay -- it used to be both, and
+   * the two questions are different. `settled` is what gets drawn.
    */
   reachable: Coordinate[];
+  /**
+   * Every tile the search touched: `reachable`, plus the friendly-occupied
+   * tiles a route may pass *through*, plus the unit's own.
+   *
+   * ⚠️ **This is what the range overlay draws**, because reach is the
+   * information a player is reading and a hole punched in it where a friend
+   * happens to stand reads as *out of range* rather than as *occupied*.
+   * Not everything drawn is clickable, which is the point: the overlay answers
+   * "how far can I go", and `reachable` answers "may I stop here".
+   *
+   * Exactly the set `pathTo` answers for, and there is a test saying so.
+   */
+  settled: Coordinate[];
   /**
    * The cheapest route to a destination, walked back through predecessors --
    * not a second search. `null` for a tile the search never settled.
@@ -145,14 +161,15 @@ export function exploreMovement(
     }
   }
 
+  const touched = [...settled.values()].map((entry) => entry.coordinate);
+
   return {
     // Everything settled except what is stood on. That excludes the origin
     // without a separate check, because a unit occupies its own tile -- an
     // explicit `from !== null` filter used to sit here and no test could tell
     // whether it was there, which is what redundant means.
-    reachable: [...settled.values()]
-      .map((entry) => entry.coordinate)
-      .filter((coordinate) => !getUnitAt(state, coordinate)),
+    reachable: touched.filter((coordinate) => !getUnitAt(state, coordinate)),
+    settled: touched,
 
     pathTo(destination) {
       let cursor: string | null = coordinateKey(destination);

@@ -397,6 +397,7 @@ generates a plains character map and parses that.
 ```ts
 exploreMovement(state, unit, movementRange, movementType) → Movement
   .reachable                   // Coordinate[] — where the unit may stop
+  .settled                     // Coordinate[] — everything the search touched
   .pathTo(destination)         // Coordinate[] | null — cheapest route
 ```
 
@@ -404,10 +405,22 @@ The budget and movement type are arguments; callers resolve them from
 `getUnitType`. The search relaxes over a FIFO queue: a neighbour already
 recorded more expensively is lowered and re-queued.
 
-`reachable` and *settled* are different sets. A friendly unit's tile is settled
-and walkable-through but is not a destination, so `pathTo` answers for a larger
-set than `reachable` lists. The unit's own tile stays in the map — every path
-chain terminates there — and `pathTo(unit.position)` is `[position]`.
+`reachable` and `settled` are different sets, and they answer different
+questions. A friendly unit's tile is settled and walkable-through but is not a
+destination, so `pathTo` answers for a larger set than `reachable` lists. The
+unit's own tile stays in the map — every path chain terminates there — and
+`pathTo(unit.position)` is `[position]`.
+
+⚠️ **`settled` is what the range overlay draws; `reachable` is what decides a
+click.** They were one set doing both jobs, which punched a hole in the overlay
+wherever a friend stood — and a hole reads as *out of range* rather than as
+*occupied*, which is the opposite of true. Not everything lit is clickable, and
+that is the point: the overlay answers *how far can I go*, `handleTileClick`
+answers *may I stop here*, and a click on a friend selects it instead.
+
+⚠️ `settled` is **exactly** the set `pathTo` answers for, and a test says so —
+if they diverge, the overlay is either lighting tiles no route reaches or hiding
+ones it does.
 
 An enemy blocks the tile *and* the route; a friend blocks only the tile.
 
