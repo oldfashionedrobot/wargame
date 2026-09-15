@@ -1,4 +1,5 @@
 import { refuseAttack, resolveBattle } from './combat';
+import type { Rolls } from './combat';
 import { getUnitType } from './data/unitTypes';
 import { canSelectUnit } from './legality';
 import { validatePath } from './movement';
@@ -47,7 +48,7 @@ export function validateMove(state: GameState, command: MoveCommand): string | n
  * from the path -- the player may end a move looking somewhere they did not
  * come from, so the path cannot answer for it.
  */
-export function resolveMove(state: GameState, action: MoveAction, roll: number): GameEvent[] {
+export function resolveMove(state: GameState, action: MoveAction, rolls: Rolls): GameEvent[] {
   const events: GameEvent[] = [
     { type: 'unitMoved', unitId: action.unitId, path: action.path, facing: action.facing },
   ];
@@ -74,6 +75,6 @@ export function resolveMove(state: GameState, action: MoveAction, roll: number):
     position: action.path[action.path.length - 1],
     facing: action.facing,
   };
-  events.push(resolveBattle(state, moved, defender, roll));
+  events.push(resolveBattle(state, moved, defender, rolls));
   return events;
 }

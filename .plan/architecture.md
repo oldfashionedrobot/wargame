@@ -430,9 +430,33 @@ the one place that decides whether a tile can be entered and what it costs.
 
 ```ts
 refuseAttack(state, attacker, from, targetUnitId) → string | null
-resolveBattle(state, attacker, defender, roll)    → BattleResolvedEvent
+wouldCounter(defender, from)                      → boolean
+resolveBattle(state, attacker, defender, rolls)   → BattleResolvedEvent
 computeDamage(state, attacker, defender, roll)    → number
 ```
+
+**A counter fires iff the attacker is inside the defender's own range**, and the
+defender survived. ⚠️ **One predicate, no categories.** AW's rule reads "both
+units must be direct", which looks categorical and is not — it is equivalent to
+*the attacker is adjacent and the defender can fight at adjacency*, because a
+direct unit in AW can only attack from range 1. Days of Ruin's Anti-Tank settles
+it: indirect out to three, **no minimum range**, and it counters.
+
+⚠️ **Ours differs from AW's in exactly one case, deliberately: counter-battery.**
+Two guns within reach answer each other, which AW forbids and history does not.
+Artillery caught at one tile still cannot answer, because 1 is not inside
+`[2, 5]` — the property worth keeping survives with no rule naming it.
+
+⚠️ **`hasActed` is not consulted.** That flag stops a unit *acting* twice in its
+own turn; answering an attack is not acting, so a spent unit still counters.
+⚠️ **And a charge never asks** — the counter rule is about shooting, and routing
+a charge through it would make charging artillery free.
+
+`Rolls` is `{ attack, counter }`: named rather than a tuple, and two because two
+is the maximum anything needs. ⚠️ **Both are drawn whether or not both are
+used** — deciding first and rolling second would make the *number of draws*
+depend on the rules, which is the coupling that keeping randomness out of
+`shared/` exists to avoid.
 
 ⚠️ **`from` is where the attacker *ends up*, not where it stands.** A command is
 move-then-attack, so a range measured against `attacker.position` measures a
@@ -473,6 +497,13 @@ the base but luck would sail past it and land 9.
 Three behaviours fall out rather than being rules: a wounded attacker hits
 softer, a wounded defender loses its cover (the terrain term scales by *defender*
 band, so damaged units cannot turtle on a peak), and striking first compounds.
+
+⚠️ **The counter is `computeDamage` called a second time in the other
+direction**, on the defender's *post-damage* health — not a branch inside the
+first strike. That is most of AW's exchange calculus for free: striking first
+compounds, because a wounded defender both hits softer and keeps less of its
+terrain cover. ⚠️ **The attacker's blow lands even when the reply kills it** —
+it struck first, which is the mirror of a dead defender never answering.
 
 **One battle is one event.** `battleResolved` carries both resulting healths,
 the `kind`, and `answered`. ⚠️ Split events when the parts are independently

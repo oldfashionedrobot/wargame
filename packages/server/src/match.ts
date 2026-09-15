@@ -2,6 +2,7 @@ import type { InStatement, InValue } from '@libsql/client';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import type { Query } from 'drizzle-orm';
 import { applyEvents, LUCK_MAX, resolveAction, validateCommand } from '@vod/shared';
+import type { Rolls } from '@vod/shared';
 import type {
   Command,
   CommandResult,
@@ -39,8 +40,12 @@ const LIST_LIMIT = 50;
  * happens** -- damage stays in a legal range, nothing throws, and nobody would
  * find it. Three lines are worth four lines of test for that.
  */
-export function rollLuck(): number {
-  return Math.floor(Math.random() * (LUCK_MAX + 1));
+export function rollLuck(): Rolls {
+  const draw = () => Math.floor(Math.random() * (LUCK_MAX + 1));
+  // ⚠️ Both drawn whether or not both are used. Deciding first and rolling
+  // second would make the *number of draws* depend on the rules, which is the
+  // coupling that keeping randomness out of `shared/` exists to avoid.
+  return { attack: draw(), counter: draw() };
 }
 
 export interface MatchStore {

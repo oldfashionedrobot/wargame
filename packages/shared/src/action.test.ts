@@ -3,6 +3,8 @@ import { resolveAction, validateCommand } from './action';
 import { makeState, route } from './testing';
 import type { Command, MoveCommand } from './types';
 
+const NO_LUCK = { attack: 0, counter: 0 };
+
 const at = (col: number, row: number) => ({ col, row });
 
 // b1 starts at (0,0). A real route, not an endpoint pair -- validatePath
@@ -159,7 +161,7 @@ describe('resolveAction', () => {
   ]);
 
   it('emits one unitMoved carrying the whole path, for animation', () => {
-    const [moved] = resolveAction(state, accept(state, to(2, 0)), 0);
+    const [moved] = resolveAction(state, accept(state, to(2, 0)), NO_LUCK);
     expect(moved).toEqual({
       type: 'unitMoved',
       unitId: 'b1',
@@ -184,13 +186,13 @@ describe('resolveAction', () => {
     // ⚠️ The turn ends here because blue's whole roster in this fixture is one
     // unit, not because of any cap: `actionsAllowed` is the roster when it is
     // shorter than the budget, and with no cap at all it always is.
-    const events = resolveAction(state, accept(state, to(2, 0)), 0);
+    const events = resolveAction(state, accept(state, to(2, 0)), NO_LUCK);
     expect(events.map((event) => event.type)).toEqual(['unitMoved', 'turnEnded']);
     expect(events[1]).toEqual({ type: 'turnEnded', nextPlayer: 'red' });
   });
 
   it('names the next player when a turn ends', () => {
-    expect(resolveAction(state, accept(state, { type: 'endTurn' }), 0)).toEqual([
+    expect(resolveAction(state, accept(state, { type: 'endTurn' }), NO_LUCK)).toEqual([
       { type: 'turnEnded', nextPlayer: 'red' },
     ]);
   });
@@ -199,14 +201,14 @@ describe('resolveAction', () => {
   // so it works for two players or four.
   it('wraps around the player list', () => {
     const reds = makeState(6, [{ id: 'r1', col: 0, row: 0, owner: 'red' }], 'red');
-    expect(resolveAction(reds, accept(reds, { type: 'endTurn' }, 'red'), 0)).toEqual([
+    expect(resolveAction(reds, accept(reds, { type: 'endTurn' }, 'red'), NO_LUCK)).toEqual([
       { type: 'turnEnded', nextPlayer: 'blue' },
     ]);
   });
 
   it('does not mutate the state it was given', () => {
     const before = JSON.stringify(state);
-    resolveAction(state, accept(state, to(2, 0)), 0);
+    resolveAction(state, accept(state, to(2, 0)), NO_LUCK);
     expect(JSON.stringify(state)).toBe(before);
   });
 
@@ -217,6 +219,6 @@ describe('resolveAction', () => {
     const bogus = { type: 'teleport', actor: 'blue' } as unknown as Parameters<
       typeof resolveAction
     >[1];
-    expect(() => resolveAction(state, bogus, 0)).toThrow('unknown action type: teleport');
+    expect(() => resolveAction(state, bogus, NO_LUCK)).toThrow('unknown action type: teleport');
   });
 });

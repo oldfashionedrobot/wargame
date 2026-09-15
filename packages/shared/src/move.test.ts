@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { validateCommand } from './action';
 import { resolveMove, validateMove } from './move';
+import type { Rolls } from './combat';
 import { LUCK_MAX } from './data/combat';
 import { MAX_HEALTH } from './data/unitTypes';
 import { makeState, route } from './testing';
@@ -79,10 +80,14 @@ const lane = (enemyRow: number, unitTypeId: 'infantry' | 'artillery' = 'infantry
     { id: 'r1', col: 0, row: enemyRow, owner: 'red' },
   ]);
 
-const resolved = (state: ReturnType<typeof lane>, command: MoveCommand, roll = 0) => {
+const resolved = (
+  state: ReturnType<typeof lane>,
+  command: MoveCommand,
+  rolls: Rolls = { attack: 0, counter: 0 },
+) => {
   const validation = validateCommand(state, command as Command, 'blue');
   if (!validation.ok) throw new Error(`expected a legal command, got: ${validation.reason}`);
-  return resolveMove(state, validation.action as Parameters<typeof resolveMove>[1], roll);
+  return resolveMove(state, validation.action as Parameters<typeof resolveMove>[1], rolls);
 };
 
 describe('validateMove, with a target', () => {
@@ -148,16 +153,14 @@ describe('resolveMove', () => {
     expect(events.map((event) => event.type)).toEqual(['unitMoved', 'battleResolved']);
   });
 
-  it('takes the damage off the defender and carries the attacker through', () => {
+  it('takes the damage off the defender and names both sides', () => {
     const state = lane(4);
     const [, battle] = resolved(state, move('b1', at(0, 0), at(0, 2), 'r1'));
     if (battle.type !== 'battleResolved') throw new Error('expected a battle');
 
     expect(battle.defender.unitId).toBe('r1');
     expect(battle.defender.health).toBeLessThan(MAX_HEALTH);
-    // No counter until 9g: the attacker is untouched and says so.
-    expect(battle.attacker).toEqual({ unitId: 'b1', health: MAX_HEALTH });
-    expect(battle.answered).toBe(false);
+    expect(battle.attacker.unitId).toBe('b1');
     expect(battle.kind).toBe('volley');
   });
 
@@ -173,10 +176,112 @@ describe('resolveMove', () => {
     expect(battle.defender.health).toBe(0);
   });
 
+  // ⚠️ Infantry reaches two tiles, so closing to two is a mutual exchange: the
+  // attacker is inside the defender's band and gets answered for it.
+  it('is answered when the attacker is inside the defender’s range', () => {
+    const [, battle] = resolved(lane(4), move('b1', at(0, 0), at(0, 2), 'r1'));
+    if (battle.type !== 'battleResolved') throw new Error('expected a battle');
+    expect(battle.answered).toBe(true);
+    expect(battle.attacker.health).toBeLessThan(MAX_HEALTH);
+  });
+
+  // ⚠️ The whole point of outranging someone. Artillery reaches five and
+  // infantry reaches two, so a gun firing from four is never answered -- one
+  // predicate, and no rule anywhere naming "indirect".
+  it('is unanswered when the attacker outranges the defender', () => {
+    const state = lane(4, 'artillery');
+    const [, battle] = resolved(state, move('b1', at(0, 0), at(0, 0), 'r1'));
+    if (battle.type !== 'battleResolved') throw new Error('expected a battle');
+    expect(battle.answered).toBe(false);
+    expect(battle.attacker.health).toBe(MAX_HEALTH);
+  });
+
+  it('is unanswered when the defender did not survive it', () => {
+    const state = makeState(8, [
+      { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
+      { id: 'r1', col: 0, row: 2, owner: 'red', health: 3 },
+    ]);
+    const [, battle] = resolved(state, move('b1', at(0, 0), at(0, 0), 'r1'));
+    if (battle.type !== 'battleResolved') throw new Error('expected a battle');
+    expect(battle.defender.health).toBe(0);
+    expect(battle.answered).toBe(false);
+  });
+
+  // ⚠️ **Counter-battery: the one case we diverge from AW deliberately.** Two
+  // guns within reach of each other answer each other, which AW forbids and
+  // history does not -- and it falls out of the predicate rather than needing a
+  // rule. A battery caught at *one* tile still cannot answer, because 1 is not
+  // inside [2, 5], which is the property worth keeping.
+  it('lets two guns answer each other, but not one that has been reached', () => {
+    const duel = makeState(8, [
+      { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
+      { id: 'r1', col: 0, row: 3, owner: 'red', unitTypeId: 'artillery' },
+    ]);
+    const [, counterBattery] = resolved(duel, move('b1', at(0, 0), at(0, 0), 'r1'));
+    if (counterBattery.type !== 'battleResolved') throw new Error('expected a battle');
+    expect(counterBattery.answered).toBe(true);
+
+    const reached = makeState(8, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'r1', col: 0, row: 1, owner: 'red', unitTypeId: 'artillery' },
+    ]);
+    const [, atContact] = resolved(reached, move('b1', at(0, 0), at(0, 0), 'r1'));
+    if (atContact.type !== 'battleResolved') throw new Error('expected a battle');
+    expect(atContact.answered).toBe(false);
+  });
+
+  // `hasActed` stops a unit *acting* twice in its own turn; answering an attack
+  // is not acting, and the predicate is purely geometric so it never asks.
+  it('is answered by a defender that has already acted', () => {
+    const spent = makeState(8, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'r1', col: 0, row: 2, owner: 'red', hasActed: true },
+    ]);
+    const [, battle] = resolved(spent, move('b1', at(0, 0), at(0, 0), 'r1'));
+    if (battle.type !== 'battleResolved') throw new Error('expected a battle');
+    expect(battle.answered).toBe(true);
+  });
+
+  // ⚠️ Most of AW's exchange calculus, and it falls out of the formula rather
+  // than needing a rule: the counter is computed on the defender's *reduced*
+  // health, so a harder first blow buys a softer reply. Same board, same
+  // counter roll -- only the attack roll differs, which is enough to push the
+  // defender down a band.
+  it('counters on post-damage health, so striking first compounds', () => {
+    const board = () =>
+      makeState(8, [
+        { id: 'b1', col: 0, row: 0 },
+        { id: 'r1', col: 0, row: 2, owner: 'red' },
+      ]);
+    const command = move('b1', at(0, 0), at(0, 0), 'r1');
+
+    const riposte = (attack: number) => {
+      const [, battle] = resolved(board(), command, { attack, counter: 0 });
+      if (battle.type !== 'battleResolved') throw new Error('expected a battle');
+      return MAX_HEALTH - battle.attacker.health;
+    };
+
+    expect(riposte(LUCK_MAX)).toBeLessThan(riposte(0));
+  });
+
+  // ⚠️ The attacker struck first, so its blow lands even when the reply kills
+  // it -- the mirror of a dead defender never answering.
+  it('lands the attacker’s blow even when the counter kills it', () => {
+    const doomed = makeState(8, [
+      { id: 'b1', col: 0, row: 0, health: 4 },
+      { id: 'r1', col: 0, row: 2, owner: 'red' },
+    ]);
+    const [, battle] = resolved(doomed, move('b1', at(0, 0), at(0, 0), 'r1'));
+    if (battle.type !== 'battleResolved') throw new Error('expected a battle');
+    expect(battle.attacker.health).toBe(0);
+    expect(battle.answered).toBe(true);
+    expect(battle.defender.health).toBeLessThan(MAX_HEALTH);
+  });
+
   it('passes the roll through, so a better one hurts more', () => {
     const command = move('b1', at(0, 0), at(0, 2), 'r1');
-    const unlucky = resolved(lane(4), command, 0)[1];
-    const lucky = resolved(lane(4), command, LUCK_MAX)[1];
+    const unlucky = resolved(lane(4), command, { attack: 0, counter: 0 })[1];
+    const lucky = resolved(lane(4), command, { attack: LUCK_MAX, counter: 0 })[1];
     if (unlucky.type !== 'battleResolved' || lucky.type !== 'battleResolved') throw new Error();
     expect(lucky.defender.health).toBeLessThan(unlucky.defender.health);
   });

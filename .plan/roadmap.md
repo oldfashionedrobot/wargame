@@ -743,49 +743,16 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   already handle a new member, and `syncUnits` moves the ring and removes the
   dead from state it reads anyway.
 
-- **9g** Counter-attacks, and `wouldCounter(state, attacker, defender)` — ⚠️ **in `combat.ts`, not `legality.ts`.** That file is *what may be selected*, a question about command legality; whether a defender can answer is a combat rule and belongs beside the formula deciding what the answer costs. One definition, called by the server to resolve and by the client when the cutaway needs it. ⚠️ **Fires iff the attacker is inside the defender's own range** and the defender survives — one predicate, and "both units are direct" is gone with the category it named. `computeDamage` called a second time in the other direction, on the defender's post-damage HP. **If it becomes a branch inside the attack resolver rather than a second call, that is the smell** the Combat section warns about.
+- **9g** ✅ **Shipped**, and gone from here: `wouldCounter` in `combat.ts`, the
+  counter inside `resolveBattle`, and `Rolls` as `{ attack, counter }`. See
+  *Combat* in [`architecture.md`](architecture.md).
 
-  ⚠️ **This is what makes the matchup numbers mean anything.** Attacking in AW is an *exchange*: the question is never "can I kill it" but "is the trade worth it". Without a counter, every attack is free and hits-to-kill says nothing about whether to throw the punch.
+  ⚠️ **The turn-budget hazard this step was warned about does not exist**, and
+  the proof is now a test rather than a paragraph: a counter killing the
+  attacker takes one from each side of `actionsTaken + 1 >= actionsAllowed`, so
+  the inequality is invariant under it. Pinned in `turns.test.ts` precisely
+  because it holds by arithmetic rather than by design.
 
-  ⚠️ **Damage scales with health, and the counter is computed on the reduced HP** — both already in the formula. A wounded attacker hits softer *by band*, and a wounded defender loses its terrain cover, since the defence term scales by defender band too. ⚠️ **Which makes the counter lumpy**: a hit that pushes the defender across a band boundary cuts its reply, while one that leaves it inside the same band does not — so the exchange turns on where the boundaries fall, not just on how much damage was dealt. So striking first compounds: you hit them, they are weaker, and their counter is weaker for it. That is most of AW's exchange calculus and it falls out of the formula rather than needing a rule.
-
-  ⚠️ **A counter can kill the attacker, and the turn budget survives it by arithmetic rather than by design.** A pre-check flagged this as a defect and it is not one. At the check the attacker has not acted: `taken = T`, `roster = R`, condition `T + 1 >= R`. The action sets `hasActed` and the counter kills it, so it leaves **both** counts — `taken = T`, `roster = R − 1` — and the next check is `T + 1 >= R − 1`, exactly what it would have been had the unit lived. The death subtracts one from each side and the inequality is invariant under it. A defender dying cannot matter at all, since `ownUnits` filters by `currentTurn`.
-
-  ⚠️ **It wants a test anyway**, precisely because it holds by arithmetic rather than by intent: nothing in `actionsAllowed` says it must stay whole under a mid-turn death, and the next person to touch that `min` will not know.
-
-  ⚠️ **`clampHealth` lands with this step.** Health has no upper bound anywhere:
-  `MAX_HEALTH` is read at deployment and in `band()`, and the only clamp is a
-  literal `Math.max(0, …)` inside `resolveBattle`. The bug is not the missing
-  half so much as **the bounds being written inline**, so the next person to
-  compute a health writes their own. One helper beside `MAX_HEALTH` —
-  `Math.min(MAX_HEALTH, Math.max(0, value))` — makes "0 to `MAX_HEALTH`" a thing
-  nobody can write half of. A counter is the first code to write an *attacker's*
-  health, which is why it surfaces here.
-
-  ⚠️ **Not in `applyEvents`**, tempting though it is as the only mutator. It
-  would *silently correct* a bad event rather than refusing it, and this codebase
-  refuses loudly — `getUnitType` throws, the reducer throws on unknown events. A
-  health out of range can only come from a resolution bug, and quietly healing it
-  buries that bug in the log for good. Clamp where the number is produced.
-
-  ⚠️ **The attacker's blow lands even when the counter kills it.** It struck
-  first, so its damage is already done — the mirror of the rule that a dead
-  defender never answers. Both healths ride in one event, so nothing about the
-  ordering is ambiguous once it is said.
-
-  ⚠️ **`wouldCounter` does not look at `hasActed`.** That flag exists to stop a
-  unit *acting* twice in its own turn; answering an attack is not acting. A spent
-  unit still counters, which is AW's behaviour and falls out of the predicate
-  being purely geometric — but it reads as a bug the first time it is noticed, so
-  it is written down rather than left to be rediscovered.
-
-  ⚠️ **`applyEvents.test.ts:240` calls `resolveAction` with two arguments** and
-  has done since 9f made it three. It compiles only because `shared/`'s test
-  files are not typechecked, so the roll arrives as `undefined` — harmless there
-  because that test only moves, and `NaN` damage the moment it does not. **Fix it
-  before this step**, not during.
-
-  ⚠️ **Rolls become `{ attack, counter }`** — a named object, not a tuple, and **not a discriminated union yet**. Two is the maximum any resolution needs: a volley draws once or twice, and a charge never has a counter because it does not consult the counter rule. The union is probably right eventually, but its charge member cannot be written correctly today — **whether a failed charge's repel damage is rolled is undecided**, and if it is, a charge needs `{ charge, repel }` rather than `{ charge }`. Writing that member now would bake an unasked question into a type, where it would look settled. 10a picks the shape with both members real, and will also have to settle that the two are different *kinds* of number: luck is `0..9` added to a result, a charge roll is `0..99` compared against a percentage.
 - **9h** ⚠️ **Mostly built, and smaller than it was.** Phases 7, 7.999 and 8.999 delivered the whole destination-and-action interaction: pinning, the confirm step and its pane, the client-side walk, and a `destinationChosen` whose lit tiles *are* the menu — the unit itself waits, a tile beside it faces that way, anything else cancels. **What remains is one more reading of a click already being read**: an enemy this unit can attack from the pinned tile. ⚠️ **No `choosingTarget` member** — that was the old plan and it is explicitly dropped; a target is a click in the state that exists, not a state of its own. What it does need is an attack-range overlay in a **reddish** tint, so a target is told from a facing choice by colour rather than by a rule.
 
   ⚠️ **The damage preview is part of this step, not a later one.** It used to be scheduled after, as polish. It cannot be: the panel *is* how an attack is committed, and a panel with no numbers in it is a bare confirm dialog. This is where *deterministic preview, yes; random resolution, no* stops being a slogan — the client runs the same formula with the luck term dropped.

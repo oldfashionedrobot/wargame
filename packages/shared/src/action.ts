@@ -1,6 +1,7 @@
 import { resolveEndTurn, validateEndTurn } from './endTurn';
 import { actionEndsTurn } from './turns';
 import { resolveMove, validateMove } from './move';
+import type { Rolls } from './combat';
 import type { Command, EndTurnCommand, GameEvent, GameState, MoveCommand, PlayerId } from './types';
 
 declare const validated: unique symbol;
@@ -84,14 +85,14 @@ function refuse(state: GameState, command: Command): string | null {
  * spreads the decision over two places to spare one branch an unused parameter.
  * A wart either way, and this is the smaller one.
  *
- * ⚠️ One number here, not a sequence: 9f has no counter and no charge. 9g makes
- * it a named object, `{ attack, counter }`, rather than a tuple -- `rolls[0]` is
- * anonymous where `rolls.attack` says what it is.
+ * ⚠️ `Rolls` is a named object rather than a tuple, and holds two because two is
+ * the maximum anything needs -- see `combat.ts` for why it is not a
+ * discriminated union yet.
  */
-export function resolveAction(state: GameState, action: Action, roll: number): GameEvent[] {
+export function resolveAction(state: GameState, action: Action, rolls: Rolls): GameEvent[] {
   switch (action.type) {
     case 'move': {
-      const events = resolveMove(state, action, roll);
+      const events = resolveMove(state, action, rolls);
       // ⚠️ **Appended, never folded into `unitMoved`.** Two independently
       // applicable events carrying absolute values, which is invariant 9 and
       // the same shape a successful charge takes in 10a -- `unitDied` plus

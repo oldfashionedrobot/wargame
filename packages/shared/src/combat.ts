@@ -141,6 +141,64 @@ export function refuseAttack(
 }
 
 /**
+ * What the server rolls for one resolution.
+ *
+ * ⚠️ **Named, not a tuple** -- `rolls.attack` says what it is where `rolls[0]`
+ * is anonymous, and an *array* would invite `rolls[2]`, which is `undefined`,
+ * which is `NaN` damage: silent, and the same shape as a stored unit with no
+ * health.
+ *
+ * ⚠️ **Two, because two is the maximum anything needs.** A volley draws once or
+ * twice; a charge never has a counter, because it does not consult the counter
+ * rule at all. ⚠️ **Not a discriminated union yet**: the charge member cannot be
+ * written correctly until 10a says whether a failed charge's repel damage is
+ * rolled. `{ charge }` or `{ charge, repel }` is an open question, and putting
+ * either in a type now would make it look answered.
+ *
+ * ⚠️ `counter` is drawn whether or not it is used. Deciding first and rolling
+ * second would make the *number of draws* depend on the rules, which is exactly
+ * the coupling keeping randomness on the server side is meant to avoid.
+ */
+export interface Rolls {
+  attack: number;
+  counter: number;
+}
+
+/**
+ * Can `defender` answer an attack that came from `from`?
+ *
+ * ⚠️ **One predicate, and no categories.** AW's rule reads "both units must be
+ * direct", which *looks* categorical and is not: it is equivalent to *the
+ * attacker is adjacent and the defender can fight at adjacency*, because a
+ * direct unit in AW can only ever attack from range 1. Days of Ruin's Anti-Tank
+ * settles it -- indirect out to three, **no minimum range**, and it counters.
+ * Under the category reading that needs a special case; under this one it falls
+ * out.
+ *
+ * ⚠️ **Ours differs from AW's in exactly one case, deliberately: counter-battery.**
+ * Two guns within reach of each other answer each other, which AW forbids and
+ * history does not. Artillery caught at one tile still cannot answer, because 1
+ * is not inside `[2, 5]` -- the property worth keeping survives without a rule
+ * naming it.
+ *
+ * ⚠️ **`hasActed` is not consulted.** That flag stops a unit *acting* twice in
+ * its own turn; answering an attack is not acting. A spent unit still counters,
+ * which is AW's behaviour and falls out of this being purely geometric.
+ *
+ * ⚠️ **A charge never asks this.** The counter rule is about *shooting*, and a
+ * charge is not shooting -- its repel damage is the defence. Routing a charge
+ * through here would make charging artillery free, since `min: 2` means a
+ * battery cannot answer at contact, and the one unit cavalry exists to punish
+ * would be the only one unable to punish back.
+ */
+export function wouldCounter(defender: Unit, from: Coordinate): boolean {
+  if (defender.health <= 0) return false;
+  const { range } = getUnitType(defender.unitTypeId);
+  const distance = tileDistance(from, defender.position);
+  return distance >= range.min && distance <= range.max;
+}
+
+/**
  * The exchange, as one event.
  *
  * ⚠️ **`attacker` should be the unit as it is *after* moving.** Nothing in the
@@ -149,23 +207,40 @@ export function refuseAttack(
  * which is the destination's. Passing the moved unit here means 9g inherits the
  * right tile instead of having to retrofit it.
  *
- * ⚠️ No counter yet: `answered` is false and the attacker's health is carried
- * through unchanged. 9g is the only thing that changes about this function.
+ * ⚠️ **The attacker's blow lands even when the counter kills it.** It struck
+ * first, so its damage is already done -- the mirror of a dead defender never
+ * answering. Both healths ride in one event, so the ordering is unambiguous once
+ * it is said, and this is where it is said.
+ *
+ * ⚠️ **The counter is `computeDamage` called a second time in the other
+ * direction, not a branch inside the first.** If it ever becomes a special case
+ * threaded through the attack, that is the smell: an exchange is two strikes,
+ * and the second is the first with the arguments swapped and the defender's
+ * *reduced* health in hand.
  */
 export function resolveBattle(
   state: GameState,
   attacker: Unit,
   defender: Unit,
-  roll: number,
+  rolls: Rolls,
 ): BattleResolvedEvent {
-  const damage = computeDamage(state, attacker, defender, roll);
+  const damage = computeDamage(state, attacker, defender, rolls.attack);
+  // The event says what each side *has*, so both must be numbers a rule can
+  // read -- `clampHealth` owns both ends of that, rather than this owning one.
+  const defenderHealth = clampHealth(defender.health - damage);
+
+  // ⚠️ Answered on the defender's **post-damage** health, which is most of AW's
+  // exchange calculus for free: striking first compounds, because a wounded
+  // defender both hits softer and keeps less of its terrain cover.
+  const survivor: Unit = { ...defender, health: defenderHealth };
+  const answered = wouldCounter(survivor, attacker.position);
+  const riposte = answered ? computeDamage(state, survivor, attacker, rolls.counter) : 0;
+
   return {
     type: 'battleResolved',
     kind: 'volley',
-    attacker: { unitId: attacker.id, health: attacker.health },
-    // The event says what the defender *has*, so it must be a number a rule can
-    // read -- `clampHealth` owns both ends of that, rather than this owning one.
-    defender: { unitId: defender.id, health: clampHealth(defender.health - damage) },
-    answered: false,
+    attacker: { unitId: attacker.id, health: clampHealth(attacker.health - riposte) },
+    defender: { unitId: defender.id, health: defenderHealth },
+    answered,
   };
 }

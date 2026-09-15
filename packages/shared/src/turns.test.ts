@@ -107,3 +107,43 @@ describe('nextPlayer', () => {
     expect(nextPlayer(red)).toBe('blue');
   });
 });
+
+// ⚠️ **The budget under a mid-turn death, which holds by arithmetic rather than
+// by design.** A counter can kill the attacker, and the attacker has just been
+// marked `hasActed` -- so its death takes **one from each side** of
+// `actionsTaken + 1 >= actionsAllowed`, and the inequality is invariant under
+// that. Nothing in `actionsAllowed` says it must stay whole, which is exactly
+// why this is pinned here: the next person to touch that `min` will not know.
+describe('the budget when a unit dies on its own turn', () => {
+  const roster = (acted: number, alive: number) =>
+    makeState(
+      12,
+      Array.from({ length: alive }, (_, i) => ({
+        id: `b${i}`,
+        col: i,
+        row: 0,
+        hasActed: i < acted,
+      })),
+    );
+
+  it('reaches the same verdict whether or not the actor survived', () => {
+    // Eight units, three spent. The fourth acts and dies: seven remain, three
+    // still marked spent -- and the turn must not end early because of it.
+    const survived = roster(4, 8);
+    const died = roster(3, 7);
+    expect(actionEndsTurn(survived)).toBe(actionEndsTurn(died));
+    expect(actionEndsTurn(died)).toBe(false);
+  });
+
+  it('still ends the turn on the last unit, having lost one on the way', () => {
+    // Started with eight; one died acting, so six of the seven left are spent
+    // and the seventh is about to go.
+    expect(actionEndsTurn(roster(6, 7))).toBe(true);
+  });
+
+  it('ends the turn when the dying unit was the last that could act', () => {
+    // Seven spent of eight, the eighth acts: the turn ends on that action, and
+    // whether it survives the reply changes nothing about that.
+    expect(actionEndsTurn(roster(7, 8))).toBe(true);
+  });
+});
