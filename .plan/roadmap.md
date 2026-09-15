@@ -476,9 +476,33 @@ artillery's 60 was tuned as *ranged* fire, and borrowing it at contact asserts a
 battery is as dangerous close as far, which is the opposite of what `min: 2`
 exists to say. Its own table says what canister does without disturbing what
 round shot does. **Tuning count goes from seventeen to twenty.**
-⚠️ **Undecided: which direction the scaling runs.** "Barely failed, barely hurt"
-rewards a near-miss; "wilder charge, worse mauling" punishes recklessness. They
-feel very different and no number can tell you which you want.
+⚠️ **Undecided: what the scaling reads, and whether there is any.** This used to
+say the open question was *which direction* it runs — "barely failed, barely
+hurt" against "wilder charge, worse mauling". ⚠️ **Those are not opposite
+directions.** Both say *more shortfall, more damage*; they differ in what
+measures the shortfall, and nobody wants the actual opposite. Three candidates:
+
+- **Flat** — `CHARGE_REPEL[defender]`, no scaling. One number, fully previewable,
+  and it needs **no roll**, which settles `Rolls` as a single `{ charge }` member.
+- **By the odds accepted** — `× (100 − chance) / 100`. Deterministic, so still
+  previewable: *if this fails you take 38*.
+- **By the roll** — `× (roll − chance) / (100 − chance)`. Unknowable before
+  committing.
+
+⚠️ **The roll-based option is worse than it looks: normalised, it is pure noise.**
+Dividing by the window `(100 − chance)` gives the *same* distribution at every
+odds level — uniform over the full repel range whether the charge was 3% or 50%.
+It therefore encodes no recklessness at all. Un-normalised it does, weakly and
+with wide variance, at which point it is a noisy odds-scaling.
+
+⚠️ **So the real question is how hard recklessness should be punished, not which
+way.** The failure *rate* already punishes it linearly: a 3% charge fails 97% of
+the time, so its expected cost is 0.97 × repel against a 50% charge's 0.50 ×
+repel. Odds-scaling multiplies that by the same factor again — expected cost goes
+from roughly 2× to roughly 4× between those two charges. **Flat is linear;
+odds-scaled is quadratic.** Whichever is chosen, flat is the one to *start* from:
+it can grow the term later against measured play, where starting scaled means
+tuning two untested things against each other.
 
 Fire and charge are **different resolutions, dispatched once** on an `attackKind` discriminant — fire produces damage, charge produces death-plus-displacement or a backfire. Two self-contained functions, not conditionals threaded through one.
 
@@ -855,11 +879,10 @@ one formula cannot be read apart, not because the geometry might be wrong.
   which you want. It also decides the `Rolls` union's shape — `{ charge }` or
   `{ charge, repel }` — which `combat.ts` is explicitly waiting on.
 
-  ⚠️ **Which two unit types can charge?** `CHARGE_THRESHOLD` is specced as a
-  `Partial<Record<…>>` with **six** entries, which is two rows of three — so one
-  type cannot charge at all, and a missing row is how that is said. Infantry and
-  cavalry is the obvious reading, artillery being the odd one out, but it defines
-  what the mechanic *is* and should be stated rather than inferred from a count.
+  ⚠️ ~~**Which two unit types can charge?**~~ ✅ **Infantry and cavalry.**
+  Artillery has no row, which is how "cannot charge" is said — a `Partial` whose
+  missing key is the rule, rather than a `canCharge` flag on the catalog saying
+  the same thing a second time. Any unit can still be a *target*.
 
   ⚠️ **Does 10a ship in one piece or two?** Roughly twelve untuned numbers with
   no reference behaviour, and the tuning advice above is to move one dial at a
