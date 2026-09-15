@@ -5,7 +5,7 @@ import type { Coordinate, GameState } from '@vod/shared';
 import {
   attackForecast,
   canFire,
-  chooseAction,
+  enterMode,
   chooseTarget,
   clearStep,
   confirmRoute,
@@ -58,14 +58,14 @@ const withB1Arrived = (state: GameState, destination: Coordinate): DestinationCh
 
 /** …and then pick Fire from the panel, which is what lights the band. */
 function withB1Firing(state: GameState, destination: Coordinate): Firing {
-  const firing = chooseAction(state, withB1Arrived(state, destination), 'firing');
+  const firing = enterMode(state, withB1Arrived(state, destination), 'firing');
   if (!isFiring(firing)) throw new Error('expected firing mode');
   return firing;
 }
 
 /** …and then pick Hold, which is what lights the four beside it. */
 const withB1Holding = (state: GameState, destination: Coordinate): DestinationChosen =>
-  chooseAction(state, withB1Arrived(state, destination), 'holding');
+  enterMode(state, withB1Arrived(state, destination), 'holding');
 
 /** …or pick Fire and pin a target, so the forecast is up. */
 function withB1Aiming(state: GameState, destination: Coordinate, targetId: string): Aiming {
@@ -193,8 +193,8 @@ describe('handleTileClick, a unit selected', () => {
   });
 });
 
-// ⚠️ A pinned route is still being chosen, so unlike the menu phase below it
-// keeps answering tile clicks. That is what makes the second click a confirm
+// ⚠️ A pinned route is still being chosen, so unlike the phases after the walk
+// it keeps answering tile clicks as *tile* clicks. That is what makes the second click a confirm
 // rather than a commit: nothing has moved, and every reachable tile is live.
 describe('a route pinned', () => {
   it('re-pins to another reachable tile', () => {
@@ -540,7 +540,7 @@ describe('the panel, and what it is told', () => {
   });
 });
 
-describe('facingTiles, which the overlay paints', () => {
+describe('the tiles holding mode lights', () => {
   const tilesFor = (state: GameState, at_: Coordinate) => {
     const holding = withB1Holding(state, at_);
     return holding.step.kind === 'holding' ? holding.step.tiles : [];

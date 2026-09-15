@@ -9,7 +9,7 @@ import type {
 } from '@vod/shared';
 import { coordinatesEqual, isOver } from '@vod/shared';
 import {
-  chooseAction as enterMode,
+  enterMode,
   chooseTarget,
   clearStep,
   confirmRoute,
@@ -109,11 +109,18 @@ export interface GameSession {
    * re-animating, since the mesh is by then exactly where the event ends.
    */
   walking: boolean;
+  /** Every click on the board, in every phase. */
   clickTile: (coordinate: Coordinate) => void;
-  /** Commit from the attack panel: `true` fires, `false` only turns to face. */
+  /**
+   * The panel's answer: enter a mode, which lights the tiles that answer for it.
+   *
+   * ⚠️ **The only thing a button calls.** Everything else a player does is a
+   * tile click -- buttons pick the intent, tiles pick the target -- which is
+   * what stops a new action from being another reading a click has to be
+   * disambiguated against.
+   */
   chooseAction: (kind: 'firing' | 'holding') => void;
-  /** Menu: stop offering the menu and start offering the four directions. */
-  /** Menu: discard the pinned destination. Nothing was ever sent. */
+  /** End the turn outright, without committing whatever is being planned. */
   endTurn: () => void;
 }
 
@@ -261,7 +268,9 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       // A pinned route is a plan, and a second click on its own destination is
       // what commits it to the walk. ⚠️ Read *before* `handleTileClick`, which
       // would otherwise re-pin the destination onto itself: an equal object, a
-      // wasted render, and no walk. Dispatch order, exactly like the menu's.
+      // wasted render, and no walk. The same order firing mode uses below, and
+      // for the same reason: confirm before re-pin, or the confirming click
+      // re-pins what it meant to commit.
       if (
         selection.phase === 'routePinned' &&
         coordinatesEqual(coordinate, destinationOf(selection))
@@ -292,7 +301,12 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       if (selection.phase === 'destinationChosen') {
         const state = server.getState();
 
-        if (selection.step.kind === 'firing' && isFiring(selection)) {
+        // ⚠️ The predicate, not a bare `step.kind === 'firing'`. TypeScript
+        // narrows `selection.step` on a nested discriminant but not `selection`
+        // itself, and `readFireClick` wants the whole thing -- so asking the
+        // predicate does both jobs where the inline check does one and then
+        // needs the predicate anyway.
+        if (isFiring(selection)) {
           // A second click on the pinned target is what fires it -- the same
           // gesture a route uses, read before `readFireClick` for the same
           // reason: re-pinning the target onto itself is a wasted render and no

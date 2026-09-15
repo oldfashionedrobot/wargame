@@ -930,7 +930,7 @@ snap is caught and logged; the commit always happens.
 handleTileClick(state, selection, coordinate) → SelectionState
 destinationOf(pinned)                         → Coordinate
 confirmRoute(routePinned)                     → DestinationChosen
-chooseAction(state, arrived, kind)            → DestinationChosen   // enter a mode
+enterMode(state, arrived, kind)               → DestinationChosen   // a mode's tiles
 readFireClick(state, firing, coordinate)      → Unit | null
 readHoldClick(state, arrived, coordinate)     → Facing | null
 chooseTarget(firing, target)                  → Aiming
@@ -939,7 +939,8 @@ unpinDestination(pinned)                      → SelectionState      // back to
 moveCommandFor(arrived, facing)               → Command
 ```
 
-⚠️ `chooseAction` is the *only* thing a button calls; everything else a player
+⚠️ `enterMode` is the *only* thing a button reaches (through the hook's
+`chooseAction`); everything else a player
 does is a tile click. `clearStep` and `unpinDestination` are the two back-out
 rules, one per level.
 

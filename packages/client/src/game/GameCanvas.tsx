@@ -19,22 +19,20 @@ import type { GameRenderer } from './render/renderer';
 function showSelection(renderer: GameRenderer, selection: SelectionState, walking: boolean): void {
   const arrived = selection.phase === 'destinationChosen';
   const pinned = selection.phase === 'routePinned';
-  // ⚠️ While the panel is up the board goes quiet, and it needs no branch to do
-  // it: `targetChosen` is neither `arrived` nor `pinned`, so every overlay below
-  // clears on its own. That is the right outcome -- every tile click is a way
-  // out of the panel, so lighting one would promise a choice that is not there,
-  // and "lit does something" survives by nothing being lit.
   // ⚠️ The route and the pane are one affordance -- both say *confirm this* --
   // so both come down the instant it is confirmed, and the ghost walks over a
   // clean board rather than retracing a line it has already been handed.
   const awaitingConfirm = pinned && !walking;
 
-  // The tiles around the unit *are* the menu, and only once it has walked: an
-  // inert lit tile invites a click that does nothing.
   // ⚠️ **Exactly one set is lit, and the mode is what guarantees it.** These
   // were two independent conditions that merely happened never to be true at
   // once; now the step says which tiles mean something, so the other overlay
   // clears because there is nothing else it could be showing.
+  //
+  // ⚠️ At the panel *nothing* is lit, and that is deliberate rather than a gap:
+  // the buttons are the whole affordance there, so a lit tile would promise a
+  // choice that is not being offered yet. "Lit does something" survives by
+  // nothing being lit.
   const step = arrived ? selection.step : null;
   renderer.setFacingChoices(step?.kind === 'holding' ? step.tiles : []);
   renderer.setAttackRange(step?.kind === 'firing' ? step.tiles : []);
@@ -53,7 +51,7 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
   renderer.setSelectedTile(highlight);
   // The range stays lit for as long as the pin can still move -- which includes
   // the walk, since the phase only turns over on arrival -- and comes down as
-  // the menu lights, so the handover reads as one moment rather than as a gap.
+  // the panel opens, so the handover reads as one moment rather than as a gap.
   //
   // ⚠️ `settled`, not `reachable`: the overlay is about *reach*, and a hole
   // punched in it where a friendly unit happens to stand reads as out of range
@@ -107,9 +105,13 @@ export interface GameCanvasProps {
 export function GameCanvas({ server, connection }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<GameRenderer | null>(null);
+  // ⚠️ Three things can be anchored over a tile and only one is ever up, which
+  // is why `anchorTo` taking a single element is still enough: the pane while a
+  // route waits to be confirmed, the menu while the intent is being chosen, and
+  // the forecast while a target is pinned. The modes are what make that true.
   const confirmPaneRef = useRef<HTMLDivElement>(null);
-  const attackPanelRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const forecastRef = useRef<HTMLDivElement>(null);
 
   // Both callbacks read the ref at call time, never capture the renderer: a
   // queue task parked on an animation resolves after this canvas unmounted, and
@@ -229,12 +231,8 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
-    // ⚠️ Three things can be anchored now and `anchorTo` still takes one
-    // element, because still only one is ever up: the forecast over a pinned
-    // target, the menu over the destination, the confirm pane over a route that
-    // has not walked. The modes are what make that exclusive.
     if (aiming) {
-      renderer.anchorTo(attackPanelRef.current, aiming.step.target.position);
+      renderer.anchorTo(forecastRef.current, aiming.step.target.position);
       return;
     }
     if (menuOpen) {
@@ -305,7 +303,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
 
         {aiming && forecast && (
           <div
-            ref={attackPanelRef}
+            ref={forecastRef}
             style={{
               position: 'absolute',
               top: 0,

@@ -70,7 +70,7 @@ export type SelectionState =
  * take a single overlay rather than four independent ones that merely happen
  * not to overlap.
  */
-export type MenuStep =
+type MenuStep =
   // The panel is up and nothing is lit: the buttons are the only affordance.
   | { kind: 'choosing' }
   // ⚠️ `target` is nullable rather than a fourth kind. `unitSelected` and
@@ -166,8 +166,14 @@ export function isAiming(selection: SelectionState): selection is Aiming {
   return isFiring(selection) && selection.step.target !== null;
 }
 
-/** Enter one of the menu's modes, lighting the tiles it answers for. */
-export function chooseAction(
+/**
+ * Enter one of the menu's modes, lighting the tiles that answer for it.
+ *
+ * ⚠️ Named for the *transition*, not the gesture. The hook's `chooseAction` is
+ * what a button press is called; this is what it does to the state, and keeping
+ * them distinct is what stops an import alias standing in for the difference.
+ */
+export function enterMode(
   state: GameState,
   selection: DestinationChosen,
   kind: 'firing' | 'holding',
@@ -296,8 +302,8 @@ function trySelect(state: GameState, coordinate: Coordinate): SelectionState {
 }
 
 /**
- * The new selection a click produces. **Never a command** -- a click picks a
- * destination, and only the menu commits one. Commands are built from a
+ * The new selection a click produces. **Never a command** -- a click here picks
+ * a destination, and committing happens from one of the menu's modes. Commands are built from a
  * selection by `moveCommandFor`, which is why the two are separate functions:
  * every command's accompanying selection is a constant the caller already
  * knows, so pairing them in one return value carried no information.
