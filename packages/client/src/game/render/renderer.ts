@@ -195,6 +195,21 @@ export interface GameRenderer {
    */
   syncUnits(state: GameState): void;
   /**
+   * The state this renderer last drew.
+   *
+   * ⚠️ **Which is the state *before* whatever `playEvents` is about to animate**,
+   * and that is the whole reason it exists. The queue awaits `playEvents` and
+   * only then calls `syncUnits`, so during an animation the last sync is still
+   * the previous turn -- which is where a damage animation gets the health it is
+   * counting down *from*. `battleResolved` carries only resulting values
+   * (invariant 9), so the before-value is nowhere else.
+   *
+   * ⚠️ **Not a second source of truth.** It is a record of what was drawn, not an
+   * opinion about what is true; `syncUnits` is still the only thing that moves
+   * it, and every reader wanting authority reads `server.getState()` as before.
+   */
+  lastDrawn(): GameState;
+  /**
    * Walk a unit to a destination it has not actually moved to. Resolves when
    * the preview **settles** -- which is when the walk finishes, but also when
    * a cancel or a snap ends it early. Never left pending: `stopAnimation` does
@@ -511,6 +526,10 @@ export async function createGameRenderer(
   // would give syncUnits and playEvents a window in which a unit has no mesh.
   const models = await loadUnitModels(scene);
 
+  // ⚠️ Seeded with the board's own starting state, so there is never a moment
+  // when nothing has been drawn. Advanced only by `syncUnits`.
+  let drawn: GameState = initialState;
+
   const unitMeshes = new Map<string, TransformNode>();
   // Parallel to `unitMeshes` and disposed with it: a ring is a *child* of its
   // unit's node, so `mesh.dispose` takes it, and only this map needs clearing.
@@ -721,7 +740,14 @@ export async function createGameRenderer(
       }
       endPreview();
     },
+    lastDrawn() {
+      return drawn;
+    },
     syncUnits(state) {
+      // Recorded before the work, not after: everything below reads `state`
+      // anyway, and a mid-function throw would otherwise leave this behind by
+      // one commit -- a silent, permanent one-turn lag in any damage animation.
+      drawn = state;
       // Authority overwrites every position, the previewed one included, so
       // this *is* the preview ending -- there is no separate commit.
       //

@@ -31,6 +31,7 @@ beforeEach(() => {
     anchorTo: vi.fn(),
     playEvents: vi.fn(() => Promise.resolve()),
     syncUnits: vi.fn(),
+    lastDrawn: vi.fn(() => board),
     setFacingChoices: vi.fn(),
     previewMove: vi.fn(() => Promise.resolve()),
     cancelPreview: vi.fn(),

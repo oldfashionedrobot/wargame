@@ -1018,37 +1018,72 @@ one formula cannot be read apart, not because the geometry might be wrong.
 
   #### What it needs that does not exist
 
-  ⚠️ **One decision answers all three of these: the beat script is built in
-  `useGameSession`, not in the renderer.**
+  ⚠️ **Far less than this entry used to claim, and the claim was wrong.** It said
+  building the beat script in `useGameSession` "keeps the renderer ignorant of
+  game state, which is how it is built everywhere else". The renderer is *not*
+  ignorant of game state: `syncUnits(state: GameState)` hands it the whole state
+  on every commit and it reads units, ids, positions and health out of it.
 
-  **The *before* health for both units.** `battleResolved` carries only the
-  *resulting* healths — invariant 9, absolute values and never deltas — so a bar
-  draining from X to Y has Y and not X. The replica still holds X, because state
-  is committed only *after* the batch animates. ⚠️ But the renderer cannot reach
-  it: its one health channel is `HealthRing.setHealth(health)`, a setter with no
-  getter, which writes the value and forgets it. Building the script in the hook
-  puts the question where both halves already are.
+  ⚠️ **The before-health is free, because of the order the queue already runs
+  in.** `onEvents` is awaited *before* `onSnap`:
+
+  ```
+  if (worthAnimating(events)) await onEvents(events)   // → playEvents
+  onSnap(state)                                        // → syncUnits
+  ```
+
+  So at cutaway time the renderer's **last-synced state is the before-state**. It
+  needs one remembered reference — *what I last drew* — and then no script type,
+  no change to `onEvents`, no change to `playEvents`, and no previous-state ref
+  in the hook. The baseline exists too: the renderer is handed `initialState` at
+  construction, so there is never a gap. ⚠️ A skipped batch still advances it,
+  because `syncUnits` runs whether or not the animation did.
 
   ⚠️ **A tile-cost for a battle.** `animatedTiles` sums `unitMoved` path lengths
   and `MAX_ANIMATED_TILES` is 28 — *"at 0.15s a tile this is a bit over four
-  seconds"* — so the budget is really *four seconds of animation, denominated in
-  tiles*. A `battleResolved` scores **zero**, so a catch-up batch of ten battles
-  scores nothing, passes `worthAnimating`, and plays ten cutaways back to back:
-  fifteen seconds with no way out. A 1.5s cutaway is **10 tiles** in that
-  currency, which lets two battles animate and skips three. 9f predicted this and
-  recorded it *in 9f*, where nobody building the cutaway would look.
+  seconds"* — so the budget is *four seconds of animation, denominated in tiles*.
+  A `battleResolved` scores **zero**, so a catch-up batch of ten battles scores
+  nothing, passes `worthAnimating`, and plays ten cutaways back to back. A 1.5s
+  cutaway is **10 tiles** in that currency, which lets two battles animate and
+  skips three. 9f predicted this and recorded it *in 9f*, where nobody building
+  the cutaway would look.
 
-  **A way to turn it off.** AW has one and by the third hour you want it. ⚠️ The
-  *automatic* skip already works — `worthAnimating` false means `playEvents` is
-  never called and `syncUnits` corrects — so what is missing is only a player
-  preference. Built as *something the renderer does whenever it sees a battle*,
-  adding that later means threading a flag into the renderer; built as a script
-  the caller hands down, it is a condition at the call site and nothing else.
+  **A way to turn it off.** The *automatic* skip already works — `worthAnimating`
+  false means `playEvents` is never called and `syncUnits` corrects — so what is
+  missing is only a player preference.
 
-  ⚠️ **And it keeps the renderer ignorant of game state**, which is how it is
-  built everywhere else — *"it is given tiles to light, not a search to query"*.
-  `playEvents` takes the script beside the events rather than reconstructing
-  anything.
+  #### The camera, measured against the renderer as it is
+
+  ⚠️ **Never give the main camera a viewport.** `holdTheBoard` computes aspect
+  from `canvas.clientWidth / clientHeight` every frame, so a viewport would leave
+  its ortho extents sized for a shape that is not being drawn. Draw the cutaway
+  camera's band **over** the board instead: the main camera keeps the full canvas
+  and the clamp needs no change at all.
+
+  ⚠️ **A second camera is smaller than moving the one we have**, which sounds
+  backwards and is not. Moving the existing camera fights three mechanisms at
+  once — `lowerRadiusLimit === upperRadiusLimit`, the beta clamp, and
+  `holdTheBoard` re-clamping the target every frame — and then has to restore all
+  three exactly.
+
+  ⚠️ **A second *scene* is the wrong call**: `loadUnitModels(scene)` binds the
+  `AssetContainer` to a scene, so a second scene loads every model twice.
+
+  ⚠️ **`placeAnchor` is already viewport-aware** — it projects through
+  `camera.viewport.toGlobal(…)`. But it reads `scene.getTransformMatrix()`, which
+  with two active cameras is whichever rendered *last*. Nothing is anchored while
+  a cutaway is up, so this is latent rather than live; building the matrix from
+  `camera` explicitly is the one-line hardening.
+
+  #### Two things that fall out
+
+  ⚠️ **The cutaway is its own branch, not part of the `unitMoved` one.** That
+  branch skips a move whose mesh already stands at the destination — true of a
+  previewed approach — and a charge's cutaway would be skipped along with it.
+
+  **Charge ordering needs no arranging.** The events are `[approach,
+  battleResolved, displacement]` and `playEvents` awaits in order, so the cutaway
+  plays between the approach and the displacement on its own.
 
 The **Open questions** entry on counter-attacks for `min > 1` units belongs to 9g and moved into phase 9 with it — it was decided when indirect fire and immobility were the same thing, and 9d separates them.
 

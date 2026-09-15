@@ -238,6 +238,28 @@ describe('useGameSession', () => {
     });
   });
 
+  // ⚠️ **The ordering a damage animation is built on.** The renderer records the
+  // state it last drew, and uses it as the *before* value to count health down
+  // from -- `battleResolved` carries only resulting values, so the previous one
+  // is nowhere else. That only works because the queue animates first and snaps
+  // second. Swap them and every cutaway would count down from the number it was
+  // counting down *to*, silently and forever.
+  it('animates a batch before snapping the state it produced', async () => {
+    const fake = fakeServer(board);
+    const cb = callbacks();
+    const order: string[] = [];
+    vi.mocked(cb.onEvents).mockImplementation(async () => void order.push('events'));
+    vi.mocked(cb.onSnap).mockImplementation(() => void order.push('snap'));
+
+    renderSession(fake, cb);
+    await act(async () => {}); // the initial batch has no events: snap only
+    order.length = 0;
+
+    const next = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
+    await act(async () => fake.push([moved()], next));
+    expect(order).toEqual(['events', 'snap']);
+  });
+
   it('forwards events to onEvents', async () => {
     const fake = fakeServer(board);
     const cb = callbacks();

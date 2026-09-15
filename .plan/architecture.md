@@ -1422,6 +1422,16 @@ is off.
   and west. Water uses the *body* vocabulary and roads the *connector* one,
   since a road is never a body of anything.
 
+- **The renderer records the state it last drew**, and `lastDrawn()` reads it
+  back. ⚠️ **That is the state *before* whatever `playEvents` is animating**,
+  which is the point: the queue awaits `playEvents` and only then calls
+  `syncUnits`, so mid-animation the last sync is still the previous turn. A
+  damage animation needs the health it counts down *from*, and `battleResolved`
+  carries only resulting values (invariant 9), so the before-value exists
+  nowhere else. ⚠️ Not a second source of truth — a record of what was drawn,
+  advanced only by `syncUnits`, with authority still read from
+  `server.getState()`.
+
   ⚠️ **Measured off the *loaded* mesh, not the file** — and the difference is
   not academic. The glTF loader flips z on its own `__root__`, which leaves a
   model's bounding box where the raw accessors say it is while putting the
