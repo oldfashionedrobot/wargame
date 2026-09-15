@@ -4,6 +4,7 @@ import { LUCK_MAX } from '@vod/shared';
 import type { Coordinate, GameState } from '@vod/shared';
 import {
   attackForecast,
+  canFire,
   chooseAction,
   chooseTarget,
   clearStep,
@@ -576,6 +577,56 @@ describe('facingTiles, which the overlay paints', () => {
       { id: 'r1', col: 1, row: 4, owner: 'red' },
     ]);
     expect(tilesFor(state, at(1, 3))).toHaveLength(4);
+  });
+});
+
+describe('canFire, which decides whether the panel offers it', () => {
+  const arrived = (state: GameState) => withB1Arrived(state, at(1, 1));
+
+  it('is false with nobody on the board but the unit', () => {
+    const state = makeState(7, [{ id: 'b1', col: 1, row: 1 }]);
+    expect(canFire(state, arrived(state))).toBe(false);
+  });
+
+  it('is true with an enemy in the band', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 3, owner: 'red' },
+    ]);
+    expect(canFire(state, arrived(state))).toBe(true);
+  });
+
+  // ⚠️ **The reason this asks `refuseAttack` rather than counting what stands in
+  // `tilesInRange`.** The band is *reach* and knows nothing about ownership, so
+  // a panel built on it would offer Fire here and the click would be refused.
+  it('is false when the only thing in range is a friend', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'b2', col: 1, row: 2 },
+    ]);
+    expect(canFire(state, arrived(state))).toBe(false);
+  });
+
+  // The same rule's other half: a gun cannot shoot what has closed with it, so
+  // an adjacent enemy is no reason to offer Fire.
+  it('is false when the only enemy is inside a minimum range', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+    ]);
+    expect(canFire(state, arrived(state))).toBe(false);
+  });
+
+  // ⚠️ Asked from where the unit *will* stand, not where it stands now -- the
+  // walk is a preview, and a panel answering for the origin would offer Fire
+  // for a shot the destination cannot take, or hide one it can.
+  it('answers for the destination, not the origin', () => {
+    const state = makeState(9, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 6, owner: 'red' },
+    ]);
+    expect(canFire(state, withB1Arrived(state, at(1, 1)))).toBe(false);
+    expect(canFire(state, withB1Arrived(state, at(1, 4)))).toBe(true);
   });
 });
 

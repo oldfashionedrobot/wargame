@@ -238,7 +238,7 @@ describe('GameCanvas', () => {
     // Still walking: the range is the context, and no directions are offered.
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith([]);
     expect(vi.mocked(renderer.setRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
-    expect(screen.queryByRole('button', { name: /^Fire/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Hold/ })).toBeNull();
     // And the pane is down, because it invites a click that is refused now.
     expect(screen.queryByText(/click again to confirm/i)).toBeNull();
 
@@ -246,7 +246,10 @@ describe('GameCanvas', () => {
     // ⚠️ The panel, and still nothing lit. Arrival offers a choice of
     // *questions*, not of tiles -- so the overlays stay clear until one is
     // picked, and the buttons are the only affordance.
-    expect(screen.getByRole('button', { name: /^Fire/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Hold/ })).toBeTruthy();
+    // ⚠️ And no Fire, because this board has nobody to shoot. Omitted rather
+    // than greyed, following AW -- a menu with no dead rows.
+    expect(screen.queryByRole('button', { name: /^Fire/ })).toBeNull();
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith([]);
     expect(renderer.setAttackRange).toHaveBeenLastCalledWith([]);
     expect(renderer.setRange).toHaveBeenLastCalledWith([]);
@@ -266,6 +269,31 @@ describe('GameCanvas', () => {
     );
     // And firing's band is dark, because exactly one mode is live.
     expect(renderer.setAttackRange).toHaveBeenLastCalledWith([]);
+  });
+
+  // ⚠️ The other half of omitting: the row appears the moment there is anything
+  // to shoot. Both sides are asserted because a menu that never offers Fire and
+  // a menu that always does are equally wrong and look the same from one test.
+  it('offers Fire once something is in range, and not before', async () => {
+    const contested = makeState(5, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 3, owner: 'red' },
+    ]);
+    await renderCanvas(
+      fakeServer({
+        getState: () => contested,
+        subscribe: vi.fn((onUpdate) => {
+          onUpdate([], contested);
+          return () => {};
+        }),
+      }),
+    );
+
+    await act(async () => clickTile({ col: 1, row: 1 }));
+    await act(async () => clickTile({ col: 1, row: 2 })); // pins
+    await act(async () => clickTile({ col: 1, row: 2 })); // confirms
+    expect(screen.getByRole('button', { name: /^Fire/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Hold/ })).toBeTruthy();
   });
 
   it('clears the overlays when the selection is dropped', async () => {

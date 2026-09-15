@@ -943,6 +943,16 @@ moveCommandFor(arrived, facing)               → Command
 does is a tile click. `clearStep` and `unpinDestination` are the two back-out
 rules, one per level.
 
+⚠️ **`canFire` decides whether the panel offers Fire at all, and it asks
+`refuseAttack`** — the server's own rule — rather than counting what stands in
+`tilesInRange`. The band is *reach*: it knows nothing about ownership, a minimum
+range, or a unit targeting itself, so a panel built on it would offer Fire for a
+friend two tiles off and the click would then be refused. One rule asked twice
+cannot disagree with itself. It walks every unit rather than the band, which is
+sixteen against up to sixty and needs no grid bounds. ⚠️ **Unavailable actions
+are omitted, not greyed**, following AW — the cost is that *nothing in range* and
+*I misread the menu* look alike, and the menu changes height between units.
+
 ⚠️ **`destinationOf` was three functions.** `pinnedDestination` and
 `facingChoiceOrigin` were the same one-line body under other names, separated
 only by what the caller meant to do next — the tile a second click must land on

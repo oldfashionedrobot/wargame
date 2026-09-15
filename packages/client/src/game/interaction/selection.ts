@@ -190,6 +190,27 @@ export function chooseAction(
   };
 }
 
+/**
+ * Is there anything this unit could shoot from where it stopped?
+ *
+ * ⚠️ **Asked with `refuseAttack`, the server's own rule**, rather than by
+ * counting what stands in `tilesInRange`. The band is *reach* and says nothing
+ * about ownership, a minimum range, or a unit targeting itself -- so a panel
+ * built on the band would offer Fire for a friend standing two tiles away, and
+ * the click would then be refused. One rule, asked twice, cannot disagree with
+ * itself.
+ *
+ * ⚠️ Walks every unit rather than the band. Sixteen units against a band of up
+ * to sixty tiles is the cheaper loop, and it needs no grid bounds.
+ */
+export function canFire(state: GameState, selection: DestinationChosen): boolean {
+  const from = destinationOf(selection);
+  const unit = getUnit(state, selection.unitId);
+  if (!unit) return false;
+  const moved: Unit = { ...unit, position: from };
+  return state.units.some((target) => refuseAttack(state, moved, from, target.id) === null);
+}
+
 /** A target is pinned: the forecast opens over it, and nothing is sent yet. */
 export function chooseTarget(selection: Firing, target: Unit): Aiming {
   return { ...selection, step: { ...selection.step, target } };

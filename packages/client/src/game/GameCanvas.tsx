@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ReactElement } from 'react';
 import { getCurrentPlayer, isOver } from '@vod/shared';
 import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
 import { useGameSession } from './useGameSession';
-import { attackForecast, isAiming, isPlan, destinationOf } from './interaction/selection';
+import { attackForecast, canFire, isAiming, isPlan, destinationOf } from './interaction/selection';
 import type { SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
 import { createGameRenderer } from './render/renderer';
@@ -61,6 +62,39 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
   const ranged = selection.phase === 'unitSelected' || pinned;
   renderer.setRange(ranged ? selection.movement.settled : []);
   renderer.setRoute(awaitingConfirm ? selection.path : []);
+}
+
+/**
+ * One row of the action panel.
+ *
+ * ⚠️ Styled rather than left as a default button, because the panel is the
+ * primary interaction now and not a confirm box. Hover is the only state it
+ * needs: there is no disabled row, since an unavailable action is omitted.
+ */
+function MenuItem({ label, onClick }: { label: string; onClick: () => void }): ReactElement {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+      style={{
+        appearance: 'none',
+        border: 'none',
+        borderRadius: '4px',
+        padding: '6px 12px',
+        font: 'inherit',
+        fontSize: '13px',
+        textAlign: 'left',
+        cursor: 'pointer',
+        color: '#f2f4f7',
+        background: hovered ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
+      }}
+    >
+      {label}
+    </button>
+  );
 }
 
 export interface GameCanvasProps {
@@ -243,26 +277,29 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
               position: 'absolute',
               top: 0,
               left: 0,
-              marginTop: '-14px',
-              padding: '6px 8px',
-              borderRadius: '5px',
-              background: 'rgba(24, 28, 34, 0.92)',
-              color: '#f2f4f7',
-              fontSize: '13px',
-              lineHeight: 1.5,
-              whiteSpace: 'nowrap',
+              marginTop: '-10px',
+              padding: '4px',
+              borderRadius: '6px',
+              border: '1px solid rgba(255, 255, 255, 0.16)',
+              background: 'rgba(18, 22, 28, 0.94)',
+              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.45)',
+              minWidth: '104px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '4px',
-              alignItems: 'stretch',
+              gap: '1px',
             }}
           >
-            <button type="button" onClick={() => chooseAction('firing')}>
-              Fire
-            </button>
-            <button type="button" onClick={() => chooseAction('holding')}>
-              Hold — face them, do not fire
-            </button>
+            {/* ⚠️ **Offered only when there is something to shoot**, following
+                AW, which omits rather than greys. The cost is that "nothing is
+                in range" and "I misread the menu" look the same; the gain is a
+                menu with no dead rows, which is what makes it readable at a
+                glance. Revisit if omitting reads badly in play.
+                ⚠️ `canFire` asks `refuseAttack`, the same rule the click will,
+                so the button and the tile cannot disagree. */}
+            {canFire(gameState, selection) && (
+              <MenuItem label="Fire" onClick={() => chooseAction('firing')} />
+            )}
+            <MenuItem label="Hold" onClick={() => chooseAction('holding')} />
           </div>
         )}
 
