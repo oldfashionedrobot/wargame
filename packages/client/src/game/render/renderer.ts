@@ -14,6 +14,8 @@ import type { Coordinate, Facing, GameEvent, GameState } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
 import { createTileHighlight, setHighlightTile } from './highlight';
+import { createHealthRing } from './healthRing';
+import type { HealthRing } from './healthRing';
 import { createRouteArrow } from './routeArrow';
 import { createTileOverlay } from './tileOverlay';
 import { screenToTile } from './picking';
@@ -446,13 +448,17 @@ export async function createGameRenderer(
   const models = await loadUnitModels(scene);
 
   const unitMeshes = new Map<string, TransformNode>();
+  // Parallel to `unitMeshes` and disposed with it: a ring is a *child* of its
+  // unit's node, so `mesh.dispose` takes it, and only this map needs clearing.
+  const healthRings = new Map<string, HealthRing>();
   for (const unit of initialState.units) {
     const owner = initialState.players.find((player) => player.id === unit.owner);
     if (!owner) throw new Error(`unit ${unit.id} has unknown owner ${unit.owner}`);
-    unitMeshes.set(
-      unit.id,
-      createUnitMesh(scene, models, unit, owner.color, surfaceAt, gridWidth, gridHeight),
-    );
+    const node = createUnitMesh(scene, models, unit, owner.color, surfaceAt, gridWidth, gridHeight);
+    unitMeshes.set(unit.id, node);
+    const ring = createHealthRing(scene, node);
+    ring.setHealth(unit.health);
+    healthRings.set(unit.id, ring);
   }
 
   // The whole ghost: which unit is displaced, where it really stands, and the
@@ -673,6 +679,8 @@ export async function createGameRenderer(
         // the model's child meshes go with it.
         mesh.dispose(false, false);
         unitMeshes.delete(id);
+        // The ring was a child and went with the node; only the entry is left.
+        healthRings.delete(id);
       }
 
       for (const unit of state.units) {
@@ -683,6 +691,11 @@ export async function createGameRenderer(
         const target = tileToWorld(unit.position, gridWidth, gridHeight);
         mesh.position.set(target.x, surfaceAt(unit.position), target.z);
         setUnitFacing(mesh, unit.facing);
+        // ⚠️ Snapped, like the position beside it. Once damage animates, the
+        // tween belongs in `playEvents` and this stays the corrector -- and it
+        // will need stopping the ring's own animation, which
+        // `scene.stopAnimation(mesh)` above does *not* reach.
+        healthRings.get(unit.id)?.setHealth(unit.health);
       }
     },
     toggleInspector() {

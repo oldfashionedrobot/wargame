@@ -985,6 +985,27 @@ is off.
   meant it existed only under a pointer and a touchscreen never saw one. Showing
   a route needs a *point* input distinct from *select*; touch is the only device
   without one, so the second click supplies it and the route is state now.
+- **A unit's health is a ring of ten segments at its base** — `healthRing.ts`,
+  extinguishing as it weakens and **absent entirely at full strength**, since a
+  ring under every untouched unit is noise. ⚠️ **Ten segments because the formula
+  reads ten bands**: `computeDamage` uses `ceil(health / 10)`, so 91 and 100
+  fight identically and a bar drawn from raw health would show two states that
+  behave the same. Ten-for-ten means the display *cannot* promise precision the
+  rules lack. Segments extinguish rather than dim — bands are discrete, and a
+  fade would imply a continuum.
+  ⚠️ **Parented to the unit's node**, so it rides the walk animation for free and
+  is disposed with it. It therefore turns with the unit; accepted, since a ring
+  is rotationally symmetric and only the segment boundaries move. It also
+  inherits `PIECE_SCALE`, which is wanted — that constant makes each piece fill
+  its tile, so the ring stays proportionate to its piece.
+  ⚠️ Orange-red, and **not** the amber `SELECTED_COLOR`/`FACING_COLOR` family: a
+  ring in that range was tried and read as another selection tint under the
+  piece. ⚠️ One material for every ring, cached on the scene by name — so the
+  `disposeMaterialAndTextures: false` that protects unit colours protects these
+  too.
+  ⚠️ `syncUnits` snaps it, as it does position. When damage animates, the tween
+  belongs in `playEvents` — and `scene.stopAnimation(mesh)` targets the *unit*
+  node, so a tween on the ring survives it and must be stopped separately.
 - **The pinned route is an arrow, not a tint** — `routeArrow.ts`, a sibling of
   `tileOverlay.ts` that merges per-tile quads into one mesh the same way and
   adds UVs. A tint says *these tiles*; an arrow says *this way, ending here*.
