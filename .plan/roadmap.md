@@ -981,13 +981,81 @@ one formula cannot be read apart, not because the geometry might be wrong.
   guesswork in play, that is the symptom, and the fix is a marker rather than a
   camera change.
 
-- **10b** ⬜ **The combat cutaway.** A view that takes over, shows both units, plays the exchange, and hands back — AW's battle screen. ⚠️ **Here rather than in phase 9 because two of its four scenes are charge**: volley-unanswered, volley-answered, charge-broke-through and charge-repelled. Building it earlier means building half of it and extending it, and the half that is missing is the half with no reference behaviour.
+- **10b** ⬜ **The combat cutaway.** A view that takes over, shows both units,
+  plays the exchange, and hands back — AW's battle screen. ⚠️ **Here rather than
+  in phase 9 because half of it is charge**: building it earlier means building
+  half and extending it, and the missing half is the one with no reference
+  behaviour.
 
-  Phase 9 is playable without it: the board ring is the feedback, and it is the *persistent* half — "how hurt is that battery" while you are deciding — which a transient panel cannot replace. The cutaway is the drama, not the information.
+  Phase 9 is playable without it: the board ring is the feedback, and it is the
+  *persistent* half — "how hurt is that battery" while you are deciding — which a
+  transient view cannot replace. The cutaway is the drama, not the information.
 
-  ⚠️ **Start small and DOM.** Both units, both health bars, the numbers, a second and a half, gone. It reuses the over-canvas anchoring 8.999 built, needs no second Babylon scene, no camera work and no new art. A 3D scene with firing animations is an upgrade, not the first version. ⚠️ Squads of figures scaled to health were considered and deferred with it — the bar carries that information, and models are instanced per unit already, so it stays cheap whenever it is wanted.
+  ⚠️ **It is a minimal first expression and is expected to grow.** Everything
+  below is the smallest thing that reads as a battle screen; model animation,
+  richer staging and better art are all later.
 
-  **What it needs that does not exist:** the *before* health for both units. For a single-action batch that is just the replica, since `unitMoved` does not touch health; folding is only required for multi-action catch-up, which is exactly where the cutaway should be skipped anyway.
+  #### The shape
+
+  **Two views, one per combatant, side by side.** ⚠️ **Split because the distance
+  between them is variable** — two units five tiles apart do not belong in one
+  framed space, and pretending otherwise is what forces a staging compromise.
+  Each view is self-contained, so nothing has to frame a pair.
+
+  Each view holds **one unit model standing on one tile of its terrain type**.
+  ⚠️ **The tile is a *representation*, not a window onto the board** — it says
+  *this unit is in forest*, so it needs no neighbours, no road continuation and
+  no slice of the real grid. An earlier draft proposed a 3×3 cut-out to keep
+  roads connecting, which solved a board problem in a view that is not the board.
+
+  Beside each: **a full health bar, 0–100, showing the true value**, animating as
+  damage lands, with the number beside it. ⚠️ **Not banded, and that does not
+  contradict the ring.** The ring is banded because it is a *glanceable board*
+  element where ten segments stop the display over-promising precision the
+  formula does not have; the cutaway is a *focused* view where the exact figure
+  is the point. Different jobs, different precision. ⚠️ Segment lines on the bar
+  mark the ten bands, so the structure the formula reads is visible without the
+  value being rounded to it.
+
+  And **the terrain's defence value**, which is a direct read of the same
+  `defense` the damage formula uses, so it cannot drift from what was applied.
+  Stars for now; the presentation is not settled.
+
+  #### Four scenes are one view and a script
+
+  ⚠️ **The cutaway never branches on `kind` or `answered`.** What differs between
+  volley-unanswered, volley-answered, charge-broke-through and charge-repelled is
+  only *which participants took damage, and in what order*:
+
+  > emit a beat for each participant whose health changed, defender first.
+
+  Both resulting healths are on `battleResolved` and the before-healths are on
+  the replica, so the script falls out of the data. `kind` and `answered` become
+  **wording**, not structure — which is why a third attack type later costs
+  nothing here.
+
+  #### What is already there
+
+  ⚠️ **`playEvents` returns a promise**, so the cutaway is one more thing it
+  awaits. That is the whole integration.
+
+  ⚠️ **`createTerrainMesh(scene, models, cells)` takes a cells array**, so a
+  one-tile patch is the same function with a smaller argument — and it builds the
+  cell's props, so a forest tile arrives with its own trees. ⚠️ **Unit models come
+  from an already-loaded `AssetContainer` via `instantiateModelsToScene`**, so
+  staging two more is a call, not a load.
+
+  ⚠️ **A second camera is simpler than DOM thumbnails**, which is the opposite of
+  what this entry used to assume. Babylon renders multiple cameras with viewport
+  rectangles in one scene natively; thumbnails need render-to-texture, readback
+  and image plumbing. So: two cameras, two viewports, two staging positions, and
+  a DOM overlay for bars, numbers and defence.
+
+  #### What it needs that does not exist
+
+  **The *before* health for both units.** For a single-action batch that is just
+  the replica, since `unitMoved` does not touch health; folding is only required
+  for multi-action catch-up, which is exactly where the cutaway should be skipped.
 
   ⚠️ **And the skip does not work yet.** `animatedTiles` scores a batch by summing
   `unitMoved` path lengths, so a `battleResolved` counts **zero** — a catch-up
@@ -997,10 +1065,9 @@ one formula cannot be read apart, not because the geometry might be wrong.
   look. The fix is a term in `animatedTiles`, and the number to give a battle is
   whatever a cutaway costs in tile-times.
 
-  ⚠️ **Nothing else about this step moved.** `battleResolved` already carries
-  `kind` and `answered`, which is exactly the two bits that pick between the four
-  scenes; `anchorTo` still exists and the cutaway takes over rather than being
-  anchored, so 9.9's three anchored elements do not contend with it.
+  **A way to turn it off.** AW has one and by the third hour you want it. It is
+  the same switch the catch-up skip already needs, so designing it in now is
+  cheaper than retrofitting.
 
 The **Open questions** entry on counter-attacks for `min > 1` units belongs to 9g and moved into phase 9 with it — it was decided when indirect fire and immobility were the same thing, and 9d separates them.
 
