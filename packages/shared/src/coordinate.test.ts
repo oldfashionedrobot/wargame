@@ -3,6 +3,7 @@ import {
   coordinateKey,
   coordinatesEqual,
   directionBetween,
+  facingToward,
   isWithinGrid,
   tileDistance,
 } from './coordinate';
@@ -75,5 +76,31 @@ describe('tileDistance', () => {
     expect(tileDistance({ col: 1, row: 5 }, { col: 4, row: 2 })).toBe(
       tileDistance({ col: 4, row: 2 }, { col: 1, row: 5 }),
     );
+  });
+});
+
+describe('facingToward', () => {
+  it('points along an axis when the target is on one', () => {
+    expect(facingToward(at(2, 2), at(2, 5), 'west')).toBe('north');
+    expect(facingToward(at(2, 2), at(2, 0), 'west')).toBe('south');
+    expect(facingToward(at(2, 2), at(6, 2), 'west')).toBe('east');
+    expect(facingToward(at(2, 2), at(0, 2), 'north')).toBe('west');
+  });
+
+  // ⚠️ Where `directionBetween` gives up: a target off both axes is not one
+  // step in any direction, and an attack still has to leave the unit looking
+  // somewhere.
+  it('takes the dominant axis when the target is off both', () => {
+    expect(facingToward(at(0, 0), at(1, 4), 'west')).toBe('north');
+    expect(facingToward(at(0, 0), at(4, 1), 'west')).toBe('east');
+  });
+
+  it('breaks an exact diagonal toward the row, consistently', () => {
+    expect(facingToward(at(0, 0), at(3, 3), 'west')).toBe('north');
+    expect(facingToward(at(0, 0), at(3, -3), 'west')).toBe('south');
+  });
+
+  it('keeps the unit’s own facing for its own tile', () => {
+    expect(facingToward(at(4, 4), at(4, 4), 'west')).toBe('west');
   });
 });

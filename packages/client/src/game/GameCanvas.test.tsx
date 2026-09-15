@@ -25,6 +25,7 @@ beforeEach(() => {
     }),
     setSelectedTile: vi.fn(),
     setRange: vi.fn(),
+    setAttackRange: vi.fn(),
     setRoute: vi.fn(),
     anchorTo: vi.fn(),
     playEvents: vi.fn(() => Promise.resolve()),
@@ -237,7 +238,7 @@ describe('GameCanvas', () => {
     // Still walking: the range is the context, and no directions are offered.
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith(null);
     expect(vi.mocked(renderer.setRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
-    expect(screen.queryByText(/click the unit to hold/i)).toBeNull();
+    expect(screen.queryByText(/the unit to hold/i)).toBeNull();
     // And the pane is down, because it invites a click that is refused now.
     expect(screen.queryByText(/click again to confirm/i)).toBeNull();
 
@@ -245,7 +246,7 @@ describe('GameCanvas', () => {
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith({ col: 1, row: 3 });
     expect(renderer.setRange).toHaveBeenLastCalledWith([]);
     expect(renderer.setRoute).toHaveBeenLastCalledWith([]);
-    expect(screen.getByText(/click the unit to hold/i)).toBeTruthy();
+    expect(screen.getByText(/the unit to hold/i)).toBeTruthy();
   });
 
   it('clears the overlays when the selection is dropped', async () => {
@@ -285,10 +286,10 @@ describe('GameCanvas', () => {
 
     await act(async () => clickTile({ col: 1, row: 3 })); // pins
     expect(screen.getByText(/click again to confirm/i)).toBeTruthy();
-    expect(screen.queryByText(/click the unit to hold/i)).toBeNull();
+    expect(screen.queryByText(/the unit to hold/i)).toBeNull();
 
     await act(async () => clickTile({ col: 1, row: 3 })); // confirms
-    expect(screen.getByText(/click the unit to hold/i)).toBeTruthy();
+    expect(screen.getByText(/the unit to hold/i)).toBeTruthy();
     expect(screen.queryByText(/click again to confirm/i)).toBeNull();
   });
 });

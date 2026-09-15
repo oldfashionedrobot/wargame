@@ -443,6 +443,7 @@ the one place that decides whether a tile can be entered and what it costs.
 
 ```ts
 refuseAttack(state, attacker, from, targetUnitId) → string | null
+tilesInRange(unit, from, gridWidth, gridHeight)   → Coordinate[]
 wouldCounter(defender, from)                      → boolean
 resolveBattle(state, attacker, defender, rolls)   → BattleResolvedEvent
 computeDamage(state, attacker, defender, roll)    → number
@@ -471,6 +472,20 @@ Artillery caught at one tile still cannot answer, because 1 is not inside
 own turn; answering an attack is not acting, so a spent unit still counters.
 ⚠️ **And a charge never asks** — the counter rule is about shooting, and routing
 a charge through it would make charging artillery free.
+
+⚠️ **`tilesInRange` is in `shared` so the band is stated once.** A client
+looping with its own `>= min && <= max` to paint an overlay would be a third
+spelling of a rule that already had two, and the two were only just merged into
+`outsideRange`.
+
+**The client previews the same formula.** `attackForecast` runs `computeDamage`
+at roll 0 and at `LUCK_MAX`, which is an **exact range** rather than an estimate
+— luck is added last and flat, so those are the true floor and ceiling.
+⚠️ The counter's *magnitude* is deliberately absent: it is computed on the
+defender's post-damage health, so it depends on how the attack roll lands, and
+with health banded the spread comes from band crossings rather than a clean
+range. `answered` is read at the **worst** roll, where the defender is likeliest
+to survive — so it means *they will fire back unless you kill them*.
 
 `Rolls` is `{ attack, counter }`: named rather than a tuple, and two because two
 is the maximum anything needs. ⚠️ **Both are drawn whether or not both are
@@ -700,7 +715,12 @@ the next click see the same value. `pendingRef` stays a ref — it is a mutex
 against a second submit landing before the first resolves, and has to be
 synchronously current rather than rendered.
 
-⚠️ `clickTile` and `endTurn` are the only verbs. A plan is pinned, confirmed
+⚠️ `clickTile`, `commitAttack` and `endTurn` are the verbs. **The panel's two
+buttons are the first thing in the game that is not a tile**, and it had to be:
+a preview with numbers in it cannot be a tile, and neither can Hold — the only
+tile that would face an adjacent enemy is the one they are standing on.
+
+Otherwise A plan is pinned, confirmed
 *and* abandoned by a click on the board — whatever is lit does something and
 everything else is the way out, in both modes. A refused
 submit rolls back to the unit **selected**, not to the destination the server
@@ -776,16 +796,47 @@ paired return would carry no information.
 | { phase: 'idle' }
 | { phase: 'unitSelected'; unitId; position; movement }
 | { phase: 'routePinned'; unitId; path; movement }
-| { phase: 'destinationChosen'; unitId; path; movement }
+| { phase: 'destinationChosen'; unitId; path; movement; attackTiles }
+| { phase: 'targetChosen'; unitId; path; movement; attackTiles; target }
 ```
 
 `movement` is the whole `exploreMovement` result, snapshotted at selection time.
 `reachable` decides whether a click pins; `pathTo` builds the path.
 
-⚠️ **Two modes, four phases.** *Movement selection* is `unitSelected` and
+⚠️ **`isPlan` asks whether a phase carries a path**, rather than the callers
+listing them by name — which is how `targetChosen` would have been forgotten in
+the poll handler that discards a plan when the board moves under it, and in the
+End Turn guard. Adding a fifth phase cannot silently miss either.
+
+⚠️ **Three modes, five phases.** *Movement selection* is `unitSelected` and
 `routePinned` — the range is lit and both answer clicks identically, which is
-why pinning and re-pinning are one code path rather than two. *Action selection*
-is `destinationChosen`: the unit has walked, and the tiles around it are a menu.
+why pinning and re-pinning are one code path rather than two. *Action selection* is
+`destinationChosen`: the unit has walked, and the tiles around it are a menu.
+*The panel* is `targetChosen`: a target is picked and the panel is open over it.
+⚠️ Picking a target is a click, not a state — but the panel being **open** is a
+mode, because while it is up a tile click means cancel and the buttons are what
+commit.
+
+**`readActionClick` is the one reader of an action-phase click**, answering
+`commit` / `attack` / `cancel`. ⚠️ It replaced three predicates the caller tried
+in turn, and the order was load-bearing with nothing saying so: `facingChoiceAt`
+answers a `Facing` for *any* adjacent tile without looking at what stands on it,
+so an adjacent enemy satisfied two of them and whichever ran first won. One
+function makes that unrepresentable, and turns the rule into a table a test can
+walk — where the old shape could only be tested for call order.
+
+**What the overlays draw.** `attackTiles` is the whole attack band, snapshotted
+at arrival the way `movement` is at selection — so `showSelection` stays a pure
+projection rather than needing the board. ⚠️ Red means *in range*, not
+*attackable*: reach is the information. The four tiles beside the unit are the
+only place two readings collide, since for a `min: 1` unit they are facing
+choices *and* inside the band — **occupancy decides**, so an empty one is a
+facing tile and everything else in the band is red.
+
+⚠️ While the panel is up **every overlay clears itself**, with no branch doing
+it: `targetChosen` is neither *arrived* nor *pinned*. That is the right
+behaviour — every tile click is a way out of the panel, so lighting one would
+promise a choice that is not there.
 
 Either pinned phase is a **plan, not a submission** — nothing has been sent, and
 a click that means nothing else discards it without the server hearing.

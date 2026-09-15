@@ -9,14 +9,17 @@ import type {
 } from '@vod/shared';
 import { coordinatesEqual } from '@vod/shared';
 import {
+  chooseTarget,
+  clearTarget,
   confirmRoute,
-  facingChoiceAt,
   handleTileClick,
   initialSelectionState,
+  isPlan,
+  facingForTarget,
   moveCommandFor,
   pinnedDestination,
+  readActionClick,
   unpinDestination,
-  holdFacing,
 } from './interaction/selection';
 import type { SelectionState } from './interaction/selection';
 
@@ -103,6 +106,8 @@ export interface GameSession {
    */
   walking: boolean;
   clickTile: (coordinate: Coordinate) => void;
+  /** Commit from the attack panel: `true` fires, `false` only turns to face. */
+  commitAttack: (withTarget: boolean) => void;
   /** Menu: stop offering the menu and start offering the four directions. */
   /** Menu: discard the pinned destination. Nothing was ever sent. */
   endTurn: () => void;
@@ -215,11 +220,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
         // correct together: outside the queue the menu would vanish while the
         // ghost kept standing until a batch finished animating. An
         // uncommitted plan does not survive the board moving under it.
-        setSelection((current) =>
-          current.phase === 'destinationChosen' || current.phase === 'routePinned'
-            ? unpinDestination(current)
-            : current,
-        );
+        setSelection((current) => (isPlan(current) ? unpinDestination(current) : current));
         setGameState(state);
       });
     });
@@ -254,8 +255,12 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
           // would resurrect it over authoritative state.
           .finally(() => {
             setWalking(false);
+            // ⚠️ The authority, not the replica: the attack band is snapshotted
+            // here, and a band computed from a state a beat old would paint
+            // tiles against a board that has moved.
+            const arrivedOn = server.getState();
             setSelection((current) =>
-              current.phase === 'routePinned' ? confirmRoute(current) : current,
+              current.phase === 'routePinned' ? confirmRoute(arrivedOn, current) : current,
             );
           });
         return;
@@ -265,15 +270,28 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       // on one of them commits -- the destination itself keeps the direction
       // travelled, the four beside it override it, and phase 9 adds an enemy in
       // range as a third reading of the same gesture.
-      if (selection.phase === 'destinationChosen') {
-        const state = server.getState();
-        const facing = coordinatesEqual(coordinate, selection.path[selection.path.length - 1])
-          ? holdFacing(state, selection)
-          : facingChoiceAt(selection, coordinate);
+      // ⚠️ While the panel is up, a tile click is only ever a way out of it. The
+      // buttons commit; the board cancels back to the tiles, with the unit still
+      // standing where it walked to.
+      if (selection.phase === 'targetChosen') {
+        setSelection(clearTarget(selection));
+        return;
+      }
 
-        if (facing) {
+      if (selection.phase === 'destinationChosen') {
+        // ⚠️ One reader, and the order lives inside it. Asking "is this a
+        // facing" and "is this a target" separately out here is what made an
+        // adjacent enemy answer to whichever ran first.
+        const click = readActionClick(server.getState(), selection, coordinate);
+
+        if (click.kind === 'attack') {
+          setSelection(chooseTarget(selection, click.target));
+          return;
+        }
+
+        if (click.kind === 'commit') {
           void submitCommand(
-            moveCommandFor(selection, facing),
+            moveCommandFor(selection, click.facing),
             initialSelectionState,
             unpinDestination(selection),
           );
@@ -281,10 +299,11 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
         }
 
         // Anything else is a cancel. ⚠️ Which reads because the range is *down*
-        // by now -- only the destination and the tiles beside it are lit, so
-        // "lit does something, dark backs out" is the whole rule. A click off
-        // the board never arrives here at all: the renderer drops a pick that
-        // hits no tile, so the empty space around the board is not a way out.
+        // by now -- only the destination, the tiles beside it and what it can
+        // shoot are lit, so "lit does something, dark backs out" is the whole
+        // rule. A click off the board never arrives here at all: the renderer
+        // drops a pick that hits no tile, so the empty space around the board is
+        // not a way out.
         void callbacksRef.current.onPreview(null);
         setSelection(unpinDestination(selection));
         return;
@@ -301,6 +320,31 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     [server, selection, submitCommand, walking],
   );
 
+  /**
+   * Commit from the panel: `withTarget` fires, otherwise the unit just ends up
+   * looking at them.
+   *
+   * ⚠️ Both face the target, which is why Hold has to exist here at all -- the
+   * only tile that would face an adjacent enemy is the one they are standing on,
+   * so without a button there is no way to turn toward someone without shooting.
+   */
+  const commitAttack = useCallback(
+    (withTarget: boolean): void => {
+      if (pendingRef.current || selection.phase !== 'targetChosen') return;
+      const state = server.getState();
+      void submitCommand(
+        moveCommandFor(
+          selection,
+          facingForTarget(state, selection),
+          withTarget ? selection.target.id : undefined,
+        ),
+        initialSelectionState,
+        unpinDestination(selection),
+      );
+    },
+    [selection, server, submitCommand],
+  );
+
   const endTurn = useCallback((): void => {
     void submitCommand({ type: 'endTurn' }, initialSelectionState);
   }, [submitCommand]);
@@ -311,6 +355,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     selection,
     walking,
     clickTile,
+    commitAttack,
     endTurn,
   };
 }

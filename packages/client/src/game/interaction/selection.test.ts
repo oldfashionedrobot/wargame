@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { makeState, route, unitAt } from '@vod/shared/testing';
+import { LUCK_MAX } from '@vod/shared';
 import type { Coordinate, GameState } from '@vod/shared';
 import {
+  attackForecast,
+  chooseTarget,
+  clearTarget,
   confirmRoute,
+  facingForTarget,
+  isPlan,
   readActionClick,
   facingChoiceAt,
   facingChoiceOrigin,
@@ -43,7 +49,7 @@ function withB1Pinned(state: GameState, destination: Coordinate): RoutePinned {
 
 /** Pin a route and confirm it: the phase the menu and the facing choice live in. */
 const withB1Arrived = (state: GameState, destination: Coordinate): DestinationChosen =>
-  confirmRoute(withB1Pinned(state, destination));
+  confirmRoute(state, withB1Pinned(state, destination));
 
 describe('handleTileClick, nothing selected', () => {
   it('selects a unit that can act, snapshotting its position and range', () => {
@@ -231,7 +237,7 @@ describe('a destination arrived at', () => {
   it('keeps the path and the search when the route is confirmed', () => {
     const state = board();
     const pinned = withB1Pinned(state, at(1, 3));
-    const arrived = confirmRoute(pinned);
+    const arrived = confirmRoute(state, pinned);
     expect(arrived.path).toBe(pinned.path);
     expect(arrived.movement).toBe(pinned.movement);
   });
@@ -320,7 +326,7 @@ describe('readActionClick', () => {
       { id: 'distant', col: 3, row: 1, owner: 'red' },
       { id: 'far', col: 5, row: 5, owner: 'red' },
     ]);
-  const arrived = (state: GameState) => confirmRoute(withB1Pinned(state, at(1, 1)));
+  const arrived = (state: GameState) => confirmRoute(state, withB1Pinned(state, at(1, 1)));
 
   it('reads the unit’s own tile as a commit keeping its facing', () => {
     const state = field();
@@ -387,5 +393,131 @@ describe('readActionClick', () => {
       kind: 'commit',
       facing: 'east',
     });
+  });
+});
+
+describe('the panel, and what it is told', () => {
+  // b1 infantry at (1,1); an enemy two north, which infantry can reach.
+  const field = () =>
+    makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 3, owner: 'red' },
+    ]);
+  const panel = (state: GameState) =>
+    chooseTarget(confirmRoute(state, withB1Pinned(state, at(1, 1))), unitAt(state, 'r1'));
+
+  // ⚠️ An exact range, not an estimate: luck is added last and flat, so the
+  // zero-roll result is the true floor and the spread is exactly LUCK_MAX.
+  it('forecasts a range whose width is the luck band', () => {
+    const state = field();
+    const forecast = attackForecast(state, panel(state));
+    expect(forecast).not.toBeNull();
+    if (!forecast) return;
+    expect(forecast.high - forecast.low).toBe(LUCK_MAX);
+    expect(forecast.low).toBeGreaterThan(0);
+  });
+
+  it('says they return fire when the target can reach back', () => {
+    const state = field();
+    expect(attackForecast(state, panel(state))?.answered).toBe(true);
+  });
+
+  // The whole point of outranging someone: a gun firing from four is never
+  // answered, and the panel has to say so before you commit rather than after.
+  it('says nothing about return fire when the target cannot reach', () => {
+    const state = makeState(9, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
+      { id: 'r1', col: 1, row: 5, owner: 'red' },
+    ]);
+    const chosen = chooseTarget(
+      confirmRoute(state, withB1Pinned(state, at(1, 1))),
+      unitAt(state, 'r1'),
+    );
+    expect(attackForecast(state, chosen)?.answered).toBe(false);
+  });
+
+  it('points the unit at its target, however far off it is', () => {
+    const state = field();
+    expect(facingForTarget(state, panel(state))).toBe('north');
+
+    const diagonal = makeState(9, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
+      { id: 'r1', col: 4, row: 2, owner: 'red' },
+    ]);
+    const chosen = chooseTarget(
+      confirmRoute(diagonal, withB1Pinned(diagonal, at(1, 1))),
+      unitAt(diagonal, 'r1'),
+    );
+    expect(facingForTarget(diagonal, chosen)).toBe('east');
+  });
+
+  // ⚠️ Backing out of the panel returns to the tiles with the unit still
+  // standing where it walked -- not to the board. The plan is still a plan.
+  it('backs out to the menu with the walk intact', () => {
+    const state = field();
+    const back = clearTarget(panel(state));
+    expect(back.phase).toBe('destinationChosen');
+    expect(back.path).toEqual(panel(state).path);
+    expect(back.attackTiles).toEqual(panel(state).attackTiles);
+  });
+
+  // ⚠️ The check that catches a fourth phase being forgotten: every phase that
+  // carries a path is a plan a board change must discard.
+  it('counts as an uncommitted plan, like every other phase carrying a path', () => {
+    const state = field();
+    expect(isPlan(panel(state))).toBe(true);
+    expect(isPlan(withB1Pinned(state, at(1, 1)))).toBe(true);
+    expect(isPlan(confirmRoute(state, withB1Pinned(state, at(1, 1))))).toBe(true);
+    expect(isPlan(initialSelectionState)).toBe(false);
+    expect(isPlan(withB1Selected(state))).toBe(false);
+  });
+});
+
+describe('attackTiles, which the overlay paints', () => {
+  const has = (tiles: Coordinate[], col: number, row: number) =>
+    tiles.some((tile) => tile.col === col && tile.row === row);
+  const tilesFor = (state: GameState) =>
+    confirmRoute(state, withB1Pinned(state, at(1, 1))).attackTiles;
+
+  // ⚠️ The rule the colours rest on: the four tiles beside the unit are facing
+  // choices *and* inside a min-1 band, and occupancy is what separates them.
+  it('leaves an empty tile beside the unit to the facing overlay', () => {
+    const tiles = tilesFor(makeState(7, [{ id: 'b1', col: 1, row: 1 }]));
+    expect(has(tiles, 1, 2)).toBe(false); // adjacent and empty: yellow
+    expect(has(tiles, 1, 3)).toBe(true); // two out: red
+  });
+
+  it('claims an adjacent tile back the moment an enemy stands on it', () => {
+    const tiles = tilesFor(
+      makeState(7, [
+        { id: 'b1', col: 1, row: 1 },
+        { id: 'r1', col: 1, row: 2, owner: 'red' },
+      ]),
+    );
+    expect(has(tiles, 1, 2)).toBe(true);
+  });
+
+  // A friend beside you is not a target, so the tile keeps its other meaning.
+  it('leaves an adjacent friend to the facing overlay', () => {
+    const tiles = tilesFor(
+      makeState(7, [
+        { id: 'b1', col: 1, row: 1 },
+        { id: 'b2', col: 1, row: 2 },
+      ]),
+    );
+    expect(has(tiles, 1, 2)).toBe(false);
+  });
+
+  // Artillery cannot shoot what has reached it, so its band starts two out and
+  // the adjacent rule never even applies.
+  it('never includes what a minimum range forbids', () => {
+    const tiles = tilesFor(
+      makeState(9, [
+        { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
+        { id: 'r1', col: 1, row: 2, owner: 'red' },
+      ]),
+    );
+    expect(has(tiles, 1, 2)).toBe(false);
+    expect(has(tiles, 1, 3)).toBe(true);
   });
 });

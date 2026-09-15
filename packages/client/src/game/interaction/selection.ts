@@ -1,6 +1,11 @@
 import {
   canSelectUnit,
+  computeDamage,
+  facingToward,
+  LUCK_MAX,
   refuseAttack,
+  tilesInRange,
+  wouldCounter,
   coordinatesEqual,
   directionBetween,
   exploreMovement,
@@ -38,16 +43,38 @@ export type SelectionState =
   // the four tiles around it overrides that, and phase 9 adds an enemy in range
   // as a third reading of the same gesture. Facing stops being demanded, which
   // is what the design always asked for.
-  | { phase: 'destinationChosen'; unitId: string; path: Coordinate[]; movement: Movement };
+  | {
+      phase: 'destinationChosen';
+      unitId: string;
+      path: Coordinate[];
+      movement: Movement;
+      /** What to paint red -- see `attackTilesFor`. Snapshotted, like `movement`. */
+      attackTiles: Coordinate[];
+    }
+  // A target is picked and the panel is up. ⚠️ *Picking* a target is a click,
+  // not a state -- but the panel being **open** is a mode: while it is up a tile
+  // click means cancel and the buttons are what commit. Still nothing sent.
+  | {
+      phase: 'targetChosen';
+      unitId: string;
+      path: Coordinate[];
+      movement: Movement;
+      attackTiles: Coordinate[];
+      target: Unit;
+    };
 
 export type RoutePinned = Extract<SelectionState, { phase: 'routePinned' }>;
 export type DestinationChosen = Extract<SelectionState, { phase: 'destinationChosen' }>;
+export type TargetChosen = Extract<SelectionState, { phase: 'targetChosen' }>;
 
 /**
  * Both phases that carry a path. They hold identical data and differ only in
  * whether the unit has walked it yet, so everything reading a path takes this.
  */
-export type Pinned = RoutePinned | DestinationChosen;
+export type Pinned = RoutePinned | DestinationChosen | TargetChosen;
+
+/** The unit has walked and is choosing what to do: the menu, or the panel. */
+export type Arrived = DestinationChosen | TargetChosen;
 
 /** Where a pinned unit is standing, really or in preview. */
 function destinationOf(selection: Pinned): Coordinate {
@@ -59,9 +86,76 @@ export function pinnedDestination(selection: Pinned): Coordinate {
   return destinationOf(selection);
 }
 
-/** The route is accepted: the unit walks it, and the menu opens on arrival. */
-export function confirmRoute(selection: RoutePinned): DestinationChosen {
-  return { ...selection, phase: 'destinationChosen' };
+/**
+ * Is this an uncommitted plan -- something a board change has to discard?
+ *
+ * ⚠️ **One statement, because the caller was listing phases by name** and a
+ * third phase would simply have been forgotten there: a pinned route and an
+ * arrived unit were checked, and a target picked on top of them was not. The
+ * union already knows which phases carry a path; this asks it rather than
+ * restating it.
+ */
+export function isPlan(selection: SelectionState): selection is Pinned {
+  return (
+    selection.phase === 'routePinned' ||
+    selection.phase === 'destinationChosen' ||
+    selection.phase === 'targetChosen'
+  );
+}
+
+/** A target is picked: the panel opens over it, and nothing is sent yet. */
+export function chooseTarget(selection: DestinationChosen, target: Unit): TargetChosen {
+  return { ...selection, phase: 'targetChosen', target };
+}
+
+/** Back from the panel to the tiles, with the target forgotten. */
+export function clearTarget(selection: TargetChosen): DestinationChosen {
+  return {
+    phase: 'destinationChosen',
+    unitId: selection.unitId,
+    path: selection.path,
+    movement: selection.movement,
+    attackTiles: selection.attackTiles,
+  };
+}
+
+/**
+ * Which tiles the attack overlay paints, from where the unit ends up.
+ *
+ * ⚠️ **The whole band, not just what is standing in it** -- reach is the
+ * information, so red means *in range* rather than *attackable*.
+ *
+ * ⚠️ **The four tiles beside the unit are the only place two readings collide**,
+ * because for a `min: 1` unit they are facing choices *and* inside the band.
+ * Occupancy decides: one with no enemy on it is a facing tile and stays yellow;
+ * everything else in the band is red. One rule, and no order to remember.
+ */
+function attackTilesFor(state: GameState, unit: Unit, from: Coordinate): Coordinate[] {
+  const height = state.grid.length;
+  const width = state.grid[0]?.length ?? 0;
+  return tilesInRange(unit, from, width, height).filter((tile) => {
+    if (directionBetween(from, tile) === null) return true; // not one of the four
+    const occupant = getUnitAt(state, tile);
+    return occupant !== undefined && occupant.owner !== unit.owner;
+  });
+}
+
+/**
+ * The route is accepted: the unit walks it, and the menu opens on arrival.
+ *
+ * ⚠️ Takes state to snapshot the attack band, the same way `movement` is
+ * snapshotted at selection. That keeps `showSelection` a pure projection of the
+ * selection -- it would otherwise need the board to know what to paint -- and
+ * the snapshot cannot go stale, because any board change discards the plan.
+ */
+export function confirmRoute(state: GameState, selection: RoutePinned): DestinationChosen {
+  const destination = destinationOf(selection);
+  const unit = getUnit(state, selection.unitId);
+  return {
+    ...selection,
+    phase: 'destinationChosen',
+    attackTiles: unit ? attackTilesFor(state, { ...unit, position: destination }, destination) : [],
+  };
 }
 
 export const initialSelectionState: SelectionState = { phase: 'idle' };
@@ -157,7 +251,7 @@ export function handleTileClick(
  * its business. A unit on the top row simply has three choices, and facing off
  * the board would be a strictly worse one anyway.
  */
-export function facingChoiceOrigin(selection: DestinationChosen): Coordinate {
+export function facingChoiceOrigin(selection: Arrived): Coordinate {
   return destinationOf(selection);
 }
 
@@ -168,10 +262,7 @@ export function facingChoiceOrigin(selection: DestinationChosen): Coordinate {
  * wants a step of exactly one tile. That is what lets the caller tell "keep the
  * direction travelled" from "face this way" without ordering the two by hand.
  */
-export function facingChoiceAt(
-  selection: DestinationChosen,
-  coordinate: Coordinate,
-): Facing | null {
+export function facingChoiceAt(selection: Arrived, coordinate: Coordinate): Facing | null {
   return directionBetween(destinationOf(selection), coordinate);
 }
 
@@ -187,7 +278,7 @@ export function facingChoiceAt(
  * can vanish from state under a stale selection, and "no answer" is a reading
  * the caller already refuses to commit.
  */
-export function holdFacing(state: GameState, selection: DestinationChosen): Facing | null {
+export function holdFacing(state: GameState, selection: Arrived): Facing | null {
   const previous = selection.path.at(-2);
   const travelled = previous ? directionBetween(previous, destinationOf(selection)) : null;
   return travelled ?? getUnit(state, selection.unitId)?.facing ?? null;
@@ -247,6 +338,55 @@ export function readActionClick(
   return facing ? { kind: 'commit', facing } : { kind: 'cancel' };
 }
 
+/** What the panel shows before you commit to a shot. */
+export interface Forecast {
+  /** Damage at the worst roll, and at the best. The true outcome is one of them. */
+  low: number;
+  high: number;
+  /** Whether the target can shoot back from where you are standing. */
+  answered: boolean;
+}
+
+/**
+ * The numbers on the panel, run through the same formula the server will.
+ *
+ * ⚠️ **An exact range, not an estimate.** Luck is added last and flat, so the
+ * zero-roll result is the true floor and `+ LUCK_MAX` the true ceiling. The
+ * client is told the *shape* of the outcome and never which of the ten it will
+ * be -- previewing the formula rather than the dice.
+ *
+ * ⚠️ **The counter's magnitude is deliberately absent.** It is computed on the
+ * defender's post-damage health, so it depends on how the attack roll lands, and
+ * with health banded the spread comes from band crossings rather than a clean
+ * range. A single figure would be true only at the worst roll.
+ *
+ * ⚠️ `answered` is read at the **worst** roll, where the defender is likeliest
+ * to survive. So it means *they will fire back unless you kill them*, which is
+ * the pessimistic reading and the right default for a warning.
+ */
+export function attackForecast(state: GameState, selection: TargetChosen): Forecast | null {
+  const attacker = getUnit(state, selection.unitId);
+  const target = getUnit(state, selection.target.id);
+  if (!attacker || !target) return null;
+
+  // The attacker as it will be standing when it fires, not where state still
+  // has it -- the walk was a preview and nothing has been sent.
+  const from = destinationOf(selection);
+  const moved: Unit = { ...attacker, position: from };
+
+  const low = computeDamage(state, moved, target, 0);
+  const high = computeDamage(state, moved, target, LUCK_MAX);
+  const survivor: Unit = { ...target, health: Math.max(0, target.health - low) };
+  return { low, high, answered: wouldCounter(survivor, from) };
+}
+
+/** Which way the unit ends up looking once it commits from the panel. */
+export function facingForTarget(state: GameState, selection: TargetChosen): Facing {
+  const from = destinationOf(selection);
+  const travelled = holdFacing(state, selection) ?? 'north';
+  return facingToward(from, selection.target.position, travelled);
+}
+
 /**
  * Cancel: back to having the unit selected, standing where it always was.
  *
@@ -263,6 +403,15 @@ export function unpinDestination(selection: Pinned): SelectionState {
 }
 
 /** Commit the pinned move, looking the way the player chose. */
-export function moveCommandFor(selection: DestinationChosen, facing: Facing): Command {
-  return { type: 'move', unitId: selection.unitId, path: selection.path, facing };
+export function moveCommandFor(selection: Arrived, facing: Facing, targetUnitId?: string): Command {
+  const command: Command = {
+    type: 'move',
+    unitId: selection.unitId,
+    path: selection.path,
+    facing,
+  };
+  // Absent rather than undefined: the wire shape is optional, and a key holding
+  // undefined is a different thing from a key that is not there.
+  if (targetUnitId !== undefined) command.targetUnitId = targetUnitId;
+  return command;
 }

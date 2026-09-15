@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef } from 'react';
 import { getCurrentPlayer } from '@vod/shared';
 import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
 import { useGameSession } from './useGameSession';
-import { facingChoiceOrigin, pinnedDestination } from './interaction/selection';
+import {
+  attackForecast,
+  facingChoiceOrigin,
+  isPlan,
+  pinnedDestination,
+} from './interaction/selection';
 import type { SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
 import { createGameRenderer } from './render/renderer';
@@ -18,6 +23,11 @@ import type { GameRenderer } from './render/renderer';
 function showSelection(renderer: GameRenderer, selection: SelectionState, walking: boolean): void {
   const arrived = selection.phase === 'destinationChosen';
   const pinned = selection.phase === 'routePinned';
+  // ⚠️ While the panel is up the board goes quiet, and it needs no branch to do
+  // it: `targetChosen` is neither `arrived` nor `pinned`, so every overlay below
+  // clears on its own. That is the right outcome -- every tile click is a way
+  // out of the panel, so lighting one would promise a choice that is not there,
+  // and "lit does something" survives by nothing being lit.
   // ⚠️ The route and the pane are one affordance -- both say *confirm this* --
   // so both come down the instant it is confirmed, and the ghost walks over a
   // clean board rather than retracing a line it has already been handed.
@@ -26,6 +36,7 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
   // The tiles around the unit *are* the menu, and only once it has walked: an
   // inert lit tile invites a click that does nothing.
   renderer.setFacingChoices(arrived ? facingChoiceOrigin(selection) : null);
+  renderer.setAttackRange(arrived ? selection.attackTiles : []);
 
   // ⚠️ The unit's own tile, never the pin. A pinned route has not been walked,
   // so highlighting its destination would claim the unit is somewhere it is
@@ -36,7 +47,7 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
       ? null
       : selection.phase === 'unitSelected'
         ? selection.position
-        : selection.path[selection.phase === 'routePinned' ? 0 : selection.path.length - 1];
+        : selection.path[pinned ? 0 : selection.path.length - 1];
 
   renderer.setSelectedTile(highlight);
   // The range stays lit for as long as the pin can still move -- which includes
@@ -63,6 +74,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<GameRenderer | null>(null);
   const confirmPaneRef = useRef<HTMLDivElement>(null);
+  const attackPanelRef = useRef<HTMLDivElement>(null);
 
   // Both callbacks read the ref at call time, never capture the renderer: a
   // queue task parked on an animation resolves after this canvas unmounted, and
@@ -90,19 +102,28 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
     [],
   );
 
-  const { gameState, rejection, selection, walking, clickTile, endTurn } = useGameSession(server, {
-    onEvents,
-    onSnap,
-    onPreview,
-  });
+  const { gameState, rejection, selection, walking, clickTile, commitAttack, endTurn } =
+    useGameSession(server, {
+      onEvents,
+      onSnap,
+      onPreview,
+    });
 
   // Either kind of plan: a route drawn, or a unit standing at the end of one.
   // Both are uncommitted, and End Turn has no business submitting around them.
-  const planning = selection.phase === 'routePinned' || selection.phase === 'destinationChosen';
+  // Every kind of uncommitted plan, asked rather than listed -- a fourth phase
+  // would otherwise have to be remembered here too.
+  const planning = isPlan(selection);
 
   // ⚠️ Only while the route is still a plan, and not while it is being walked:
   // the pane invites a click, and clicks are refused until the mesh arrives.
   const awaitingConfirm = selection.phase === 'routePinned' && !walking;
+
+  // The panel is the same DOM-over-canvas trick as the confirm pane, anchored
+  // over the target instead of the destination. Only one is ever up, which is
+  // why `anchorTo` taking a single element is enough.
+  const choosing = selection.phase === 'targetChosen' ? selection : null;
+  const forecast = choosing ? attackForecast(server.getState(), choosing) : null;
 
   // `clickTile` changes identity whenever the selection does, and the renderer
   // is registered with it exactly once. A stable wrapper over a latest-ref
@@ -154,11 +175,17 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   // the renderer writes where it is. Cleared by the same call that sets it, so
   // an unpinned plan never leaves an element tracking a tile nobody chose.
   useEffect(() => {
-    rendererRef.current?.anchorTo(
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    if (choosing) {
+      renderer.anchorTo(attackPanelRef.current, choosing.target.position);
+      return;
+    }
+    renderer.anchorTo(
       awaitingConfirm ? confirmPaneRef.current : null,
       awaitingConfirm ? pinnedDestination(selection) : null,
     );
-  }, [awaitingConfirm, selection]);
+  }, [awaitingConfirm, choosing, selection]);
 
   return (
     <div>
@@ -178,6 +205,43 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             the one that removes it, which is exactly the clear.
             `pointerEvents: none` because the tile underneath is the button: a
             pane that swallowed the click would block its own confirmation. */}
+        {/* ⚠️ The panel, and the one place in the game with real buttons. Every
+            other answer is a tile, which is why `clickTile` and `endTurn` were
+            the only verbs until now -- a preview with numbers in it cannot be a
+            tile, and Hold cannot be one either, since the only tile that faces
+            an enemy is the one they are standing on. */}
+        {choosing && forecast && (
+          <div
+            ref={attackPanelRef}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              marginTop: '-14px',
+              padding: '6px 8px',
+              borderRadius: '5px',
+              background: 'rgba(24, 28, 34, 0.92)',
+              color: '#f2f4f7',
+              fontSize: '13px',
+              lineHeight: 1.5,
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+              alignItems: 'stretch',
+            }}
+          >
+            <button type="button" onClick={() => commitAttack(true)}>
+              Fire — {forecast.low}
+              {forecast.high > forecast.low && `–${forecast.high}`} damage
+              {forecast.answered && ' · they return fire'}
+            </button>
+            <button type="button" onClick={() => commitAttack(false)}>
+              Hold — face them, do not fire
+            </button>
+          </div>
+        )}
+
         {awaitingConfirm && (
           <div
             ref={confirmPaneRef}
@@ -216,7 +280,8 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             pane carries the other half, while the route is still a plan. */}
         {selection.phase === 'destinationChosen' && (
           <span>
-            Click the unit to hold, a tile beside it to face that way, or elsewhere to cancel.
+            Click an enemy in range to attack, the unit to hold, a tile beside it to face that way,
+            or elsewhere to cancel.
           </span>
         )}
         {rejection && <span style={{ color: '#c0392b' }}> rejected: {rejection}</span>}

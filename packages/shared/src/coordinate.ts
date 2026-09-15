@@ -41,6 +41,26 @@ export function isWithinGrid(
   );
 }
 
+/**
+ * Which way to look at something any distance off.
+ *
+ * ⚠️ **The generalisation of `directionBetween`, which answers only for a single
+ * step.** Attacking points a unit at its target, and a target four tiles away on
+ * a diagonal is not one step in any direction -- so the dominant axis decides,
+ * and a tie goes to the row. Arbitrary, but it has to be *some* answer and an
+ * arbitrary one stated once beats two rules for near and far.
+ *
+ * Returns the unit's existing facing for its own tile, which the caller supplies
+ * -- there is no direction from a tile to itself.
+ */
+export function facingToward(from: Coordinate, to: Coordinate, fallback: Facing): Facing {
+  const east = to.col - from.col;
+  const north = to.row - from.row;
+  if (east === 0 && north === 0) return fallback;
+  if (Math.abs(north) >= Math.abs(east)) return north > 0 ? 'north' : 'south';
+  return east > 0 ? 'east' : 'west';
+}
+
 /** The four, as data: a runtime check needs a list the type alone cannot give. */
 export const FACINGS = ['north', 'east', 'south', 'west'] as const satisfies readonly Facing[];
 

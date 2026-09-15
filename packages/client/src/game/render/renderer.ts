@@ -102,6 +102,23 @@ const ROUTE_HEIGHT = 0.018;
 // The four tiles a unit may turn to look at. Warm, so it does not read as
 // somewhere to go -- by this point movement is already decided.
 const FACING_COLOR = new Color3(1, 0.82, 0.35);
+
+/**
+ * ⚠️ **Opaque where every other overlay is a wash, and the board is why.**
+ * Red and this teal ground are near-complementary, so blending them gives
+ * *grey* rather than pink: a desaturated red at 0.34 was invisible, and even a
+ * strong red at 0.4 read as a slightly dirty tile. The pale blue range and amber
+ * facing tints survive at 0.4-0.55 because neither fights the ground that way.
+ * At 0.8 it reads as a salmon band and terrain is still legible underneath,
+ * which is what a player is evaluating.
+ *
+ * It sits below `FACING_HEIGHT` deliberately -- but the two sets never overlap,
+ * because the four tiles beside the unit are filtered out of the attack band in
+ * `selection.ts`. The ordering is insurance, not the rule.
+ */
+const ATTACK_COLOR = new Color3(0.95, 0.2, 0.24);
+const ATTACK_ALPHA = 0.8;
+const ATTACK_HEIGHT = 0.016;
 const FACING_ALPHA = 0.55;
 const FACING_HEIGHT = 0.02;
 
@@ -110,6 +127,14 @@ export interface GameRenderer {
   setSelectedTile(coordinate: Coordinate | null): void;
   /** Light the tiles a selected unit may reach, or clear them. */
   setRange(tiles: Coordinate[]): void;
+  /**
+   * Light what an arrived unit can shoot at, or clear it.
+   *
+   * ⚠️ The **band**, not the targets: red means *in range*. Which tiles those
+   * are -- and how the four beside the unit are split between this and
+   * `setFacingChoices` -- is decided in `selection.ts`, where the board is.
+   */
+  setAttackRange(tiles: Coordinate[]): void;
   /**
    * Draw a pinned route, or clear it.
    *
@@ -433,6 +458,15 @@ export async function createGameRenderer(
     gridWidth,
     gridHeight,
   });
+  const attackOverlay = createTileOverlay(scene, {
+    name: 'attack-range',
+    color: ATTACK_COLOR,
+    alpha: ATTACK_ALPHA,
+    height: ATTACK_HEIGHT,
+    surfaceAt,
+    gridWidth,
+    gridHeight,
+  });
   const facingOverlay = createTileOverlay(scene, {
     name: 'facing-choices',
     color: FACING_COLOR,
@@ -598,6 +632,9 @@ export async function createGameRenderer(
     },
     setRoute(path) {
       routeArrow.setPath(path);
+    },
+    setAttackRange(tiles) {
+      attackOverlay.setTiles(tiles);
     },
     anchorTo(element, coordinate) {
       anchorElement = element;

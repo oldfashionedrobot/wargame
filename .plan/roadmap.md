@@ -664,58 +664,16 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   the inequality is invariant under it. Pinned in `turns.test.ts` precisely
   because it holds by arithmetic rather than by design.
 
-- **9h** ⚠️ **Mostly built, and smaller than it was.** Phases 7, 7.999 and 8.999 delivered the whole destination-and-action interaction: pinning, the confirm step and its pane, the client-side walk, and a `destinationChosen` whose lit tiles *are* the menu — the unit itself waits, a tile beside it faces that way, anything else cancels. **What remains is one more reading of a click already being read**: an enemy this unit can attack from the pinned tile. ⚠️ **No `choosingTarget` member** — that was the old plan and it is explicitly dropped; a target is a click in the state that exists, not a state of its own. What it does need is an attack-range overlay in a **reddish** tint, so a target is told from a facing choice by colour rather than by a rule.
+- **9h** ✅ **Shipped**, and gone from here: `readActionClick`, the `targetChosen`
+  phase, the attack overlay, and the panel. See *Client* and *Combat* in
+  [`architecture.md`](architecture.md).
 
-  ⚠️ **The damage preview is part of this step, not a later one.** It used to be scheduled after, as polish. It cannot be: the panel *is* how an attack is committed, and a panel with no numbers in it is a bare confirm dialog. This is where *deterministic preview, yes; random resolution, no* stops being a slogan — the client runs the same formula with the luck term dropped.
+  ⚠️ **The overlay's colour cost three attempts, and the reason is the board.**
+  Red and the teal ground are near-complementary, so blending them gives *grey*:
+  a desaturated red at 0.34 alpha was invisible and a strong red at 0.4 read as a
+  dirty tile. It sits at 0.8 where every other overlay is a wash, which is
+  recorded in the code beside the constant.
 
-  ⚠️ **And this is where `hold` earns its place in the panel** rather than being a nicety: see *The attack interaction* above for why the tile that faces an enemy is the tile they are standing on.
-
-  ⚠️ **Two options in this phase, not three.** The worked panel above shows `Volley / Charge / Hold`, which is the phase-10 end state — charge does not exist until 10a. Build the two-option panel and let 10a widen it; standing a stub in the third slot is how the stub becomes permanent.
-
-  **8.999 left less to do here than this step assumes.** The anchored DOM pane exists, and `anchorTo` takes one element — enough, because the confirm pane belongs to movement selection and the panel to action selection, so they can never both be up. The attack-range overlay is `createTileOverlay` with a new colour.
-
-  ⚠️ **The overlay shows the whole attack band, not just occupied tiles** — reach
-  is the information, and a gun's reach is most of what makes it a gun. Red
-  therefore means *in range*, not *attackable*.
-
-  ⚠️ **The adjacent ring is the only place two readings collide, and occupancy
-  decides it.** Those four tiles are facing choices *and*, for a `min: 1` unit,
-  inside the attack band. So: **adjacent with no enemy on it is a facing tile and
-  reads yellow; everything else in the band reads red.** One rule, no ordering to
-  remember, and "dark backs out" survives untouched.
-
-  ⚠️ **Undecided, and best decided on screen:** whether an occupied *target*
-  inside the band should read differently from an empty tile in it. Red-as-reach
-  means a click on empty red is not an attack, and how that should look is a
-  question for the thing being visible.
-
-  ⚠️ **"An adjacent enemy means attack" is shorthand that breaks artillery.** A `min > 1` unit cannot hit an adjacent enemy at all and its targets sit two or three tiles out, so this lights **two sets** and the predicate is "an enemy *this unit can attack from here*". The colouring carries it: an adjacent enemy an artillery piece cannot reach simply stays the neutral facing colour. Undecided is only whether that reads oddly in the melee case, where one tile is both a facing choice and a target.
-
-  ⚠️ **One reader, not three predicates in a load-bearing order.** An earlier draft said to add a third `Unit | null` predicate beside `facingChoiceAt` and `holdFacing` and let the hook pick whichever answers. **That is the hazard, not the fix** — `facingChoiceAt` answers a `Facing` for *any* adjacent tile without checking occupancy, so an adjacent enemy satisfies two readings and only the call order separates them. Replace the three with one function that answers what a click **means**:
-
-  ```ts
-  readActionClick(state, selection, coordinate)
-    → { kind: 'hold' } | { kind: 'face', facing } | { kind: 'attack', target } | { kind: 'cancel' }
-  ```
-
-  One place, one order, and the ambiguity becomes unrepresentable rather than avoided by convention. It matches `handleTileClick`, already one function returning one answer, and it is testable as a table of clicks to readings — where the old shape could only test that three functions were called in the right sequence. ⚠️ The pure decision belongs in `interaction/selection.ts`; the *dispatch* stays in `clickTile`, which is what has kept `handleTileClick` selection-only through two reworks.
-
-  ⚠️ **The reddish range wants desaturating.** The palette already holds white
-  hover, amber selection and facing, pale blue range, near-white route — and the
-  health ring's **orange-red**. A saturated red attack range beside that ring is
-  the clash. Large tinted areas want low saturation anyway and the ring is small,
-  bright and persistent, so the range gives way rather than the ring. The ring's
-  own colour took two attempts; budget the same here.
-
-  ⚠️ **`clickTile` will hold two order-dependent reads, and they should stay
-  apart.** The movement one is about *phases* — the confirm must be read before
-  `handleTileClick`, which is already documented there. The action one is about
-  *readings within a phase*, and `readActionClick` is what retires it. Folding
-  them together would make one function answer two unrelated questions.
-
-  ⚠️ **`refuseAttack` answers with a reason string, which is the wrong shape for an overlay.** Painting a range means asking per tile, and a reason-producing function in a loop invites comparing reason *text* — which this repo warns against outright, since the wording belongs to the server and changes without the failure mode changing. A boolean predicate beside it, or the overlay derived from the range arithmetic directly.
-
-  Nothing is needed from the renderer but the overlay. The route question that used to sit here is closed: the range and the route both come down when the menu lights, and the unit standing at the destination is what anchors the tiles around it.
 - **9i** ✅ **Shipped.** The ten-segment ring, in `healthRing.ts` — see *Rendering* in [`architecture.md`](architecture.md). ⚠️ **Its animation is not built and cannot be**: nothing changes a unit's health yet, so `syncUnits` snaps it and the tween arrives with the events that move it. Verified by temporarily deploying wounded units, screenshotting, and reverting. What follows is the original note, which still describes why it matters.
 
   **Health has to be visible**, and was missing from this phase entirely. 9b put `health` in the model and 9f makes it change, but nothing draws it — a unit at 40 reads identically to one at 100, which makes combat unplayable by eye and unverifiable in the browser, the only check the renderer has. Smallest thing that works: a billboarded bar or a scaled emissive band on the unit mesh, driven from `syncUnits` since that already runs per commit with the state in hand. It belongs before any tuning at all, because a matchup table whose results you cannot see is tuned by guesswork.
