@@ -400,7 +400,7 @@ Requires the attacker to be able to enter the target's tile — reads the terrai
 
 ```
 threshold = floor(matchupThreshold% × directionalMultiplier)
-margin    = max(0, targetCurrentHP% − threshold)     // raw health, not banded
+margin    = max(0, targetCurrentHP% + terrainDefense − threshold)   // raw, not banded
 chance    = max(1, round(100 × 0.5 ^ (margin / CHARGE_HALF_LIFE)))
 success   = roll < chance                            // roll is 0..99
 ```
@@ -519,17 +519,33 @@ estimate. ⚠️ The **repel** is a range, since it depends on how far the roll
 overshoots, so a charge preview is one exact number and one band where a shot is
 one band and a yes/no.
 
-⚠️ **Open: does terrain affect a charge at all?** Today's spec reads the terrain
-table only to ask whether the attacker can *enter* the target's tile, so a formed
-line in a forest is exactly as breakable as one on a road. ⚠️ That contradicts
-what terrain means everywhere else — `computeDamage` reads `defense`, which runs
-0 on road and bridge, 1 on plains, 2 in forest, 4 on a mountain — and *cover
-against a charge* is the most intuitive reading of terrain there is. Against it:
-the threshold expression already has a matchup dial and a directional dial, both
-untuned and with no reference behaviour, and terrain would be a third moving at
-the same time. **Deferring it is defensible; not noticing it is not.** If it does
-land, it belongs as a term on the threshold, alongside the directional multiplier
-and for the same reason — scale-free, so retuning the base table does not drag it.
+⚠️ **Terrain is one addition, and it goes on the *health*, not the threshold.**
+A unit in cover charges as though it had that much more left: forest costs an
+attacker 2 to 7 points of chance, a mountain 4 to 13, and plains is near enough
+to nothing that it needs no special case — one defence star against a half-life
+of fifteen is a ~4% relative change, which rounds away at most healths.
+
+⚠️ **It is not a new kind of term, which is why it is this one.** The expression
+already asks *how far is the target's health above the threshold*; terrain adding
+to health finishes that sentence. Several forms were worked through first — a
+flat subtraction from `chance`, then a multiplier on the threshold, then a
+plains-neutral clamped divisor — and each was a second mechanism doing the job
+the first one already had a slot for. ⚠️ **It also needs no constant**, so the
+tuning count does not move.
+
+⚠️ **The threshold table keeps meaning what it says.** A multiplier on the
+threshold penalised the *common* tile, so the six numbers would have described
+road and bridge — ground units almost never stand on. This leaves open ground
+alone and reads only as cover.
+
+⚠️ **It shifts the target-health line, not the crossover.** Charging still starts
+paying off around the same odds; what changes is how hurt the defender has to be
+before you get there — several points further down on a mountain. That is what
+terrain should mean, and it is why adding this does not invalidate the repel
+numbers, which were picked against the crossover.
+
+**If it ever needs to matter more**, the knob is `+ terrainDefense × 2`. Not
+added in advance: there is no reason to scale an untested term before playing it.
 
 Fire and charge are **different resolutions, dispatched once** on an `attackKind` discriminant — fire produces damage, charge produces death-plus-displacement or a backfire. Two self-contained functions, not conditionals threaded through one.
 
