@@ -23,6 +23,16 @@ const at = (col: number, row: number): Coordinate => ({ col, row });
 // b1 can act; its position and infantry's range of 3 make (1,3) a legal move target.
 const board = makeState(7, [{ id: 'b1', col: 1, row: 1 }]);
 
+/**
+ * ⚠️ The same board with something to shoot at, for anything that needs the
+ * *panel*. With only Hold available the panel is skipped entirely, so a
+ * single-unit board cannot exercise it.
+ */
+const contestedBoard = makeState(7, [
+  { id: 'b1', col: 1, row: 1 },
+  { id: 'r1', col: 1, row: 5, owner: 'red' },
+]);
+
 const moved = (): GameEvent => ({
   type: 'unitMoved',
   unitId: 'b1',
@@ -501,7 +511,7 @@ describe('useGameSession', () => {
   // Asserted as a pair, because the failure mode is one of them swallowing the
   // other -- and a mode that cannot be left is a trap with no way out.
   it('backs out of a mode to the panel, then out of the panel to the board', async () => {
-    const fake = fakeServer(board);
+    const fake = fakeServer(contestedBoard);
     const cb = callbacks();
     const { result } = renderSession(fake, cb);
     await act(async () => {});
@@ -523,8 +533,52 @@ describe('useGameSession', () => {
     expect(fake.submissions).toEqual([]); // nothing was ever sent
   });
 
+  // ⚠️ **A menu with one row is a question with one answer**, and it falls on the
+  // commonest action in the game — move and wait. Where there *is* a choice the
+  // panel still appears, so this buys back the click 9.9 cost without reviving
+  // the ambiguity it was introduced to remove.
+  describe('when only one action is available', () => {
+    it('skips the panel and enters that mode directly', async () => {
+      const fake = fakeServer(board); // one unit: nothing to fire at or charge
+      const { result } = renderSession(fake, callbacks());
+      await act(async () => {});
+
+      act(() => result.current.clickTile(at(1, 1)));
+      await act(async () => result.current.clickTile(PIN));
+      await act(async () => result.current.clickTile(PIN));
+      expect(result.current.selection).toMatchObject({ step: { kind: 'holding' } });
+    });
+
+    // ⚠️ And backing out skips it too: a panel the player never saw on the way
+    // in is a dead end on the way out, its one row being the mode just left.
+    it('backs out past the panel, all the way to the board', async () => {
+      const fake = fakeServer(board);
+      const cb = callbacks();
+      const { result } = renderSession(fake, cb);
+      await act(async () => {});
+
+      act(() => result.current.clickTile(at(1, 1)));
+      await act(async () => result.current.clickTile(PIN));
+      await act(async () => result.current.clickTile(PIN));
+      await act(async () => result.current.clickTile(at(5, 5)));
+      expect(result.current.selection.phase).toBe('unitSelected');
+      expect(cb.onPreview).toHaveBeenCalledWith(null);
+    });
+
+    it('still shows the panel when there is a choice', async () => {
+      const fake = fakeServer(contestedBoard);
+      const { result } = renderSession(fake, callbacks());
+      await act(async () => {});
+
+      act(() => result.current.clickTile(at(1, 1)));
+      await act(async () => result.current.clickTile(PIN));
+      await act(async () => result.current.clickTile(PIN));
+      expect(result.current.selection).toMatchObject({ step: { kind: 'choosing' } });
+    });
+  });
+
   it('pins, confirms, opens the panel, and submits on a direction', async () => {
-    const fake = fakeServer(board);
+    const fake = fakeServer(contestedBoard);
     const { result } = renderSession(fake, callbacks());
     await act(async () => {}); // settle the initial batch, which would drop a pin
 

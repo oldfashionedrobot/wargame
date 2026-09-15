@@ -202,7 +202,7 @@ export function isAiming(selection: SelectionState): selection is Aiming {
 export function enterMode(
   state: GameState,
   selection: DestinationChosen,
-  kind: 'firing' | 'charging' | 'holding',
+  kind: ActionKind,
 ): DestinationChosen {
   // ⚠️ Built here rather than snapshotted on arrival: two of these would never
   // be looked at, and the state a mode is entered from is fresher than the state
@@ -219,6 +219,30 @@ export function enterMode(
       ? chargeTilesFor(state, moved, destination)
       : attackTilesFor(state, moved, destination);
   return { ...selection, step: { kind, tiles, target: null } };
+}
+
+/** A mode the action panel can put the selection into. */
+export type ActionKind = 'firing' | 'charging' | 'holding';
+
+/**
+ * Which modes this selection could enter, in the order the panel offers them.
+ *
+ * ⚠️ **One list, so the menu and the skip cannot disagree.** The panel renders
+ * from this and the arrival path counts it; asking `canFire` and `canCharge`
+ * separately in each would be the same question spelled twice, and the failure
+ * would be a panel offering a row that the skip had already decided did not
+ * exist.
+ *
+ * ⚠️ **Holding is always last and always present.** A unit may always wait, so
+ * this is never empty -- which is what makes "only one action" mean *nothing to
+ * attack* rather than *nothing at all*.
+ */
+export function availableActions(state: GameState, selection: DestinationChosen): ActionKind[] {
+  const actions: ActionKind[] = [];
+  if (canFire(state, selection)) actions.push('firing');
+  if (canCharge(state, selection)) actions.push('charging');
+  actions.push('holding');
+  return actions;
 }
 
 /**

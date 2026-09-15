@@ -5,13 +5,12 @@ import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
 import { useGameSession } from './useGameSession';
 import {
   attackForecast,
-  canCharge,
-  canFire,
+  availableActions,
   isAiming,
   isPlan,
   destinationOf,
 } from './interaction/selection';
-import type { SelectionState } from './interaction/selection';
+import type { ActionKind, SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
 import { createGameRenderer } from './render/renderer';
 import type { CutawayScene, CutawaySide as CutawaySideData, GameRenderer } from './render/renderer';
@@ -126,8 +125,25 @@ function CutawaySide({ side, align }: { side: CutawaySideData; align: 'left' | '
           }}
         />
       </div>
-      <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: '15px', marginTop: '4px' }}>
-        {shown}
+      <div
+        style={{
+          display: 'flex',
+          gap: '8px',
+          justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+          fontVariantNumeric: 'tabular-nums',
+          fontSize: '15px',
+          marginTop: '4px',
+        }}
+      >
+        <span>{shown}</span>
+        {/* ⚠️ **Shown only once the bar starts falling, and only if it falls.**
+            Tying it to the same value the bar animates means the number and the
+            movement arrive together rather than the figure being announced
+            before anything happens — and a side that took nothing never renders
+            a `−0`, because `shown` never leaves `before`. */}
+        {shown !== side.before && (
+          <span style={{ color: '#ff9a8a' }}>−{side.before - side.after}</span>
+        )}
       </div>
     </div>
   );
@@ -140,6 +156,14 @@ function CutawaySide({ side, align }: { side: CutawaySideData; align: 'left' | '
  * primary interaction now and not a confirm box. Hover is the only state it
  * needs: there is no disabled row, since an unavailable action is omitted.
  */
+/** ⚠️ Beside the list rather than inside it: the words are presentation and the
+    modes are not, so a renamed row cannot change what a click does. */
+const ACTION_LABEL: Record<ActionKind, string> = {
+  firing: 'Fire',
+  charging: 'Charge',
+  holding: 'Hold',
+};
+
 function MenuItem({ label, onClick }: { label: string; onClick: () => void }): ReactElement {
   const [hovered, setHovered] = useState(false);
   return (
@@ -358,7 +382,13 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
               color: '#f2f4f7',
               textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
               pointerEvents: 'auto',
+              cursor: 'pointer',
             }}
+            // ⚠️ The whole overlay is the button, because the whole overlay is
+            // what is in the way: it already swallows pointer events so a stray
+            // click cannot reach the board, and anything smaller would leave
+            // most of a click-to-continue view not accepting the click.
+            onClick={() => rendererRef.current?.dismissCutaway()}
           >
             {/* ⚠️ Pinned to the band's own bottom edge rather than laid out in
                 flow. The band is a *viewport* -- 30% to 70% measured from the
@@ -375,8 +405,19 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
               }}
             >
               <CutawaySide key={`a${cutaway.id}`} side={cutaway.attacker} align="left" />
-              <div style={{ fontSize: '13px', opacity: 0.75, paddingBottom: '18px' }}>
+              <div
+                style={{
+                  fontSize: '13px',
+                  opacity: 0.75,
+                  paddingBottom: '18px',
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 {cutaway.kind === 'charge' ? 'charge' : 'fire'}
+                {/* ⚠️ Said, because a view that waits without saying so reads as
+                    one that has hung. */}
+                <div style={{ opacity: 0.7, marginTop: '2px' }}>click to continue</div>
               </div>
               <CutawaySide key={`d${cutaway.id}`} side={cutaway.defender} align="right" />
             </div>
@@ -409,18 +450,14 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
                 glance. Revisit if omitting reads badly in play.
                 ⚠️ `canFire` asks `refuseAttack`, the same rule the click will,
                 so the button and the tile cannot disagree. */}
-            {canFire(gameState, selection) && (
-              <MenuItem label="Fire" onClick={() => chooseAction('firing')} />
-            )}
-            {/* ⚠️ Offered on the same terms as Fire and for the same reason:
-                `canCharge` asks `refuseCharge`, the rule the click will ask, so
-                the row and the board cannot disagree. Artillery has no threshold
-                row, so this is false for it against every target and the entry
-                simply never appears. */}
-            {canCharge(gameState, selection) && (
-              <MenuItem label="Charge" onClick={() => chooseAction('charging')} />
-            )}
-            <MenuItem label="Hold" onClick={() => chooseAction('holding')} />
+            {/* ⚠️ Rendered from the same list the arrival path counts, so a row
+                the panel offers and a row the skip believes in cannot differ.
+                Each entry is there because the rule that will answer the click
+                said so -- `canCharge` asks `refuseCharge` -- rather than because
+                a tile set happened to be non-empty. */}
+            {availableActions(gameState, selection).map((kind) => (
+              <MenuItem key={kind} label={ACTION_LABEL[kind]} onClick={() => chooseAction(kind)} />
+            ))}
           </div>
         )}
 

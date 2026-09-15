@@ -17,6 +17,24 @@ let clickTile: (coordinate: Coordinate) => void;
 
 const board: GameState = makeState(5, [{ id: 'b1', col: 1, row: 1 }]);
 
+/**
+ * ⚠️ The same board with something to shoot at, for anything needing the
+ * *panel*: with only Hold available it is skipped, so a lone unit cannot
+ * exercise it.
+ */
+const contestedBoard: GameState = makeState(5, [
+  { id: 'b1', col: 1, row: 1 },
+  { id: 'r1', col: 1, row: 4, owner: 'red' },
+]);
+const contested = () =>
+  fakeServer({
+    getState: () => contestedBoard,
+    subscribe: vi.fn((onUpdate) => {
+      onUpdate([], contestedBoard);
+      return () => {};
+    }),
+  });
+
 beforeEach(() => {
   vi.clearAllMocks();
   renderer = {
@@ -33,6 +51,7 @@ beforeEach(() => {
     syncUnits: vi.fn(),
     lastDrawn: vi.fn(() => board),
     onCutaway: vi.fn(),
+    dismissCutaway: vi.fn(),
     setFacingChoices: vi.fn(),
     previewMove: vi.fn(() => Promise.resolve()),
     cancelPreview: vi.fn(),
@@ -231,7 +250,7 @@ describe('GameCanvas', () => {
         arrive = resolve;
       }),
     );
-    await renderCanvas(fakeServer());
+    await renderCanvas(contested());
 
     await act(async () => clickTile({ col: 1, row: 1 }));
     await act(async () => clickTile({ col: 1, row: 3 })); // pins
@@ -241,7 +260,7 @@ describe('GameCanvas', () => {
     // Still walking: the range is the context, and no directions are offered.
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith([]);
     expect(vi.mocked(renderer.setRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
-    expect(screen.queryByRole('button', { name: /^Hold/ })).toBeNull();
+    expect(screen.queryByText('Hold')).toBeNull();
     // And the pane is down, because it invites a click that is refused now.
     expect(screen.queryByText(/click again to confirm/i)).toBeNull();
 
@@ -249,10 +268,7 @@ describe('GameCanvas', () => {
     // ⚠️ The panel, and still nothing lit. Arrival offers a choice of
     // *questions*, not of tiles -- so the overlays stay clear until one is
     // picked, and the buttons are the only affordance.
-    expect(screen.getByRole('button', { name: /^Hold/ })).toBeTruthy();
-    // ⚠️ And no Fire, because this board has nobody to shoot. Omitted rather
-    // than greyed, following AW -- a menu with no dead rows.
-    expect(screen.queryByRole('button', { name: /^Fire/ })).toBeNull();
+    expect(screen.getByText('Hold')).toBeTruthy();
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith([]);
     expect(renderer.setAttackRange).toHaveBeenLastCalledWith([]);
     expect(renderer.setRange).toHaveBeenLastCalledWith([]);
@@ -261,7 +277,7 @@ describe('GameCanvas', () => {
     // ⚠️ The four tiles themselves, not the centre they surround, and only once
     // Hold is chosen. The renderer used to derive them, which hid the clipping
     // rule somewhere untestable.
-    await act(async () => screen.getByRole('button', { name: /^Hold/ }).click());
+    await act(async () => screen.getByText('Hold').click());
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith(
       expect.arrayContaining([
         { col: 1, row: 4 },
@@ -277,7 +293,7 @@ describe('GameCanvas', () => {
   // ⚠️ The other half of omitting: the row appears the moment there is anything
   // to shoot. Both sides are asserted because a menu that never offers Fire and
   // a menu that always does are equally wrong and look the same from one test.
-  it('offers Fire once something is in range, and not before', async () => {
+  it('offers the rows the rules allow and omits the rest', async () => {
     const contested = makeState(5, [
       { id: 'b1', col: 1, row: 1 },
       { id: 'r1', col: 1, row: 3, owner: 'red' },
@@ -292,11 +308,20 @@ describe('GameCanvas', () => {
       }),
     );
 
+    // ⚠️ Held in place rather than walked forward: stepping to (1,2) would put
+    // the unit *next* to the enemy, and then a charge is available too, which is
+    // the opposite of what this is checking.
     await act(async () => clickTile({ col: 1, row: 1 }));
-    await act(async () => clickTile({ col: 1, row: 2 })); // pins
-    await act(async () => clickTile({ col: 1, row: 2 })); // confirms
-    expect(screen.getByRole('button', { name: /^Fire/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^Hold/ })).toBeTruthy();
+    await act(async () => clickTile({ col: 1, row: 1 })); // pins its own tile
+    await act(async () => clickTile({ col: 1, row: 1 })); // confirms
+    expect(screen.getByText('Fire')).toBeTruthy();
+    expect(screen.getByText('Hold')).toBeTruthy();
+    // ⚠️ **Charge is omitted rather than greyed**, following AW — the enemy is
+    // two tiles off, which a shot reaches and a charge does not. This is the
+    // only place an omission is still observable: on a board with *nothing* to
+    // attack the panel has one row and is skipped entirely, so no menu is left
+    // to inspect for an absence.
+    expect(screen.queryByText('Charge')).toBeNull();
   });
 
   // ⚠️ **Exactly one overlay is lit, and the mode is what guarantees it.** With
@@ -322,14 +347,14 @@ describe('GameCanvas', () => {
     await act(async () => clickTile({ col: 1, row: 1 })); // pins
     await act(async () => clickTile({ col: 1, row: 1 })); // confirms
 
-    await act(async () => screen.getByRole('button', { name: /^Charge/ }).click());
+    await act(async () => screen.getByText('Charge').click());
     expect(vi.mocked(renderer.setChargeTargets).mock.lastCall?.[0]).toEqual([{ col: 1, row: 2 }]);
     expect(renderer.setAttackRange).toHaveBeenLastCalledWith([]);
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith([]);
 
     // And back the other way, so neither is merely never set.
     await act(async () => clickTile({ col: 4, row: 4 })); // dark: back to the panel
-    await act(async () => screen.getByRole('button', { name: /^Fire/ }).click());
+    await act(async () => screen.getByText('Fire').click());
     expect(vi.mocked(renderer.setAttackRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
     expect(renderer.setChargeTargets).toHaveBeenLastCalledWith([]);
   });
@@ -399,6 +424,27 @@ describe('GameCanvas', () => {
       expect(screen.getByText('27')).toBeTruthy();
     });
 
+    // ⚠️ The number the player is actually judging: what the exchange *cost*,
+    // which neither health alone says.
+    it('shows what each side lost', async () => {
+      await renderCanvas(fakeServer());
+      await raise(scene);
+      expect(screen.getByText('−14')).toBeTruthy();
+      expect(screen.getByText('−33')).toBeTruthy();
+    });
+
+    // ⚠️ A side that took nothing shows no figure at all, rather than `−0` — and
+    // an unanswered shot is the common case, so this is most battles. Asserted
+    // by counting: the defender's figure is still there, and only it.
+    it('says nothing for the side that took no damage', async () => {
+      await renderCanvas(fakeServer());
+      await raise({ ...scene, attacker: { ...scene.attacker, after: scene.attacker.before } });
+      const losses = screen.queryAllByText(/^−/);
+      expect(losses).toHaveLength(1);
+      expect(losses[0].textContent).toBe('−33');
+      expect(screen.getByText('100')).toBeTruthy();
+    });
+
     it('names the kind, so a charge does not read as a shot', async () => {
       await renderCanvas(fakeServer());
       await raise({ ...scene, kind: 'charge' });
@@ -411,6 +457,20 @@ describe('GameCanvas', () => {
       await renderCanvas(fakeServer());
       await raise(scene);
       expect(screen.getByText(/★★/)).toBeTruthy();
+    });
+
+    // ⚠️ **A click, not a timer.** The overlay covers the canvas and swallows
+    // pointer events, so Babylon never sees a click while one is open — the
+    // dismissal has to come from the overlay itself, and it is the whole
+    // overlay rather than a button, because the whole overlay is what is in the
+    // way.
+    it('asks for a click and dismisses on one anywhere in it', async () => {
+      await renderCanvas(fakeServer());
+      await raise(scene);
+      expect(screen.getByText(/click to continue/i)).toBeTruthy();
+
+      await act(async () => screen.getByText('cavalry').click());
+      expect(renderer.dismissCutaway).toHaveBeenCalled();
     });
 
     it('comes down when the battle ends', async () => {
@@ -453,23 +513,23 @@ describe('GameCanvas', () => {
   // board with no explanation, or an explanation of a click that is not
   // available, are the two ways this goes wrong.
   it('hands the pane to the panel, and the panel to a per-mode hint', async () => {
-    await renderCanvas(fakeServer());
+    await renderCanvas(contested());
     await act(async () => clickTile({ col: 1, row: 1 }));
     expect(screen.queryByText(/click again to confirm/i)).toBeNull();
 
     await act(async () => clickTile({ col: 1, row: 3 })); // pins
     expect(screen.getByText(/click again to confirm/i)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /^Hold/ })).toBeNull();
+    expect(screen.queryByText('Hold')).toBeNull();
 
     await act(async () => clickTile({ col: 1, row: 3 })); // confirms
-    expect(screen.getByRole('button', { name: /^Hold/ })).toBeTruthy();
+    expect(screen.getByText('Hold')).toBeTruthy();
     expect(screen.queryByText(/click again to confirm/i)).toBeNull();
     // ⚠️ No hint yet: at the panel there is nothing to say about tiles, because
     // no tile does anything.
     expect(screen.queryByText(/click a tile beside the unit/i)).toBeNull();
 
-    await act(async () => screen.getByRole('button', { name: /^Hold/ }).click());
+    await act(async () => screen.getByText('Hold').click());
     expect(screen.getByText(/click a tile beside the unit/i)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /^Hold/ })).toBeNull();
+    expect(screen.queryByText('Hold')).toBeNull();
   });
 });

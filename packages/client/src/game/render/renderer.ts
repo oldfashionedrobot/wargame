@@ -98,8 +98,13 @@ const HOVER_ALPHA = 0.6;
 const HOVER_HEIGHT = 0.02;
 
 const SELECTED_COLOR = new Color3(1, 0.85, 0.1);
-/** How long a cutaway holds before handing the canvas back. */
-const CUTAWAY_MS = 1500;
+/**
+ * How far above a tile an anchored element floats, in world units.
+ *
+ * ⚠️ A little over the tallest `PIECE_SCALE`, so the pane clears infantry rather
+ * than only the ground. Measured in tiles, because `TILE_SIZE` is 1.
+ */
+const ANCHOR_LIFT = 1.7;
 
 const SELECTED_ALPHA = 0.55;
 const SELECTED_HEIGHT = 0.025;
@@ -265,6 +270,19 @@ export interface GameRenderer {
    * hands the caller everything it would otherwise have had to re-derive.
    */
   onCutaway(handler: (scene: CutawayScene | null) => void): void;
+  /**
+   * Let the current cutaway go, if one is up.
+   *
+   * ⚠️ **A click rather than a timer**, so an exchange is read at the reader's
+   * pace and never snatched away mid-sentence. ⚠️ The click has to come from the
+   * *overlay*, not from the canvas: the overlay covers it and swallows pointer
+   * events, so Babylon never sees one while a cutaway is open.
+   *
+   * ⚠️ A no-op when nothing is waiting, which is what makes a late click from a
+   * cutaway that has already closed harmless rather than something the caller
+   * has to guard.
+   */
+  dismissCutaway(): void;
   /**
    * Walk a unit to a destination it has not actually moved to. Resolves when
    * the preview **settles** -- which is when the walk finishes, but also when
@@ -662,7 +680,14 @@ export async function createGameRenderer(
     if (!anchorElement || !anchorTile) return;
     const { x, z } = tileToWorld(anchorTile, gridWidth, gridHeight);
     const screen = Vector3.Project(
-      new Vector3(x, surfaceAt(anchorTile), z),
+      // ⚠️ **Lifted, and lifted in *world* space.** Projecting the tile's own
+      // surface put the element's bottom edge exactly there, so it sat on the
+      // tile it was describing -- over a route's arrowhead, or over the unit
+      // whose choices it was offering. A pixel margin would have drifted with
+      // zoom; a world offset holds, because it is projected like everything
+      // else. One tile up clears both a tile's drawn extent and the tallest
+      // piece standing on it.
+      new Vector3(x, surfaceAt(anchorTile) + ANCHOR_LIFT, z),
       Matrix.Identity(),
       scene.getTransformMatrix(),
       camera.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight()),
@@ -679,6 +704,10 @@ export async function createGameRenderer(
   const cutaway = createCutaway(scene, models, terrainModels, camera);
   let cutawayHandler: ((scene: CutawayScene | null) => void) | null = null;
   let battleCount = 0;
+  // ⚠️ Held here rather than passed out, so the *renderer* owns when a cutaway
+  // ends. A resolver handed to the overlay could be called for a battle that has
+  // already closed; this one is cleared the moment it fires.
+  let releaseCutaway: (() => void) | null = null;
 
   /**
    * Play one battle: raise the views, hold, drop them.
@@ -726,8 +755,11 @@ export async function createGameRenderer(
     );
     cutawayHandler?.({ id: (battleCount += 1), kind: event.kind, attacker, defender });
 
-    await new Promise((resolve) => setTimeout(resolve, CUTAWAY_MS));
+    await new Promise<void>((resolve) => {
+      releaseCutaway = resolve;
+    });
 
+    releaseCutaway = null;
     cutaway.hide();
     cutawayHandler?.(null);
   };
@@ -806,6 +838,9 @@ export async function createGameRenderer(
     },
     onCutaway(handler) {
       cutawayHandler = handler;
+    },
+    dismissCutaway() {
+      releaseCutaway?.();
     },
     async playEvents(events) {
       for (const event of events) {

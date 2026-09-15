@@ -11,6 +11,7 @@ import { coordinatesEqual, isOver } from '@vod/shared';
 import {
   enterMode,
   chooseTarget,
+  availableActions,
   clearStep,
   confirmRoute,
   handleTileClick,
@@ -302,12 +303,19 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
           // would resurrect it over authoritative state.
           .finally(() => {
             setWalking(false);
-            // ⚠️ No state needed any more: the panel lights nothing, so there
-            // is no band to snapshot here. Each mode builds its own tiles when
-            // it is entered, from a state fresher than this one.
-            setSelection((current) =>
-              current.phase === 'routePinned' ? confirmRoute(current) : current,
-            );
+            // ⚠️ **The panel is skipped when it would offer one thing.** A menu
+            // whose only row is Hold is a click that asks a question with one
+            // answer, and it falls on the commonest action in the game -- move
+            // and wait. Where there *is* a choice the panel still appears, so
+            // this buys the click back without reviving the ambiguity it was
+            // introduced to remove.
+            const arrivedOn = server.getState();
+            setSelection((current) => {
+              if (current.phase !== 'routePinned') return current;
+              const arrived = confirmRoute(current);
+              const actions = availableActions(arrivedOn, arrived);
+              return actions.length === 1 ? enterMode(arrivedOn, arrived, actions[0]) : arrived;
+            });
           });
         return;
       }
@@ -370,7 +378,11 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
         // out" is the whole rule, and it reads because at most one set is lit. A
         // click off the board never arrives here at all: the renderer drops a
         // pick that hits no tile, so the space around the board is not a way out.
-        if (selection.step.kind !== 'choosing') {
+        // ⚠️ **And backing out skips it too, for the same reason.** A panel the
+        // player never saw on the way in is a dead end on the way out: its one
+        // row is the mode they just left. Asking the same list keeps the two
+        // directions in step.
+        if (selection.step.kind !== 'choosing' && availableActions(state, selection).length > 1) {
           setSelection(clearStep(selection));
           return;
         }

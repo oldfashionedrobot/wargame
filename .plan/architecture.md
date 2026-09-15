@@ -847,9 +847,16 @@ the board's ten bands — the ring is banded because it is *glanceable*, this is
 *focused*, and the band lines are still drawn so the structure the formula reads
 stays visible. ⚠️ It carries a battle **id** so each side remounts rather than
 correcting itself in an effect, which would be a synchronous `setState` and a
-cascading render. ⚠️ And it **swallows pointer events**: a click during a cutaway
-is read against authoritative state the board is not yet showing, so it would act
-on a position the player cannot see.
+cascading render.
+
+⚠️ **It ends on a click, not a timer**, so an exchange is read at the reader's
+pace rather than snatched away mid-sentence. ⚠️ The click has to come from the
+**overlay**: it covers the canvas and swallows pointer events — which it must,
+since a click during a cutaway is otherwise read against authoritative state the
+board is not yet showing — so Babylon never sees one while a cutaway is open. The
+whole overlay is the target, because the whole overlay is what is in the way.
+⚠️ `dismissCutaway` is a no-op when nothing is waiting, which makes a late click
+from a cutaway that has already closed harmless rather than a caller's problem.
 
 ## Victory
 
@@ -1296,6 +1303,20 @@ click will ask — so the menu row and the board cannot disagree. Capability com
 through the same path: artillery has no threshold row, so the rule refuses every
 target and the row never appears.
 
+⚠️ **`availableActions` is the one list both the panel and the skip read.** The
+panel renders from it and the arrival path counts it; asking `canFire` and
+`canCharge` separately in each would be one question spelled twice, and the
+failure would be a panel offering a row the skip had decided did not exist.
+Holding is always last and always present, so the list is never empty — which is
+what makes *one action* mean **nothing to attack** rather than nothing at all.
+
+⚠️ **A one-row panel is skipped, in both directions.** A menu with one answer is
+a click that asks nothing, and it falls on the commonest action in the game —
+move and wait. Backing out skips it too: a panel the player never saw on the way
+in is a dead end on the way out, its single row being the mode they just left.
+Where there *is* a choice the panel still appears, so this buys back the click
+the panel cost without reviving the ambiguity the panel removed.
+
 Either pinned phase is a **plan, not a submission** — nothing has been sent, and
 a click that means nothing else discards it without the server hearing.
 `path[0]` is where the unit still
@@ -1397,6 +1418,13 @@ overlay tracking the board is otherwise a React commit every frame the camera
 turns. ⚠️ Projection lands in render-buffer pixels and is scaled to CSS pixels
 by the hardware scaling level — equal today only because `adaptToDeviceRatio`
 is off.
+
+⚠️ **The element is lifted a tile above the surface, in *world* space.**
+Projecting the tile's own surface put the element's bottom edge exactly there,
+so a pane sat on the thing it was describing — a route's arrowhead, or the unit
+whose choices it was offering. A pixel margin would drift with zoom; a world
+offset holds, because it is projected like everything else, and one tile clears
+both a tile's drawn extent and the tallest piece standing on it.
 
 - **Camera:** `ArcRotateCamera` in `ORTHOGRAPHIC_CAMERA` mode, starting at a
   fixed isometric angle. Orbit stays on the default input; **wheel zoom does
