@@ -782,7 +782,7 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   dirty tile. It sits at 0.8 where every other overlay is a wash, which is
   recorded in the code beside the constant.
 
-- **9i** ✅ **Shipped.** The ten-segment ring, in `healthRing.ts` — see *Rendering* in [`architecture.md`](architecture.md). ⚠️ **Its animation is not built and cannot be**: nothing changes a unit's health yet, so `syncUnits` snaps it and the tween arrives with the events that move it. Verified by temporarily deploying wounded units, screenshotting, and reverting. What follows is the original note, which still describes why it matters.
+- **9i** ✅ **Shipped.** The ten-segment ring, in `healthRing.ts` — see *Rendering* in [`architecture.md`](architecture.md). ⚠️ **Its animation is not built and will not be** — the *cutaway* is the damage animation and the ring is the persistent state beside it, for the reasons below. This once said the animation "cannot be" built because nothing changed a unit's health yet; 9f made health change, so the reason expired while the conclusion held. Verified by temporarily deploying wounded units, screenshotting, and reverting. What follows is the original note, which still describes why it matters.
 
   **Health has to be visible**, and was missing from this phase entirely. 9b put `health` in the model and 9f makes it change, but nothing draws it — a unit at 40 reads identically to one at 100, which makes combat unplayable by eye and unverifiable in the browser, the only check the renderer has. Smallest thing that works: a billboarded bar or a scaled emissive band on the unit mesh, driven from `syncUnits` since that already runs per commit with the state in hand. It belongs before any tuning at all, because a matchup table whose results you cannot see is tuned by guesswork.
 
@@ -929,13 +929,51 @@ one formula cannot be read apart, not because the geometry might be wrong.
   time. That reads like two steps — the mechanic head-on, then the directional
   term — which would push the cutaway to 10c.
 
-- **10b** ⬜ **The combat cutaway.** A view that takes over, shows both units, plays the exchange, and hands back — AW's battle screen. ⚠️ **Here rather than in phase 9 because two of its four scenes are charge**: volley-unanswered, volley-answered, charge-broke-through and charge-repelled. Building it earlier means building half of it and extending it, and the half that is missing is the half with no reference behaviour.
+- **10b** ⬜ **A facing marker on the board.** 9i deferred this here — *"nothing
+  reads facing until charge does, so a ground chevron here would be drawing a
+  fact that changes nothing"* — and then phase 10 was never given it. It existed
+  only as a forwarding note inside a shipped entry.
+
+  ⚠️ **Its premise expired early.** 9k made a rear shot go unanswered, so facing
+  has been read by a rule since then and is drawn nowhere. The only cue today is
+  the unit model's rotation, which is legible enough for your own piece under the
+  cursor and marginal for an enemy across the board — and the enemy's facing is
+  the one you are deciding against.
+
+  ⚠️ **It belongs before any directional tuning**, for exactly the reason 9i gave
+  for the health ring: *a table whose results you cannot see is tuned by
+  guesswork.* `FLANK_MULTIPLIER` and `REAR_MULTIPLIER` cannot be judged by eye if
+  the geometry feeding them is invisible. If 10a splits, this goes between the
+  halves; if it does not, this goes first.
+
+  **Smallest thing that works:** a chevron or notch on the tile under each unit,
+  pointing the way it faces. ⚠️ Not the tile-overlay machinery, which paints
+  whole quads — this wants a shape. A small mesh parented to the unit's node
+  inherits the facing rotation for free, which is how `setUnitFacing` already
+  works. ⚠️ Readable for *enemies at rest* is the bar, not readable for the
+  selected unit: it is what makes "can I get behind that" answerable without
+  clicking.
+
+- **10c** ⬜ **The combat cutaway.** A view that takes over, shows both units, plays the exchange, and hands back — AW's battle screen. ⚠️ **Here rather than in phase 9 because two of its four scenes are charge**: volley-unanswered, volley-answered, charge-broke-through and charge-repelled. Building it earlier means building half of it and extending it, and the half that is missing is the half with no reference behaviour.
 
   Phase 9 is playable without it: the board ring is the feedback, and it is the *persistent* half — "how hurt is that battery" while you are deciding — which a transient panel cannot replace. The cutaway is the drama, not the information.
 
   ⚠️ **Start small and DOM.** Both units, both health bars, the numbers, a second and a half, gone. It reuses the over-canvas anchoring 8.999 built, needs no second Babylon scene, no camera work and no new art. A 3D scene with firing animations is an upgrade, not the first version. ⚠️ Squads of figures scaled to health were considered and deferred with it — the bar carries that information, and models are instanced per unit already, so it stays cheap whenever it is wanted.
 
   **What it needs that does not exist:** the *before* health for both units. For a single-action batch that is just the replica, since `unitMoved` does not touch health; folding is only required for multi-action catch-up, which is exactly where the cutaway should be skipped anyway.
+
+  ⚠️ **And the skip does not work yet.** `animatedTiles` scores a batch by summing
+  `unitMoved` path lengths, so a `battleResolved` counts **zero** — a catch-up
+  batch of ten battles scores nothing, passes `worthAnimating`, and plays ten
+  cutaways back to back. 9f recorded that this "becomes 10b's problem when the
+  cutaway lands" and recorded it *in 9f*, where nobody building the cutaway would
+  look. The fix is a term in `animatedTiles`, and the number to give a battle is
+  whatever a cutaway costs in tile-times.
+
+  ⚠️ **Nothing else about this step moved.** `battleResolved` already carries
+  `kind` and `answered`, which is exactly the two bits that pick between the four
+  scenes; `anchorTo` still exists and the cutaway takes over rather than being
+  anchored, so 9.9's three anchored elements do not contend with it.
 
 The **Open questions** entry on counter-attacks for `min > 1` units belongs to 9g and moved into phase 9 with it — it was decided when indirect fire and immobility were the same thing, and 9d separates them.
 
