@@ -584,6 +584,21 @@ should be re-read once charge exists and a peak can be stormed.
 
 ## Open questions
 
+- ⚠️ **Nothing can ask where a tile is on screen, and a browser is the only check
+  the renderer has.** It is WebGL, so it has no unit tests at all; every visual
+  verification therefore means screenshotting, measuring by eye, and clicking a
+  guessed pixel. A guess that misses is indistinguishable from a bug, which makes
+  the workflow trial-and-error by construction — and it is how a real bug
+  (`POINTERPICK`) got found by accident rather than by method.
+
+  The fix is small and already half-built: `anchorTo` projects a tile to screen
+  pixels every frame. Exposing that in dev — a `tileToScreen` on the renderer, or
+  a `window.__vod` handle behind `import.meta.env.DEV` — turns every future check
+  from *guess a pixel* into *address a tile*, which 10a and 10b both need and
+  which would have made this step's verification a fraction of its cost. ⚠️ It is
+  test-only surface on a production object, which is the reason to think before
+  building it rather than the reason not to.
+
 - ~~**Counter-attack for `min > 1` units.**~~ ✅ Settled: a counter fires when the attacker is inside the defender's range, whatever that range is. A gun answers a gun at reach and cannot answer anything at one tile — both from the same predicate, neither from a rule about it.
 
 ## Known compromises
@@ -737,190 +752,27 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
 Selection doesn't need it: `canSelectUnit` is a game fact ("may this unit act"), and the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
 
-### 9.9 — The action panel picks the intent ⬜
+### 9.9 ✅ **Shipped**, and gone from here
 
-When the ghost arrives, a panel offers **Fire · Hold** (and Charge from 10a).
-The player says what they mean *first*; only then do the relevant tiles light.
+The action panel, `MenuStep`, the two back-out rules and `canFire` — see
+*Client* in [`architecture.md`](architecture.md).
 
-```
-move selection    click a tile (or your own)  → pins a route
-                  second click on it          → walks, and the panel opens ↓
-the panel         no tiles lit; buttons only
-  Fire            → tiles in range light red
-                     a lit enemy       → pinned, forecast shown over it
-                     that enemy again  → fire
-                     another lit enemy → re-pin
-  Hold            → the four neighbours and your own tile light
-                     a neighbour       → face that way and commit
-                     your own tile     → keep this facing and commit
-  anywhere dark, in any mode  → back to the panel
-  anywhere dark, at the panel → back to move selection (un-walks)
-```
+⚠️ **It also uncovered a bug that had shipped long before it.** The pointer
+handler listened for `POINTERPICK`, which Babylon emits only when its ray hits a
+*pickable mesh*, while the terrain sets `isPickable = false` because lookup here
+is plane arithmetic. So clicks only arrived where some other pickable mesh
+happened to be — a unit, a tree, a lit overlay quad — and a sweep of sixteen
+points across the board registered **one**. It survived because almost every
+meaningful click lands on a unit or a lit tile, and *click elsewhere to cancel*
+was quietly dead the whole time. `POINTERTAP` fixed it; the same sweep now
+registers sixteen.
 
-#### Why this shape and not a smarter click reader
-
-⚠️ **Assuming intent costs quadratically; asking for it costs linearly.** Every
-action a tile click could mean is another reading to disambiguate against all the
-others — *n* actions is *n(n−1)/2* orderings that have to be got right. That
-failure already happened at **n = 2**: an adjacent enemy is also a facing choice,
-whichever question ran first won, and the fix was to force the order inside a
-single reader. Charge would have made it three. Capture, entrench, dismount and
-resupply would each add a row to that triangle. Picking the intent first makes a
-new action **one menu entry and one tile set, colliding with nothing.**
-
-⚠️ **So `readActionClick` does not get split — it dissolves.** Each mode has
-exactly one kind of tile, so there is no question left to answer. The bug class
-goes with it.
-
-⚠️ **`attackTilesFor`'s filter dies too.** It exists only to punch holes in the
-red where facing tiles need to show through; the two sets are never lit together
-now. It becomes three separate one-purpose functions — the range band, the four
-neighbours, and chargeable tiles in 10a — none filtering against another.
-
-⚠️ **And the charge overlay conflict never exists.** Charge tiles would have had
-to be *disjoint* from attack tiles to avoid blending two ground quads at the same
-height. They are never on screen together, so the constraint is gone rather than
-satisfied.
-
-#### Two idioms, each learned once
-
-⚠️ **Buttons pick intent; tiles pick targets.** A clean split, and it is what
-keeps the panel from growing confirm buttons that duplicate what a tile click
-already says.
-
-⚠️ **A target pins and confirms exactly like a route**: first click pins it and
-shows the forecast, second click on the same one commits, a click on a different
-lit enemy re-pins. That is the gesture 8.999 established for touch, reused rather
-than reinvented — and charge inherits it in 10a for free. The forecast panel is
-therefore *informational*, like the route's "click again to confirm" pane, and
-carries no button.
-
-#### The state
-
-```ts
-destinationChosen  step:
-  | { kind: 'choosing' }                       // panel up, nothing lit
-  | { kind: 'firing'; target: Unit | null }    // null until one is pinned
-  | { kind: 'holding' }
-  // 10a adds { kind: 'charging'; target: Unit | null }
-```
-
-⚠️ **`targetChosen` is absorbed, so this is four phases — one fewer than
-today** — while gaining two modes and a place for every future action. Its
-existing justification survives intact: its comment calls the open panel *a
-mode*, and it still is, now a sibling of the other modes rather than a phase of
-its own.
-
-⚠️ **That is what keeps the pre-check's headline risk from mattering.**
-`SelectionState` has **no exhaustiveness guard** and is enumerated in seventeen
-places — a new phase typechecks clean and misbehaves. Adding none means the
-fourteen "have we arrived / is this a plan" sites keep working untouched. `Arrived`
-collapses into `DestinationChosen`, `Pinned` drops to two members, and `isPlan`
-becomes a two-way check.
-
-⚠️ **`target` is nullable inside `firing` rather than a fourth step kind.**
-`unitSelected` and `routePinned` are separate *phases* because they differ in
-more than the path; firing-with and firing-without a target differ in exactly one
-field, so a nullable one is the honest encoding. `attackForecast` already returns
-`Forecast | null`.
-
-⚠️ **Click-out is two rules, not a chain**: any dark click in a mode returns to
-the panel, and a dark click at the panel returns to move selection. Changing
-target is not a back-step — it is a click on another lit enemy, the same way a
-route re-pins.
-
-#### What already exists
-
-⚠️ **Cancelling the action menu already un-walks the ghost**, via
-`unpinDestination` with `onPreview(null)` — the deep back-step works today.
-⚠️ **`handleTileClick` already pins a click on the unit's own tile**, branching
-on it *before* consulting `reachable`, so acting without moving needs no new
-gesture. ⚠️ **`anchorTo` already puts DOM over a tile**, used by both the confirm
-pane and today's panel. ⚠️ And `chooseTarget`/`clearTarget` are already the
-transitions this needs; they set `step` instead of `phase`.
-
-#### Costs, accepted knowingly
-
-⚠️ **Move-and-wait is five steps** — select, pin, confirm, Hold, own tile — and
-firing is six. Chosen over a Hold that commits immediately with a separate
-"Face…" entry, because facing is a real mechanic now that a rear shot goes
-unanswered, and making it part of stopping is worth the click.
-
-⚠️ **You see one tile set at a time.** Today the menu shows what you can shoot
-*and* where you can face at once, so weighing "fire or reposition" now costs a
-menu round trip. This is AW's tradeoff too and it is survivable, but it is a
-loss and not an oversight.
-
-⚠️ **The panel's contents are state-dependent** — Fire only when something is in
-range, Charge only when there is a chargeable adjacent enemy. Omitted rather than
-greyed, following AW, which means the menu changes height between units.
-
-⚠️ **The panel becomes the primary interaction**, not a confirm box, and wants
-more visual weight than today's small dark rectangle.
-
-⚠️ **The test sweep is the bulk of the diff** — around thirty references across
-`selection.test.ts` and `useGameSession.test.ts` assume the current click count.
-Notably *not* expensive: only one test names `targetChosen` at all, because the
-suites already go through `chooseTarget`/`clearTarget` rather than the phase.
-
-#### One tidy that stands on its own
-
-⚠️ **`isPlan`'s comment claims a fix its body did not make.** It says the union
-"already knows which phases carry a path; this asks it rather than restating it",
-and the body is a three-way `||` on phase names. Single-sourcing the list fixes
-the comment's claim. It is no longer a *prerequisite* — that was mitigation for
-adding a phase, and no phase is being added — but it is still worth doing.
-
-#### The pre-check, against the tree after the groundwork
-
-⚠️ **`commitAttack` disappears rather than the hook gaining mode setters.** Both
-commits become tile clicks — Hold on a facing tile, Fire on the second click of a
-target — so `commitAttack(withTarget: boolean)`, a boolean-blind parameter called
-as `commitAttack(true)` and `commitAttack(false)`, goes. One `chooseAction(kind)`
-replaces it and the hook stays at three functions.
-
-⚠️ **`handleTileClick`'s early return needs no change.** `if (selection.phase ===
-'destinationChosen') return selection;` already covers every mode, because every
-mode *is* that phase. Flagged earlier as a silent-bug site; absorbing
-`targetChosen` instead of adding a phase makes it correct for free.
-
-⚠️ **`anchorTo` survives untouched.** Its comment rests on "only one is ever up",
-and that stays true: confirm pane, action panel, forecast panel — never two at
-once.
-
-⚠️ **`confirmRoute` loses its `state` parameter but the read *relocates*, it does
-not vanish** — an earlier note here overstated it. Mode entry is a panel click
-that needs fresh state to compute that mode's tiles, so `server.getState()` moves
-from the arrival callback to the mode handler. The win is real but smaller: two
-of three sets are never computed, and each is built when it is needed.
-
-⚠️ **`Arrived` collapses to a synonym for `DestinationChosen` and is deleted** —
-one name per thing.
-
-⚠️ **The `PINNED_PHASES` guard fires on this commit**, its first real case:
-removing `targetChosen` leaves a stale name in the array and `satisfies` rejects
-it.
-
-**New code step 4 needs that does not exist:** `canFire(state, unit, from)` —
-*is there anything worth shooting* — because `attackTilesFor` gives the band, not
-whether anything stands in it, and the panel must decide whether to offer Fire at
-all. 10a needs the `canCharge` twin. ⚠️ Unavailable options are **omitted**,
-following AW, accepting that a player cannot then tell "nothing in range" from
-"I misread the menu" and that the menu changes height between units. Greying says
-more and costs a disabled state to design; revisit if omitting reads badly.
-
-⚠️ **The sweep is fifty references** — 28 in `selection.test.ts`, 22 in
-`useGameSession.test.ts`. `GameCanvas.test.tsx` has none of them but **four
-assertions on the hint copy** `/the unit to hold/`, one carrying the note *"The
-buttons were the only thing naming the gestures"*. That file is the only place
-the menu is asserted end to end, and it rests entirely on copy step 4 rewrites.
-
-**Two commits, not one**: the `step` refactor keeping today's copy and buttons,
-so the sweep is isolated and a failure is unambiguously the state machine; then
-the panel. Keeping the sweep away from the UI work is worth the extra commit.
-
-**Before 10a, not after.** Charge becomes a third button and a fourth tile set
-that land on a settled shape, instead of a shape being rebuilt under them.
+⚠️ **And it exposed a gap in how visual work gets verified.** The renderer has no
+unit tests, so a browser is its only check — but nothing can be *asked* where a
+tile is on screen, so every check means reading a screenshot and guessing pixels.
+A miss then looks exactly like a bug. That is how the `POINTERPICK` bug was
+found, which is luck rather than method: the first miss should have been
+instrumented, not retried with new coordinates. See the open question below.
 
 ### 10 — Combat depth
 
