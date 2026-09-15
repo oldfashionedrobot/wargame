@@ -67,23 +67,41 @@ export interface GameSessionCallbacks {
 // Counted in tiles rather than events, because that is what costs time: a
 // move animates per step, so ten long moves is far more waiting than ten
 // short ones. At 0.15s a tile this is a bit over four seconds -- the ceiling
-// is the wait, so it moved when the pace did.
-const MAX_ANIMATED_TILES = 28;
-
-function animatedTiles(events: GameEvent[]): number {
-  return events.reduce(
-    (total, event) => total + (event.type === 'unitMoved' ? event.path.length - 1 : 0),
-    0,
-  );
-}
+/// How many events a batch may hold before it is snapped rather than played.
+//
+// ⚠️ **This is a *backlog* gate, not a duration one, and that is the whole
+// reason it can be a plain count.** In normal play it never fires: a single
+// action produces at most four events -- approach, battle, displacement,
+// turn-end -- so one turn always animates. It only speaks when several
+// resolutions arrive together, which means the client was away or hidden, and
+// replaying somebody else's turns at tween speed is worse than useless.
+//
+// ⚠️ **Four, derived rather than chosen.** It is exactly one action's worth, and
+// it preserves the ceiling the old tile-count had: two firing actions is two
+// cutaways and two moves, about four seconds, which is what 28 tiles at 0.15s
+// came to.
+//
+// ⚠️ **It replaced a per-event cost model, and the model's premise had expired.**
+// Costs used to be summed in *tiles* -- "that is what costs time: a move
+// animates per step, so ten long moves is far more waiting than ten short ones"
+// -- which was true while every animation was a walk. A cutaway costs the same
+// second and a half whatever any path length is, so tiles stopped being the
+// currency, and pricing each event type in some other unit is a model this gate
+// does not need. ⚠️ The cost is that a batch of long moves and a batch of short
+// ones are now treated alike; the gain is that a new event type needs no entry
+// anywhere, which is how the cutaway arrives here for free.
+//
+// ⚠️ Erring toward snapping is the safe direction. Skipping when you could have
+// animated costs a board that corrects itself; animating when you should have
+// skipped costs a player stuck watching with no way out.
+const MAX_ANIMATED_EVENTS = 4;
 
 function worthAnimating(events: GameEvent[]): boolean {
-  if (events.length === 0 || document.hidden) return false;
-  const tiles = animatedTiles(events);
   // Nothing to watch (an end-turn on its own) still counts as worth playing:
   // the queue is what orders the state commit, and skipping it there would
   // commit early rather than save time.
-  return tiles <= MAX_ANIMATED_TILES;
+  if (events.length === 0 || document.hidden) return false;
+  return events.length <= MAX_ANIMATED_EVENTS;
 }
 
 export interface GameSession {

@@ -812,8 +812,10 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   and *The pipeline*.
 
   ⚠️ **It also settled two things this doc had wrong.** The snap budget needs no
-  combat term — `animatedTiles` scoring a battle zero is correct while nothing
-  animates one, and it becomes 10b's problem when the cutaway lands. And the
+  combat term — `animatedTiles` scoring a battle zero was correct while nothing
+  animated one, and it was to become the cutaway's problem. ⚠️ It did not: the
+  tile model was replaced by an event count before the cutaway arrived, and a
+  battle is an event. And the
   client needed **no change at all**: both places that switch on an event type
   already handle a new member, and `syncUnits` moves the ring and removes the
   dead from state it reads anyway.
@@ -1039,14 +1041,27 @@ one formula cannot be read apart, not because the geometry might be wrong.
   construction, so there is never a gap. ⚠️ A skipped batch still advances it,
   because `syncUnits` runs whether or not the animation did.
 
-  ⚠️ **A tile-cost for a battle.** `animatedTiles` sums `unitMoved` path lengths
-  and `MAX_ANIMATED_TILES` is 28 — *"at 0.15s a tile this is a bit over four
-  seconds"* — so the budget is *four seconds of animation, denominated in tiles*.
-  A `battleResolved` scores **zero**, so a catch-up batch of ten battles scores
-  nothing, passes `worthAnimating`, and plays ten cutaways back to back. A 1.5s
-  cutaway is **10 tiles** in that currency, which lets two battles animate and
-  skips three. 9f predicted this and recorded it *in 9f*, where nobody building
-  the cutaway would look.
+  ⚠️ ~~**A tile-cost for a battle.**~~ ✅ **Gone, with the model that needed
+  one.** The gate counted *tiles* — `animatedTiles` summing `unitMoved` path
+  lengths against a 28-tile budget — so a `battleResolved` scored zero and a
+  catch-up of ten battles would have played ten cutaways. It now counts
+  **events**, capped at four, and a battle is an event.
+
+  ⚠️ **Two things retired the tile model.** Its premise was *tiles are what cost
+  time*, true while every animation was a walk and false the moment a cutaway
+  costs the same second and a half whatever any path length is. And it measured
+  the wrong question: twelve resolutions arriving together means twelve turns
+  went by while this client was away, and the tile gate **animated** them, while
+  three resolutions means barely behind and it **snapped**. The gate is a
+  *backlog* question, not a duration one.
+
+  ⚠️ **Its variance was also mostly synthetic.** A legal path is bounded by
+  `movementRange`, at most four — so the twelve- and twenty-eight-step moves its
+  tests used are inputs the rules cannot produce.
+
+  ⚠️ **Four is derived, not chosen**: one action's maximum — approach, battle,
+  displacement, turn-end — and it preserves the old ceiling, two firing actions
+  being two cutaways and two moves, about the four seconds 28 tiles came to.
 
   ⚠️ ~~**A way to turn it off.**~~ ❌ **Declined**, and the argument for it was
   wrong. It was justified here as *"cheaper to design in now than to retrofit"*,

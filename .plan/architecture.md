@@ -1012,11 +1012,34 @@ opponent's move is that much likelier to arrive while one is pinned. Correct,
 and the first thing to suspect when a pin seems to vanish on its own.
 
 `worthAnimating` is false for an empty batch, while the tab is hidden, and for
-a batch covering more than 28 tiles of walking. The budget counts **tiles, not
-events**, because one `unitMoved` can be a six-tile walk and every unit moves at
-the same pace — so tiles are what the wait is made of, and the ceiling moved
-when the pace did. A failing animation or
-snap is caught and logged; the commit always happens.
+a batch of more than **four events**.
+
+⚠️ **A backlog gate, not a duration one, which is why a plain count suffices.**
+In normal play it never fires: one action produces at most four events —
+approach, battle, displacement, turn-end — so a turn always animates. It speaks
+only when several resolutions arrive together, which means the client was away,
+and replaying somebody else's turns at tween speed is worse than useless.
+
+⚠️ **Four is derived**: one action's maximum, and it preserves the ceiling the
+previous model had — two firing actions is two cutaways and two moves, about the
+four seconds its 28-tile budget came to.
+
+⚠️ **It replaced a per-event cost model summed in tiles**, whose premise was that
+*tiles are what cost time*. True while every animation was a walk; false once a
+cutaway costs the same second and a half whatever any path length is. ⚠️ And it
+measured the wrong question — twelve resolutions arriving at once means twelve
+turns passed while this client was away, and the tile gate **animated** them,
+where three resolutions means barely behind and it **snapped**. ⚠️ Its variance
+was largely unreachable anyway: a legal path is bounded by `movementRange`, at
+most four.
+
+⚠️ **The cost is that long and short moves are now alike**; the gain is that a
+new event type needs no entry anywhere, which is how the cutaway costs this gate
+nothing. Erring toward snapping is the safe direction: skipping when you could
+have animated costs a board that corrects itself, animating when you should have
+skipped costs a player stuck watching.
+
+A failing animation or snap is caught and logged; the commit always happens.
 
 **`game/interaction/selection.ts`** — pure: no React, no server.
 

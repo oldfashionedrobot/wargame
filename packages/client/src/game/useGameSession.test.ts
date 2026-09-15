@@ -30,7 +30,14 @@ const moved = (): GameEvent => ({
   path: [at(1, 1), at(1, 3)],
 });
 
-/** One move event covering `tiles` steps -- what the animation gate budgets in. */
+/**
+ * One move event covering `tiles` steps.
+ *
+ * ⚠️ The gate counts *events* now, so the step count is scenery for most of
+ * these -- it is kept because a path still has to be a real path, and because
+ * the one test that cares about length cares that four is the most a rule can
+ * produce.
+ */
 const walk = (tiles: number): GameEvent => ({
   type: 'unitMoved',
   unitId: 'b1',
@@ -319,16 +326,15 @@ describe('useGameSession', () => {
       expect(result.current.gameState).toEqual(end);
     });
 
-    // The threshold is `<=`, so 28 tiles animate and 29 do not.
-    // Both sides of the boundary, because only one of them tells you which
-    // comparison it is.
+    // The threshold is `<=`, so four events animate and five do not. Both sides,
+    // because only one of them tells you which comparison it is.
     it('still animates a batch of exactly the threshold size', async () => {
       const fake = fakeServer(board);
       const cb = callbacks();
       renderSession(fake, cb);
       await act(async () => {});
 
-      await act(async () => fake.push([walk(28)], board));
+      await act(async () => fake.push([walk(1), walk(1), walk(1), walk(1)], board));
       expect(cb.onEvents).toHaveBeenCalled();
     });
 
@@ -339,27 +345,44 @@ describe('useGameSession', () => {
       await act(async () => {});
 
       const next = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
-      await act(async () => fake.push([walk(29)], next));
+      await act(async () =>
+        fake.push(
+          Array.from({ length: 5 }, () => walk(1)),
+          next,
+        ),
+      );
 
       expect(cb.onEvents).not.toHaveBeenCalled();
       expect(cb.onSnap).toHaveBeenLastCalledWith(next);
       expect(result.current.gameState).toEqual(next);
     });
 
-    // The budget is tiles, not events, because tiles are what take time: three
-    // long moves outlast a dozen one-step ones. An event-counting gate passes
-    // the two tests above and still sits through this.
-    it('snaps a few long moves and animates many short ones', async () => {
+    // ⚠️ **This replaced a test asserting the opposite, deliberately.** The gate
+    // used to budget in *tiles*, and that test pinned "three long moves snap,
+    // a dozen short ones animate" with the reasoning that tiles are what take
+    // time. Two things retired it.
+    //
+    // ⚠️ **It measured the wrong question.** Twelve resolutions arriving together
+    // means twelve turns went by while this client was away, and the old gate
+    // *animated* them; three resolutions means barely behind, and it *snapped*.
+    // What the gate is for is "am I so far behind that replaying is pointless",
+    // which is the count, not the sum.
+    //
+    // ⚠️ **And its long moves could not happen.** A legal path is bounded by
+    // `movementRange`, which is at most four — so `walk(12)` and `walk(28)` are
+    // inputs the rules cannot produce, and the variance the tile model existed to
+    // normalise was mostly synthetic.
+    it('animates a short backlog of long moves and snaps a long one of short moves', async () => {
       const fake = fakeServer(board);
 
-      const long = callbacks();
-      renderSession(fake, long);
+      const barelyBehind = callbacks();
+      renderSession(fake, barelyBehind);
       await act(async () => {});
-      await act(async () => fake.push([walk(12), walk(12), walk(12)], board));
-      expect(long.onEvents).not.toHaveBeenCalled();
+      await act(async () => fake.push([walk(4), walk(4), walk(4)], board));
+      expect(barelyBehind.onEvents).toHaveBeenCalled();
 
-      const short = callbacks();
-      renderSession(fake, short);
+      const longAway = callbacks();
+      renderSession(fake, longAway);
       await act(async () => {});
       await act(async () =>
         fake.push(
@@ -367,7 +390,7 @@ describe('useGameSession', () => {
           board,
         ),
       );
-      expect(short.onEvents).toHaveBeenCalled();
+      expect(longAway.onEvents).not.toHaveBeenCalled();
     });
 
     it('snaps instead of animating while the tab is hidden', async () => {
