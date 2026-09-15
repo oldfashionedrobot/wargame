@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { makeState } from './testing';
-import { band, BANDS, computeDamage, wouldCounter } from './combat';
+import { band, BANDS, computeDamage, tilesInRange, wouldCounter } from './combat';
 import { BASE_DAMAGE, LUCK_MAX } from './data/combat';
 import { MAX_HEALTH } from './data/unitTypes';
 import type { GameState, Unit } from './types';
@@ -231,5 +231,44 @@ describe('wouldCounter', () => {
     const foot = unitAt('infantry', 0, 0);
     expect(wouldCounter(foot, at(1, 1))).toBe(true); // two steps
     expect(wouldCounter(foot, at(2, 1))).toBe(false); // three
+  });
+});
+
+describe('tilesInRange', () => {
+  const unit = (unitTypeId: 'infantry' | 'artillery') =>
+    makeState(12, [{ id: 'a', col: 5, row: 5, unitTypeId }]).units[0];
+  const has = (tiles: { col: number; row: number }[], col: number, row: number) =>
+    tiles.some((t) => t.col === col && t.row === row);
+
+  // ⚠️ Reach, not targets: the band is drawn whether or not anything stands in
+  // it, because a gun's reach is most of what makes it a gun.
+  it('covers the whole band regardless of what is standing there', () => {
+    const tiles = tilesInRange(unit('infantry'), { col: 5, row: 5 }, 12, 12);
+    expect(has(tiles, 5, 6)).toBe(true); // one away
+    expect(has(tiles, 5, 7)).toBe(true); // two
+    expect(has(tiles, 5, 8)).toBe(false); // three, out of infantry's band
+  });
+
+  it('excludes the tiles a minimum range forbids', () => {
+    const tiles = tilesInRange(unit('artillery'), { col: 5, row: 5 }, 12, 12);
+    expect(has(tiles, 5, 5)).toBe(false); // its own tile
+    expect(has(tiles, 5, 6)).toBe(false); // reached: inside min
+    expect(has(tiles, 5, 7)).toBe(true);
+    expect(has(tiles, 5, 10)).toBe(true); // five out, the edge of the band
+    expect(has(tiles, 5, 11)).toBe(false);
+  });
+
+  // Diagonals cost two, like every other distance in the game -- so the band is
+  // a diamond, and a square would quietly let a gun reach corners it cannot.
+  it('is a diamond, not a square', () => {
+    const tiles = tilesInRange(unit('infantry'), { col: 5, row: 5 }, 12, 12);
+    expect(has(tiles, 6, 6)).toBe(true); // two steps
+    expect(has(tiles, 7, 6)).toBe(false); // three
+  });
+
+  it('stays on the board at a corner', () => {
+    const corner = makeState(12, [{ id: 'a', col: 0, row: 0, unitTypeId: 'artillery' }]).units[0];
+    const tiles = tilesInRange(corner, { col: 0, row: 0 }, 12, 12);
+    expect(tiles.every((t) => t.col >= 0 && t.row >= 0)).toBe(true);
   });
 });

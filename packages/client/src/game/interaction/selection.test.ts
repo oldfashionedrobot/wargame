@@ -3,6 +3,7 @@ import { makeState, route, unitAt } from '@vod/shared/testing';
 import type { Coordinate, GameState } from '@vod/shared';
 import {
   confirmRoute,
+  readActionClick,
   facingChoiceAt,
   facingChoiceOrigin,
   handleTileClick,
@@ -302,5 +303,89 @@ describe('choosing a facing', () => {
   it('cancels back to the unit where it really stands', () => {
     const back = unpinDestination(choosing(at(1, 3)));
     expect(back).toMatchObject({ phase: 'unitSelected', unitId: 'b1', position: at(1, 1) });
+  });
+});
+
+// ⚠️ The table the three predicates could not be tested as. With them, the only
+// thing a test could pin was *call order*; here the rule is one function and
+// each reading is a case.
+describe('readActionClick', () => {
+  // b1 infantry at (1,1), range 1..2. An enemy sits beside it and another two
+  // tiles off; a friend sits beside it too.
+  const field = () =>
+    makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'friend', col: 1, row: 2 },
+      { id: 'adjacent', col: 2, row: 1, owner: 'red' },
+      { id: 'distant', col: 3, row: 1, owner: 'red' },
+      { id: 'far', col: 5, row: 5, owner: 'red' },
+    ]);
+  const arrived = (state: GameState) => confirmRoute(withB1Pinned(state, at(1, 1)));
+
+  it('reads the unit’s own tile as a commit keeping its facing', () => {
+    const state = field();
+    expect(readActionClick(state, arrived(state), at(1, 1))).toEqual({
+      kind: 'commit',
+      facing: unitAt(state, 'b1').facing,
+    });
+  });
+
+  it('reads an empty tile beside it as a commit facing that way', () => {
+    const state = field();
+    expect(readActionClick(state, arrived(state), at(0, 1))).toEqual({
+      kind: 'commit',
+      facing: 'west',
+    });
+  });
+
+  // ⚠️ **The case the old shape could get wrong.** This tile is adjacent, so
+  // `facingChoiceAt` answers a `Facing` for it — and it holds an enemy in range.
+  // Whichever question ran first decided, and nothing said which.
+  it('reads an adjacent enemy as an attack, not as a facing', () => {
+    const state = field();
+    const click = readActionClick(state, arrived(state), at(2, 1));
+    expect(click.kind).toBe('attack');
+    if (click.kind !== 'attack') return;
+    expect(click.target.id).toBe('adjacent');
+  });
+
+  it('reads an enemy further off but still in range as an attack', () => {
+    const state = field();
+    const click = readActionClick(state, arrived(state), at(3, 1));
+    expect(click).toMatchObject({ kind: 'attack' });
+  });
+
+  it('reads an enemy out of range as a cancel', () => {
+    const state = field();
+    expect(readActionClick(state, arrived(state), at(5, 5))).toEqual({ kind: 'cancel' });
+  });
+
+  // A friend beside the unit is not a target, so the tile keeps its other
+  // meaning: you may turn to look at it.
+  it('reads a friendly tile beside it as a facing, not an attack', () => {
+    const state = field();
+    expect(readActionClick(state, arrived(state), at(1, 2))).toEqual({
+      kind: 'commit',
+      facing: 'north',
+    });
+  });
+
+  it('reads anything further away as a cancel', () => {
+    const state = field();
+    expect(readActionClick(state, arrived(state), at(4, 4))).toEqual({ kind: 'cancel' });
+  });
+
+  // Artillery cannot hit what has reached it, so an adjacent enemy is a facing
+  // choice again -- the same tile reading differently for a different unit,
+  // decided by the range band and nothing else.
+  it('reads an adjacent enemy as a facing when the unit cannot shoot that close', () => {
+    const gunline = makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
+      { id: 'adjacent', col: 2, row: 1, owner: 'red' },
+    ]);
+    expect(readActionClick(gunline, arrived(gunline), at(2, 1))).toEqual({
+      kind: 'commit',
+      facing: 'east',
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { tileDistance } from './coordinate';
+import { isWithinGrid, tileDistance } from './coordinate';
 import { BASE_DAMAGE } from './data/combat';
 import { clampHealth, getUnitType } from './data/unitTypes';
 import { getUnit } from './queries';
@@ -184,6 +184,41 @@ function outsideRange(unit: Unit, from: Coordinate, target: Coordinate): 'near' 
   if (distance < range.min) return 'near';
   if (distance > range.max) return 'far';
   return null;
+}
+
+/**
+ * Every tile a unit standing at `from` could shoot at, whether or not anything
+ * is there.
+ *
+ * ⚠️ **Reach, not targets.** The overlay draws this whole band, because a gun's
+ * reach is most of what makes it a gun and lighting only occupied tiles would
+ * hide it. Red therefore means *in range*, not *attackable*.
+ *
+ * ⚠️ Here rather than in the client, so the band is stated once. A client
+ * looping over tiles with its own `>= min && <= max` would be the third
+ * spelling of a rule that already had two.
+ */
+export function tilesInRange(
+  unit: Unit,
+  from: Coordinate,
+  gridWidth: number,
+  gridHeight: number,
+): Coordinate[] {
+  const { range } = getUnitType(unit.unitTypeId);
+  const tiles: Coordinate[] = [];
+
+  // Only the diamond `max` reaches, rather than the whole board: at `max: 5` on
+  // a 12x12 that is 60 candidates instead of 144, and it stays proportional to
+  // the range rather than to the map.
+  for (let dCol = -range.max; dCol <= range.max; dCol++) {
+    for (let dRow = -range.max; dRow <= range.max; dRow++) {
+      const tile = { col: from.col + dCol, row: from.row + dRow };
+      if (!isWithinGrid(tile, gridWidth, gridHeight)) continue;
+      if (outsideRange(unit, from, tile) !== null) continue;
+      tiles.push(tile);
+    }
+  }
+  return tiles;
 }
 
 /**

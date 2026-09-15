@@ -1,5 +1,6 @@
 import {
   canSelectUnit,
+  refuseAttack,
   coordinatesEqual,
   directionBetween,
   exploreMovement,
@@ -7,7 +8,7 @@ import {
   getUnitAt,
   getUnitType,
 } from '@vod/shared';
-import type { Command, Coordinate, Facing, GameState, Movement } from '@vod/shared';
+import type { Command, Coordinate, Facing, GameState, Movement, Unit } from '@vod/shared';
 
 // A discriminated union rather than nullable fields: "reachable tiles with no
 // selected unit" was representable and meaningless. Phase 9 adds an attack
@@ -190,6 +191,60 @@ export function holdFacing(state: GameState, selection: DestinationChosen): Faci
   const previous = selection.path.at(-2);
   const travelled = previous ? directionBetween(previous, destinationOf(selection)) : null;
   return travelled ?? getUnit(state, selection.unitId)?.facing ?? null;
+}
+
+/**
+ * What a click means once the unit has arrived and the tiles around it are the
+ * menu.
+ *
+ * ⚠️ **One reader, because the order these are asked in is load-bearing.** This
+ * was three predicates -- `facingChoiceAt`, `holdFacing`, and an attack check --
+ * with the caller trying each until one answered. But `facingChoiceAt` returns a
+ * `Facing` for *any* adjacent tile without looking at what is standing on it, so
+ * an adjacent enemy satisfies two of them and only the call order separated
+ * them: ask facing first and an adjacent enemy can never be attacked. One
+ * function makes that unrepresentable rather than merely avoided, and turns the
+ * rule into a table a test can walk.
+ *
+ * ⚠️ `hold` and `face` collapse into one member deliberately. They are different
+ * *gestures* -- the unit's own tile versus a tile beside it -- but they produce
+ * the same thing, a facing to commit the move with, and nothing downstream
+ * branches on which. A second member nothing reads is a second member to keep
+ * in step.
+ */
+export type ActionClick =
+  { kind: 'commit'; facing: Facing } | { kind: 'attack'; target: Unit } | { kind: 'cancel' };
+
+export function readActionClick(
+  state: GameState,
+  selection: DestinationChosen,
+  coordinate: Coordinate,
+): ActionClick {
+  const destination = destinationOf(selection);
+  const unit = getUnit(state, selection.unitId);
+  if (!unit) return { kind: 'cancel' };
+
+  // ⚠️ **Asked first, and that is the whole point of this function.** An enemy
+  // beside the unit is also a facing choice, and whichever question runs first
+  // wins. `refuseAttack` is compared against `null` and never against its text
+  // -- the reason belongs to the server and changes without the answer changing.
+  const target = getUnitAt(state, coordinate);
+  if (
+    target &&
+    refuseAttack(state, { ...unit, position: destination }, destination, target.id) === null
+  ) {
+    return { kind: 'attack', target };
+  }
+
+  // The destination itself: keep the direction travelled.
+  if (coordinatesEqual(coordinate, destination)) {
+    const facing = holdFacing(state, selection);
+    return facing ? { kind: 'commit', facing } : { kind: 'cancel' };
+  }
+
+  // One of the four beside it: face that way instead.
+  const facing = facingChoiceAt(selection, coordinate);
+  return facing ? { kind: 'commit', facing } : { kind: 'cancel' };
 }
 
 /**
