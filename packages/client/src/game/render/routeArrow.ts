@@ -28,10 +28,10 @@ const SOUTH = 2;
 const WEST = 3;
 
 // Atlas cells, in the 2x2 grid drawn below.
-const TAIL = 0;
-const STRAIGHT = 1;
-const CORNER = 2;
-const HEAD = 3;
+export const TAIL = 0;
+export const STRAIGHT = 1;
+export const CORNER = 2;
+export const HEAD = 3;
 
 const CELL = 128;
 const ATLAS = CELL * 2;
@@ -52,10 +52,15 @@ function directionTo(from: Coordinate, to: Coordinate): number {
 /**
  * The piece a tile needs, and how far to turn it.
  *
+ * ⚠️ Exported for its tests. This is the only part of the module that decides
+ * anything -- the rest is vertices -- and `composeTerrain` sets the precedent:
+ * the pure piece of a renderer module is tested like any other pure module,
+ * because a browser can only tell you that *something* looks wrong.
+ *
  * A path never branches, so a tile connects to one neighbour or two -- never
  * three. That is the whole reason four shapes cover every case.
  */
-function pieceFor(path: Coordinate[], i: number): { cell: number; rotation: number } {
+export function pieceFor(path: Coordinate[], i: number): { cell: number; rotation: number } {
   const toPrev = i > 0 ? directionTo(path[i], path[i - 1]) : null;
   const toNext = i < path.length - 1 ? directionTo(path[i], path[i + 1]) : null;
 

@@ -38,7 +38,7 @@ export { clampHealth, getUnitType, MAX_HEALTH } from './data/unitTypes';
 // Combat: the table is out because the tuning harness prints it, and
 // `computeDamage` because the client previews the same number the server rolls.
 export { BASE_DAMAGE, LUCK_MAX } from './data/combat';
-export { computeDamage, wouldCounter } from './combat';
+export { band, BANDS, computeDamage, wouldCounter } from './combat';
 export type { Rolls } from './combat';
 
 export { coordinatesEqual, directionBetween, isWithinGrid, tileDistance } from './coordinate';

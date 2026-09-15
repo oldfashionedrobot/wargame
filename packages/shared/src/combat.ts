@@ -6,7 +6,7 @@ import { getTerrain } from './data/terrain';
 import type { BattleResolvedEvent, Coordinate, GameState, Unit } from './types';
 
 /** How many ten-point bands of health a unit has left: 1 through 10, never 0. */
-const BANDS = 10;
+export const BANDS = 10;
 
 /**
  * The health term the formula reads: AW's displayed 1-10, `ceil(health / 10)`.
@@ -27,8 +27,14 @@ const BANDS = 10;
  * The cost is deliberate and worth naming: a unit at 91 health and one at 100
  * fight identically while the bar shows two different numbers. That is the
  * price of AW's arithmetic, paid without AW's rounded display to hide it.
+ *
+ * ⚠️ **Exported because the board's health ring draws one segment per band**,
+ * and its claim -- that the display cannot promise precision the rules lack --
+ * is only true while the two agree. It computed `ceil(health / 10)` itself once,
+ * in another package, in a different spelling; that made the claim a
+ * coincidence rather than a consequence.
  */
-function band(health: number): number {
+export function band(health: number): number {
   return Math.ceil(health / BANDS);
 }
 
@@ -133,10 +139,9 @@ export function refuseAttack(
   if (target.id === attacker.id) return 'a unit cannot attack itself';
   if (target.owner === attacker.owner) return 'that unit is yours';
 
-  const { range } = getUnitType(attacker.unitTypeId);
-  const distance = tileDistance(from, target.position);
-  if (distance < range.min) return 'target is too close';
-  if (distance > range.max) return 'target is out of range';
+  const off = outsideRange(attacker, from, target.position);
+  if (off === 'near') return 'target is too close';
+  if (off === 'far') return 'target is out of range';
   return null;
 }
 
@@ -162,6 +167,23 @@ export function refuseAttack(
 export interface Rolls {
   attack: number;
   counter: number;
+}
+
+/**
+ * Which side of its range a distance falls off, or null if it is inside.
+ *
+ * ⚠️ **The one place the band is tested.** It was written twice -- once as
+ * `< min || > max` for a refusal reason and once as `>= min && <= max` for the
+ * counter predicate -- which is two spellings of one rule, in one file, each the
+ * negation of the other. Flipping a bound to exclusive would have needed
+ * remembering both, and that is how an off-by-one arrives.
+ */
+function outsideRange(unit: Unit, from: Coordinate, target: Coordinate): 'near' | 'far' | null {
+  const { range } = getUnitType(unit.unitTypeId);
+  const distance = tileDistance(from, target);
+  if (distance < range.min) return 'near';
+  if (distance > range.max) return 'far';
+  return null;
 }
 
 /**
@@ -193,9 +215,7 @@ export interface Rolls {
  */
 export function wouldCounter(defender: Unit, from: Coordinate): boolean {
   if (defender.health <= 0) return false;
-  const { range } = getUnitType(defender.unitTypeId);
-  const distance = tileDistance(from, defender.position);
-  return distance >= range.min && distance <= range.max;
+  return outsideRange(defender, defender.position, from) === null;
 }
 
 /**

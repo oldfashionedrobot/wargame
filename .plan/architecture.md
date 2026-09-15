@@ -435,6 +435,13 @@ resolveBattle(state, attacker, defender, rolls)   → BattleResolvedEvent
 computeDamage(state, attacker, defender, roll)    → number
 ```
 
+⚠️ **One private `outsideRange` answers which side of the band a distance falls
+off**, and both callers use it — `refuseAttack` turns it into a reason,
+`wouldCounter` asks whether there is one. It was written twice before, as
+`< min || > max` for the refusal and `>= min && <= max` for the counter, each
+the negation of the other in the same file. Two spellings of one rule is how an
+off-by-one arrives.
+
 **A counter fires iff the attacker is inside the defender's own range**, and the
 defender survived. ⚠️ **One predicate, no categories.** AW's rule reads "both
 units must be direct", which looks categorical and is not — it is equivalent to
@@ -1096,11 +1103,13 @@ is off.
   without one, so the second click supplies it and the route is state now.
 - **A unit's health is a ring of ten segments at its base** — `healthRing.ts`,
   extinguishing as it weakens and **absent entirely at full strength**, since a
-  ring under every untouched unit is noise. ⚠️ **Ten segments because the formula
-  reads ten bands**: `computeDamage` uses `ceil(health / 10)`, so 91 and 100
-  fight identically and a bar drawn from raw health would show two states that
-  behave the same. Ten-for-ten means the display *cannot* promise precision the
-  rules lack. Segments extinguish rather than dim — bands are discrete, and a
+  ring under every untouched unit is noise. ⚠️ **One segment per band, and it
+  calls the rulebook's own `band`** — the same function `computeDamage` reads.
+  So 91 and 100 show the same count *because* they fight identically, rather
+  than because two constants in two packages happen to agree: the ring computed
+  `ceil(health / 10)` itself once, in its own spelling, which made the whole
+  claim a coincidence. Ten-for-ten is what stops the display promising precision
+  the rules lack. Segments extinguish rather than dim — bands are discrete, and a
   fade would imply a continuum.
   ⚠️ **Parented to the unit's node**, so it rides the walk animation for free and
   is disposed with it. It therefore turns with the unit; accepted, since a ring
@@ -1242,6 +1251,10 @@ Every package is tested. `bun test` runs `shared` and `server`, Vitest runs
   including a connection that resolves after teardown; `StartScreen` covers
   each of its states and create-and-navigate.
 
+- ⚠️ **`routeArrow.pieceFor` is tested on the same principle**: it is the only
+  part of that module that *decides* anything, and a wrong rotation on one of
+  the four bends stays invisible until somebody routes that way — a screenshot
+  shows one bend at a time, and a browser can only say that something looks off.
 - `composeTerrain` is the one piece of the renderer that is pure, and it is
   tested like any other pure module — including that no cell declares a
   `standOn` above `MAX_STAND_HEIGHT`. The other half of that ceiling is how tall

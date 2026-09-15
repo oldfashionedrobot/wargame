@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { makeState } from './testing';
-import { computeDamage } from './combat';
+import { band, BANDS, computeDamage, wouldCounter } from './combat';
 import { BASE_DAMAGE, LUCK_MAX } from './data/combat';
 import { MAX_HEALTH } from './data/unitTypes';
 import type { GameState, Unit } from './types';
@@ -177,5 +177,59 @@ describe('computeDamage', () => {
     expect(computeDamage(state, state.units[0], state.units[1], 0)).toBe(
       BASE_DAMAGE.infantry.infantry,
     );
+  });
+});
+
+// ⚠️ Exported so the board's health ring can draw one segment per band. Pinned
+// here because the display's whole claim -- that it cannot promise precision the
+// rules lack -- rests on this being the same function the formula reads.
+describe('band', () => {
+  it('runs 1 to BANDS and never reaches zero while alive', () => {
+    expect(band(1)).toBe(1);
+    expect(band(10)).toBe(1);
+    expect(band(11)).toBe(2);
+    expect(band(MAX_HEALTH)).toBe(BANDS);
+  });
+
+  // The boundary that decides whether 91 and 100 fight identically. They do.
+  it('rounds up, so a whole band shares a step', () => {
+    expect(band(91)).toBe(band(MAX_HEALTH));
+    expect(band(90)).not.toBe(band(91));
+  });
+});
+
+describe('wouldCounter', () => {
+  const at = (col: number, row: number) => ({ col, row });
+  const unitAt = (unitTypeId: 'infantry' | 'cavalry' | 'artillery', col: number, row: number) =>
+    makeState(8, [{ id: 'd', col, row, owner: 'red', unitTypeId }]).units[0];
+
+  it('answers inside its own band and nowhere else', () => {
+    const gun = unitAt('artillery', 0, 0); // range 2..5
+    expect(wouldCounter(gun, at(0, 1))).toBe(false); // reached: too close
+    expect(wouldCounter(gun, at(0, 2))).toBe(true);
+    expect(wouldCounter(gun, at(0, 5))).toBe(true);
+    expect(wouldCounter(gun, at(0, 6))).toBe(false); // outranged
+  });
+
+  // ⚠️ Both bounds are inclusive, and this is the only place that is stated
+  // twice -- the formula's band and the counter's share one predicate, so an
+  // exclusive bound here would be an exclusive bound everywhere.
+  it('treats both ends of the band as inside it', () => {
+    const foot = unitAt('infantry', 0, 0); // range 1..2
+    expect(wouldCounter(foot, at(0, 1))).toBe(true);
+    expect(wouldCounter(foot, at(0, 2))).toBe(true);
+    expect(wouldCounter(foot, at(0, 3))).toBe(false);
+  });
+
+  it('never answers when it did not survive', () => {
+    const dead = makeState(8, [{ id: 'd', col: 0, row: 0, owner: 'red', health: 0 }]).units[0];
+    expect(wouldCounter(dead, at(0, 1))).toBe(false);
+  });
+
+  // Diagonals cost two, like every other distance in the game.
+  it('measures in orthogonal steps', () => {
+    const foot = unitAt('infantry', 0, 0);
+    expect(wouldCounter(foot, at(1, 1))).toBe(true); // two steps
+    expect(wouldCounter(foot, at(2, 1))).toBe(false); // three
   });
 });

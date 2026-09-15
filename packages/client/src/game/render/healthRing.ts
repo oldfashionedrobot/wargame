@@ -4,7 +4,7 @@ import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Scene } from '@babylonjs/core/scene';
-import { MAX_HEALTH } from '@vod/shared';
+import { band, BANDS } from '@vod/shared';
 
 // How hurt a unit is, read at a glance: a ring of ten segments at its base,
 // extinguishing as it weakens and absent entirely at full strength.
@@ -18,7 +18,12 @@ import { MAX_HEALTH } from '@vod/shared';
 // ⚠️ Segments extinguish rather than dim. Bands are discrete, and a fade would
 // imply a continuum that is not there.
 
-const SEGMENTS = 10;
+// ⚠️ **The rulebook's own count, not a matching constant.** This file used to
+// compute `ceil(health / (MAX_HEALTH / SEGMENTS))` with its own `SEGMENTS = 10`,
+// which made "one segment per band" a coincidence that held as long as two
+// numbers in two packages happened to agree. `band` is what `computeDamage`
+// reads, so the display now cannot drift from the arithmetic it describes.
+const SEGMENTS = BANDS;
 /** Of each segment's 36 degrees, how much is drawn -- the rest is the gap. */
 const FILL = 0.78;
 // Authored in the unit node's local space, so `PIECE_SCALE` applies: a bigger
@@ -82,7 +87,7 @@ export function createHealthRing(scene: Scene, parent: TransformNode): HealthRin
 
   return {
     setHealth(health) {
-      const lit = Math.ceil(Math.max(0, health) / (MAX_HEALTH / SEGMENTS));
+      const lit = band(Math.max(0, health));
 
       // ⚠️ Nothing missing, nothing drawn. A ring under every unit at full
       // strength is noise on a board where most units are untouched.
