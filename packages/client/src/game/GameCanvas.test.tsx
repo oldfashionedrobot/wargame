@@ -221,7 +221,7 @@ describe('GameCanvas', () => {
   // would then replay from wherever it had got to.
   // ⚠️ The menu is tiles now, so "shut" means unlit rather than disabled: an
   // inert lit tile invites a click that does nothing.
-  it('holds the menu back until the confirmed unit arrives', async () => {
+  it('holds the panel back until the confirmed unit arrives', async () => {
     let arrive!: () => void;
     vi.mocked(renderer.previewMove).mockReturnValue(
       new Promise<void>((resolve) => {
@@ -238,13 +238,24 @@ describe('GameCanvas', () => {
     // Still walking: the range is the context, and no directions are offered.
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith([]);
     expect(vi.mocked(renderer.setRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
-    expect(screen.queryByText(/the unit to hold/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Fire/ })).toBeNull();
     // And the pane is down, because it invites a click that is refused now.
     expect(screen.queryByText(/click again to confirm/i)).toBeNull();
 
     await act(async () => arrive());
-    // ⚠️ The four tiles themselves, not the centre they surround. The renderer
-    // used to derive them, which hid the clipping rule somewhere untestable.
+    // ⚠️ The panel, and still nothing lit. Arrival offers a choice of
+    // *questions*, not of tiles -- so the overlays stay clear until one is
+    // picked, and the buttons are the only affordance.
+    expect(screen.getByRole('button', { name: /^Fire/ })).toBeTruthy();
+    expect(renderer.setFacingChoices).toHaveBeenLastCalledWith([]);
+    expect(renderer.setAttackRange).toHaveBeenLastCalledWith([]);
+    expect(renderer.setRange).toHaveBeenLastCalledWith([]);
+    expect(renderer.setRoute).toHaveBeenLastCalledWith([]);
+
+    // ⚠️ The four tiles themselves, not the centre they surround, and only once
+    // Hold is chosen. The renderer used to derive them, which hid the clipping
+    // rule somewhere untestable.
+    await act(async () => screen.getByRole('button', { name: /^Hold/ }).click());
     expect(renderer.setFacingChoices).toHaveBeenLastCalledWith(
       expect.arrayContaining([
         { col: 1, row: 4 },
@@ -253,9 +264,8 @@ describe('GameCanvas', () => {
         { col: 0, row: 3 },
       ]),
     );
-    expect(renderer.setRange).toHaveBeenLastCalledWith([]);
-    expect(renderer.setRoute).toHaveBeenLastCalledWith([]);
-    expect(screen.getByText(/the unit to hold/i)).toBeTruthy();
+    // And firing's band is dark, because exactly one mode is live.
+    expect(renderer.setAttackRange).toHaveBeenLastCalledWith([]);
   });
 
   it('clears the overlays when the selection is dropped', async () => {
@@ -283,22 +293,30 @@ describe('GameCanvas', () => {
     expect(screen.getByRole('button', { name: 'End Turn' })).toHaveProperty('disabled', false);
   });
 
-  // The buttons were the only thing naming the gestures; with Hold gone, these
-  // two lines are all that is left saying a click on a tile means anything.
-  // ⚠️ They hand over rather than overlap: the pane belongs to movement
-  // selection and the hint to action selection, so neither mode is ever silent
-  // and neither is ever telling you about the other one's clicks.
-  it('hands the pane over to the hint as the unit arrives', async () => {
+  // ⚠️ **Nothing is ever silent and nothing ever describes another mode's
+  // clicks.** The pane belongs to movement selection, the panel's buttons to
+  // the moment of choosing, and one hint line to each mode after that. They
+  // hand over rather than overlap, which is the property worth pinning: a lit
+  // board with no explanation, or an explanation of a click that is not
+  // available, are the two ways this goes wrong.
+  it('hands the pane to the panel, and the panel to a per-mode hint', async () => {
     await renderCanvas(fakeServer());
     await act(async () => clickTile({ col: 1, row: 1 }));
     expect(screen.queryByText(/click again to confirm/i)).toBeNull();
 
     await act(async () => clickTile({ col: 1, row: 3 })); // pins
     expect(screen.getByText(/click again to confirm/i)).toBeTruthy();
-    expect(screen.queryByText(/the unit to hold/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Hold/ })).toBeNull();
 
     await act(async () => clickTile({ col: 1, row: 3 })); // confirms
-    expect(screen.getByText(/the unit to hold/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Hold/ })).toBeTruthy();
     expect(screen.queryByText(/click again to confirm/i)).toBeNull();
+    // ⚠️ No hint yet: at the panel there is nothing to say about tiles, because
+    // no tile does anything.
+    expect(screen.queryByText(/click a tile beside the unit/i)).toBeNull();
+
+    await act(async () => screen.getByRole('button', { name: /^Hold/ }).click());
+    expect(screen.getByText(/click a tile beside the unit/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Hold/ })).toBeNull();
   });
 });

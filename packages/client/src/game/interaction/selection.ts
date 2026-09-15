@@ -36,40 +36,55 @@ export type SelectionState =
   // renderer used to draw it from `POINTERMOVE` and React never heard, which
   // meant a touchscreen never saw a route at all.
   | { phase: 'routePinned'; unitId: string; path: Coordinate[]; movement: Movement }
-  // The unit has walked and the tiles around it are the menu. Still nothing
-  // sent: Cancel discards it without the server ever hearing about it.
+  // The unit has walked and is choosing what to do. Still nothing sent: a click
+  // on the dark discards it without the server ever hearing about it.
   //
-  // ⚠️ This is *also* the facing choice, which used to be a phase of its own.
-  // A click on the destination keeps the direction travelled, a click on one of
-  // the four tiles around it overrides that, and phase 9 adds an enemy in range
-  // as a third reading of the same gesture. Facing stops being demanded, which
-  // is what the design always asked for.
+  // ⚠️ **One phase, and `step` says which question is being asked.** These used
+  // to be two phases -- this one and `targetChosen` -- carrying identical data
+  // apart from the target, which made the menu's steps siblings in two different
+  // type constructs. They are the same *selection*: same unit, same walked path.
+  // What differs is the question, which is a sub-mode.
   | {
       phase: 'destinationChosen';
       unitId: string;
       path: Coordinate[];
       movement: Movement;
-      /** What to paint red -- see `attackTilesFor`. Snapshotted, like `movement`. */
-      attackTiles: Coordinate[];
-      /** What to paint amber -- see `facingTilesFor`. Snapshotted for the same reason. */
-      facingTiles: Coordinate[];
-    }
-  // A target is picked and the panel is up. ⚠️ *Picking* a target is a click,
-  // not a state -- but the panel being **open** is a mode: while it is up a tile
-  // click means cancel and the buttons are what commit. Still nothing sent.
-  | {
-      phase: 'targetChosen';
-      unitId: string;
-      path: Coordinate[];
-      movement: Movement;
-      attackTiles: Coordinate[];
-      facingTiles: Coordinate[];
-      target: Unit;
+      step: MenuStep;
     };
+
+/**
+ * Which question the menu is asking, and therefore what a tile click means.
+ *
+ * ⚠️ **The intent is chosen before the tiles light, and that is the whole
+ * design.** Reading intent *out of* a click costs quadratically: every action a
+ * tile could mean is another reading to order against all the others, so n
+ * actions is n(n-1)/2 orderings. That failed at n = 2 -- an adjacent enemy is
+ * also a facing choice, whichever question ran first won, and the fix was to
+ * force the order inside one reader. Asking first makes a new action one member
+ * here and one tile set, colliding with nothing.
+ *
+ * ⚠️ **Each mode carries the tiles it lights.** They used to be snapshotted
+ * together on arrival, which computed sets nobody would look at; now each is
+ * built when its mode is entered, from state fresh at that moment. Exactly one
+ * mode is live, so exactly one set is lit -- which is what lets the renderer
+ * take a single overlay rather than four independent ones that merely happen
+ * not to overlap.
+ */
+export type MenuStep =
+  // The panel is up and nothing is lit: the buttons are the only affordance.
+  | { kind: 'choosing' }
+  // ⚠️ `target` is nullable rather than a fourth kind. `unitSelected` and
+  // `routePinned` are separate *phases* because they differ in more than the
+  // path; firing with and without a target differ in exactly one field, so a
+  // nullable one is the honest encoding. Pinning a target and confirming it is
+  // the same gesture a route uses -- first click pins and shows the forecast,
+  // second commits, another lit enemy re-pins.
+  | { kind: 'firing'; tiles: Coordinate[]; target: Unit | null }
+  // The four beside the unit, and its own tile for keeping the facing it has.
+  | { kind: 'holding'; tiles: Coordinate[] };
 
 export type RoutePinned = Extract<SelectionState, { phase: 'routePinned' }>;
 export type DestinationChosen = Extract<SelectionState, { phase: 'destinationChosen' }>;
-export type TargetChosen = Extract<SelectionState, { phase: 'targetChosen' }>;
 
 /**
  * Every phase that carries a path -- an uncommitted plan, in other words,
@@ -95,7 +110,6 @@ export type Pinned = Extract<SelectionState, { path: Coordinate[] }>;
 const PINNED_PHASES = [
   'routePinned',
   'destinationChosen',
-  'targetChosen',
 ] as const satisfies readonly Pinned['phase'][];
 
 /**
@@ -110,9 +124,6 @@ type NoPinnedPhaseForgotten =
   Exclude<Pinned['phase'], (typeof PINNED_PHASES)[number]> extends never ? true : never;
 const allPinnedPhasesListed: NoPinnedPhaseForgotten = true;
 void allPinnedPhasesListed;
-
-/** The unit has walked and is choosing what to do: the menu, or the panel. */
-export type Arrived = DestinationChosen | TargetChosen;
 
 /**
  * Where a pinned unit is standing, really or in preview -- which is also the
@@ -133,42 +144,76 @@ export function isPlan(selection: SelectionState): selection is Pinned {
   return (PINNED_PHASES as readonly string[]).includes(selection.phase);
 }
 
-/** A target is picked: the panel opens over it, and nothing is sent yet. */
-export function chooseTarget(selection: DestinationChosen, target: Unit): TargetChosen {
-  return { ...selection, phase: 'targetChosen', target };
+type FiringStep = Extract<MenuStep, { kind: 'firing' }>;
+
+/** Firing mode is up: the band is lit, and a click on a lit enemy pins it. */
+export type Firing = DestinationChosen & { step: FiringStep };
+
+/** A target is pinned: the forecast is up, and a second click on it commits. */
+export type Aiming = DestinationChosen & { step: FiringStep & { target: Unit } };
+
+/**
+ * ⚠️ **Two predicates, so no caller writes the two-level narrowing by hand.**
+ * That is what absorbing `targetChosen` costs, and it is paid once here rather
+ * than at every `phase === 'destinationChosen' && step.kind === 'firing' &&
+ * step.target !== null` a reader would otherwise spell out.
+ */
+export function isFiring(selection: SelectionState): selection is Firing {
+  return selection.phase === 'destinationChosen' && selection.step.kind === 'firing';
 }
 
-/** Back from the panel to the tiles, with the target forgotten. */
-export function clearTarget(selection: TargetChosen): DestinationChosen {
+export function isAiming(selection: SelectionState): selection is Aiming {
+  return isFiring(selection) && selection.step.target !== null;
+}
+
+/** Enter one of the menu's modes, lighting the tiles it answers for. */
+export function chooseAction(
+  state: GameState,
+  selection: DestinationChosen,
+  kind: 'firing' | 'holding',
+): DestinationChosen {
+  // ⚠️ Built here rather than snapshotted on arrival: two of these would never
+  // be looked at, and the state a mode is entered from is fresher than the state
+  // the walk began in.
+  const destination = destinationOf(selection);
+  const unit = getUnit(state, selection.unitId);
+  if (kind === 'holding') {
+    return { ...selection, step: { kind: 'holding', tiles: facingTilesFor(state, destination) } };
+  }
   return {
-    phase: 'destinationChosen',
-    unitId: selection.unitId,
-    path: selection.path,
-    movement: selection.movement,
-    attackTiles: selection.attackTiles,
-    facingTiles: selection.facingTiles,
+    ...selection,
+    step: {
+      kind: 'firing',
+      tiles: unit ? attackTilesFor(state, { ...unit, position: destination }, destination) : [],
+      target: null,
+    },
   };
 }
 
+/** A target is pinned: the forecast opens over it, and nothing is sent yet. */
+export function chooseTarget(selection: Firing, target: Unit): Aiming {
+  return { ...selection, step: { ...selection.step, target } };
+}
+
+/** Back out of whichever mode is up, to the panel. */
+export function clearStep(selection: DestinationChosen): DestinationChosen {
+  return { ...selection, step: { kind: 'choosing' } };
+}
+
 /**
- * Which tiles the attack overlay paints, from where the unit ends up.
+ * Which tiles firing mode lights, from where the unit ends up.
  *
- * ⚠️ **The whole band, not just what is standing in it** -- reach is the
- * information, so red means *in range* rather than *attackable*.
- *
- * ⚠️ **The four tiles beside the unit are the only place two readings collide**,
- * because for a `min: 1` unit they are facing choices *and* inside the band.
- * Occupancy decides: one with no enemy on it is a facing tile and stays yellow;
- * everything else in the band is red. One rule, and no order to remember.
+ * ⚠️ **The whole band, and nothing filtered out of it** -- reach is the
+ * information, so red means *in range* rather than *attackable*. It used to
+ * exclude the four tiles beside the unit when nothing hostile stood on them,
+ * because those tiles were simultaneously facing choices and the colours had to
+ * be split somehow. Facing is its own mode now, so the two sets are never lit
+ * together and the band needs no holes punched in it.
  */
 function attackTilesFor(state: GameState, unit: Unit, from: Coordinate): Coordinate[] {
   const height = state.grid.length;
   const width = state.grid[0]?.length ?? 0;
-  return tilesInRange(unit, from, width, height).filter((tile) => {
-    if (directionBetween(from, tile) === null) return true; // not one of the four
-    const occupant = getUnitAt(state, tile);
-    return occupant !== undefined && occupant.owner !== unit.owner;
-  });
+  return tilesInRange(unit, from, width, height);
 }
 
 /**
@@ -196,22 +241,17 @@ function facingTilesFor(state: GameState, around: Coordinate): Coordinate[] {
 }
 
 /**
- * The route is accepted: the unit walks it, and the menu opens on arrival.
+ * The route is accepted: the unit walks it, and the panel opens on arrival.
  *
- * ⚠️ Takes state to snapshot the attack band, the same way `movement` is
- * snapshotted at selection. That keeps `showSelection` a pure projection of the
- * selection -- it would otherwise need the board to know what to paint -- and
- * the snapshot cannot go stale, because any board change discards the plan.
+ * ⚠️ **Takes no state, because the panel lights nothing.** It used to snapshot
+ * the attack band and the facing tiles here, which computed two sets for a
+ * player who would look at one. Each mode builds its own when it is entered,
+ * from state fresher than the state the walk began in. `showSelection` stays a
+ * pure projection either way -- the tiles still live on the selection, just on
+ * the step that lights them.
  */
-export function confirmRoute(state: GameState, selection: RoutePinned): DestinationChosen {
-  const destination = destinationOf(selection);
-  const unit = getUnit(state, selection.unitId);
-  return {
-    ...selection,
-    phase: 'destinationChosen',
-    attackTiles: unit ? attackTilesFor(state, { ...unit, position: destination }, destination) : [],
-    facingTiles: facingTilesFor(state, destination),
-  };
+export function confirmRoute(selection: RoutePinned): DestinationChosen {
+  return { ...selection, phase: 'destinationChosen', step: { kind: 'choosing' } };
 }
 
 export const initialSelectionState: SelectionState = { phase: 'idle' };
@@ -313,7 +353,10 @@ export function handleTileClick(
  * wants a step of exactly one tile. That is what lets the caller tell "keep the
  * direction travelled" from "face this way" without ordering the two by hand.
  */
-export function facingChoiceAt(selection: Arrived, coordinate: Coordinate): Facing | null {
+export function facingChoiceAt(
+  selection: DestinationChosen,
+  coordinate: Coordinate,
+): Facing | null {
   return directionBetween(destinationOf(selection), coordinate);
 }
 
@@ -329,67 +372,56 @@ export function facingChoiceAt(selection: Arrived, coordinate: Coordinate): Faci
  * can vanish from state under a stale selection, and "no answer" is a reading
  * the caller already refuses to commit.
  */
-export function holdFacing(state: GameState, selection: Arrived): Facing | null {
+export function holdFacing(state: GameState, selection: DestinationChosen): Facing | null {
   const previous = selection.path.at(-2);
   const travelled = previous ? directionBetween(previous, destinationOf(selection)) : null;
   return travelled ?? getUnit(state, selection.unitId)?.facing ?? null;
 }
 
 /**
- * What a click means once the unit has arrived and the tiles around it are the
- * menu.
+ * What a click in **holding** mode means: a facing to commit with, or `null` for
+ * a click on the dark, which backs out to the panel.
  *
- * ⚠️ **One reader, because the order these are asked in is load-bearing.** This
- * was three predicates -- `facingChoiceAt`, `holdFacing`, and an attack check --
- * with the caller trying each until one answered. But `facingChoiceAt` returns a
- * `Facing` for *any* adjacent tile without looking at what is standing on it, so
- * an adjacent enemy satisfies two of them and only the call order separated
- * them: ask facing first and an adjacent enemy can never be attacked. One
- * function makes that unrepresentable rather than merely avoided, and turns the
- * rule into a table a test can walk.
- *
- * ⚠️ `hold` and `face` collapse into one member deliberately. They are different
- * *gestures* -- the unit's own tile versus a tile beside it -- but they produce
- * the same thing, a facing to commit the move with, and nothing downstream
- * branches on which. A second member nothing reads is a second member to keep
- * in step.
+ * ⚠️ **There is no order to get right any more, and that is the point.** This
+ * was one reader answering three questions -- is it a target, is it the
+ * destination, is it one of the four -- because an adjacent enemy satisfies two
+ * of them and only the call order separated them. Ask the player for the intent
+ * first and each mode has exactly one kind of tile, so the collision cannot be
+ * expressed rather than merely being avoided.
  */
-export type ActionClick =
-  { kind: 'commit'; facing: Facing } | { kind: 'attack'; target: Unit } | { kind: 'cancel' };
-
-export function readActionClick(
+export function readHoldClick(
   state: GameState,
   selection: DestinationChosen,
   coordinate: Coordinate,
-): ActionClick {
-  const destination = destinationOf(selection);
-  const unit = getUnit(state, selection.unitId);
-  if (!unit) return { kind: 'cancel' };
-
-  // ⚠️ **Asked first, and that is the whole point of this function.** An enemy
-  // beside the unit is also a facing choice, and whichever question runs first
-  // wins. `refuseAttack` is compared against `null` and never against its text
-  // -- the reason belongs to the server and changes without the answer changing.
-  const target = getUnitAt(state, coordinate);
-  if (
-    target &&
-    refuseAttack(state, { ...unit, position: destination }, destination, target.id) === null
-  ) {
-    return { kind: 'attack', target };
-  }
-
-  // The destination itself: keep the direction travelled.
-  if (coordinatesEqual(coordinate, destination)) {
-    const facing = holdFacing(state, selection);
-    return facing ? { kind: 'commit', facing } : { kind: 'cancel' };
-  }
-
-  // One of the four beside it: face that way instead.
-  const facing = facingChoiceAt(selection, coordinate);
-  return facing ? { kind: 'commit', facing } : { kind: 'cancel' };
+): Facing | null {
+  // The destination itself keeps the direction travelled; one of the four
+  // beside it overrides that. `facingChoiceAt` answers `null` for the
+  // destination, since `directionBetween` wants a step of exactly one tile.
+  return coordinatesEqual(coordinate, destinationOf(selection))
+    ? holdFacing(state, selection)
+    : facingChoiceAt(selection, coordinate);
 }
 
-/** What the panel shows before you commit to a shot. */
+/**
+ * What a click in **firing** mode means: an enemy that may be shot from here, or
+ * `null` for anything else.
+ *
+ * ⚠️ `refuseAttack` is compared against `null` and never against its text -- the
+ * reason belongs to the server and changes without the answer changing.
+ */
+export function readFireClick(
+  state: GameState,
+  selection: Firing,
+  coordinate: Coordinate,
+): Unit | null {
+  const destination = destinationOf(selection);
+  const unit = getUnit(state, selection.unitId);
+  const target = getUnitAt(state, coordinate);
+  if (!unit || !target) return null;
+  const from = { ...unit, position: destination };
+  return refuseAttack(state, from, destination, target.id) === null ? target : null;
+}
+
 export interface Forecast {
   /** Damage at the worst roll, and at the best. The true outcome is one of them. */
   low: number;
@@ -415,9 +447,9 @@ export interface Forecast {
  * to survive. So it means *they will fire back unless you kill them*, which is
  * the pessimistic reading and the right default for a warning.
  */
-export function attackForecast(state: GameState, selection: TargetChosen): Forecast | null {
+export function attackForecast(state: GameState, selection: Aiming): Forecast | null {
   const attacker = getUnit(state, selection.unitId);
-  const target = getUnit(state, selection.target.id);
+  const target = getUnit(state, selection.step.target.id);
   if (!attacker || !target) return null;
 
   // The attacker as it will be standing when it fires, not where state still
@@ -432,10 +464,10 @@ export function attackForecast(state: GameState, selection: TargetChosen): Forec
 }
 
 /** Which way the unit ends up looking once it commits from the panel. */
-export function facingForTarget(state: GameState, selection: TargetChosen): Facing {
+export function facingForTarget(state: GameState, selection: Aiming): Facing {
   const from = destinationOf(selection);
   const travelled = holdFacing(state, selection) ?? 'north';
-  return facingToward(from, selection.target.position, travelled);
+  return facingToward(from, selection.step.target.position, travelled);
 }
 
 /**
@@ -454,7 +486,11 @@ export function unpinDestination(selection: Pinned): SelectionState {
 }
 
 /** Commit the pinned move, looking the way the player chose. */
-export function moveCommandFor(selection: Arrived, facing: Facing, targetUnitId?: string): Command {
+export function moveCommandFor(
+  selection: DestinationChosen,
+  facing: Facing,
+  targetUnitId?: string,
+): Command {
   const command: Command = {
     type: 'move',
     unitId: selection.unitId,

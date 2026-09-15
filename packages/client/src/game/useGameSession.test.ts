@@ -10,6 +10,7 @@ import type {
   GameState,
   UpdateListener,
 } from '@vod/shared';
+import { isAiming } from './interaction/selection';
 import { useGameSession } from './useGameSession';
 import type { GameSessionCallbacks } from './useGameSession';
 
@@ -161,11 +162,11 @@ describe('useGameSession', () => {
     });
 
     // ⚠️ The same guard from the caller that used to rely on being unreachable.
-    // The panel is opened *first*, then the winning state arrives -- which is
-    // the multiplayer shape: an opponent's last unit dies while this client
-    // still has a target chosen. The selection is left standing, so without the
-    // guard the Fire button submits straight into a refusal.
-    it('sends no attack from a panel that was already open', async () => {
+    // A target is pinned *first*, then the winning state arrives -- which is the
+    // multiplayer shape: an opponent's last unit dies while this client still
+    // has one aimed at. The selection is left standing, so without the guard the
+    // confirming click submits straight into a refusal.
+    it('sends no attack from a target that was already pinned', async () => {
       const contested = makeState(7, [
         { id: 'b1', col: 1, row: 1 },
         { id: 'r1', col: 1, row: 4, owner: 'red' },
@@ -175,13 +176,14 @@ describe('useGameSession', () => {
       await act(async () => {});
 
       await reachMenu(result);
+      act(() => result.current.chooseAction('firing'));
       act(() => result.current.clickTile(at(1, 4)));
-      // The precondition, asserted: without it this test would pass on
-      // `commitAttack`'s own early return and prove nothing.
-      expect(result.current.selection.phase).toBe('targetChosen');
+      // The precondition, asserted: without a pinned target the confirming
+      // click below is just a click on the dark and proves nothing.
+      expect(isAiming(result.current.selection)).toBe(true);
 
       await act(async () => fake.push([], { ...contested, winner: 'blue' }));
-      act(() => result.current.commitAttack(true));
+      act(() => result.current.clickTile(at(1, 4)));
       expect(fake.submissions).toEqual([]);
     });
 
@@ -394,7 +396,46 @@ describe('useGameSession', () => {
     await act(async () => result.current.clickTile(PIN));
   }
 
-  it('pins on click, offers directions on Hold, and submits on a direction', async () => {
+  /**
+   * …and then pick Hold, which is what lights the facing tiles.
+   *
+   * ⚠️ The step the panel added. Facing used to be offered the instant the walk
+   * landed, which meant a tile click had to be read against three possible
+   * meanings; now the player says which question they are answering first.
+   */
+  async function reachHold(result: ReturnType<typeof renderSession>['result']): Promise<void> {
+    await reachMenu(result);
+    act(() => result.current.chooseAction('holding'));
+  }
+
+  // ⚠️ **Two rules for backing out.** A dark click inside a mode returns to the
+  // panel with the walk intact; a dark click at the panel un-walks the ghost.
+  // Asserted as a pair, because the failure mode is one of them swallowing the
+  // other -- and a mode that cannot be left is a trap with no way out.
+  it('backs out of a mode to the panel, then out of the panel to the board', async () => {
+    const fake = fakeServer(board);
+    const cb = callbacks();
+    const { result } = renderSession(fake, cb);
+    await act(async () => {});
+
+    await reachHold(result);
+    expect(result.current.selection).toMatchObject({ step: { kind: 'holding' } });
+
+    // Far from the unit: lit by nothing, so it means "go back".
+    await act(async () => result.current.clickTile(at(5, 5)));
+    expect(result.current.selection).toMatchObject({
+      phase: 'destinationChosen',
+      step: { kind: 'choosing' },
+    });
+    expect(cb.onPreview).not.toHaveBeenCalledWith(null); // the ghost stays put
+
+    await act(async () => result.current.clickTile(at(5, 5)));
+    expect(result.current.selection.phase).toBe('unitSelected');
+    expect(cb.onPreview).toHaveBeenCalledWith(null); // and now it walks back
+    expect(fake.submissions).toEqual([]); // nothing was ever sent
+  });
+
+  it('pins, confirms, opens the panel, and submits on a direction', async () => {
     const fake = fakeServer(board);
     const { result } = renderSession(fake, callbacks());
     await act(async () => {}); // settle the initial batch, which would drop a pin
@@ -406,8 +447,18 @@ describe('useGameSession', () => {
     expect(result.current.selection).toMatchObject({ phase: 'routePinned', unitId: 'b1' });
 
     await act(async () => result.current.clickTile(PIN)); // the confirm
-    expect(result.current.selection).toMatchObject({ phase: 'destinationChosen', unitId: 'b1' });
+    // ⚠️ The panel, and nothing lit. The walk landing no longer offers a
+    // choice of tiles -- it offers a choice of *questions*.
+    expect(result.current.selection).toMatchObject({
+      phase: 'destinationChosen',
+      unitId: 'b1',
+      step: { kind: 'choosing' },
+    });
     expect(fake.submissions).toEqual([]); // the whole point: nothing has left yet
+
+    act(() => result.current.chooseAction('holding'));
+    expect(result.current.selection).toMatchObject({ step: { kind: 'holding' } });
+    expect(fake.submissions).toEqual([]); // still nothing: a mode is not a commit
 
     fake.respond({ ok: true, seq: 1, events: [], state: board });
     await act(async () => result.current.clickTile(FACE_NORTH));
@@ -436,6 +487,10 @@ describe('useGameSession', () => {
     await reachMenu(result);
     expect(result.current.walking).toBe(true);
 
+    // ⚠️ The mode cannot be entered either, and for the same reason: the panel
+    // only exists once the unit has arrived, so Hold mid-walk is a no-op rather
+    // than a queued intent.
+    act(() => result.current.chooseAction('holding'));
     await act(async () => result.current.clickTile(FACE_NORTH));
     expect(fake.submissions).toEqual([]); // refused: the mesh is still short
     // ⚠️ Still the pinned phase, because arrival is what turns it over -- so
@@ -443,6 +498,7 @@ describe('useGameSession', () => {
     expect(result.current.selection.phase).toBe('routePinned');
 
     await act(async () => arrive());
+    act(() => result.current.chooseAction('holding'));
     await act(async () => result.current.clickTile(FACE_NORTH));
     expect(fake.submissions).toHaveLength(1);
   });
@@ -528,7 +584,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, cb);
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
-    await reachMenu(result);
+    await reachHold(result);
     vi.mocked(cb.onPreview).mockClear();
 
     fake.respond({ ok: true, seq: 1, events: [], state: board });
@@ -609,7 +665,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, callbacks());
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
-    await reachMenu(result);
+    await reachHold(result);
     await act(async () => result.current.clickTile(PIN)); // and again, to commit
 
     expect(fake.submissions).toEqual([
@@ -649,7 +705,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, callbacks());
     await act(async () => {}); // settle the initial batch, which would drop a pin
 
-    await reachMenu(result);
+    await reachHold(result);
     fake.respond({ ok: false, reason: 'illegal move' });
     await act(async () => result.current.clickTile(FACE_NORTH));
 
@@ -717,7 +773,7 @@ describe('useGameSession', () => {
     const { result } = renderSession(fake, cb);
 
     await act(async () => {}); // settle the initial batch, which would drop a pin
-    await reachMenu(result);
+    await reachHold(result);
     let release!: (result: CommandResult) => void;
     fake.respond(new Promise<CommandResult>((res) => (release = res)));
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { getCurrentPlayer, isOver } from '@vod/shared';
 import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
 import { useGameSession } from './useGameSession';
-import { attackForecast, isPlan, destinationOf } from './interaction/selection';
+import { attackForecast, isAiming, isPlan, destinationOf } from './interaction/selection';
 import type { SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
 import { createGameRenderer } from './render/renderer';
@@ -30,8 +30,13 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
 
   // The tiles around the unit *are* the menu, and only once it has walked: an
   // inert lit tile invites a click that does nothing.
-  renderer.setFacingChoices(arrived ? selection.facingTiles : []);
-  renderer.setAttackRange(arrived ? selection.attackTiles : []);
+  // ⚠️ **Exactly one set is lit, and the mode is what guarantees it.** These
+  // were two independent conditions that merely happened never to be true at
+  // once; now the step says which tiles mean something, so the other overlay
+  // clears because there is nothing else it could be showing.
+  const step = arrived ? selection.step : null;
+  renderer.setFacingChoices(step?.kind === 'holding' ? step.tiles : []);
+  renderer.setAttackRange(step?.kind === 'firing' ? step.tiles : []);
 
   // ⚠️ The unit's own tile, never the pin. A pinned route has not been walked,
   // so highlighting its destination would claim the unit is somewhere it is
@@ -70,6 +75,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   const rendererRef = useRef<GameRenderer | null>(null);
   const confirmPaneRef = useRef<HTMLDivElement>(null);
   const attackPanelRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Both callbacks read the ref at call time, never capture the renderer: a
   // queue task parked on an animation resolves after this canvas unmounted, and
@@ -97,7 +103,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
     [],
   );
 
-  const { gameState, rejection, selection, walking, clickTile, commitAttack, endTurn } =
+  const { gameState, rejection, selection, walking, clickTile, chooseAction, endTurn } =
     useGameSession(server, {
       onEvents,
       onSnap,
@@ -131,8 +137,11 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   // The panel is the same DOM-over-canvas trick as the confirm pane, anchored
   // over the target instead of the destination. Only one is ever up, which is
   // why `anchorTo` taking a single element is enough.
-  const choosing = selection.phase === 'targetChosen' ? selection : null;
-  const forecast = choosing ? attackForecast(server.getState(), choosing) : null;
+  // The panel is up when the unit has arrived and has not yet been told what
+  // to do. It is the only affordance in that moment: no tile is lit.
+  const menuOpen = selection.phase === 'destinationChosen' && selection.step.kind === 'choosing';
+  const aiming = isAiming(selection) ? selection : null;
+  const forecast = aiming ? attackForecast(server.getState(), aiming) : null;
 
   // `clickTile` changes identity whenever the selection does, and the renderer
   // is registered with it exactly once. A stable wrapper over a latest-ref
@@ -186,15 +195,23 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
-    if (choosing) {
-      renderer.anchorTo(attackPanelRef.current, choosing.target.position);
+    // ⚠️ Three things can be anchored now and `anchorTo` still takes one
+    // element, because still only one is ever up: the forecast over a pinned
+    // target, the menu over the destination, the confirm pane over a route that
+    // has not walked. The modes are what make that exclusive.
+    if (aiming) {
+      renderer.anchorTo(attackPanelRef.current, aiming.step.target.position);
+      return;
+    }
+    if (menuOpen) {
+      renderer.anchorTo(menuRef.current, destinationOf(selection));
       return;
     }
     renderer.anchorTo(
       awaitingConfirm ? confirmPaneRef.current : null,
       awaitingConfirm ? destinationOf(selection) : null,
     );
-  }, [awaitingConfirm, choosing, selection]);
+  }, [awaitingConfirm, aiming, menuOpen, selection]);
 
   return (
     <div>
@@ -219,7 +236,37 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             the only verbs until now -- a preview with numbers in it cannot be a
             tile, and Hold cannot be one either, since the only tile that faces
             an enemy is the one they are standing on. */}
-        {choosing && forecast && (
+        {menuOpen && (
+          <div
+            ref={menuRef}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              marginTop: '-14px',
+              padding: '6px 8px',
+              borderRadius: '5px',
+              background: 'rgba(24, 28, 34, 0.92)',
+              color: '#f2f4f7',
+              fontSize: '13px',
+              lineHeight: 1.5,
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+              alignItems: 'stretch',
+            }}
+          >
+            <button type="button" onClick={() => chooseAction('firing')}>
+              Fire
+            </button>
+            <button type="button" onClick={() => chooseAction('holding')}>
+              Hold — face them, do not fire
+            </button>
+          </div>
+        )}
+
+        {aiming && forecast && (
           <div
             ref={attackPanelRef}
             style={{
@@ -240,14 +287,16 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
               alignItems: 'stretch',
             }}
           >
-            <button type="button" onClick={() => commitAttack(true)}>
+            {/* ⚠️ Informational, with no button, like the route's confirm pane
+                -- and for the same reason. Buttons pick intent; tiles pick
+                targets. A second click on the target is what fires, which is the
+                gesture the route already taught. */}
+            <span>
               Fire — {forecast.low}
               {forecast.high > forecast.low && `–${forecast.high}`} damage
               {forecast.answered && ' · they return fire'}
-            </button>
-            <button type="button" onClick={() => commitAttack(false)}>
-              Hold — face them, do not fire
-            </button>
+            </span>
+            <span style={{ opacity: 0.75 }}>Click again to confirm</span>
           </div>
         )}
 
@@ -295,13 +344,14 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             Toggle Inspector
           </button>
         )}
-        {/* The only thing telling a player what a click means, now that every
-            answer to a pinned destination is a tile rather than a button. The
-            pane carries the other half, while the route is still a plan. */}
-        {selection.phase === 'destinationChosen' && (
+        {/* ⚠️ One line per mode, because a mode is exactly one question. The
+            combined sentence this replaced had to describe three readings of a
+            tile click at once, which is the thing the panel exists to stop. */}
+        {selection.phase === 'destinationChosen' && selection.step.kind !== 'choosing' && (
           <span>
-            Click an enemy in range to attack, the unit to hold, a tile beside it to face that way,
-            or elsewhere to cancel.
+            {selection.step.kind === 'firing'
+              ? 'Click an enemy in range, then click it again to fire. Click elsewhere to go back.'
+              : 'Click a tile beside the unit to face that way, or the unit to keep its facing.'}
           </span>
         )}
         {rejection && <span style={{ color: '#c0392b' }}> rejected: {rejection}</span>}

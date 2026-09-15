@@ -4,12 +4,16 @@ import { LUCK_MAX } from '@vod/shared';
 import type { Coordinate, GameState } from '@vod/shared';
 import {
   attackForecast,
+  chooseAction,
   chooseTarget,
-  clearTarget,
+  clearStep,
   confirmRoute,
   facingForTarget,
+  isAiming,
+  isFiring,
   isPlan,
-  readActionClick,
+  readFireClick,
+  readHoldClick,
   facingChoiceAt,
   destinationOf,
   handleTileClick,
@@ -18,7 +22,7 @@ import {
   unpinDestination,
   holdFacing,
 } from './selection';
-import type { DestinationChosen, RoutePinned, SelectionState } from './selection';
+import type { Aiming, DestinationChosen, Firing, RoutePinned, SelectionState } from './selection';
 
 // The pure half of the client: state and a coordinate in, a new selection out.
 // No React, no Babylon, no server. `handleTileClick` never produces a command
@@ -47,9 +51,27 @@ function withB1Pinned(state: GameState, destination: Coordinate): RoutePinned {
   return pinned;
 }
 
-/** Pin a route and confirm it: the phase the menu and the facing choice live in. */
+/** Pin a route and confirm it: the unit has walked and the panel is up. */
 const withB1Arrived = (state: GameState, destination: Coordinate): DestinationChosen =>
-  confirmRoute(state, withB1Pinned(state, destination));
+  confirmRoute(withB1Pinned(state, destination));
+
+/** …and then pick Fire from the panel, which is what lights the band. */
+function withB1Firing(state: GameState, destination: Coordinate): Firing {
+  const firing = chooseAction(state, withB1Arrived(state, destination), 'firing');
+  if (!isFiring(firing)) throw new Error('expected firing mode');
+  return firing;
+}
+
+/** …and then pick Hold, which is what lights the four beside it. */
+const withB1Holding = (state: GameState, destination: Coordinate): DestinationChosen =>
+  chooseAction(state, withB1Arrived(state, destination), 'holding');
+
+/** …or pick Fire and pin a target, so the forecast is up. */
+function withB1Aiming(state: GameState, destination: Coordinate, targetId: string): Aiming {
+  const aiming = chooseTarget(withB1Firing(state, destination), unitAt(state, targetId));
+  if (!isAiming(aiming)) throw new Error('expected a pinned target');
+  return aiming;
+}
 
 describe('handleTileClick, nothing selected', () => {
   it('selects a unit that can act, snapshotting its position and range', () => {
@@ -237,7 +259,7 @@ describe('a destination arrived at', () => {
   it('keeps the path and the search when the route is confirmed', () => {
     const state = board();
     const pinned = withB1Pinned(state, at(1, 3));
-    const arrived = confirmRoute(state, pinned);
+    const arrived = confirmRoute(pinned);
     expect(arrived.path).toBe(pinned.path);
     expect(arrived.movement).toBe(pinned.movement);
   });
@@ -312,10 +334,13 @@ describe('choosing a facing', () => {
   });
 });
 
-// ⚠️ The table the three predicates could not be tested as. With them, the only
-// thing a test could pin was *call order*; here the rule is one function and
-// each reading is a case.
-describe('readActionClick', () => {
+// ⚠️ **The collision these used to be about cannot happen any more.** One
+// reader answered "target or facing?" because an adjacent enemy is both, and
+// only its call order separated them. The panel asks for the intent first, so
+// each mode has exactly one kind of tile and there is no order left to pin.
+// What is worth testing instead is that the *mode* decides -- the same tile,
+// read two ways, chosen by the player rather than guessed.
+describe('a lit tile means what the mode says', () => {
   // b1 infantry at (1,1), range 1..2. An enemy sits beside it and another two
   // tiles off; a friend sits beside it too.
   const field = () =>
@@ -326,72 +351,76 @@ describe('readActionClick', () => {
       { id: 'distant', col: 3, row: 1, owner: 'red' },
       { id: 'far', col: 5, row: 5, owner: 'red' },
     ]);
-  const arrived = (state: GameState) => confirmRoute(state, withB1Pinned(state, at(1, 1)));
 
-  it('reads the unit’s own tile as a commit keeping its facing', () => {
+  // ⚠️ The pair that is the whole design. (2,1) holds an adjacent enemy, so it
+  // is simultaneously a target and a direction to face. Under one reader that
+  // was a bug waiting on call order; here the answer is whichever the player
+  // asked for, and neither reading can leak into the other's mode.
+  it('reads an adjacent enemy as a target in firing mode', () => {
     const state = field();
-    expect(readActionClick(state, arrived(state), at(1, 1))).toEqual({
-      kind: 'commit',
-      facing: unitAt(state, 'b1').facing,
+    expect(readFireClick(state, withB1Firing(state, at(1, 1)), at(2, 1))?.id).toBe('adjacent');
+  });
+
+  it('reads that same tile as a facing in holding mode', () => {
+    const state = field();
+    expect(readHoldClick(state, withB1Holding(state, at(1, 1)), at(2, 1))).toBe('east');
+  });
+
+  describe('firing', () => {
+    it('reads an enemy further off but still in range as a target', () => {
+      const state = field();
+      expect(readFireClick(state, withB1Firing(state, at(1, 1)), at(3, 1))?.id).toBe('distant');
+    });
+
+    it('reads an enemy out of range as nothing', () => {
+      const state = field();
+      expect(readFireClick(state, withB1Firing(state, at(1, 1)), at(5, 5))).toBeNull();
+    });
+
+    it('reads a friend as nothing, however close', () => {
+      const state = field();
+      expect(readFireClick(state, withB1Firing(state, at(1, 1)), at(1, 2))).toBeNull();
+    });
+
+    it('reads empty ground as nothing', () => {
+      const state = field();
+      expect(readFireClick(state, withB1Firing(state, at(1, 1)), at(0, 1))).toBeNull();
+    });
+
+    // Artillery cannot hit what has reached it: the band, not adjacency, is
+    // what decides, and it is the server's own `refuseAttack` that says so.
+    it('reads an adjacent enemy as nothing when the unit cannot shoot that close', () => {
+      const gunline = makeState(7, [
+        { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
+        { id: 'adjacent', col: 2, row: 1, owner: 'red' },
+      ]);
+      expect(readFireClick(gunline, withB1Firing(gunline, at(1, 1)), at(2, 1))).toBeNull();
     });
   });
 
-  it('reads an empty tile beside it as a commit facing that way', () => {
-    const state = field();
-    expect(readActionClick(state, arrived(state), at(0, 1))).toEqual({
-      kind: 'commit',
-      facing: 'west',
+  describe('holding', () => {
+    it('reads the unit’s own tile as keeping the facing it has', () => {
+      const state = field();
+      expect(readHoldClick(state, withB1Holding(state, at(1, 1)), at(1, 1))).toBe(
+        unitAt(state, 'b1').facing,
+      );
     });
-  });
 
-  // ⚠️ **The case the old shape could get wrong.** This tile is adjacent, so
-  // `facingChoiceAt` answers a `Facing` for it — and it holds an enemy in range.
-  // Whichever question ran first decided, and nothing said which.
-  it('reads an adjacent enemy as an attack, not as a facing', () => {
-    const state = field();
-    const click = readActionClick(state, arrived(state), at(2, 1));
-    expect(click.kind).toBe('attack');
-    if (click.kind !== 'attack') return;
-    expect(click.target.id).toBe('adjacent');
-  });
-
-  it('reads an enemy further off but still in range as an attack', () => {
-    const state = field();
-    const click = readActionClick(state, arrived(state), at(3, 1));
-    expect(click).toMatchObject({ kind: 'attack' });
-  });
-
-  it('reads an enemy out of range as a cancel', () => {
-    const state = field();
-    expect(readActionClick(state, arrived(state), at(5, 5))).toEqual({ kind: 'cancel' });
-  });
-
-  // A friend beside the unit is not a target, so the tile keeps its other
-  // meaning: you may turn to look at it.
-  it('reads a friendly tile beside it as a facing, not an attack', () => {
-    const state = field();
-    expect(readActionClick(state, arrived(state), at(1, 2))).toEqual({
-      kind: 'commit',
-      facing: 'north',
+    it('reads a tile beside it as facing that way', () => {
+      const state = field();
+      expect(readHoldClick(state, withB1Holding(state, at(1, 1)), at(0, 1))).toBe('west');
     });
-  });
 
-  it('reads anything further away as a cancel', () => {
-    const state = field();
-    expect(readActionClick(state, arrived(state), at(4, 4))).toEqual({ kind: 'cancel' });
-  });
+    // Occupancy does not enter into it: a neighbour with someone standing on it
+    // is still a direction, which is exactly what firing mode disagrees about.
+    it('does not care what is standing on the tile', () => {
+      const state = field();
+      expect(readHoldClick(state, withB1Holding(state, at(1, 1)), at(1, 2))).toBe('north');
+    });
 
-  // Artillery cannot hit what has reached it, so an adjacent enemy is a facing
-  // choice again -- the same tile reading differently for a different unit,
-  // decided by the range band and nothing else.
-  it('reads an adjacent enemy as a facing when the unit cannot shoot that close', () => {
-    const gunline = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
-      { id: 'adjacent', col: 2, row: 1, owner: 'red' },
-    ]);
-    expect(readActionClick(gunline, arrived(gunline), at(2, 1))).toEqual({
-      kind: 'commit',
-      facing: 'east',
+    it('reads anything further away as nothing', () => {
+      const state = field();
+      expect(readHoldClick(state, withB1Holding(state, at(1, 1)), at(4, 4))).toBeNull();
     });
   });
 });
@@ -407,8 +436,7 @@ describe('the panel, and what it is told', () => {
       { id: 'b1', col: 1, row: 1 },
       { id: 'r1', col: 1, row: 3, owner: 'red', facing: 'south' },
     ]);
-  const panel = (state: GameState) =>
-    chooseTarget(confirmRoute(state, withB1Pinned(state, at(1, 1))), unitAt(state, 'r1'));
+  const panel = (state: GameState) => withB1Aiming(state, at(1, 1), 'r1');
 
   // ⚠️ An exact range, not an estimate: luck is added last and flat, so the
   // zero-roll result is the true floor and the spread is exactly LUCK_MAX.
@@ -436,10 +464,7 @@ describe('the panel, and what it is told', () => {
       { id: 'b1', col: 1, row: 1 },
       { id: 'r1', col: 1, row: 3, owner: 'red', facing: 'north' },
     ]);
-    const chosen = chooseTarget(
-      confirmRoute(state, withB1Pinned(state, at(1, 1))),
-      unitAt(state, 'r1'),
-    );
+    const chosen = withB1Aiming(state, at(1, 1), 'r1');
     expect(attackForecast(state, chosen)?.answered).toBe(false);
     // ⚠️ And the damage is untouched: facing changes who may answer, never what
     // the shot does. A flanking bonus would show up right here, and does not --
@@ -456,10 +481,7 @@ describe('the panel, and what it is told', () => {
       { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
       { id: 'r1', col: 1, row: 5, owner: 'red' },
     ]);
-    const chosen = chooseTarget(
-      confirmRoute(state, withB1Pinned(state, at(1, 1))),
-      unitAt(state, 'r1'),
-    );
+    const chosen = withB1Aiming(state, at(1, 1), 'r1');
     expect(attackForecast(state, chosen)?.answered).toBe(false);
   });
 
@@ -471,21 +493,34 @@ describe('the panel, and what it is told', () => {
       { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
       { id: 'r1', col: 4, row: 2, owner: 'red' },
     ]);
-    const chosen = chooseTarget(
-      confirmRoute(diagonal, withB1Pinned(diagonal, at(1, 1))),
-      unitAt(diagonal, 'r1'),
-    );
+    const chosen = withB1Aiming(diagonal, at(1, 1), 'r1');
     expect(facingForTarget(diagonal, chosen)).toBe('east');
   });
 
-  // ⚠️ Backing out of the panel returns to the tiles with the unit still
-  // standing where it walked -- not to the board. The plan is still a plan.
-  it('backs out to the menu with the walk intact', () => {
+  // ⚠️ Backing out returns to the panel with the unit still standing where it
+  // walked -- not to the board. The plan is still a plan, and that is the first
+  // of the two back-out rules: dark inside a mode goes up one, dark at the panel
+  // un-walks.
+  it('backs out to the panel with the walk intact', () => {
     const state = field();
-    const back = clearTarget(panel(state));
-    expect(back.phase).toBe('destinationChosen');
+    const back = clearStep(panel(state));
+    expect(back.step).toEqual({ kind: 'choosing' });
     expect(back.path).toEqual(panel(state).path);
-    expect(back.attackTiles).toEqual(panel(state).attackTiles);
+    expect(isPlan(back)).toBe(true);
+  });
+
+  // ⚠️ A different lit enemy re-pins rather than backing out, exactly as a
+  // route does -- the gesture is the same one the walk already taught.
+  it('re-pins onto another target without leaving firing mode', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 3, owner: 'red', facing: 'south' },
+      { id: 'r2', col: 3, row: 1, owner: 'red', facing: 'south' },
+    ]);
+    const first = withB1Aiming(state, at(1, 1), 'r1');
+    const second = chooseTarget(first, unitAt(state, 'r2'));
+    expect(second.step.target.id).toBe('r2');
+    expect(second.step.tiles).toEqual(first.step.tiles);
   });
 
   // ⚠️ **Behaviour, now that the compiler owns the bookkeeping.** `Pinned` is
@@ -498,15 +533,17 @@ describe('the panel, and what it is told', () => {
     const state = field();
     expect(isPlan(panel(state))).toBe(true);
     expect(isPlan(withB1Pinned(state, at(1, 1)))).toBe(true);
-    expect(isPlan(confirmRoute(state, withB1Pinned(state, at(1, 1))))).toBe(true);
+    expect(isPlan(withB1Arrived(state, at(1, 1)))).toBe(true);
     expect(isPlan(initialSelectionState)).toBe(false);
     expect(isPlan(withB1Selected(state))).toBe(false);
   });
 });
 
 describe('facingTiles, which the overlay paints', () => {
-  const tilesFor = (state: GameState, at_: Coordinate) =>
-    confirmRoute(state, withB1Pinned(state, at_)).facingTiles;
+  const tilesFor = (state: GameState, at_: Coordinate) => {
+    const holding = withB1Holding(state, at_);
+    return holding.step.kind === 'holding' ? holding.step.tiles : [];
+  };
 
   it('offers the four tiles around where the unit stopped', () => {
     const state = makeState(7, [{ id: 'b1', col: 1, row: 1 }]);
@@ -542,43 +579,45 @@ describe('facingTiles, which the overlay paints', () => {
   });
 });
 
-describe('attackTiles, which the overlay paints', () => {
+describe('the tiles firing mode lights', () => {
   const has = (tiles: Coordinate[], col: number, row: number) =>
     tiles.some((tile) => tile.col === col && tile.row === row);
-  const tilesFor = (state: GameState) =>
-    confirmRoute(state, withB1Pinned(state, at(1, 1))).attackTiles;
+  const tilesFor = (state: GameState) => withB1Firing(state, at(1, 1)).step.tiles;
 
-  // ⚠️ The rule the colours rest on: the four tiles beside the unit are facing
-  // choices *and* inside a min-1 band, and occupancy is what separates them.
-  it('leaves an empty tile beside the unit to the facing overlay', () => {
+  // ⚠️ **The whole band, with no holes punched in it.** These tiles used to be
+  // filtered -- an adjacent tile with nothing hostile on it was left to the
+  // facing overlay, because both sets were lit at once and the colours had to
+  // be split somehow. Facing is its own mode now, so reach is simply reach.
+  it('lights an empty tile beside the unit, like any other in range', () => {
     const tiles = tilesFor(makeState(7, [{ id: 'b1', col: 1, row: 1 }]));
-    expect(has(tiles, 1, 2)).toBe(false); // adjacent and empty: yellow
-    expect(has(tiles, 1, 3)).toBe(true); // two out: red
-  });
-
-  it('claims an adjacent tile back the moment an enemy stands on it', () => {
-    const tiles = tilesFor(
-      makeState(7, [
-        { id: 'b1', col: 1, row: 1 },
-        { id: 'r1', col: 1, row: 2, owner: 'red' },
-      ]),
-    );
     expect(has(tiles, 1, 2)).toBe(true);
+    expect(has(tiles, 1, 3)).toBe(true);
   });
 
-  // A friend beside you is not a target, so the tile keeps its other meaning.
-  it('leaves an adjacent friend to the facing overlay', () => {
+  it('lights a tile a friend is standing on, too', () => {
     const tiles = tilesFor(
       makeState(7, [
         { id: 'b1', col: 1, row: 1 },
         { id: 'b2', col: 1, row: 2 },
       ]),
     );
-    expect(has(tiles, 1, 2)).toBe(false);
+    expect(has(tiles, 1, 2)).toBe(true);
   });
 
-  // Artillery cannot shoot what has reached it, so its band starts two out and
-  // the adjacent rule never even applies.
+  // ⚠️ Lit is not the same as clickable, and that is deliberate -- the same
+  // line `settled` and `reachable` already draw for movement. `readFireClick`
+  // is what refuses; this only says what the band is.
+  it('lights ground it cannot legally shoot at, because reach is the point', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'b2', col: 1, row: 2 },
+    ]);
+    expect(has(tilesFor(state), 1, 2)).toBe(true);
+    expect(readFireClick(state, withB1Firing(state, at(1, 1)), at(1, 2))).toBeNull();
+  });
+
+  // Artillery cannot shoot what has reached it, so its band starts two out --
+  // the one exclusion that survives, because it is the *range*, not a colour.
   it('never includes what a minimum range forbids', () => {
     const tiles = tilesFor(
       makeState(9, [

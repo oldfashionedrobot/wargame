@@ -930,11 +930,18 @@ snap is caught and logged; the commit always happens.
 handleTileClick(state, selection, coordinate) → SelectionState
 destinationOf(pinned)                         → Coordinate
 confirmRoute(routePinned)                     → DestinationChosen
-facingChoiceAt(arrived, coordinate)           → Facing | null
-holdFacing(state, arrived)                    → Facing | null
-unpinDestination(pinned)                      → SelectionState
+chooseAction(state, arrived, kind)            → DestinationChosen   // enter a mode
+readFireClick(state, firing, coordinate)      → Unit | null
+readHoldClick(state, arrived, coordinate)     → Facing | null
+chooseTarget(firing, target)                  → Aiming
+clearStep(arrived)                            → DestinationChosen   // back to the panel
+unpinDestination(pinned)                      → SelectionState      // back to the board
 moveCommandFor(arrived, facing)               → Command
 ```
+
+⚠️ `chooseAction` is the *only* thing a button calls; everything else a player
+does is a tile click. `clearStep` and `unpinDestination` are the two back-out
+rules, one per level.
 
 ⚠️ **`destinationOf` was three functions.** `pinnedDestination` and
 `facingChoiceOrigin` were the same one-line body under other names, separated
@@ -957,21 +964,27 @@ paired return would carry no information.
 | { phase: 'idle' }
 | { phase: 'unitSelected'; unitId; position; movement }
 | { phase: 'routePinned'; unitId; path; movement }
-| { phase: 'destinationChosen'; unitId; path; movement; attackTiles; facingTiles }
-| { phase: 'targetChosen'; unitId; path; movement; attackTiles; facingTiles; target }
+| { phase: 'destinationChosen'; unitId; path; movement; step }
+
+MenuStep
+  | { kind: 'choosing' }                     // panel up, nothing lit
+  | { kind: 'firing'; tiles; target | null } // the band; null until one is pinned
+  | { kind: 'holding'; tiles }               // the four beside it
 ```
 
 `movement` is the whole `exploreMovement` result, snapshotted at selection time.
 `reachable` decides whether a click pins; `pathTo` builds the path.
 
-⚠️ **`attackTiles` and `facingTiles` are both snapshotted at `confirmRoute`**, and
-for one reason: it keeps `showSelection` a *pure projection of the selection*,
-needing no game state to know what to paint. They cannot go stale, because any
-board change discards the plan. ⚠️ Facing tiles used to be derived inside the
-renderer from a single coordinate — which put a question about the selection
-inside the thing that paints, and hid the board-edge clipping somewhere with no
-unit tests at all, WebGL being untestable here. Both sets are decided in
-`selection.ts` now, and the renderer colours lists.
+⚠️ **Each mode carries the tiles it lights**, built when the mode is entered
+rather than snapshotted on arrival — which used to compute two sets for a player
+who would look at one, and from a state older than the moment of choosing.
+`showSelection` stays a *pure projection of the selection*, needing no game state
+to know what to paint, because the tiles still live on the selection. They cannot
+go stale: any board change discards the plan. ⚠️ Facing tiles were once derived
+inside the *renderer* from a single coordinate, which put a question about the
+selection inside the thing that paints and hid the board-edge clipping where
+nothing could test it. Both sets are decided in `selection.ts`, and the renderer
+colours lists.
 
 ⚠️ **`Pinned` is `Extract`ed on carrying a path**, not hand-written as a union of
 phase names — so a phase with a path joins it by existing. That matters because
@@ -988,35 +1001,53 @@ its event union, pointed at a list instead of a switch. The test that walks ever
 phase is left doing the thing types cannot: saying that *carrying a path* is the
 right property to mean "uncommitted plan".
 
-⚠️ **Three modes, five phases.** *Movement selection* is `unitSelected` and
-`routePinned` — the range is lit and both answer clicks identically, which is
-why pinning and re-pinning are one code path rather than two. *Action selection* is
-`destinationChosen`: the unit has walked, and the tiles around it are a menu.
-*The panel* is `targetChosen`: a target is picked and the panel is open over it.
-⚠️ Picking a target is a click, not a state — but the panel being **open** is a
-mode, because while it is up a tile click means cancel and the buttons are what
-commit.
+⚠️ **Four phases, and the menu's steps are a field rather than more of them.**
+*Movement selection* is `unitSelected` and `routePinned` — the range is lit and
+both answer clicks identically, which is why pinning and re-pinning are one code
+path. `destinationChosen` is everything after the walk, with `step` saying which
+question is being asked. `targetChosen` used to be a phase of its own; it carried
+identical data apart from the target, which put the menu's steps in two different
+type constructs. Its justification survives the move — the open panel *is* a
+mode — but a mode is what `step` is for.
 
-**`readActionClick` is the one reader of an action-phase click**, answering
-`commit` / `attack` / `cancel`. ⚠️ It replaced three predicates the caller tried
-in turn, and the order was load-bearing with nothing saying so: `facingChoiceAt`
-answers a `Facing` for *any* adjacent tile without looking at what stands on it,
-so an adjacent enemy satisfied two of them and whichever ran first won. One
-function makes that unrepresentable, and turns the rule into a table a test can
-walk — where the old shape could only be tested for call order.
+#### The panel picks the intent, and that is the whole design
 
-**What the overlays draw.** `attackTiles` is the whole attack band, snapshotted
-at arrival the way `movement` is at selection — so `showSelection` stays a pure
-projection rather than needing the board. ⚠️ Red means *in range*, not
-*attackable*: reach is the information. The four tiles beside the unit are the
-only place two readings collide, since for a `min: 1` unit they are facing
-choices *and* inside the band — **occupancy decides**, so an empty one is a
-facing tile and everything else in the band is red.
+⚠️ **Reading intent out of a click costs quadratically.** Every action a tile
+could mean is another reading to order against all the others, so *n* actions is
+*n(n−1)/2* orderings. That failed at **n = 2**: an adjacent enemy is also a
+facing choice, whichever question ran first won, and the fix was to force the
+order inside one reader. Asking the player first makes a new action one member of
+`MenuStep` and one tile set, colliding with nothing — which is what makes charge,
+capture, entrench and dismount rows in a menu rather than new guesses.
 
-⚠️ While the panel is up **every overlay clears itself**, with no branch doing
-it: `targetChosen` is neither *arrived* nor *pinned*. That is the right
-behaviour — every tile click is a way out of the panel, so lighting one would
-promise a choice that is not there.
+⚠️ **So there is no single click reader.** `readFireClick` answers *is this an
+enemy I may shoot*, `readHoldClick` answers *which way is this*, and neither can
+be asked in the other's mode. The collision is unrepresentable rather than
+merely avoided.
+
+⚠️ **Buttons pick intent; tiles pick targets.** A target pins and confirms
+exactly like a route — first click pins it and shows the forecast, second commits,
+a click on a different lit enemy re-pins — so the forecast panel is
+*informational* and carries no button, like the route's confirm pane.
+
+⚠️ **Two rules for backing out, not a chain.** A dark click inside a mode returns
+to the panel; a dark click at the panel un-walks the ghost and returns to movement
+selection. "Lit does something, dark backs out" reads because at most one set is
+ever lit.
+
+⚠️ **Exactly one overlay is lit, and the mode guarantees it.** `setFacingChoices`
+and `setAttackRange` were two independent conditions that merely happened never
+to be true together; the step is now what decides, so the other clears because
+there is nothing else it could be showing. ⚠️ And the attack band stopped being
+filtered: it used to exclude the four tiles beside the unit when nothing hostile
+stood on them, because both sets were lit at once and the colours had to be split
+somehow. Facing is its own mode, so reach is simply reach.
+
+**The forecast reads through the step.** `attackForecast` and `facingForTarget`
+take an `Aiming` — `destinationChosen` with `step.kind === 'firing'` and a target
+pinned — which `isFiring` and `isAiming` narrow to. ⚠️ Two predicates, so no
+caller spells the two-level check by hand; that is what absorbing `targetChosen`
+costs, paid once.
 
 Either pinned phase is a **plan, not a submission** — nothing has been sent, and
 a click that means nothing else discards it without the server hearing.
