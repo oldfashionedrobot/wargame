@@ -1030,9 +1030,18 @@ one formula cannot be read apart, not because the geometry might be wrong.
   > emit a beat for each participant whose health changed, defender first.
 
   Both resulting healths are on `battleResolved` and the before-healths are on
-  the replica, so the script falls out of the data. `kind` and `answered` become
-  **wording**, not structure — which is why a third attack type later costs
-  nothing here.
+  the replica, so the script falls out of the data. That is what keeps *this*
+  version cheap: a third attack type adds no scene and no branch.
+
+  ⚠️ **But only the health script is kind-agnostic — the animation layer will not
+  be.** A volley is two units shooting across at each other; a charge is one
+  riding into the other and either breaking through or being thrown back. Those
+  are different animations, and `kind` is what picks them. ⚠️ That is already the
+  stated reason the flag is on the event at all — *"a volley and a charge end in
+  the same arithmetic and look nothing alike, and the kind lives only in the
+  command"* — so nothing here should read as `kind` being cosmetic or droppable.
+  It is unread **in this version only**, because this version has no model
+  animation.
 
   #### What is already there
 
