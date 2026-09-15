@@ -957,12 +957,21 @@ paired return would carry no information.
 | { phase: 'idle' }
 | { phase: 'unitSelected'; unitId; position; movement }
 | { phase: 'routePinned'; unitId; path; movement }
-| { phase: 'destinationChosen'; unitId; path; movement; attackTiles }
-| { phase: 'targetChosen'; unitId; path; movement; attackTiles; target }
+| { phase: 'destinationChosen'; unitId; path; movement; attackTiles; facingTiles }
+| { phase: 'targetChosen'; unitId; path; movement; attackTiles; facingTiles; target }
 ```
 
 `movement` is the whole `exploreMovement` result, snapshotted at selection time.
 `reachable` decides whether a click pins; `pathTo` builds the path.
+
+⚠️ **`attackTiles` and `facingTiles` are both snapshotted at `confirmRoute`**, and
+for one reason: it keeps `showSelection` a *pure projection of the selection*,
+needing no game state to know what to paint. They cannot go stale, because any
+board change discards the plan. ⚠️ Facing tiles used to be derived inside the
+renderer from a single coordinate — which put a question about the selection
+inside the thing that paints, and hid the board-edge clipping somewhere with no
+unit tests at all, WebGL being untestable here. Both sets are decided in
+`selection.ts` now, and the renderer colours lists.
 
 ⚠️ **`Pinned` is `Extract`ed on carrying a path**, not hand-written as a union of
 phase names — so a phase with a path joins it by existing. That matters because

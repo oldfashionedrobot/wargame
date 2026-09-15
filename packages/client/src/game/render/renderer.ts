@@ -153,13 +153,15 @@ export interface GameRenderer {
    */
   anchorTo(element: HTMLElement | null, coordinate: Coordinate | null): void;
   /**
-   * Light the tiles a unit at `around` may turn to look at, or clear them.
+   * Light the tiles a unit may turn to look at, or clear them.
    *
-   * Takes the centre rather than the four tiles because the grid's bounds live
-   * here: a unit on the top row simply has three choices, and nothing outside
-   * the renderer needs to know that.
+   * ⚠️ Takes tiles, like every other overlay setter. It used to take the centre
+   * and derive the four itself, which put a question about the *selection* --
+   * which tiles mean something -- inside the thing that paints. Clipping to the
+   * board went with it to `selection.ts`, where it is testable; nothing in here
+   * has unit tests, being WebGL.
    */
-  setFacingChoices(around: Coordinate | null): void;
+  setFacingChoices(tiles: Coordinate[]): void;
   /** Animates what the authority says happened. Resolves when done. */
   playEvents(events: GameEvent[]): Promise<void>;
   /**
@@ -610,22 +612,8 @@ export async function createGameRenderer(
         gridHeight,
       );
     },
-    setFacingChoices(around) {
-      if (!around) {
-        facingOverlay.setTiles([]);
-        return;
-      }
-      const neighbours = [
-        { col: around.col, row: around.row + 1 },
-        { col: around.col, row: around.row - 1 },
-        { col: around.col + 1, row: around.row },
-        { col: around.col - 1, row: around.row },
-      ];
-      facingOverlay.setTiles(
-        neighbours.filter(
-          ({ col, row }) => col >= 0 && row >= 0 && col < gridWidth && row < gridHeight,
-        ),
-      );
+    setFacingChoices(tiles) {
+      facingOverlay.setTiles(tiles);
     },
     setRange(tiles) {
       rangeOverlay.setTiles(tiles);

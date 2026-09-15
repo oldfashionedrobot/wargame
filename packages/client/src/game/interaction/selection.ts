@@ -12,6 +12,7 @@ import {
   getUnit,
   getUnitAt,
   getUnitType,
+  isWithinGrid,
 } from '@vod/shared';
 import type { Command, Coordinate, Facing, GameState, Movement, Unit } from '@vod/shared';
 
@@ -50,6 +51,8 @@ export type SelectionState =
       movement: Movement;
       /** What to paint red -- see `attackTilesFor`. Snapshotted, like `movement`. */
       attackTiles: Coordinate[];
+      /** What to paint amber -- see `facingTilesFor`. Snapshotted for the same reason. */
+      facingTiles: Coordinate[];
     }
   // A target is picked and the panel is up. ⚠️ *Picking* a target is a click,
   // not a state -- but the panel being **open** is a mode: while it is up a tile
@@ -60,6 +63,7 @@ export type SelectionState =
       path: Coordinate[];
       movement: Movement;
       attackTiles: Coordinate[];
+      facingTiles: Coordinate[];
       target: Unit;
     };
 
@@ -142,6 +146,7 @@ export function clearTarget(selection: TargetChosen): DestinationChosen {
     path: selection.path,
     movement: selection.movement,
     attackTiles: selection.attackTiles,
+    facingTiles: selection.facingTiles,
   };
 }
 
@@ -167,6 +172,30 @@ function attackTilesFor(state: GameState, unit: Unit, from: Coordinate): Coordin
 }
 
 /**
+ * The four tiles a unit may turn to look at, clipped to the board.
+ *
+ * ⚠️ **Moved out of the renderer, which used to derive these from a single
+ * coordinate.** Which tiles light is a question about the *selection*, not about
+ * painting -- the renderer's job is to colour a list. It also means this logic
+ * is testable for the first time: the renderer has no unit tests at all, being
+ * WebGL, so "a unit on the top row has three choices" was asserted nowhere.
+ *
+ * Clipping belongs here rather than at the edge of the grid check, because a
+ * facing that points off the board is a strictly worse choice than one that does
+ * not, and offering it would be offering nothing.
+ */
+function facingTilesFor(state: GameState, around: Coordinate): Coordinate[] {
+  const height = state.grid.length;
+  const width = state.grid[0]?.length ?? 0;
+  return [
+    { col: around.col, row: around.row + 1 },
+    { col: around.col, row: around.row - 1 },
+    { col: around.col + 1, row: around.row },
+    { col: around.col - 1, row: around.row },
+  ].filter((tile) => isWithinGrid(tile, width, height));
+}
+
+/**
  * The route is accepted: the unit walks it, and the menu opens on arrival.
  *
  * ⚠️ Takes state to snapshot the attack band, the same way `movement` is
@@ -181,6 +210,7 @@ export function confirmRoute(state: GameState, selection: RoutePinned): Destinat
     ...selection,
     phase: 'destinationChosen',
     attackTiles: unit ? attackTilesFor(state, { ...unit, position: destination }, destination) : [],
+    facingTiles: facingTilesFor(state, destination),
   };
 }
 

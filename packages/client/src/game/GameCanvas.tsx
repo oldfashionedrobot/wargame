@@ -30,7 +30,7 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
 
   // The tiles around the unit *are* the menu, and only once it has walked: an
   // inert lit tile invites a click that does nothing.
-  renderer.setFacingChoices(arrived ? destinationOf(selection) : null);
+  renderer.setFacingChoices(arrived ? selection.facingTiles : []);
   renderer.setAttackRange(arrived ? selection.attackTiles : []);
 
   // ⚠️ The unit's own tile, never the pin. A pinned route has not been walked,

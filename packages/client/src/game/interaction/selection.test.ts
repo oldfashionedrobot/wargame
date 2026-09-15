@@ -504,6 +504,44 @@ describe('the panel, and what it is told', () => {
   });
 });
 
+describe('facingTiles, which the overlay paints', () => {
+  const tilesFor = (state: GameState, at_: Coordinate) =>
+    confirmRoute(state, withB1Pinned(state, at_)).facingTiles;
+
+  it('offers the four tiles around where the unit stopped', () => {
+    const state = makeState(7, [{ id: 'b1', col: 1, row: 1 }]);
+    expect(tilesFor(state, at(1, 3))).toEqual(
+      expect.arrayContaining([at(1, 4), at(1, 2), at(2, 3), at(0, 3)]),
+    );
+    expect(tilesFor(state, at(1, 3))).toHaveLength(4);
+  });
+
+  // ⚠️ Never asserted before, because this lived in the renderer and the
+  // renderer has no unit tests at all -- it is WebGL. A facing that points off
+  // the board is strictly worse than one that does not, so it is not offered.
+  it('clips at the edge, so a unit on the rim has three choices', () => {
+    const state = makeState(7, [{ id: 'b1', col: 1, row: 1 }]);
+    const edge = tilesFor(state, at(1, 0));
+    expect(edge).toHaveLength(3);
+    expect(edge).toEqual(expect.arrayContaining([at(1, 1), at(2, 0), at(0, 0)]));
+  });
+
+  it('leaves a unit in the corner two', () => {
+    const state = makeState(7, [{ id: 'b1', col: 1, row: 1 }]);
+    expect(tilesFor(state, at(0, 0))).toHaveLength(2);
+  });
+
+  // The set is about the board's shape, not about what is standing on it: an
+  // occupied neighbour is still a direction you may face.
+  it('does not care what is standing on them', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 4, owner: 'red' },
+    ]);
+    expect(tilesFor(state, at(1, 3))).toHaveLength(4);
+  });
+});
+
 describe('attackTiles, which the overlay paints', () => {
   const has = (tiles: Coordinate[], col: number, row: number) =>
     tiles.some((tile) => tile.col === col && tile.row === row);

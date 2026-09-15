@@ -236,14 +236,23 @@ describe('GameCanvas', () => {
 
     expect(renderer.previewMove).toHaveBeenCalled();
     // Still walking: the range is the context, and no directions are offered.
-    expect(renderer.setFacingChoices).toHaveBeenLastCalledWith(null);
+    expect(renderer.setFacingChoices).toHaveBeenLastCalledWith([]);
     expect(vi.mocked(renderer.setRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
     expect(screen.queryByText(/the unit to hold/i)).toBeNull();
     // And the pane is down, because it invites a click that is refused now.
     expect(screen.queryByText(/click again to confirm/i)).toBeNull();
 
     await act(async () => arrive());
-    expect(renderer.setFacingChoices).toHaveBeenLastCalledWith({ col: 1, row: 3 });
+    // ⚠️ The four tiles themselves, not the centre they surround. The renderer
+    // used to derive them, which hid the clipping rule somewhere untestable.
+    expect(renderer.setFacingChoices).toHaveBeenLastCalledWith(
+      expect.arrayContaining([
+        { col: 1, row: 4 },
+        { col: 1, row: 2 },
+        { col: 2, row: 3 },
+        { col: 0, row: 3 },
+      ]),
+    );
     expect(renderer.setRange).toHaveBeenLastCalledWith([]);
     expect(renderer.setRoute).toHaveBeenLastCalledWith([]);
     expect(screen.getByText(/the unit to hold/i)).toBeTruthy();
