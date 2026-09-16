@@ -29,14 +29,40 @@ export interface UnitType {
   /**
    * How far this unit can shoot, inclusive at both ends, in tiles.
    *
-   * ⚠️ **Two numbers, and no category beside them.** There is no
-   * `canMoveAndAttack` and no direct/indirect flag: everything moves and
-   * attacks, and `min: 2` *describes* a gun rather than classifying it. Every
-   * behaviour AW spreads across those categories falls out of this pair --
-   * including whether a defender can answer, which is "is the attacker inside
-   * my own range" and nothing else.
+   * ⚠️ **Two numbers, and *almost* no category beside them.** There is no
+   * direct/indirect flag: `min: 2` *describes* a gun rather than classifying it,
+   * and most of what AW spreads across those categories falls out of this pair
+   * -- including how far a counter reaches, which is "is the attacker inside my
+   * own range" for every unit `slow` does not speak for first.
+   *
+   * ⚠️ **What did not fall out is `slow`.** This comment used to claim there was
+   * no `canMoveAndAttack` either, and play disagreed: no number makes "may not
+   * move and shoot in one turn" emerge, because it is a rule about a *turn*
+   * rather than about a distance. See `slow` below.
    */
   range: { min: number; max: number };
+
+  /**
+   * This weapon has to be set up, and cannot be swung round.
+   *
+   * ⚠️ **One physical fact with two consequences, which is why it is one flag
+   * and not two.** A piece that must be unlimbered, laid and traversed cannot
+   * fire in the same turn it repositions, and cannot snap off a reply to
+   * something that shot at it. Both rules are the same sentence about the gun.
+   * Bundling unrelated behaviours behind one boolean would be the category this
+   * catalog refuses; bundling consequences of one cause is what a name is for.
+   *
+   * ⚠️ **It came from play, not from design.** The catalog argued against it on
+   * the grounds that behaviour should fall out of numbers, and that argument is
+   * still right about direct-versus-indirect -- it is just not right about this,
+   * because a turn is not a distance.
+   *
+   * ⚠️ It subsumes what `min: 2` was already doing at contact: a gun could not
+   * answer a unit standing on it, because 1 is outside `[2, 5]`. This removes
+   * **counter-battery** as well, where two guns within reach of each other used
+   * to answer each other.
+   */
+  slow: boolean;
 }
 
 /**
@@ -88,6 +114,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     // ⚠️ Reaching two tiles is what gives infantry a choice against a battery:
     // trade at two and be answered, or close to one where the gun cannot fire.
     range: { min: 1, max: 2 },
+    slow: false,
   },
   cavalry: {
     id: 'cavalry',
@@ -99,6 +126,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     // the way in, cannot answer a gun that outranges it, and is safe from a
     // counter once it arrives. Closing is the cost, and the charge is the point.
     range: { min: 1, max: 1 },
+    slow: false,
   },
   artillery: {
     id: 'artillery',
@@ -110,6 +138,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     // job: a gun cannot fire at what has reached it, and therefore cannot
     // counter it either -- the same predicate, not a second rule.
     range: { min: 2, max: 5 },
+    slow: true,
   },
 };
 

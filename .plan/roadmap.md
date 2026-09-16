@@ -217,7 +217,7 @@ should be re-read once charge exists and a peak can be stormed.
   test-only surface on a production object, which is the reason to think before
   building it rather than the reason not to.
 
-- ~~**Counter-attack for `min > 1` units.**~~ ✅ Settled: a counter fires when the attacker is inside the defender's range, whatever that range is. A gun answers a gun at reach and cannot answer anything at one tile — both from the same predicate, neither from a rule about it.
+- ~~**Counter-attack for `min > 1` units.**~~ ✅ Settled, twice. First from the band alone: a counter fires when the attacker is inside the defender's range, whatever that range is — which let two guns answer each other at reach. Play said no, and `slow` closed it the other way: a gun never answers. ⚠️ Worth keeping from the round trip is that the first answer was *derived* and the second had to be *declared* — "may not move and shoot in one turn" is a fact about a turn, and no arrangement of distances was ever going to produce it.
 
 ## Known compromises
 
@@ -454,7 +454,6 @@ one formula cannot be read apart, not because the geometry might be wrong.
   the figures stand. `battleResolved.kind` is what will pick between a volley
   animation and a charge one, and it is carried for that.
 
-The **Open questions** entry on counter-attacks for `min > 1` units belongs to 9g and moved into phase 9 with it — it was decided when indirect fire and immobility were the same thing, and 9d separates them.
 
 ### 11 — Multiplayer and auth
 

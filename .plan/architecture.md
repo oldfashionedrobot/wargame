@@ -292,12 +292,16 @@ Static tables keyed by `Record`, so adding a member makes every incomplete table
 a compile error. **The values are the modules' — read them there.** Both are
 short, and a copy here would be a second set of numbers to tune.
 
-**`unitTypes.ts`** — `{ id, name, char, movementType, movementRange, range }` per
-type. `range` is `{ min, max }` tiles, inclusive, and **read by nothing yet** —
-no command carries a target. ⚠️ There is no category beside it: no
-`canMoveAndAttack`, no direct/indirect flag. `min: 2` describes a gun rather
-than classifying it, and whether a defender may answer is "is the attacker
-inside my own range" and nothing else.
+**`unitTypes.ts`** — `{ id, name, char, movementType, movementRange, range, slow }`
+per type. `range` is `{ min, max }` tiles, inclusive, read by `refuseAttack`,
+`tilesInRange` and `wouldCounter`. ⚠️ **It classifies nothing:** there is no
+direct/indirect flag, and `min: 2` describes a gun rather than naming a kind of
+one — which is what lets a single rule ask "is the attacker inside my own range"
+and get an answer for every unit.
+
+⚠️ **`slow` is the one thing no distance could express**, and it is a flag
+because what it governs is a *turn* rather than a gap: a slow unit may move or
+attack, never both, and never answers a shot. See *Slow* below.
 `movementType` is `foot`, `horse` or `wheels`, and picks a column out of the
 terrain cost table; `movementRange` is the budget that column is spent against.
 Also `MAX_HEALTH`, a constant beside the interface rather than a field on it:
@@ -470,8 +474,8 @@ the one place that decides whether a tile can be entered and what it costs.
 `shared/src/combat.ts` holds the rules of both attacks and no state:
 
 ```ts
-refuseAttack(state, attacker, from, targetUnitId) → string | null
-refuseCharge(state, attacker, from, targetUnitId) → string | null
+refuseAttack(state, attacker, path, targetUnitId) → string | null
+refuseCharge(state, attacker, path, targetUnitId) → string | null
 tilesInRange(unit, from, gridWidth, gridHeight)   → Coordinate[]
 wouldCounter(defender, from)                      → boolean
 chargeThreshold(attackerType, defenderType)       → number | null   // null = cannot charge
@@ -488,17 +492,55 @@ off**, and both callers use it — `refuseAttack` turns it into a reason,
 the negation of the other in the same file. Two spellings of one rule is how an
 off-by-one arrives.
 
-**A counter fires iff the attacker is inside the defender's own range, the
-defender survived, and the shot did not come from directly behind.** ⚠️ **One predicate, no categories.** AW's rule reads "both
+**A counter fires iff the defender survived, is not `slow`, has the attacker
+inside its own range, and was not shot from directly
+behind.** ⚠️ **One predicate, no categories.** AW's rule reads "both
 units must be direct", which looks categorical and is not — it is equivalent to
 *the attacker is adjacent and the defender can fight at adjacency*, because a
 direct unit in AW can only attack from range 1. Days of Ruin's Anti-Tank settles
 it: indirect out to three, **no minimum range**, and it counters.
 
-⚠️ **Ours differs from AW's in exactly one case, deliberately: counter-battery.**
-Two guns within reach answer each other, which AW forbids and history does not.
-Artillery caught at one tile still cannot answer, because 1 is not inside
-`[2, 5]` — the property worth keeping survives with no rule naming it.
+⚠️ **Counter-battery is gone, and `slow` is what took it.** Two guns within
+reach used to answer each other — a deliberate divergence from AW, on the
+grounds that history allows it. Play disagreed, and the flag that stops a gun
+shooting in a turn it repositioned stops it answering too, which is the same
+physical fact read twice.
+
+⚠️ **That conjunct subsumes the band's lower end**, and it is why the band's
+*too close* case is no longer observable through `wouldCounter`: artillery is
+the only unit with `min > 1`, and it is slow. `refuseAttack` still reads both
+ends of the band, which is where a minimum range remains a rule with teeth, and
+where that half is tested.
+
+### Slow — one cause, two rules
+
+⚠️ **One flag, because it is one physical fact.** A gun has to be unlimbered,
+laid and served; it is not swung round to answer a musket, and it does not
+displace and fire in the same afternoon. Two flags would let a unit be written
+that shoots on the move but cannot answer, which nothing in the period is.
+
+```ts
+slow: boolean   // artillery, and nothing else
+```
+
+The two rules it carries sit in different places, because they are asked at
+different moments:
+
+- `wouldCounter` returns false outright — before the band, before facing. A slow
+  defender never answers, at any distance, from any side.
+- `refuseAttack` and `refuseCharge` refuse when the unit has **moved**, which is
+  `path.length > 1`.
+
+⚠️ **This is why both refusals take the whole `path` rather than the
+destination.** Where a unit ends up cannot say whether it travelled: a
+single-element path is a turn in place, and a two-element one that ends where it
+started is not expressible. The path was already being validated by
+`validatePath`, so nothing new is computed — the rule just needed the argument
+that was there.
+
+⚠️ **Moving alone stays legal.** The flag forbids the *pair*, so a gun may still
+reposition; it simply spends its turn arriving. That keeps artillery mobile on
+the map and immobile in a fight, which is the distinction worth having.
 
 ### Facing, and the one thing it changes
 
@@ -1165,7 +1207,9 @@ rules, one per level.
 `tilesInRange`. The band is *reach*: it knows nothing about ownership, a minimum
 range, or a unit targeting itself, so a panel built on it would offer Fire for a
 friend two tiles off and the click would then be refused. One rule asked twice
-cannot disagree with itself. It walks every unit rather than the band, which is
+cannot disagree with itself — and it is what makes `slow` free on the client:
+Fire simply stops being offered to a gun that has already moved, because the
+refusal it asks reads the path. It walks every unit rather than the band, which is
 sixteen against up to sixty and needs no grid bounds. ⚠️ **Unavailable actions
 are omitted, not greyed**, following AW — the cost is that *nothing in range* and
 *I misread the menu* look alike, and the menu changes height between units.

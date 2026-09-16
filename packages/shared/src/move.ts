@@ -44,10 +44,12 @@ export function validateMove(state: GameState, command: MoveCommand): string | n
   // been proven walkable above, so the last tile is where this unit will be
   // standing when it attacks -- and distance measured anywhere else is measuring
   // a tile the attack does not happen from.
-  const from = command.path[command.path.length - 1];
+  // ⚠️ The whole path, not just its end. Distance is measured from the last
+  // tile, but whether the unit *moved at all* is the other half of what an
+  // attack has to be legal against, and only the path says so.
   return command.attackKind === 'charge'
-    ? refuseCharge(state, unit, from, command.targetUnitId)
-    : refuseAttack(state, unit, from, command.targetUnitId);
+    ? refuseCharge(state, unit, command.path, command.targetUnitId)
+    : refuseAttack(state, unit, command.path, command.targetUnitId);
 }
 
 /**

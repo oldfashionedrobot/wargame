@@ -213,12 +213,23 @@ describe('wouldCounter', () => {
     facing: Facing = 'north',
   ) => makeState(8, [{ id: 'd', col, row, owner: 'red', unitTypeId, facing }]).units[0];
 
+  // ⚠️ **A slow unit never answers, whatever the distance.** A gun has to be
+  // traversed, and cannot be swung round in time -- so this is not a band check
+  // with a hole in it, it is the band never being consulted.
+  it('never answers when the defender is slow', () => {
+    const gun = unitAt('artillery', 0, 0); // range 2..5, and slow
+    for (const row of [1, 2, 5, 6]) expect(wouldCounter(gun, at(0, row))).toBe(false);
+  });
+
+  // ⚠️ **The band's `near` end is no longer observable here**, and that is a
+  // consequence rather than a gap: artillery is the only unit with `min > 1`,
+  // and it is slow, so a counter refused for being *too close* cannot happen.
+  // `refuseAttack` still reads both ends, which is where that half is tested.
   it('answers inside its own band and nowhere else', () => {
-    const gun = unitAt('artillery', 0, 0); // range 2..5
-    expect(wouldCounter(gun, at(0, 1))).toBe(false); // reached: too close
-    expect(wouldCounter(gun, at(0, 2))).toBe(true);
-    expect(wouldCounter(gun, at(0, 5))).toBe(true);
-    expect(wouldCounter(gun, at(0, 6))).toBe(false); // outranged
+    const foot = unitAt('infantry', 0, 0); // range 1..2
+    expect(wouldCounter(foot, at(0, 1))).toBe(true);
+    expect(wouldCounter(foot, at(0, 2))).toBe(true);
+    expect(wouldCounter(foot, at(0, 3))).toBe(false); // outranged
   });
 
   // ⚠️ Both bounds are inclusive, and this is the only place that is stated

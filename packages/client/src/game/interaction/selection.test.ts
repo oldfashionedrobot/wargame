@@ -4,6 +4,7 @@ import { chargeChance, LUCK_MAX } from '@vod/shared';
 import type { Coordinate, GameState } from '@vod/shared';
 import {
   attackForecast,
+  availableActions,
   canCharge,
   canFire,
   enterMode,
@@ -698,6 +699,32 @@ describe('the charge forecast', () => {
     expect(longShot.repelHigh - longShot.repelLow).toBeGreaterThan(
       likely.repelHigh - likely.repelLow,
     );
+  });
+});
+
+// ⚠️ **The panel has to know the turn rule too**, or it offers Fire to a gun
+// that has just repositioned and the click is refused. `canFire` asks
+// `refuseAttack` with the selection's whole *path*, which is what carries
+// "did this unit move" — the destination alone cannot say.
+describe('canFire, for a slow unit', () => {
+  const gunline = () =>
+    makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
+      { id: 'r1', col: 1, row: 4, owner: 'red' },
+    ]);
+
+  it('offers Fire when the gun has not moved', () => {
+    const state = gunline();
+    expect(canFire(state, withB1Arrived(state, at(1, 1)))).toBe(true);
+  });
+
+  it('withholds it once the gun has moved, even into range', () => {
+    const state = gunline();
+    const moved = withB1Arrived(state, at(1, 2));
+    expect(canFire(state, moved)).toBe(false);
+    // ⚠️ And not because the range failed: the target is two tiles off, which is
+    // inside a gun's band — it is the moving that did it.
+    expect(availableActions(state, moved)).toEqual(['holding']);
   });
 });
 

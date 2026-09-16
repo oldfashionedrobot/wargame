@@ -176,7 +176,7 @@ describe('refuseCharge', () => {
 
   it('accepts a legal charge', () => {
     const state = contact();
-    expect(refuseCharge(state, b1(state), at(1, 1), 'r1')).toBeNull();
+    expect(refuseCharge(state, b1(state), [at(1, 1)], 'r1')).toBeNull();
   });
 
   // ⚠️ Contact, never the attacker's range band. Infantry reaches two tiles, so
@@ -186,7 +186,7 @@ describe('refuseCharge', () => {
       { id: 'b1', col: 1, row: 1, unitTypeId: 'infantry' },
       { id: 'r1', col: 1, row: 3, owner: 'red' },
     ]);
-    expect(refuseCharge(apart, b1(apart), at(1, 1), 'r1')).toBe('a charge has to reach them');
+    expect(refuseCharge(apart, b1(apart), [at(1, 1)], 'r1')).toBe('a charge has to reach them');
   });
 
   it('refuses a charger with no row', () => {
@@ -194,7 +194,7 @@ describe('refuseCharge', () => {
       { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
       { id: 'r1', col: 1, row: 2, owner: 'red' },
     ]);
-    expect(refuseCharge(guns, b1(guns), at(1, 1), 'r1')).toBe('artillery cannot charge');
+    expect(refuseCharge(guns, b1(guns), [at(1, 1)], 'r1')).toBe('artillery cannot charge');
   });
 
   it('refuses a friend and refuses itself', () => {
@@ -202,8 +202,8 @@ describe('refuseCharge', () => {
       { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
       { id: 'b2', col: 1, row: 2 },
     ]);
-    expect(refuseCharge(friendly, b1(friendly), at(1, 1), 'b2')).toBe('that unit is yours');
-    expect(refuseCharge(friendly, b1(friendly), at(1, 1), 'b1')).toBe(
+    expect(refuseCharge(friendly, b1(friendly), [at(1, 1)], 'b2')).toBe('that unit is yours');
+    expect(refuseCharge(friendly, b1(friendly), [at(1, 1)], 'b1')).toBe(
       'a unit cannot charge itself',
     );
   });
@@ -214,12 +214,12 @@ describe('refuseCharge', () => {
   // objection a charge is not troubled by. `terrainAdmits` is the shared half.
   it('refuses ground the attacker could never stand on', () => {
     const river = contact(100, ['.......', '.-.....', '.~.....', '.......']);
-    expect(refuseCharge(river, b1(river), at(1, 1), 'r1')).toBe('horse cannot cross river');
+    expect(refuseCharge(river, b1(river), [at(1, 1)], 'r1')).toBe('horse cannot cross river');
   });
 
   it('allows ground the attacker can stand on, enemy or not', () => {
     const wood = contact(100, ['.......', '.-.....', '.f.....', '.......']);
-    expect(refuseCharge(wood, b1(wood), at(1, 1), 'r1')).toBeNull();
+    expect(refuseCharge(wood, b1(wood), [at(1, 1)], 'r1')).toBeNull();
   });
 });
 

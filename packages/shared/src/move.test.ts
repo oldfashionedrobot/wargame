@@ -211,23 +211,22 @@ describe('resolveMove', () => {
     expect(battle.answered).toBe(false);
   });
 
-  // ⚠️ **Counter-battery: the one case we diverge from AW deliberately.** Two
-  // guns within reach of each other answer each other, which AW forbids and
-  // history does not -- and it falls out of the predicate rather than needing a
-  // rule. A battery caught at *one* tile still cannot answer, because 1 is not
-  // inside [2, 5], which is the property worth keeping.
-  it('lets two guns answer each other, but not one that has been reached', () => {
+  // ⚠️ **Counter-battery is gone, and this replaced the test that pinned it.**
+  // Two guns within reach used to answer each other -- a deliberate divergence
+  // from AW, on the grounds that history allows it. Play disagreed: `slow` now
+  // means a gun never answers at all, reached or not.
+  it('never lets a gun answer, at reach or at contact', () => {
     const duel = makeState(8, [
       { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
       { id: 'r1', col: 0, row: 3, owner: 'red', unitTypeId: 'artillery', facing: 'south' },
     ]);
     const [, counterBattery] = resolved(duel, move('b1', at(0, 0), at(0, 0), 'r1'));
     if (counterBattery.type !== 'battleResolved') throw new Error('expected a battle');
-    expect(counterBattery.answered).toBe(true);
+    expect(counterBattery.answered).toBe(false);
 
     const reached = makeState(8, [
       { id: 'b1', col: 0, row: 0 },
-      { id: 'r1', col: 0, row: 1, owner: 'red', unitTypeId: 'artillery' },
+      { id: 'r1', col: 0, row: 1, owner: 'red', unitTypeId: 'artillery', facing: 'south' },
     ]);
     const [, atContact] = resolved(reached, move('b1', at(0, 0), at(0, 0), 'r1'));
     if (atContact.type !== 'battleResolved') throw new Error('expected a battle');
@@ -324,6 +323,70 @@ describe('resolveMove', () => {
     const lucky = resolved(lane(4), command, { attack: LUCK_MAX, counter: 0 })[1];
     if (unlucky.type !== 'battleResolved' || lucky.type !== 'battleResolved') throw new Error();
     expect(lucky.defender.health).toBeLessThan(unlucky.defender.health);
+  });
+});
+
+// ⚠️ **A turn rule, which is why it could not fall out of the range band.**
+// `min: 2` describes a distance and says nothing about whether a gun may shoot
+// in the same turn it repositioned -- so unlike every other behaviour AW spreads
+// across direct-versus-indirect, this one needed a flag.
+describe('validateMove, a slow unit', () => {
+  const gunline = (path: [number, number][]) => {
+    const state = makeState(8, [
+      { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
+      { id: 'r1', col: 0, row: 3, owner: 'red' },
+    ]);
+    const command: MoveCommand = {
+      type: 'move',
+      unitId: 'b1',
+      path: path.map(([col, row]) => at(col, row)),
+      facing: 'north',
+      targetUnitId: 'r1',
+    };
+    return validateMove(state, command);
+  };
+
+  it('may attack without moving', () => {
+    expect(gunline([[0, 0]])).toBeNull();
+  });
+
+  it('may not attack after moving', () => {
+    expect(
+      gunline([
+        [0, 0],
+        [1, 0],
+      ]),
+    ).toBe('artillery cannot move and attack in one turn');
+  });
+
+  // ⚠️ Moving alone stays legal: the flag forbids doing *both*, not moving.
+  it('may still move, so long as that is all it does', () => {
+    const state = makeState(8, [{ id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' }]);
+    expect(
+      validateMove(state, {
+        type: 'move',
+        unitId: 'b1',
+        path: [at(0, 0), at(1, 0)],
+        facing: 'north',
+      }),
+    ).toBeNull();
+  });
+
+  // The other side of the flag, so a fast unit is not quietly caught by it.
+  it('does not stop a unit that is not slow', () => {
+    const state = makeState(8, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'r1', col: 0, row: 2, owner: 'red' },
+    ]);
+    expect(
+      validateMove(state, {
+        type: 'move',
+        unitId: 'b1',
+        path: route(at(0, 0), at(0, 1)),
+        facing: 'north',
+        targetUnitId: 'r1',
+      }),
+    ).toBeNull();
   });
 });
 

@@ -216,7 +216,7 @@ export function enterMode(
   const tiles = !moved
     ? []
     : kind === 'charging'
-      ? chargeTilesFor(state, moved, destination)
+      ? chargeTilesFor(state, moved, selection.path)
       : attackTilesFor(state, moved, destination);
   return { ...selection, step: { kind, tiles, target: null } };
 }
@@ -278,7 +278,7 @@ export function canCharge(state: GameState, selection: DestinationChosen): boole
 type Refusal = (
   state: GameState,
   attacker: Unit,
-  from: Coordinate,
+  path: Coordinate[],
   targetUnitId: string,
 ) => string | null;
 
@@ -287,7 +287,9 @@ function canAttack(state: GameState, selection: DestinationChosen, refuse: Refus
   const unit = getUnit(state, selection.unitId);
   if (!unit) return false;
   const moved: Unit = { ...unit, position: from };
-  return state.units.some((target) => refuse(state, moved, from, target.id) === null);
+  // ⚠️ The selection's whole path, so a row is offered only when the rule that
+  // will answer the click would accept it -- including "this gun has moved".
+  return state.units.some((target) => refuse(state, moved, selection.path, target.id) === null);
 }
 
 /**
@@ -300,10 +302,10 @@ function canAttack(state: GameState, selection: DestinationChosen, refuse: Refus
  * four neighbours would light tiles that do nothing. Here the lit set *is* the
  * legal set.
  */
-function chargeTilesFor(state: GameState, unit: Unit, from: Coordinate): Coordinate[] {
-  return neighboursOf(state, from).filter((tile) => {
+function chargeTilesFor(state: GameState, unit: Unit, path: Coordinate[]): Coordinate[] {
+  return neighboursOf(state, path[path.length - 1]).filter((tile) => {
     const occupant = getUnitAt(state, tile);
-    return occupant !== undefined && refuseCharge(state, unit, from, occupant.id) === null;
+    return occupant !== undefined && refuseCharge(state, unit, path, occupant.id) === null;
   });
 }
 
@@ -542,7 +544,7 @@ export function readAimClick(
   if (!unit || !target) return null;
   const from = { ...unit, position: destination };
   const refuse = selection.step.kind === 'charging' ? refuseCharge : refuseAttack;
-  return refuse(state, from, destination, target.id) === null ? target : null;
+  return refuse(state, from, selection.path, target.id) === null ? target : null;
 }
 
 /**

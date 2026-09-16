@@ -138,16 +138,35 @@ export function computeDamage(
  * that makes artillery helpless at one tile also makes it deadly at four, with
  * no rule naming either case.
  */
+/**
+ * Why a unit may not attack at all from the route it took, or `null`.
+ *
+ * ⚠️ **The one place the *turn* rule lives**, asked by both attacks and by both
+ * sides of the wire: `validateMove` refuses the command with it, and the panel
+ * asks it before offering a row. A rule about a turn cannot be derived from a
+ * distance, so it cannot live in `outsideRange` with the rest.
+ */
+function refuseSlowAttack(attacker: Unit, path: Coordinate[]): string | null {
+  const moved = path.length > 1;
+  return moved && getUnitType(attacker.unitTypeId).slow
+    ? `${attacker.unitTypeId} cannot move and attack in one turn`
+    : null;
+}
+
 export function refuseAttack(
   state: GameState,
   attacker: Unit,
-  from: Coordinate,
+  path: Coordinate[],
   targetUnitId: string,
 ): string | null {
+  const from = path[path.length - 1];
   const target = getUnit(state, targetUnitId);
   if (!target) return 'target not found';
   if (target.id === attacker.id) return 'a unit cannot attack itself';
   if (target.owner === attacker.owner) return 'that unit is yours';
+
+  const halted = refuseSlowAttack(attacker, path);
+  if (halted) return halted;
 
   const off = outsideRange(attacker, from, target.position);
   if (off === 'near') return 'target is too close';
@@ -269,24 +288,29 @@ export function tilesInRange(
  * possible at all: a gun firing from outside the defender's band is unanswered
  * regardless of which way anyone is looking.
  *
- * ⚠️ **Ours differs from AW's in exactly one case, deliberately: counter-battery.**
- * Two guns within reach of each other answer each other, which AW forbids and
- * history does not. Artillery caught at one tile still cannot answer, because 1
- * is not inside `[2, 5]` -- the property worth keeping survives without a rule
- * naming it.
+ * ⚠️ **Counter-battery is gone, and `slow` took it.** Two guns within reach of
+ * each other used to answer each other -- a deliberate divergence from AW, on
+ * the grounds that history allows it. Play disagreed. The flag reads first, so
+ * the band's *too close* case is now unreachable from here: artillery is the
+ * only unit with `min > 1` and it is slow. `refuseAttack` still asks both ends.
  *
  * ⚠️ **`hasActed` is not consulted.** That flag stops a unit *acting* twice in
  * its own turn; answering an attack is not acting. A spent unit still counters,
- * which is AW's behaviour and falls out of this being purely geometric.
+ * which is AW's behaviour -- nothing here asks what the defender has *done*,
+ * only what it is and where it stands.
  *
  * ⚠️ **A charge never asks this.** The counter rule is about *shooting*, and a
  * charge is not shooting -- its repel damage is the defence. Routing a charge
- * through here would make charging artillery free, since `min: 2` means a
- * battery cannot answer at contact, and the one unit cavalry exists to punish
- * would be the only one unable to punish back.
+ * through here would make charging artillery free, and more plainly so than it
+ * once would: a battery now answers nothing at all, so the one unit cavalry
+ * exists to punish would be the only one unable to punish back.
  */
 export function wouldCounter(defender: Unit, from: Coordinate): boolean {
   if (defender.health <= 0) return false;
+  // ⚠️ A gun that has to be traversed cannot be swung round in time -- see
+  // `slow`. This subsumes what the range band already did at contact and goes
+  // further, taking counter-battery with it.
+  if (getUnitType(defender.unitTypeId).slow) return false;
   if (attackSide(defender.facing, defender.position, from) === 'rear') return false;
   return outsideRange(defender, defender.position, from) === null;
 }
@@ -416,13 +440,20 @@ export function chargeChance(state: GameState, attacker: Unit, defender: Unit): 
 export function refuseCharge(
   state: GameState,
   attacker: Unit,
-  from: Coordinate,
+  path: Coordinate[],
   targetUnitId: string,
 ): string | null {
+  const from = path[path.length - 1];
   const target = getUnit(state, targetUnitId);
   if (!target) return 'target not found';
   if (target.id === attacker.id) return 'a unit cannot charge itself';
   if (target.owner === attacker.owner) return 'that unit is yours';
+
+  // ⚠️ Asked here too, although nothing slow can charge today -- artillery has
+  // no threshold row. A future slow charger would otherwise silently keep the
+  // one privilege the flag exists to remove.
+  const halted = refuseSlowAttack(attacker, path);
+  if (halted) return halted;
   if (chargeThreshold(attacker.unitTypeId, target.unitTypeId) === null) {
     return `${attacker.unitTypeId} cannot charge`;
   }
