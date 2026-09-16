@@ -493,16 +493,32 @@ one formula cannot be read apart, not because the geometry might be wrong.
 
 ### 11 — A hosted build, client and server apart
 
+**The target is itch.io.** Open, no gate, no review, no exclusivity, and no
+accounts to integrate — so it is the one portal where "does this deploy at all"
+can be answered without also answering anything else. Everything below is what
+itch specifically requires; the other portals want a superset.
+
 The smallest remaining phase and the one that unblocks every outward-facing
 thing. Nothing here is new mechanics: it is the deploy story, and it is first
-because itch.io accepts a build the day one exists, and because two assumptions
+because itch takes a build the day one exists, and because three assumptions
 die the moment the client is served from somewhere that is not us.
+
+- ⚠️ **Asset paths are absolute and itch serves from a subdirectory.** Verified,
+  not anticipated: the build emits `src="/assets/…"` and `href="/favicon.svg"`,
+  which resolve to the CDN root and 404 under a game's own subdirectory. Vite's
+  `base` fixes the bundled ones. It does **not** fix the four URLs built at
+  runtime — `MODEL_URLS` in `unitModels.ts` and `MODEL_DIR` in
+  `terrainModels.ts` are plain strings the bundler never sees, so they need the
+  base threading through them. ⚠️ Both failures are a blank canvas rather than
+  an error, which is the argument for fixing them before the first upload
+  instead of debugging them through itch.
 
 - **Same-origin stops being true.** Today the client calls `/api/*` relative and
   that works in dev (Vite proxies) and in production (the server serves the
-  bundle). A portal hosts the client's files on its own CDN and explicitly does
-  not host the server — "we only host the game files" — so the client needs an
-  API base, and the server needs CORS with credentials.
+  bundle). itch hosts the zip on its HTML5 CDN and says the backend must live
+  elsewhere and accept cross-origin requests; every other portal says the same
+  in its own words. So the client needs an API base and the server needs CORS
+  with credentials.
 - ⚠️ **The session cookie is the sharp edge, not CORS.** `SameSite=Lax` is what
   currently covers CSRF, and Lax means the browser will not send the cookie on a
   cross-site request at all. A client on someone else's origin gets no session.
@@ -531,9 +547,14 @@ single place a request becomes a `PlayerId`, and the work is to make it
 pluggable rather than to pick a winner: hot-seat is a provider, our own OAuth is
 a provider, a portal SDK is a provider. Everything below about sessions, cookie
 rotation and ownership is right for the provider we host, and simply does not
-apply to the ones we do not. ⚠️ Whether our own OAuth is built **at all** before
-a portal is a real question — it may be that the first shipped identity is
-somebody else's, and the sessions table waits.
+apply to the ones we do not.
+
+⚠️ **itch being first settles which provider gets built first: ours.** itch has
+no accounts to borrow, so a hosted build there is hot-seat until we supply
+identity ourselves — which means the sessions work below is not deferred by the
+platform strategy, it is brought forward by it. The seam still earns its place,
+just for the opposite reason: ours will have to sit *beside* a portal's rather
+than instead of it.
 
 - **Match lifecycle** — a way for a second person to join, and matches bound to users rather than open to anyone. The largest of the three and still a single bullet: it wants a lobby state, a join mechanism, and the `status` column this section is careful to keep apart from game outcome. Phase 4 was split in two for less; this should be split before it starts.
 - **OAuth sign-in** with sessions in our own database — see *Identity* below.
@@ -618,12 +639,13 @@ and a charge currently play the same absence of an animation.
   `tileToScreen` behind `import.meta.env.DEV` turns that into addressing a tile.
   It cost real time twice in one session.
 
-### 15 — Platforms
+### 15 — Platforms beyond itch
 
-Per-portal integration and submission. Gated by 11 (a hosted build) and by 12
-(identity, which several portals supply themselves), and worth attempting only
-once 13 and 14 have moved playtime and retention — CrazyGames' Basic Launch bar
-is published and specific, and the game is judged against it.
+itch is phase 11's target and is not repeated here; this is the portals that
+gate, review, or supply their own accounts. Worth attempting only once 13 and 14
+have moved playtime and retention — the one portal publishing a bar publishes a
+specific one, and the game is judged against it rather than against a portal-wide
+average.
 
 - **Per-platform SDK work**, which is mostly identity, room/invite plumbing and
   an ads hook. What each one demands is in the Publishing Pipeline doc.
