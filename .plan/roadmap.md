@@ -244,7 +244,7 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 | **Matches are unowned and unbounded** | Anyone can create any number; no delete, no expiry. `list()` is capped at 50 newest — a bound, not pagination | *Multiplayer and auth* — scope listing to the player, and add deletion. Until identity exists there's nothing to scope by |
 | **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | *Multiplayer and auth* — match lifecycle and, eventually, notification. Not new mechanics |
 | **Ruleset versioning**, and with it **old matches are expendable** | None. ⚠️ `current_state` and `initial_state` are JSON columns with `.$type<GameState>()`, which is a **compile-time cast and no runtime check** — so a match stored before a field existed reads back missing it while the types insist otherwise. A shape change therefore does not migrate rows; it abandons them, and that is **accepted policy until a ruleset id exists** rather than an oversight. The dev database is gitignored scratch: delete it. ⚠️ The failure is silent where it matters — a `Unit` with no `health` is `undefined`, and `undefined` arithmetic is `NaN`, so the first symptom is a damage number rather than an error | Stamp a ruleset id on the match so old logs replay under the rules they were played with. That is also what retires the policy above: a match that knows its ruleset can be refused rather than quietly misread |
-| **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Picked from at match creation, and browsable at `/maps` | A `maps` table once maps stop being written by developers. ⚠️ The other condition — enough maps to choose among — has already been met, so this is due a re-read rather than a wait; see below |
+| **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Picked from at match creation, and browsable at `/maps` | ✅ **Decided** — a `maps` table plus an editor, in *Content*. ⚠️ The other condition — enough maps to choose among — has already been met, so this is due a re-read rather than a wait; see below |
 | **Elevation is visual only, and capped at 0.5** | Height is a look, never data. A mesa and a bridge deck raise where a unit *stands*, but `shared/` has no idea: there is no height on a tile, `entryCost` never asks about one, and no rule reads one. ⚠️ Both halves of the old technical objection are now gone — `screenToTile` tries every surface height tallest-first, so a click finds a peak where it is drawn, and `surfaceAt` is a lookup that knows each tile's height. What caps height now is the *camera*: at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and past about half a tile it occupies its neighbour | ⚠️ **Nothing — this is where it stays.** It was once written here as waiting on machinery, which stopped being true when picking learned about height, and elevation as a *rule* is now declined for v1 rather than queued. Mesas are enough at this board size. The reasons, and the two findings worth keeping if it is ever reopened, are in *Out of scope for v1* |
 | **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
 | ~~**`shared/`'s test files are not typechecked**~~ ✅ **Fixed.** `tsconfig.dev.json` covers `scripts/` and `src/**/*.test.ts` together — see *Testing* in [`architecture.md`](architecture.md). It cost `@types/bun` as a devDependency of the zero-dependency package, and it surfaced **twenty** errors that had been invisible | — |
@@ -253,8 +253,15 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 
 ### Maps in a table
 
-⚠️ **This condition has already been met, and the decision has not been
-re-taken.** It said *revisit when there are enough maps to choose among* —
+✅ **Decided: maps become a table.** The trigger condition below was met a
+while ago and the decision is now taken rather than pending. ⚠️ It also grows a
+second half that was never in the original argument — **a map editor**. Rows in
+a table are only better than modules if something other than a text editor
+writes them, and an editor is what turns "maps are content" from a claim into a
+fact. That is a phase of its own and belongs near *Depth*, not here; what
+belongs here is that the storage decision no longer waits on anything.
+
+⚠️ **The original argument, unchanged, and its condition:** It said *revisit when there are enough maps to choose among* —
 there are enough to choose among, and **two** screens now pick between them:
 `StartScreen` chooses what to play on and `/maps` exists only to look through
 them. That is the picker
@@ -308,7 +315,10 @@ option, and both cost a few lines against a table's seeding machinery.
 ⚠️ **Three of these are a queue and two are tracks.** 11, 12 and 15 run in that
 order. 13 and 14 depend on none of it and are what actually move the numbers a
 portal gates on, so they run alongside rather than waiting their turn, in
-whatever order is most interesting that week.
+whatever order is most interesting that week. ⚠️ One exception to that
+independence: 11 decides matches are meant to be **short**, and how long a match
+runs is content, which is 13. The transport makes play live; only the content
+makes it a sitting.
 
 ⚠️ **Multiplayer comes before deploying, and that is a product decision rather
 than a technical one.** A hosted build could ship the day the asset paths are
@@ -502,6 +512,33 @@ one formula cannot be read apart, not because the geometry might be wrong.
 
 ### 11 — Multiplayer: identity, and two clients in one match
 
+**Two people, in the same match, at the same time.** The shape is a game of
+chess: sit down, play it now, finish it now. That is the sentence the rest of
+this phase is derived from, and four decisions follow from it.
+
+⚠️ **Live, not async.** Async already works — a returning client fetches state
+and resumes — and it is *not* what is wanted. ⚠️ **This re-opens a promise made
+in ink.** `CLAUDE.md` and the architecture doc both say plain polling and **no
+push, no WebSockets, ever**; that is true of the code today and stops being the
+plan here. Whichever transport wins, this phase must edit both files rather than
+leave them asserting it. See *How live gets delivered* below — the answer may
+still be polling.
+
+⚠️ **Identity is a guest by default and an account by choice.** Nobody signs in
+to start playing: a guest id is enough to own a match and be *you* across turns,
+which satisfies "no passwords, ever" trivially and costs a fraction of OAuth.
+Signing in is the upgrade for people who want an identity that persists — and
+it is what makes the `⬜` Better Auth spike below *later work* rather than a
+gate on this phase. ⚠️ Frictionless to first move is the requirement, and it is
+worth stating as one: on a portal, a sign-in wall in front of a free game is
+the funnel.
+
+⚠️ **Hot-seat is removed, not kept.** It was scaffolding, and two browser tabs
+are two players — which is cheaper than the per-match mode on `resolveActor`
+that keeping it would cost, and that function is the most security-sensitive one
+here. ⚠️ Every test and manual check in the repo is written in hot-seat, so
+this is a real edit to the suites rather than a deletion.
+
 ⚠️ **This section was written assuming we own identity, and two target
 platforms forbid that.** CrazyGames requires progress tied to a CrazyGames
 account with automatic login and permits **no external login options**;
@@ -529,15 +566,60 @@ currently standing in for, or identity that does not ride a cookie. Both are
 cheap to choose now and expensive to retrofit, and 12 cannot make the decision
 because by then the sessions are already built.
 
-⚠️ **Hot-seat was scaffolding and this is where that gets settled.** It was
-never the product, so it does not need to be a *supported mode*. Keeping it as a dev-only
-affordance is cheap and probably right — every test and every manual check is
-written in it. Keeping it as a shipped one is the thing that costs
-`resolveActor` a second path through the most security-sensitive function here.
-
 - **Match lifecycle** — a way for a second person to join, and matches bound to users rather than open to anyone. The largest of the three and still a single bullet: it wants a lobby state, a join mechanism, and the `status` column this section is careful to keep apart from game outcome. Phase 4 was split in two for less; this should be split before it starts.
-- **Sign-in**, with sessions in our own database. OAuth is the candidate rather than the conclusion — see *Identity* below, and the seam above.
+- **Guest identity first**, with sessions in our own database; sign-in is the later upgrade and OAuth is its candidate rather than its conclusion — see *Identity* below, and the seam above.
 - **Session→player map** at join, so `actor` comes from *who you are* rather than *whose turn it is*.
+
+#### How live gets delivered
+
+⬜ **Open, and the one thing in this phase with a genuine fork in it.** Only
+*server → client* needs pushing: commands already go out over `POST` and that
+does not change. Whatever wins, `seq` survives — the client already drops any
+update whose `seq` it holds, so every option below is a different way of being
+told to catch up.
+
+- **Just poll faster.** `POLL_INTERVAL_MS` is 2000; at 750 the worst case is
+  750 ms and the average is under 400. ⚠️ **Do not skip past this one.** It is a
+  one-line change, no new architecture, no new failure mode, and for a
+  turn-based game it is very likely indistinguishable from push — chess clients
+  feel live at this latency. It is also the only option that can be *measured*
+  before anything is built.
+- **SSE.** One long-lived `GET`, the server writes events as they resolve. ⚠️
+  `EventSource` reconnects on its own and resends `Last-Event-ID`, which is
+  **exactly `seq`** — the resume story is already designed and already tested.
+  Keeps commands on plain `POST` and keeps the literal "no WebSockets".
+- **WebSockets.** Full duplex, and nothing here needs the other half. Most
+  machinery, least fit.
+
+⚠️ **Matchmaking wants push more than play does.** A player waiting in a queue
+has to be told *the moment* an opponent appears, and that is the one interaction
+where a 750 ms poll reads as lag rather than as instant. If the queue is what
+forces SSE, it is worth knowing that before the transport is chosen for
+gameplay's sake.
+
+#### How two people meet
+
+⬜ **Both, with automatic first.** A queue is the default — press play, get an
+opponent — and an invite link is the other route, for playing someone chosen.
+
+⚠️ **No portal supplies this.** Every platform checked offers accounts or
+nothing; not one has a matchmaking queue. So the queue is ours to build
+wherever the game runs, and it is the one piece of "multiplayer" that no SDK
+will ever hand over. An **invite link**, by contrast, is what the portals *are*
+shaped around — it appears by name in CrazyGames' multiplayer requirements
+alongside room state and a rejoin flow — so building it also buys the shape a
+later portal will ask for.
+
+⚠️ **A queue is a lobby with the choosing removed**, which is the argument for
+doing it first rather than second: a public list of joinable matches is the
+same `status` column and the same join path, with a human picking instead of
+the server. The reverse — building a list and later inferring a queue from it —
+is the one that rewrites.
+
+⚠️ **Open: what the queue matches *on*.** With one army and one ruleset it is a
+FIFO pair-off and nothing more. Map choice, and eventually anything like a
+rating, are what turn it into a real matchmaker — and neither exists yet, so the
+honest first version is the pair-off.
 
 ⬜ **Spike Better Auth before designing around it.** Identity names it the first candidate and names the real unknown in the same breath — "what it assumes about a framework, since `Bun.serve` is not one". That is structurally the same gating question 5c carried about bun's bundler, and 5c is the reason to mark it: a plan built around an unverified assumption had to be rewritten when the spike came back negative. Answer three things first — does it run without a framework adapter, does its cookie replace `vod_session` cleanly, does its Drizzle adapter fit the existing libSQL client — and if any answer is no, the fallback is the thing the section already describes anyway: a `sessions` table of our own plus a small OAuth library.
 
@@ -627,7 +709,7 @@ because 11 is where the sessions get built.
   able on bytes; the file count is already half the cap, and a terrain kit is
   what grows it.
 
-### 13 — Depth: more units, more tuning
+### 13 — Content: units, maps, and the numbers
 
 A track, not a queue — it depends on nothing above and it is what moves the
 metrics a portal actually gates on. *Tuning* above is where the numbers and the
@@ -640,6 +722,19 @@ argument live; this is the phase that keeps changing them.
   `Partial` so artillery can have no row — a new unit silently gets no charge.
 - **Whatever play says next.** Three things have already moved this way, and two
   of the three turned out to be rules rather than dials.
+- **Maps into a table, and an editor over it.** Settled in *Maps in a table*
+  above. The storage half is a migration and a foreign key; the editor is the
+  half that makes it worth doing, and it is the first tool in this repo written
+  for an author rather than a player. ⚠️ Almost all of it already exists:
+  `parseTerrainGrid` reads the rows, `maps.test.ts` already knows what makes a
+  board valid — deployable, crossable, one army each way — and `/maps` already
+  draws one. An editor is those three joined by a paint tool.
+- ⚠️ **"Short, like a game of chess" is a content requirement, not just a
+  transport one.** Nothing caps a match today: eight units a side, no turn
+  limit, and a player who retreats can extend it indefinitely. If matches are
+  meant to finish in one sitting, the dial is army size, board size, or a
+  condition that ends it — and which one is a **design** question this phase
+  owns, not a number to quietly tune.
 
 ### 14 — Presentation: animation, sound, UI
 
@@ -672,10 +767,11 @@ average.
 - **Nobody offers matchmaking.** Every portal checked supplies accounts or
   nothing; a queue is ours to build if it is wanted, and a room-plus-invite-link
   flow is what the platforms are actually shaped around.
-- ⚠️ **Exclusivity is a strategy decision, not an integration task.** One target
-  is web-exclusive and blocks external requests by default, which rules out a
-  game with its own server unless an exemption is granted. Deciding that is
-  cheap now and expensive after an integration.
+- ✅ **No exclusivity, decided.** One target is web-exclusive and blocks external
+  requests by default; a game with its own server cannot take that deal without
+  an exemption, and the deal is worth less than the other portals together. The
+  order is itch, then CrazyGames, then whoever else fits — and every
+  non-exclusive licence checked so far permits exactly that.
 - ⚠️ **The genre is against the grain and this is known going in.** The one
   portal publishing numbers says hypercasual and puzzle dominate, with strategy
   landing with older players; a turn-based keyboard-and-mouse game is not what
