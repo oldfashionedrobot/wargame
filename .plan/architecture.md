@@ -49,7 +49,7 @@ rather than look for a list here.
 packages/
   shared/src/
     types.ts          every shared type: coordinates, units, state, commands, events
-    coordinate.ts     grid arithmetic, directions, and the one tile distance
+    coordinate.ts     grid arithmetic, directions, distance, and neighbours
     queries.ts        lookups over a GameState
     legality.ts       what may be selected
     movement.ts       the search, the path check, and the cost model both call
@@ -63,7 +63,7 @@ packages/
     victory.ts        who has won, and whether anyone has
     applyEvents.ts    the event fold
     protocol.ts       the GameServer interface, the wire shapes, and parsing
-    testing.ts        fixtures, imported by tests only
+    testing.ts        fixtures (makeState, route, at, unitAt), tests only
     index.ts          the barrel
     data/             the static content tables — unit types, terrain, combat
   shared/scripts/
@@ -440,6 +440,18 @@ exploreMovement(state, unit, movementRange, movementType) → Movement
 The budget and movement type are arguments; callers resolve them from
 `getUnitType`. The search relaxes over a FIFO queue: a neighbour already
 recorded more expensively is lowered and re-queued.
+
+⚠️ **The four touching tiles come from `orthogonalNeighbours` in
+`coordinate.ts`**, which is the same argument `tileDistance` makes in its own
+comment: written inline at each caller, it is that many chances to disagree
+about a diagonal. It was inline three times — this search, the client's facing
+choices, and the terrain tiler's flood fill — and one of the three was spelled
+`neighborsOf`, the only American spelling in the codebase, so a grep for the
+others missed it. ⚠️ It is **unclipped**: the search rejects a tile by cost and
+the panel by the board's edge, so folding either filter in would make the other
+pass bounds it has no use for. The tiler's `neighbourMask` still writes its four
+out longhand, because there the order *is* the meaning — they pack into bits
+`N=1, E=2, S=4, W=8`.
 
 `reachable` and `settled` are different sets, and they answer different
 questions. A friendly unit's tile is settled and walkable-through but is not a
@@ -1249,9 +1261,9 @@ handleTileClick(state, selection, coordinate) → SelectionState
 destinationOf(pinned)                         → Coordinate
 confirmRoute(routePinned)                     → DestinationChosen
 enterMode(state, arrived, kind)               → DestinationChosen   // a mode's tiles
-readAimClick(state, aim, coordinate)          → Unit | null        // fire or charge
+readAimClick(state, attacking, coordinate)    → Unit | null        // fire or charge
 readHoldClick(state, arrived, coordinate)     → Facing | null
-chooseTarget(firing, target)                  → Aiming
+chooseTarget(attacking, target)               → TargetPinned
 clearStep(arrived)                            → DestinationChosen   // back to the panel
 unpinDestination(pinned)                      → SelectionState      // back to the board
 moveCommandFor(arrived, facing)               → Command
@@ -1370,20 +1382,27 @@ to the panel; a dark click at the panel un-walks the ghost and returns to moveme
 selection. "Lit does something, dark backs out" reads because at most one set is
 ever lit.
 
-⚠️ **Exactly one overlay is lit, and the mode guarantees it.** `setFacingChoices`
-and `setAttackRange` were two independent conditions that merely happened never
-to be true together; the step is now what decides, so the other clears because
-there is nothing else it could be showing. ⚠️ And the attack band stopped being
+⚠️ **Exactly one overlay is lit, and `setStepTiles` is what guarantees it.**
+This was three independent setters with the rule written as a comment over the
+caller, so every update had to remember to clear the other two; one call taking
+the lit overlay puts the invariant in the signature. It is named for what it
+paints — `attack`, `charge`, `facing` — rather than for what the player is
+doing, which is what keeps `render/` from importing the interaction layer to
+name a colour. `STEP_UI` in `GameCanvas` maps between the two vocabularies and
+carries the hint line with it, so a step's tiles and its instruction cannot
+describe different things. ⚠️ And the attack band stopped being
 filtered: it used to exclude the four tiles beside the unit when nothing hostile
 stood on them, because both sets were lit at once and the colours had to be split
 somehow. Facing is its own mode, so reach is simply reach.
 
 **The forecast reads through the step.** `attackForecast` and `facingForTarget`
-take an `Aiming` — an attack mode with a target pinned — which `isAim` and
-`isAiming` narrow to. ⚠️ Two predicates, so no caller spells the two-level check
+take a `TargetPinned` — an attack mode with a target pinned — which
+`isAttacking` and `isTargetPinned` narrow to. ⚠️ These were `Aim` and `Aiming`,
+which read the wrong way round: the gerund sounds like the earlier state and was
+the later one, across four symbols separated by three letters. ⚠️ Two predicates, so no caller spells the two-level check
 by hand; that is what absorbing `targetChosen` costs, paid once.
 
-⚠️ **`Aim` covers firing and charging together**, because everything between
+⚠️ **`Attacking` covers firing and charging together**, because everything between
 picking a mode and committing is identical: the same pin-then-confirm gesture,
 the same re-pin, the same second click. The kind is read off `step.kind` at the
 single place that builds the command, rather than branched on through the
@@ -1413,6 +1432,15 @@ panel renders from it and the arrival path counts it; asking `canFire` and
 failure would be a panel offering a row the skip had decided did not exist.
 Holding is always last and always present, so the list is never empty — which is
 what makes *one action* mean **nothing to attack** rather than nothing at all.
+
+⚠️ **It reads a table, and the table is pinned to `ActionKind` from both
+directions.** `PANEL_ACTIONS` pairs each kind with the predicate that offers it;
+`satisfies` checks every entry names a real kind and a `never`-assertion fails
+the build when a kind has no entry — the same guard `PINNED_PHASES` carries. The
+hand-written list this replaced meant a new `ActionKind` compiled cleanly and
+simply never appeared in the menu. Holding's predicate is a constant `true`
+rather than a `push` after the loop, so *always available* is a fact in the
+table.
 
 ⚠️ **A one-row panel is skipped, in both directions.** A menu with one answer is
 a click that asks nothing, and it falls on the commonest action in the game —
@@ -1504,7 +1532,7 @@ unmount. It resolves to:
 ```ts
 onTileClick(handler)      setSelectedTile(coordinate | null)
 setRange(tiles)           setRoute(path)
-setFacingChoices(around | null)
+setStepTiles(overlay | null, tiles)   // 'attack' | 'charge' | 'facing'
 anchorTo(element | null, coordinate | null)
 playEvents(events): Promise<void>
 syncUnits(state)          previewMove(unitId, path): Promise<void>
@@ -1837,6 +1865,14 @@ both a tile's drawn extent and the tallest piece standing on it.
 - Model origins are at the base, so a unit's `y` is the surface it stands on
   rather than half its own height — and so scaling a piece grows it upward off
   that surface rather than sinking it through one.
+- ⚠️ **A player's colour is one palette, in `render/playerColors.ts`.** Hex is
+  the source and `Color3` derives from it rather than the reverse: whichever
+  form is written down is the one a person edits, so it should be the one every
+  tool already speaks — `Color3(0.35, 0.6, 1)` is not a colour anybody can
+  picture. ⚠️ It exists because there were two of these and they disagreed: the
+  board drew blue as `#5999ff` and the cutaway's health bar drew the same player
+  `#4a7fd4`. The bar also picked its colour with `=== 'blue' ? blue : red`, so a
+  third player would have rendered red; indexing the palette covers all four.
 - ⚠️ **Pieces are not at terrain scale, deliberately.** `PIECE_SCALE` in
   `units.ts` is a `Record` per unit type: a unit is a formation rather than a
   man, so no size makes it and a tree both correct, and a piece is sized to read
