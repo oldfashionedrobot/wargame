@@ -306,11 +306,20 @@ option, and both cost a few lines against a table's seeding machinery.
 ## Remaining phases
 
 ⚠️ **Three of these are a queue and two are tracks.** 11, 12 and 15 run in that
-order and cannot be reordered: nothing outward-facing happens without a hosted
-build, and the last portal step needs both the build and whatever provides
-identity. 13 and 14 depend on none of it, and they are what actually move the
-numbers a portal gates on — so they run alongside rather than waiting their
-turn, in whatever order is most interesting that week.
+order. 13 and 14 depend on none of it and are what actually move the numbers a
+portal gates on, so they run alongside rather than waiting their turn, in
+whatever order is most interesting that week.
+
+⚠️ **Multiplayer comes before deploying, and that is a product decision rather
+than a technical one.** A hosted build could ship the day the asset paths are
+fixed, and for a while this file said it should. It should not: hot-seat was
+scaffolding for building the game, not a way to play it, and putting a
+two-people-one-keyboard turn-based strategy game in front of a portal audience
+is shipping the wrong product and learning nothing true from what it does.
+⚠️ The cost of the order is that **phase 11 has to take phase 12's constraint as
+an input** — identity gets designed knowing the client will later be served from
+another origin, rather than having that discovered afterwards. That constraint
+is written into 11 below, where the decision is actually made.
 
 ⚠️ **Cross-references name a phase rather than number it.** Inserting phase 11
 renumbered the one after it and turned every "Phase 11 —" in *Known
@@ -491,49 +500,7 @@ one formula cannot be read apart, not because the geometry might be wrong.
   animation and a charge one, and it is carried for that.
 
 
-### 11 — A hosted build, client and server apart
-
-**The target is itch.io.** Open, no gate, no review, no exclusivity, and no
-accounts to integrate — so it is the one portal where "does this deploy at all"
-can be answered without also answering anything else. Everything below is what
-itch specifically requires; the other portals want a superset.
-
-The smallest remaining phase and the one that unblocks every outward-facing
-thing. Nothing here is new mechanics: it is the deploy story, and it is first
-because itch takes a build the day one exists, and because three assumptions
-die the moment the client is served from somewhere that is not us.
-
-- ⚠️ **Asset paths are absolute and itch serves from a subdirectory.** Verified,
-  not anticipated: the build emits `src="/assets/…"` and `href="/favicon.svg"`,
-  which resolve to the CDN root and 404 under a game's own subdirectory. Vite's
-  `base` fixes the bundled ones. It does **not** fix the four URLs built at
-  runtime — `MODEL_URLS` in `unitModels.ts` and `MODEL_DIR` in
-  `terrainModels.ts` are plain strings the bundler never sees, so they need the
-  base threading through them. ⚠️ Both failures are a blank canvas rather than
-  an error, which is the argument for fixing them before the first upload
-  instead of debugging them through itch.
-
-- **Same-origin stops being true.** Today the client calls `/api/*` relative and
-  that works in dev (Vite proxies) and in production (the server serves the
-  bundle). itch hosts the zip on its HTML5 CDN and says the backend must live
-  elsewhere and accept cross-origin requests; every other portal says the same
-  in its own words. So the client needs an API base and the server needs CORS
-  with credentials.
-- ⚠️ **The session cookie is the sharp edge, not CORS.** `SameSite=Lax` is what
-  currently covers CSRF, and Lax means the browser will not send the cookie on a
-  cross-site request at all. A client on someone else's origin gets no session.
-  Either the cookie becomes `SameSite=None; Secure` and CSRF needs the real
-  defence Lax was standing in for, or identity stops riding a cookie. That is a
-  decision, and it wants making here rather than inside phase 12.
-- **Two deploy targets, one repo.** The client is static files; the server is a
-  process with a database. They version together and ship apart, which is the
-  first time `seq` and the ruleset-versioning compromise have teeth.
-- **Size is measured, not feared.** The build is currently ~7.9 MB over 724
-  files, against CrazyGames' ≤50 MB initial, ≤250 MB total, ≤1500 files. Comfort
-  able on bytes; the file count is already half the cap, and a terrain kit is
-  what grows it.
-
-### 12 — Multiplayer and auth
+### 11 — Multiplayer: identity, and two clients in one match
 
 ⚠️ **This section was written assuming we own identity, and two target
 platforms forbid that.** CrazyGames requires progress tied to a CrazyGames
@@ -549,22 +516,34 @@ a provider, a portal SDK is a provider. Everything below about sessions, cookie
 rotation and ownership is right for the provider we host, and simply does not
 apply to the ones we do not.
 
-⚠️ **itch being first settles which provider gets built first: ours.** itch has
-no accounts to borrow, so a hosted build there is hot-seat until we supply
-identity ourselves — which means the sessions work below is not deferred by the
-platform strategy, it is brought forward by it. The seam still earns its place,
-just for the opposite reason: ours will have to sit *beside* a portal's rather
-than instead of it.
+⚠️ **The first provider is ours**, because the first platform is itch and itch
+has no accounts to borrow. The seam still earns its place, for the opposite
+reason to the one first written here: ours will have to sit *beside* a portal's
+rather than instead of it.
+
+⚠️ **Decide the transport here, not in 12.** The client will be served from
+another origin — itch hosts the files, the server stays ours — and `SameSite=Lax`
+means a browser will not send the session cookie cross-site at all. So the
+choice is `SameSite=None; Secure` plus the real CSRF defence that Lax is
+currently standing in for, or identity that does not ride a cookie. Both are
+cheap to choose now and expensive to retrofit, and 12 cannot make the decision
+because by then the sessions are already built.
+
+⚠️ **Hot-seat was scaffolding and this is where that gets settled.** It was
+never the product, so it does not need to be a *supported mode*. Keeping it as a dev-only
+affordance is cheap and probably right — every test and every manual check is
+written in it. Keeping it as a shipped one is the thing that costs
+`resolveActor` a second path through the most security-sensitive function here.
 
 - **Match lifecycle** — a way for a second person to join, and matches bound to users rather than open to anyone. The largest of the three and still a single bullet: it wants a lobby state, a join mechanism, and the `status` column this section is careful to keep apart from game outcome. Phase 4 was split in two for less; this should be split before it starts.
-- **OAuth sign-in** with sessions in our own database — see *Identity* below.
+- **Sign-in**, with sessions in our own database. OAuth is the candidate rather than the conclusion — see *Identity* below, and the seam above.
 - **Session→player map** at join, so `actor` comes from *who you are* rather than *whose turn it is*.
 
 ⬜ **Spike Better Auth before designing around it.** Identity names it the first candidate and names the real unknown in the same breath — "what it assumes about a framework, since `Bun.serve` is not one". That is structurally the same gating question 5c carried about bun's bundler, and 5c is the reason to mark it: a plan built around an unverified assumption had to be rewritten when the spike came back negative. Answer three things first — does it run without a framework adapter, does its cookie replace `vod_session` cleanly, does its Drizzle adapter fit the existing libSQL client — and if any answer is no, the fallback is the thing the section already describes anyway: a `sessions` table of our own plus a small OAuth library.
 
 ⚠️ **`owner_id` lands on a table full of unowned rows**, exactly as `'land'` tiles meet phase 6. Nullable column, backfill to a sentinel, or wipe — dev-only data, so wiping is almost certainly right, but it is a step to write down rather than hit.
 
-⚠️ **Decide whether hot-seat survives.** Every match ever played here has been two players sharing one browser, and the moment `actor` comes from the session that stops working by construction. If hot-seat stays, `resolveActor` needs a per-match mode and the whole phase grows a second path through its most security-sensitive function; if it goes, the mode the game was built and tested in disappears with it. Either is fine. Not choosing means discovering the answer while writing the auth code, which is the worst time.
+⚠️ **Hot-seat stops working by construction** the moment `actor` comes from the session — every match ever played here has been two players sharing one browser. It was scaffolding, so it is not a *shipped* mode (see the top of this phase), but that leaves the narrower question of whether it survives as a **dev affordance**, and the cost is the same either way: a per-match mode on `resolveActor` is a second path through the most security-sensitive function here. ⚠️ The thing not to do is discover the answer while writing the auth code.
 
 Schema work: `owner_id` on `matches`, a lobby `status` column, and a `sessions` table — three migrations, generated from `schema.ts`. Also **removes a read**: `http.ts` currently loads the match twice per command because `resolveActor` needs state to stamp `actor = currentTurn` while `submit` owns the read. A session lookup needs no state, so the extra read goes with it.
 
@@ -592,7 +571,7 @@ Until all three land, two tabs share control of both players rather than being t
 
 **Today there is no authorization, not weak authorization.** `resolveActor` ignores the session and returns `state.currentTurn`, so the cookie gates nothing: any client, with or without one, can submit as whichever player's turn it is, to any match id — and `GET /api/matches` hands out the ids. That's the deliberate hot-seat concession, but it's worth stating in those terms, because several defences are pointless until it changes:
 
-- **CSRF hardening is premature.** `SameSite=Lax` already blocks a cross-site POST from carrying the cookie, and an attacker doesn't need the cookie anyway — there is no authority to forge. Tokens and double-submit patterns become meaningful the same day `resolveActor` starts trusting the session, and not before.
+- **CSRF hardening is premature.** `SameSite=Lax` already blocks a cross-site POST from carrying the cookie, and an attacker doesn't need the cookie anyway — there is no authority to forge. Tokens and double-submit patterns become meaningful the same day `resolveActor` starts trusting the session, and not before. ⚠️ **And that day may be the same day Lax goes**, if the transport decision above sends the cookie cross-site: the protection and the thing that made it unnecessary would then leave together.
 - **`GET /api/matches` becomes an information leak.** It currently lists every match from every visitor. Harmless while matches are unowned; the moment they're owned, listing must be scoped to the player — which is the same change already recorded under Known compromises, arriving for a second reason.
 - **`404` on a missing match stops being neutral.** Once matches are owned, "no such match" and "not yours" should be the same response, or the endpoint becomes an existence oracle.
 
@@ -606,6 +585,47 @@ Until all three land, two tabs share control of both players rather than being t
 Both are defaults in Better Auth, which is a further point in its favour above.
 
 **Where the check goes.** Whatever provides identity resolves to a `PlayerId` in one place, before `actor` is stamped — see *Identity* above. Ownership is then a lookup in front of the authority, never a rule the reducers know about. Note that `canSelectUnit` deliberately stays a game fact and needs no identity: the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
+
+### 12 — A hosted build on itch.io
+
+**itch.io.** Open, no gate, no review, no exclusivity, and no accounts to
+integrate — so it is the one portal where "does this deploy at all" can be
+answered without also answering anything else. Everything below is what itch
+specifically requires; the other portals want a superset.
+
+The smallest remaining phase, and no new mechanics: it is the deploy story.
+⚠️ **It could have gone first and deliberately does not** — see the top of
+*Remaining phases* for why, and note that the one decision it would otherwise
+own, whether identity rides a cookie across origins, is taken in 11 instead
+because 11 is where the sessions get built.
+
+- ⚠️ **Asset paths are absolute and itch serves from a subdirectory.** Verified,
+  not anticipated: the build emits `src="/assets/…"` and `href="/favicon.svg"`,
+  which resolve to the CDN root and 404 under a game's own subdirectory. Vite's
+  `base` fixes the bundled ones. It does **not** fix the four URLs built at
+  runtime — `MODEL_URLS` in `unitModels.ts` and `MODEL_DIR` in
+  `terrainModels.ts` are plain strings the bundler never sees, so they need the
+  base threading through them. ⚠️ Both failures are a blank canvas rather than
+  an error, which is the argument for fixing them before the first upload
+  instead of debugging them through itch.
+
+- **Same-origin stops being true.** Today the client calls `/api/*` relative and
+  that works in dev (Vite proxies) and in production (the server serves the
+  bundle). itch hosts the zip on its HTML5 CDN and says the backend must live
+  elsewhere and accept cross-origin requests; every other portal says the same
+  in its own words. So the client needs an API base and the server needs CORS
+  with credentials — carrying whatever 11 decided identity travels as.
+- ⚠️ **The sharp edge is the session, not CORS** — and it is 11's to resolve,
+  which is the whole reason that constraint is written into 11. What is left
+  here is carrying the decision out to a second origin and finding out whether
+  it was right.
+- **Two deploy targets, one repo.** The client is static files; the server is a
+  process with a database. They version together and ship apart, which is the
+  first time `seq` and the ruleset-versioning compromise have teeth.
+- **Size is measured, not feared.** The build is currently ~7.9 MB over 724
+  files, against CrazyGames' ≤50 MB initial, ≤250 MB total, ≤1500 files. Comfort
+  able on bytes; the file count is already half the cap, and a terrain kit is
+  what grows it.
 
 ### 13 — Depth: more units, more tuning
 
