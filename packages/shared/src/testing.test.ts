@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { makeState, route } from './testing';
+import { at, makeState, route } from './testing';
 import type { Coordinate } from './types';
 
 // The fixture helpers earn tests because the suites lean on them: a `route`
 // that silently produced a diagonal would make a hundred assertions agree
 // about the wrong thing, and quietly stop testing what they claim to.
-
-const at = (col: number, row: number): Coordinate => ({ col, row });
 
 const isOrthogonalRoute = (path: Coordinate[]) =>
   path.slice(1).every((step, i) => {

@@ -6,10 +6,10 @@ import {
   directionBetween,
   facingToward,
   isWithinGrid,
+  orthogonalNeighbours,
   tileDistance,
 } from './coordinate';
-
-const at = (col: number, row: number) => ({ col, row });
+import { at } from './testing';
 
 describe('coordinatesEqual', () => {
   it('compares by value, since Coordinate has no identity in JS', () => {
@@ -27,6 +27,20 @@ describe('coordinateKey', () => {
 
   it('gives equal coordinates the same key', () => {
     expect(coordinateKey(at(4, 7))).toBe(coordinateKey(at(4, 7)));
+  });
+});
+
+describe('orthogonalNeighbours', () => {
+  it('gives the four touching tiles and no diagonal', () => {
+    expect(orthogonalNeighbours(at(3, 3))).toEqual([at(3, 4), at(4, 3), at(3, 2), at(2, 3)]);
+  });
+
+  // ⚠️ Unclipped on purpose: the search rejects a tile by cost and the panel by
+  // the board's edge, so folding either filter in here would make the other
+  // pass bounds it has no use for.
+  it('does not clip to a board it was never told about', () => {
+    expect(orthogonalNeighbours(at(0, 0))).toContainEqual(at(-1, 0));
+    expect(orthogonalNeighbours(at(0, 0))).toContainEqual(at(0, -1));
   });
 });
 

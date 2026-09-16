@@ -105,6 +105,17 @@ export function route(...waypoints: Coordinate[]): Coordinate[] {
   return path;
 }
 
+/**
+ * A coordinate, in as few characters as the idea deserves.
+ *
+ * ⚠️ **Here because it was written ten times.** Every suite that names a tile
+ * had its own copy, half of them untyped, and a fixture helper module already
+ * existed -- so the duplication was not even buying independence from one.
+ * Coordinates are the unit of nearly every assertion in the rulebook, and a
+ * two-character name is what keeps a board legible at the call site.
+ */
+export const at = (col: number, row: number): Coordinate => ({ col, row });
+
 export const unitAt = (state: GameState, id: string): Unit => {
   const unit = state.units.find((u) => u.id === id);
   if (!unit) throw new Error(`no unit ${id} in fixture`);

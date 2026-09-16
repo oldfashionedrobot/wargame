@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CORNER, HEAD, pieceFor, STRAIGHT, TAIL } from './routeArrow';
 import type { Coordinate } from '@vod/shared';
+import { at } from '@vod/shared/testing';
 
 // The one part of the arrow that decides anything; the rest is vertices.
 // ⚠️ A wrong rotation on one of the four bends is invisible until somebody
@@ -10,7 +11,6 @@ import type { Coordinate } from '@vod/shared';
 // is a quarter turn around the ring N E S W, and every canonical piece is drawn
 // travelling north.
 
-const at = (col: number, row: number): Coordinate => ({ col, row });
 const piece = (path: Coordinate[], i: number) => pieceFor(path, i);
 
 describe('pieceFor', () => {

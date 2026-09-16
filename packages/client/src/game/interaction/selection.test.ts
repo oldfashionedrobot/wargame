@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeState, route, unitAt } from '@vod/shared/testing';
+import { at, makeState, route, unitAt } from '@vod/shared/testing';
 import { chargeChance, LUCK_MAX } from '@vod/shared';
 import type { Coordinate, GameState } from '@vod/shared';
 import {
@@ -40,8 +40,6 @@ const board = (): GameState =>
     { id: 'b2', col: 5, row: 5, hasActed: true },
     { id: 'r1', col: 6, row: 6, owner: 'red' },
   ]);
-
-const at = (col: number, row: number): Coordinate => ({ col, row });
 
 /** Select b1 and hand back the resulting selection, since most cases start there. */
 const withB1Selected = (state: GameState): SelectionState =>

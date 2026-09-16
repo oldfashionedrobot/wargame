@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { getTileAt, getUnitAt } from './queries';
-import { makeState } from './testing';
-
-const at = (col: number, row: number) => ({ col, row });
+import { at, makeState } from './testing';
 
 describe('getTileAt', () => {
   it('reads the terrain under a coordinate', () => {

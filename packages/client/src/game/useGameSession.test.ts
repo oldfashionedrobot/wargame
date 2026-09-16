@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { makeState, route } from '@vod/shared/testing';
+import { at, makeState, route } from '@vod/shared/testing';
 import type {
   Command,
   CommandResult,
-  Coordinate,
   GameEvent,
   GameServer,
   GameState,
@@ -17,8 +16,6 @@ import type { GameSessionCallbacks } from './useGameSession';
 // The hook against a fake in-memory GameServer -- the same interface the real
 // polling implementation serves, minus the network. `push` plays the role of a
 // poll delivering an update; `respond` scripts what the next submit returns.
-
-const at = (col: number, row: number): Coordinate => ({ col, row });
 
 // b1 can act; its position and infantry's range of 3 make (1,3) a legal move target.
 const board = makeState(7, [{ id: 'b1', col: 1, row: 1 }]);

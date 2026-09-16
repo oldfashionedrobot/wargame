@@ -4,15 +4,13 @@ import { resolveMove, validateMove } from './move';
 import type { Rolls } from './combat';
 import { LUCK_MAX } from './data/combat';
 import { MAX_HEALTH } from './data/unitTypes';
-import { makeState, route } from './testing';
+import { at, makeState, route } from './testing';
 import type { Command, Facing, MoveCommand } from './types';
 
 // validateMove asks three separate questions -- does the unit exist, may it
 // act, is the route walkable -- and only the third is validatePath's. These
 // cover the first two and the handoff; validatePath has its own suite in
 // movement.test.ts.
-
-const at = (col: number, row: number) => ({ col, row });
 
 const board = makeState(6, [
   { id: 'b1', col: 0, row: 0 },

@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { exploreMovement, validatePath } from './movement';
-import { makeState, route, unitAt } from './testing';
+import { at, makeState, route, unitAt } from './testing';
 import type { UnitSpec } from './testing';
 import type { Coordinate, GameState } from './types';
 import type { MovementType } from './data/unitTypes';
 
 const has = (tiles: Coordinate[], col: number, row: number) =>
   tiles.some((t) => t.col === col && t.row === row);
-
-const at = (col: number, row: number): Coordinate => ({ col, row });
 
 // The budget and movement type are arguments to the search, not properties of
 // the fixture -- so these tests state the numbers they are about and stay

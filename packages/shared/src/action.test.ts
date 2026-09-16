@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import { resolveAction, validateCommand } from './action';
 import { actionEndsTurn } from './turns';
-import { makeState, route } from './testing';
+import { at, makeState, route } from './testing';
 import type { Command, MoveCommand } from './types';
 
 const NO_LUCK = { attack: 0, counter: 0 };
-
-const at = (col: number, row: number) => ({ col, row });
 
 // b1 starts at (0,0). A real route, not an endpoint pair -- validatePath
 // walks every step in 6c, so a fixture describing a straight jump would be

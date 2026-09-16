@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import { chargeChance, chargeThreshold, refuseCharge, resolveCharge } from './combat';
 import { CHARGE_HALF_LIFE, CHARGE_REPEL, CHARGE_THRESHOLD, REPEL_DIVISOR } from './data/combat';
-import { makeState } from './testing';
+import { at, makeState } from './testing';
 import type { GameState, Unit } from './types';
 
-const at = (col: number, row: number) => ({ col, row });
 const unit = (state: GameState, id: string): Unit => state.units.find((u) => u.id === id)!;
 
 // A cavalryman beside an infantryman, both on plains unless a map says otherwise.
