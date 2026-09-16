@@ -16,8 +16,8 @@ import {
   confirmRoute,
   handleTileClick,
   initialSelectionState,
-  isAiming,
-  isAim,
+  isTargetPinned,
+  isAttacking,
   isPlan,
   facingForTarget,
   moveCommandFor,
@@ -332,12 +332,15 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
         // itself, and `readAimClick` wants the whole thing -- so asking the
         // predicate does both jobs where the inline check does one and then
         // needs the predicate anyway.
-        if (isAim(selection)) {
+        if (isAttacking(selection)) {
           // A second click on the pinned target is what fires it -- the same
           // gesture a route uses, read before `readAimClick` for the same
           // reason: re-pinning the target onto itself is a wasted render and no
           // shot. Dispatch order, exactly like the route's.
-          if (isAiming(selection) && coordinatesEqual(coordinate, selection.step.target.position)) {
+          if (
+            isTargetPinned(selection) &&
+            coordinatesEqual(coordinate, selection.step.target.position)
+          ) {
             void submitCommand(
               moveCommandFor(selection, facingForTarget(state, selection), {
                 targetUnitId: selection.step.target.id,

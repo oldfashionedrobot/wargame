@@ -9,7 +9,7 @@ import type {
   GameState,
   UpdateListener,
 } from '@vod/shared';
-import { isAiming } from './interaction/selection';
+import { isTargetPinned } from './interaction/selection';
 import { useGameSession } from './useGameSession';
 import type { GameSessionCallbacks } from './useGameSession';
 
@@ -194,7 +194,7 @@ describe('useGameSession', () => {
       act(() => result.current.clickTile(at(1, 4)));
       // The precondition, asserted: without a pinned target the confirming
       // click below is just a click on the dark and proves nothing.
-      expect(isAiming(result.current.selection)).toBe(true);
+      expect(isTargetPinned(result.current.selection)).toBe(true);
 
       await act(async () => fake.push([], { ...contested, winner: 'blue' }));
       act(() => result.current.clickTile(at(1, 4)));

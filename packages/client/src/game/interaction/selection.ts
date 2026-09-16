@@ -161,7 +161,7 @@ export function isPlan(selection: SelectionState): selection is Pinned {
   return (PINNED_PHASES as readonly string[]).includes(selection.phase);
 }
 
-type AimingStep = Extract<MenuStep, { kind: 'firing' | 'charging' }>;
+type AttackStep = Extract<MenuStep, { kind: 'firing' | 'charging' }>;
 
 /**
  * An attack mode is up: its tiles are lit, and a click on a lit enemy pins one.
@@ -171,10 +171,23 @@ type AimingStep = Extract<MenuStep, { kind: 'firing' | 'charging' }>;
  * re-pin, the same second click. Only the command differs, and that is read off
  * `step.kind` at the one place that builds it.
  */
-export type Aim = DestinationChosen & { step: AimingStep };
+export type Attacking = DestinationChosen & { step: AttackStep };
 
-/** A target is pinned: the preview is up, and a second click on it commits. */
-export type Aiming = DestinationChosen & { step: AimingStep & { target: Unit } };
+/**
+ * A target is pinned: the preview is up, and a second click on it commits.
+ *
+ * ⚠️ **`TargetPinned` is a subset of `Attacking`**, and the names are the second
+ * pair this has had. They were `Aim` and `Aiming`, which read the wrong way
+ * round -- the gerund sounds like the earlier state and was the later one -- and
+ * differed by three letters across four symbols, so `isAim` and `isAiming` were
+ * a typo apart at every call site. Saying what each *is* costs a few characters
+ * and takes the guess out.
+ *
+ * ⚠️ **`pinned` is the file's own word for it**, deliberately: a route is pinned
+ * by a first click and committed by a second, and a target is pinned the same
+ * way. One gesture, one verb.
+ */
+export type TargetPinned = DestinationChosen & { step: AttackStep & { target: Unit } };
 
 /**
  * ⚠️ **Two predicates, so no caller writes the two-level narrowing by hand.**
@@ -182,15 +195,15 @@ export type Aiming = DestinationChosen & { step: AimingStep & { target: Unit } }
  * than at every `phase === 'destinationChosen' && step.kind === 'firing' &&
  * step.target !== null` a reader would otherwise spell out.
  */
-export function isAim(selection: SelectionState): selection is Aim {
+export function isAttacking(selection: SelectionState): selection is Attacking {
   return (
     selection.phase === 'destinationChosen' &&
     (selection.step.kind === 'firing' || selection.step.kind === 'charging')
   );
 }
 
-export function isAiming(selection: SelectionState): selection is Aiming {
-  return isAim(selection) && selection.step.target !== null;
+export function isTargetPinned(selection: SelectionState): selection is TargetPinned {
+  return isAttacking(selection) && selection.step.target !== null;
 }
 
 /**
@@ -346,7 +359,7 @@ function chargeTilesFor(state: GameState, unit: Unit, path: Coordinate[]): Coord
 }
 
 /** A target is pinned: the forecast opens over it, and nothing is sent yet. */
-export function chooseTarget(selection: Aim, target: Unit): Aiming {
+export function chooseTarget(selection: Attacking, target: Unit): TargetPinned {
   return { ...selection, step: { ...selection.step, target } };
 }
 
@@ -566,7 +579,7 @@ export function readHoldClick(
  */
 export function readAimClick(
   state: GameState,
-  selection: Aim,
+  selection: Attacking,
   coordinate: Coordinate,
 ): Unit | null {
   const destination = destinationOf(selection);
@@ -629,7 +642,7 @@ export type Forecast =
  * to survive. So it means *they will fire back unless you kill them*, which is
  * the pessimistic reading and the right default for a warning.
  */
-export function attackForecast(state: GameState, selection: Aiming): Forecast | null {
+export function attackForecast(state: GameState, selection: TargetPinned): Forecast | null {
   const attacker = getUnit(state, selection.unitId);
   const target = getUnit(state, selection.step.target.id);
   if (!attacker || !target) return null;
@@ -658,7 +671,7 @@ export function attackForecast(state: GameState, selection: Aiming): Forecast | 
 }
 
 /** Which way the unit ends up looking once it commits from the panel. */
-export function facingForTarget(state: GameState, selection: Aiming): Facing {
+export function facingForTarget(state: GameState, selection: TargetPinned): Facing {
   const from = destinationOf(selection);
   const travelled = holdFacing(state, selection) ?? 'north';
   return facingToward(from, selection.step.target.position, travelled);

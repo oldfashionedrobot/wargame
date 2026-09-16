@@ -12,8 +12,8 @@ import {
   clearStep,
   confirmRoute,
   facingForTarget,
-  isAiming,
-  isAim,
+  isTargetPinned,
+  isAttacking,
   isPlan,
   readAimClick,
   readHoldClick,
@@ -25,7 +25,13 @@ import {
   unpinDestination,
   holdFacing,
 } from './selection';
-import type { Aim, Aiming, DestinationChosen, RoutePinned, SelectionState } from './selection';
+import type {
+  Attacking,
+  TargetPinned,
+  DestinationChosen,
+  RoutePinned,
+  SelectionState,
+} from './selection';
 
 // The pure half of the client: state and a coordinate in, a new selection out.
 // No React, no Babylon, no server. `handleTileClick` never produces a command
@@ -57,16 +63,16 @@ const withB1Arrived = (state: GameState, destination: Coordinate): DestinationCh
   confirmRoute(withB1Pinned(state, destination));
 
 /** …and then pick Fire from the panel, which is what lights the band. */
-function withB1Firing(state: GameState, destination: Coordinate): Aim {
+function withB1Firing(state: GameState, destination: Coordinate): Attacking {
   const firing = enterMode(state, withB1Arrived(state, destination), 'firing');
-  if (!isAim(firing)) throw new Error('expected firing mode');
+  if (!isAttacking(firing)) throw new Error('expected firing mode');
   return firing;
 }
 
 /** …or pick Charge, which lights the neighbours it could actually charge. */
-function withB1Charging(state: GameState, destination: Coordinate): Aim {
+function withB1Charging(state: GameState, destination: Coordinate): Attacking {
   const charging = enterMode(state, withB1Arrived(state, destination), 'charging');
-  if (!isAim(charging)) throw new Error('expected charging mode');
+  if (!isAttacking(charging)) throw new Error('expected charging mode');
   return charging;
 }
 
@@ -75,9 +81,13 @@ const withB1Holding = (state: GameState, destination: Coordinate): DestinationCh
   enterMode(state, withB1Arrived(state, destination), 'holding');
 
 /** …or pick Fire and pin a target, so the forecast is up. */
-function withB1Aiming(state: GameState, destination: Coordinate, targetId: string): Aiming {
+function withB1Targeting(
+  state: GameState,
+  destination: Coordinate,
+  targetId: string,
+): TargetPinned {
   const aiming = chooseTarget(withB1Firing(state, destination), unitAt(state, targetId));
-  if (!isAiming(aiming)) throw new Error('expected a pinned target');
+  if (!isTargetPinned(aiming)) throw new Error('expected a pinned target');
   return aiming;
 }
 
@@ -436,7 +446,7 @@ describe('a lit tile means what the mode says', () => {
 describe('the panel, and what it is told', () => {
   /** ⚠️ Narrows and asserts in one: a charge forecast reaching these would
       otherwise read as a missing property rather than the wrong kind. */
-  const fireForecast = (state: GameState, selection: Aiming) => {
+  const fireForecast = (state: GameState, selection: TargetPinned) => {
     const forecast = attackForecast(state, selection);
     if (forecast?.kind !== 'fire') throw new Error('expected a fire forecast');
     return forecast;
@@ -452,7 +462,7 @@ describe('the panel, and what it is told', () => {
       { id: 'b1', col: 1, row: 1 },
       { id: 'r1', col: 1, row: 3, owner: 'red', facing: 'south' },
     ]);
-  const panel = (state: GameState) => withB1Aiming(state, at(1, 1), 'r1');
+  const panel = (state: GameState) => withB1Targeting(state, at(1, 1), 'r1');
 
   // ⚠️ An exact range, not an estimate: luck is added last and flat, so the
   // zero-roll result is the true floor and the spread is exactly LUCK_MAX.
@@ -478,7 +488,7 @@ describe('the panel, and what it is told', () => {
       { id: 'b1', col: 1, row: 1 },
       { id: 'r1', col: 1, row: 3, owner: 'red', facing: 'north' },
     ]);
-    const chosen = withB1Aiming(state, at(1, 1), 'r1');
+    const chosen = withB1Targeting(state, at(1, 1), 'r1');
     expect(fireForecast(state, chosen).answered).toBe(false);
     // ⚠️ And the damage is untouched: facing changes who may answer, never what
     // the shot does. A flanking bonus would show up right here, and does not --
@@ -495,7 +505,7 @@ describe('the panel, and what it is told', () => {
       { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
       { id: 'r1', col: 1, row: 5, owner: 'red' },
     ]);
-    const chosen = withB1Aiming(state, at(1, 1), 'r1');
+    const chosen = withB1Targeting(state, at(1, 1), 'r1');
     expect(fireForecast(state, chosen).answered).toBe(false);
   });
 
@@ -507,7 +517,7 @@ describe('the panel, and what it is told', () => {
       { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
       { id: 'r1', col: 4, row: 2, owner: 'red' },
     ]);
-    const chosen = withB1Aiming(diagonal, at(1, 1), 'r1');
+    const chosen = withB1Targeting(diagonal, at(1, 1), 'r1');
     expect(facingForTarget(diagonal, chosen)).toBe('east');
   });
 
@@ -531,7 +541,7 @@ describe('the panel, and what it is told', () => {
       { id: 'r1', col: 1, row: 3, owner: 'red', facing: 'south' },
       { id: 'r2', col: 3, row: 1, owner: 'red', facing: 'south' },
     ]);
-    const first = withB1Aiming(state, at(1, 1), 'r1');
+    const first = withB1Targeting(state, at(1, 1), 'r1');
     const second = chooseTarget(first, unitAt(state, 'r2'));
     expect(second.step.target.id).toBe('r2');
     expect(second.step.tiles).toEqual(first.step.tiles);
@@ -649,7 +659,7 @@ describe('charging, which shares every gesture with firing', () => {
       { id: 'r2', col: 2, row: 1, owner: 'red' },
     ]);
     const first = chooseTarget(withB1Charging(state, at(1, 1)), unitAt(state, 'r1'));
-    expect(isAiming(first)).toBe(true);
+    expect(isTargetPinned(first)).toBe(true);
     const second = chooseTarget(first, unitAt(state, 'r2'));
     expect(second.step.target.id).toBe('r2');
     expect(second.step.kind).toBe('charging');

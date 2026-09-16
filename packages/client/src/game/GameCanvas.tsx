@@ -6,7 +6,7 @@ import { useGameSession } from './useGameSession';
 import {
   attackForecast,
   availableActions,
-  isAiming,
+  isTargetPinned,
   isPlan,
   destinationOf,
 } from './interaction/selection';
@@ -322,7 +322,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   // The same table the overlays come from, so a step's tiles and its
   // instruction cannot describe two different things.
   const hint = selection.phase === 'destinationChosen' ? STEP_UI[selection.step.kind].hint : null;
-  const aiming = isAiming(selection) ? selection : null;
+  const aiming = isTargetPinned(selection) ? selection : null;
   const forecast = aiming ? attackForecast(server.getState(), aiming) : null;
 
   // `clickTile` changes identity whenever the selection does, and the renderer
