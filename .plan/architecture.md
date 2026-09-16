@@ -1558,6 +1558,29 @@ whose choices it was offering. A pixel margin would drift with zoom; a world
 offset holds, because it is projected like everything else, and one tile clears
 both a tile's drawn extent and the tallest piece standing on it.
 
+⚠️ **Because the renderer writes only `transform`, everything else about a pane
+is CSS.** The three anchored panes — menu, forecast, confirm — are
+`.board-pane` in `index.css` plus one modifier each, and they read a `--board-*`
+token set defined there: surface, edge, lift, ink, hover, damage, track,
+radius, clearance.
+
+⚠️ **The board's tokens are separate from the page's, and that is the point.**
+These sit on a lit 3D scene rather than on the page, so their contrast is
+against grass and stone; wiring them to `--bg` would produce a light-mode panel
+that is unreadable over the board. `--danger` and `--warn` *are* page chrome and
+live with the page tokens.
+
+⚠️ **One surface where there were three.** Each pane carried its own
+near-identical `rgba` — 0.94, 0.92 and 0.88, over two different greys — which
+was drift rather than intent, since nothing ever said why an informational pane
+should be more transparent than an interactive one. Same for the three negative
+margins that are now `--board-clearance`, and for the error red, which was
+written out in both routes and the canvas.
+
+⚠️ **Row hover is `:hover`, not React state.** It was a `useState` per row, so
+moving the pointer across the menu re-rendered a component; there is no disabled
+row — an unavailable action is omitted — so hover is the only state a row has.
+
 - **Camera:** `ArcRotateCamera` in `ORTHOGRAPHIC_CAMERA` mode, starting at a
   fixed isometric angle. Orbit stays on the default input; **wheel zoom does
   not**. An orthographic camera's apparent size comes entirely from its ortho

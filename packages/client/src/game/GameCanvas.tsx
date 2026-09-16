@@ -146,7 +146,7 @@ function CutawaySide({ side, align }: { side: CutawaySideData; align: 'left' | '
           position: 'relative',
           height: '12px',
           borderRadius: '2px',
-          background: 'rgba(0, 0, 0, 0.45)',
+          background: 'var(--board-track)',
           overflow: 'hidden',
         }}
       >
@@ -185,20 +185,13 @@ function CutawaySide({ side, align }: { side: CutawaySideData; align: 'left' | '
             before anything happens — and a side that took nothing never renders
             a `−0`, because `shown` never leaves `before`. */}
         {shown !== side.before && (
-          <span style={{ color: '#ff9a8a' }}>−{side.before - side.after}</span>
+          <span style={{ color: 'var(--board-damage)' }}>−{side.before - side.after}</span>
         )}
       </div>
     </div>
   );
 }
 
-/**
- * One row of the action panel.
- *
- * ⚠️ Styled rather than left as a default button, because the panel is the
- * primary interaction now and not a confirm box. Hover is the only state it
- * needs: there is no disabled row, since an unavailable action is omitted.
- */
 /** ⚠️ Beside the list rather than inside it: the words are presentation and the
     modes are not, so a renamed row cannot change what a click does. */
 const ACTION_LABEL: Record<ActionKind, string> = {
@@ -207,27 +200,17 @@ const ACTION_LABEL: Record<ActionKind, string> = {
   holding: 'Hold',
 };
 
+/**
+ * One row of the action panel.
+ *
+ * ⚠️ **A button and a class, where this was a component with state.** Hover is
+ * the only state a row has -- there is no disabled row, since an unavailable
+ * action is omitted -- and expressing it as `useState` meant a React render on
+ * every pointer move across the menu. `:hover` is what that is for.
+ */
 function MenuItem({ label, onClick }: { label: string; onClick: () => void }): ReactElement {
-  const [hovered, setHovered] = useState(false);
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
-      style={{
-        appearance: 'none',
-        border: 'none',
-        borderRadius: '4px',
-        padding: '6px 12px',
-        font: 'inherit',
-        fontSize: '13px',
-        textAlign: 'left',
-        cursor: 'pointer',
-        color: '#f2f4f7',
-        background: hovered ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
-      }}
-    >
+    <button type="button" className="board-menu-item" onClick={onClick}>
       {label}
     </button>
   );
@@ -425,7 +408,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             style={{
               position: 'absolute',
               inset: 0,
-              color: '#f2f4f7',
+              color: 'var(--board-ink)',
               textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
               pointerEvents: 'auto',
               cursor: 'pointer',
@@ -471,24 +454,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
         )}
 
         {menuOpen && (
-          <div
-            ref={menuRef}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              marginTop: '-10px',
-              padding: '4px',
-              borderRadius: '6px',
-              border: '1px solid rgba(255, 255, 255, 0.16)',
-              background: 'rgba(18, 22, 28, 0.94)',
-              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.45)',
-              minWidth: '104px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '1px',
-            }}
-          >
+          <div ref={menuRef} className="board-pane board-pane--menu">
             {/* ⚠️ **Offered only when there is something to shoot**, following
                 AW, which omits rather than greys. The cost is that "nothing is
                 in range" and "I misread the menu" look the same; the gain is a
@@ -508,26 +474,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
         )}
 
         {aiming && forecast && (
-          <div
-            ref={forecastRef}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              marginTop: '-14px',
-              padding: '6px 8px',
-              borderRadius: '5px',
-              background: 'rgba(24, 28, 34, 0.92)',
-              color: '#f2f4f7',
-              fontSize: '13px',
-              lineHeight: 1.5,
-              whiteSpace: 'nowrap',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px',
-              alignItems: 'stretch',
-            }}
-          >
+          <div ref={forecastRef} className="board-pane board-pane--forecast">
             {/* ⚠️ Informational, with no button, like the route's confirm pane
                 -- and for the same reason. Buttons pick intent; tiles pick
                 targets. A second click on the target is what fires, which is the
@@ -552,22 +499,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
         )}
 
         {awaitingConfirm && (
-          <div
-            ref={confirmPaneRef}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              padding: '4px 10px',
-              marginTop: '-12px',
-              borderRadius: '4px',
-              background: 'rgba(24, 28, 34, 0.88)',
-              color: '#f2f4f7',
-              fontSize: '13px',
-              whiteSpace: 'nowrap',
-              pointerEvents: 'none',
-            }}
-          >
+          <div ref={confirmPaneRef} className="board-pane board-pane--quiet">
             Click again to confirm
           </div>
         )}
@@ -599,8 +531,8 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
             combined sentence this replaced had to describe three readings of a
             tile click at once, which is the thing the panel exists to stop. */}
         {hint && <span>{hint}</span>}
-        {rejection && <span style={{ color: '#c0392b' }}> rejected: {rejection}</span>}
-        {connection === 'retrying' && <span style={{ color: '#b9770e' }}> reconnecting…</span>}
+        {rejection && <span style={{ color: 'var(--danger)' }}> rejected: {rejection}</span>}
+        {connection === 'retrying' && <span style={{ color: 'var(--warn)' }}> reconnecting…</span>}
       </div>
     </div>
   );

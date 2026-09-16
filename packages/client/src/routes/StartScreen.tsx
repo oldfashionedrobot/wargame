@@ -88,7 +88,7 @@ export function StartScreen() {
         <Link to="/maps">Browse maps</Link>
       </p>
 
-      {error && <p style={{ color: '#c0392b' }}>{error}</p>}
+      {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
 
       {matches === null && !error && <p>Loading…</p>}
       {matches?.length === 0 && <p>No matches yet.</p>}

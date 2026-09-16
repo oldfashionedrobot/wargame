@@ -105,7 +105,7 @@ export function MapViewer() {
         )}
       </p>
 
-      {error && <p style={{ color: '#c0392b' }}>{error}</p>}
+      {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
 
       {/* ⚠️ **Keyed on the map, so each scene gets its own element.** Babylon
           takes the canvas's WebGL context at construction and gives it up on
@@ -128,7 +128,7 @@ export function MapViewer() {
           height: '580px',
           borderRadius: '6px',
           overflow: 'hidden',
-          background: '#2f3042',
+          background: 'var(--board-void)',
         }}
       >
         <canvas
