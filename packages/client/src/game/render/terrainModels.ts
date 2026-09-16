@@ -23,8 +23,10 @@ import type { Scene } from '@babylonjs/core/scene';
 // not. See the licence alongside them in public/models/terrain/.
 const MODEL_DIR = '/models/terrain';
 
-/** Every model the tiler can ask for. A name not in here is a compile error. */
-export const TERRAIN_MODELS = [
+/** Every model the tiler can ask for. A name not in here is a compile error.
+ *  Unexported: `TerrainModel` below is the surface, and the list is how it is
+ *  spelled rather than something a caller has any use for. */
+const TERRAIN_MODELS = [
   'ground_grass',
   // Water, as a body: the mask counts water neighbours, so these are named for
   // where the *land* is.
