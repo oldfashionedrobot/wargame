@@ -290,8 +290,8 @@ rather than a formality.
 ## Content — `shared/src/data/`
 
 Static tables keyed by `Record`, so adding a member makes every incomplete table
-a compile error. **The values are the modules' — read them there.** Both are
-short, and a copy here would be a second set of numbers to tune.
+a compile error. **The values are the modules' — read them there.** All three
+are short, and a copy here would be a second set of numbers to tune.
 
 **`unitTypes.ts`** — `{ id, name, char, movementType, movementRange, range, slow }`
 per type. `range` is `{ min, max }` tiles, inclusive, read by `refuseAttack`,
@@ -538,7 +538,11 @@ different moments:
 - `wouldCounter` returns false outright — before the band, before facing. A slow
   defender never answers, at any distance, from any side.
 - `refuseAttack` and `refuseCharge` refuse when the unit has **moved**, which is
-  `path.length > 1`.
+  `path.length > 1`. ⚠️ **Turning is therefore not moving**, and that is the
+  reading rather than an accident of the expression: a piece can be traversed a
+  little without being limbered up and hauled, so a gun may pivot onto a target
+  and fire in one action. It is also what keeps facing a decision for the one
+  unit that can never answer a shot.
 
 ⚠️ **This is why both refusals take the whole `path` rather than the
 destination.** Where a unit ends up cannot say whether it travelled: a
@@ -1086,7 +1090,7 @@ own `batch()` cannot pass a transaction mode.
 **`net/api.ts`** — the `/api` base, JSON, and the one place a response becomes
 `notFound`, `unreachable`, or a rejection. `HttpError` carries a `FailureKind`;
 `RejectedError` is a separate type for a 422. Also holds `api.matches.list()`
-and `.create()`.
+and `.create()`, and `api.maps.list()` and `.preview()`.
 
 **`net/gameServer.ts`** — `connectGameServer(matchId, { onConnectionChange? })`
 returns `{ ok: true, server } | { ok: false, kind, reason }`.

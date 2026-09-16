@@ -29,16 +29,23 @@ lives.
 
 ### Tuning
 
-**Untuned**, and there are **twenty numbers** of them: the nine of
-`BASE_DAMAGE`, the six of `CHARGE_THRESHOLD`, the three of `CHARGE_REPEL`, and
+**Twenty numbers**, of which play has moved two: the nine of `BASE_DAMAGE`,
+the six of `CHARGE_THRESHOLD`, the three of `CHARGE_REPEL`, and
 `FLANK_MULTIPLIER` and `REAR_MULTIPLIER`. Plus `LUCK_MAX`, `CHARGE_HALF_LIFE`
 and the repel's miss-scaling, which are dials rather than table entries.
 
 #### The first cut
 
-⚠️ **Written down to be argued with, not because they are right.** Nothing has
-been played. They exist so the harness has something to print and so tuning
-starts from a position rather than a blank table.
+⚠️ **Written down to be argued with, not because they were right.** Nothing had
+been played when these were chosen. They existed so the harness had something to
+print and so tuning could start from a position rather than a blank table.
+
+⚠️ **Play has since moved three things, and only one was a number here.**
+`BASE_DAMAGE`'s infantry and cavalry rows went up fifteen — below. The other two
+were both about artillery and neither was a dial: its minimum range went from
+two to three, and `slow` was added, which is a flag. Worth keeping from that:
+the first cut's *shape* held, and what it got wrong it got wrong as a **rule**
+rather than as a value.
 
 `BASE_DAMAGE`, attacker down the side, as a percentage of a full-health target:
 
@@ -230,7 +237,7 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 | **Matches are unowned and unbounded** | Anyone can create any number; no delete, no expiry. `list()` is capped at 50 newest — a bound, not pagination | Phase 11 — scope listing to the player, and add deletion. Until identity exists there's nothing to scope by |
 | **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | Phase 11 — match lifecycle and, eventually, notification. Not new mechanics |
 | **Ruleset versioning**, and with it **old matches are expendable** | None. ⚠️ `current_state` and `initial_state` are JSON columns with `.$type<GameState>()`, which is a **compile-time cast and no runtime check** — so a match stored before a field existed reads back missing it while the types insist otherwise. A shape change therefore does not migrate rows; it abandons them, and that is **accepted policy until phase 11** rather than an oversight. The dev database is gitignored scratch: delete it. ⚠️ The failure is silent where it matters — a `Unit` with no `health` is `undefined`, and `undefined` arithmetic is `NaN`, so the first symptom is a damage number rather than an error | Stamp a ruleset id on the match so old logs replay under the rules they were played with. That is also what retires the policy above: a match that knows its ruleset can be refused rather than quietly misread |
-| **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Four of them, picked from at match creation | A `maps` table once maps stop being written by developers. ⚠️ The other condition — enough maps to choose among — has already been met, so this is due a re-read rather than a wait; see below |
+| **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Six of them, picked from at match creation and browsable at `/maps` | A `maps` table once maps stop being written by developers. ⚠️ The other condition — enough maps to choose among — has already been met, so this is due a re-read rather than a wait; see below |
 | **Elevation is visual only, and capped at 0.5** | Height is a look, never data. A mesa and a bridge deck raise where a unit *stands*, but `shared/` has no idea: there is no height on a tile, `entryCost` never asks about one, and no rule reads one. ⚠️ Both halves of the old technical objection are now gone — `screenToTile` tries every surface height tallest-first, so a click finds a peak where it is drawn, and `surfaceAt` is a lookup that knows each tile's height. What caps height now is the *camera*: at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and past about half a tile it occupies its neighbour | ⚠️ **Nothing — this is where it stays.** It was once written here as waiting on machinery, which stopped being true when picking learned about height, and elevation as a *rule* is now declined for v1 rather than queued. Mesas are enough at this board size. The reasons, and the two findings worth keeping if it is ever reopened, are in *Out of scope for v1* |
 | **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
 | ~~**`shared/`'s test files are not typechecked**~~ ✅ **Fixed.** `tsconfig.dev.json` covers `scripts/` and `src/**/*.test.ts` together — see *Testing* in [`architecture.md`](architecture.md). It cost `@types/bun` as a devDependency of the zero-dependency package, and it surfaced **twenty** errors that had been invisible | — |
@@ -241,9 +248,12 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 
 ⚠️ **This condition has already been met, and the decision has not been
 re-taken.** It said *revisit when there are enough maps to choose among* —
-there are now four, and `StartScreen` picks between them, which is the picker
-this section names as what turns maps into a library rather than a constant,
-and a library of selectable rows is what a table is for.
+there are now six, and **two** screens pick between them: `StartScreen` chooses
+what to play on and `/maps` exists only to look through them. That is the picker
+this section names as what turns maps into a library rather than a constant, and
+a library of selectable rows is what a table is for. ⚠️ The viewer arrived after
+this was written and makes the case louder rather than differently — a second
+reader of the registry is a second thing a `maps` table would serve.
 
 What follows is the argument as it stood at one map. None of it has been
 refuted, and the one real risk it names was closed in the meantime by making

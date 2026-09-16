@@ -5,7 +5,7 @@ import type { Rolls } from './combat';
 import { LUCK_MAX } from './data/combat';
 import { MAX_HEALTH } from './data/unitTypes';
 import { makeState, route } from './testing';
-import type { Command, MoveCommand } from './types';
+import type { Command, Facing, MoveCommand } from './types';
 
 // validateMove asks three separate questions -- does the unit exist, may it
 // act, is the route walkable -- and only the third is validatePath's. These
@@ -337,7 +337,7 @@ describe('resolveMove', () => {
 // in the same turn it repositioned -- so unlike every other behaviour AW spreads
 // across direct-versus-indirect, this one needed a flag.
 describe('validateMove, a slow unit', () => {
-  const gunline = (path: [number, number][]) => {
+  const gunline = (path: [number, number][], facing: Facing = 'north') => {
     const state = makeState(8, [
       { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
       { id: 'r1', col: 0, row: 3, owner: 'red' },
@@ -346,7 +346,7 @@ describe('validateMove, a slow unit', () => {
       type: 'move',
       unitId: 'b1',
       path: path.map(([col, row]) => at(col, row)),
-      facing: 'north',
+      facing,
       targetUnitId: 'r1',
     };
     return validateMove(state, command);
@@ -354,6 +354,15 @@ describe('validateMove, a slow unit', () => {
 
   it('may attack without moving', () => {
     expect(gunline([[0, 0]])).toBeNull();
+  });
+
+  // ⚠️ **Turning is not moving**, and the flag reads `path.length > 1` rather
+  // than "did anything change" precisely so. A piece can be traversed a little
+  // without being limbered up and hauled, so a gun may pivot onto a target and
+  // fire in the same action -- which is also what keeps facing a real decision
+  // for the one unit that can never answer a shot.
+  it('may turn on the spot and still fire', () => {
+    expect(gunline([[0, 0]], 'east')).toBeNull();
   });
 
   it('may not attack after moving', () => {
