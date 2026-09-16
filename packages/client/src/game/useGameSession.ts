@@ -26,7 +26,7 @@ import {
   readHoldClick,
   unpinDestination,
 } from './interaction/selection';
-import type { SelectionState } from './interaction/selection';
+import type { ActionKind, SelectionState } from './interaction/selection';
 
 // The session half of what GameCanvas used to own -- everything about playing
 // a match that is not Babylon: the render replica, the rejection, the
@@ -138,7 +138,7 @@ export interface GameSession {
    * what stops a new action from being another reading a click has to be
    * disambiguated against.
    */
-  chooseAction: (kind: 'firing' | 'charging' | 'holding') => void;
+  chooseAction: (kind: ActionKind) => void;
   /** End the turn outright, without committing whatever is being planned. */
   endTurn: () => void;
 }
@@ -412,7 +412,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
    * so without a button there is no way to turn toward someone without shooting.
    */
   const chooseAction = useCallback(
-    (kind: 'firing' | 'charging' | 'holding'): void => {
+    (kind: ActionKind): void => {
       if (pendingRef.current) return;
       setSelection((current) =>
         current.phase === 'destinationChosen'

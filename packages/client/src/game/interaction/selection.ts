@@ -83,7 +83,7 @@ export type SelectionState =
  * take a single overlay rather than four independent ones that merely happen
  * not to overlap.
  */
-type MenuStep =
+export type MenuStep =
   // The panel is up and nothing is lit: the buttons are the only affordance.
   | { kind: 'choosing' }
   // ⚠️ `target` is nullable rather than a fourth kind. `unitSelected` and
@@ -239,12 +239,47 @@ export type ActionKind = 'firing' | 'charging' | 'holding';
  * attack* rather than *nothing at all*.
  */
 export function availableActions(state: GameState, selection: DestinationChosen): ActionKind[] {
-  const actions: ActionKind[] = [];
-  if (canFire(state, selection)) actions.push('firing');
-  if (canCharge(state, selection)) actions.push('charging');
-  actions.push('holding');
-  return actions;
+  return PANEL_ACTIONS.filter(({ when }) => when(state, selection)).map(({ kind }) => kind);
 }
+
+/**
+ * Every mode the panel knows about, in the order it offers them.
+ *
+ * ⚠️ **A table rather than three pushes, so a new action cannot be half-added.**
+ * The list this replaced named its three by hand: adding a fourth `ActionKind`
+ * compiled cleanly and simply never appeared in the panel, which is the worst
+ * shape a gap can take -- the type said the action existed and the menu quietly
+ * disagreed. `satisfies` pins each entry to a real kind, and the assertion below
+ * pins the kinds to the entries.
+ *
+ * ⚠️ Holding's predicate is a constant `true`, and deliberately not omitted: a
+ * unit may always wait, and saying so as an entry keeps "always available" a
+ * fact in the table rather than a `push` after the loop. It is what makes the
+ * list never empty, which is what lets *one action* mean **nothing to attack**
+ * rather than nothing at all.
+ *
+ * ⚠️ Declared below its only caller and above nothing, which is safe because
+ * `canFire` and `canCharge` are function *declarations* -- hoisted and
+ * initialised before any statement here runs.
+ */
+const PANEL_ACTIONS = [
+  { kind: 'firing', when: canFire },
+  { kind: 'charging', when: canCharge },
+  { kind: 'holding', when: () => true },
+] as const satisfies readonly {
+  kind: ActionKind;
+  when: (state: GameState, selection: DestinationChosen) => boolean;
+}[];
+
+/**
+ * ⚠️ **The half `satisfies` cannot give**, exactly as with `PINNED_PHASES`: it
+ * checks every entry names a real kind and says nothing about kinds left out.
+ * This fails the build when an `ActionKind` has no row.
+ */
+type NoActionForgotten =
+  Exclude<ActionKind, (typeof PANEL_ACTIONS)[number]['kind']> extends never ? true : never;
+const allActionsListed: NoActionForgotten = true;
+void allActionsListed;
 
 /**
  * Is there anything this unit could shoot from where it stopped?
