@@ -93,19 +93,29 @@ const CAMERA_BETA = Math.PI / 3.5; // start: 38.57° above the horizon
 const CAMERA_BETA_TOPDOWN = Math.PI / 6; // 60° above the horizon — nearly overhead
 const CAMERA_BETA_SHALLOW = Math.PI / 3; // 30° above the horizon
 
+/**
+ * How far above a tile an anchored element floats, in world units.
+ *
+ * ⚠️ A little over the tallest `PIECE_SCALE`, so the pane clears infantry rather
+ * than only the ground. Measured in tiles, because `TILE_SIZE` is 1. Nothing to
+ * do with the overlays below -- it sat in the middle of them for a while, which
+ * is how a block of triples stops being readable at a glance.
+ */
+const ANCHOR_LIFT = 1.7;
+
+/**
+ * Every tile overlay, as a colour, an opacity and a height above the surface.
+ *
+ * ⚠️ **One triple each, in that order, with nothing between them.** They are
+ * the whole visual tuning surface for the board, and the only thing that makes
+ * a block of twenty-odd constants legible is that it has exactly one shape.
+ * `height` orders them against each other where two could coincide.
+ */
 const HOVER_COLOR = new Color3(1, 1, 1);
 const HOVER_ALPHA = 0.6;
 const HOVER_HEIGHT = 0.02;
 
 const SELECTED_COLOR = new Color3(1, 0.85, 0.1);
-/**
- * How far above a tile an anchored element floats, in world units.
- *
- * ⚠️ A little over the tallest `PIECE_SCALE`, so the pane clears infantry rather
- * than only the ground. Measured in tiles, because `TILE_SIZE` is 1.
- */
-const ANCHOR_LIFT = 1.7;
-
 const SELECTED_ALPHA = 0.55;
 const SELECTED_HEIGHT = 0.025;
 
@@ -121,6 +131,8 @@ const ROUTE_HEIGHT = 0.018;
 // The four tiles a unit may turn to look at. Warm, so it does not read as
 // somewhere to go -- by this point movement is already decided.
 const FACING_COLOR = new Color3(1, 0.82, 0.35);
+const FACING_ALPHA = 0.55;
+const FACING_HEIGHT = 0.02;
 
 /**
  * ⚠️ **Opaque where every other overlay is a wash, and the board is why.**
@@ -147,8 +159,6 @@ const ATTACK_HEIGHT = 0.016;
 const CHARGE_COLOR = new Color3(0.62, 0.08, 0.12);
 const CHARGE_ALPHA = 0.8;
 const CHARGE_HEIGHT = 0.016;
-const FACING_ALPHA = 0.55;
-const FACING_HEIGHT = 0.02;
 
 /**
  * What a cutaway is showing, for the DOM half to print over it.
