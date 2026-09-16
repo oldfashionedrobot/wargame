@@ -317,8 +317,8 @@ order. 13 and 14 depend on none of it and are what actually move the numbers a
 portal gates on, so they run alongside rather than waiting their turn, in
 whatever order is most interesting that week. ⚠️ One exception to that
 independence: 11 decides matches are meant to be **short**, and how long a match
-runs is content, which is 13. The transport makes play live; only the content
-makes it a sitting.
+runs is content, which is 13. Co-presence puts two people at the board at the
+same time; only the content makes that a single sitting.
 
 ⚠️ **Multiplayer comes before deploying, and that is a product decision rather
 than a technical one.** A hosted build could ship the day the asset paths are
@@ -516,13 +516,17 @@ one formula cannot be read apart, not because the geometry might be wrong.
 chess: sit down, play it now, finish it now. That is the sentence the rest of
 this phase is derived from, and four decisions follow from it.
 
-⚠️ **Live, not async.** Async already works — a returning client fetches state
-and resumes — and it is *not* what is wanted. ⚠️ **This re-opens a promise made
-in ink.** `CLAUDE.md` and the architecture doc both say plain polling and **no
-push, no WebSockets, ever**; that is true of the code today and stops being the
-plan here. Whichever transport wins, this phase must edit both files rather than
-leave them asserting it. See *How live gets delivered* below — the answer may
-still be polling.
+⚠️ **Played in one sitting.** Both players at their clients, the match started
+and finished now. ⚠️ **"Live" here is a *session shape*, not a transport** —
+it says when the two people are present, not how bytes reach them, and the two
+are independent. **No push and no WebSockets still stands**, in `CLAUDE.md` and
+in the architecture doc, and this phase does not re-open it. A turn lands within
+one poll; a poll is 2 seconds; a game of chess is unbothered by 2 seconds.
+
+⚠️ **Long-form async is a later iteration, not the rejected alternative.** A
+returning client already fetches state and resumes, so the substrate is there —
+what it would need is a reason to come back, which is notification, which is its
+own thing. Nothing in this phase forecloses it.
 
 ⚠️ **Identity is a guest by default and an account by choice.** Nobody signs in
 to start playing: a guest id is enough to own a match and be *you* across turns,
@@ -570,32 +574,25 @@ because by then the sessions are already built.
 - **Guest identity first**, with sessions in our own database; sign-in is the later upgrade and OAuth is its candidate rather than its conclusion — see *Identity* below, and the seam above.
 - **Session→player map** at join, so `actor` comes from *who you are* rather than *whose turn it is*.
 
-#### How live gets delivered
+#### Transport: nothing changes
 
-⬜ **Open, and the one thing in this phase with a genuine fork in it.** Only
-*server → client* needs pushing: commands already go out over `POST` and that
-does not change. Whatever wins, `seq` survives — the client already drops any
-update whose `seq` it holds, so every option below is a different way of being
-told to catch up.
+⚠️ **This was written as an open fork and it is not one.** Co-presence needs no
+push: two clients polling a `seq` cursor is already two people watching the same
+match, and the only dial is the interval. `POLL_INTERVAL_MS` is 2000, and if a
+turn taking up to two seconds to appear reads as sluggish, **the fix is the
+number** — at 750 the average wait is under 400 ms, on a board where a move
+takes a person several seconds to decide.
 
-- **Just poll faster.** `POLL_INTERVAL_MS` is 2000; at 750 the worst case is
-  750 ms and the average is under 400. ⚠️ **Do not skip past this one.** It is a
-  one-line change, no new architecture, no new failure mode, and for a
-  turn-based game it is very likely indistinguishable from push — chess clients
-  feel live at this latency. It is also the only option that can be *measured*
-  before anything is built.
-- **SSE.** One long-lived `GET`, the server writes events as they resolve. ⚠️
-  `EventSource` reconnects on its own and resends `Last-Event-ID`, which is
-  **exactly `seq`** — the resume story is already designed and already tested.
-  Keeps commands on plain `POST` and keeps the literal "no WebSockets".
-- **WebSockets.** Full duplex, and nothing here needs the other half. Most
-  machinery, least fit.
+⚠️ **Measure before changing even that.** A poll costs a request per client per
+interval, and dropping to 750 nearly triples it for a benefit nobody has
+complained about yet. The interval is a one-line change whenever it is wanted,
+which is the argument for leaving it alone until play says otherwise.
 
-⚠️ **Matchmaking wants push more than play does.** A player waiting in a queue
-has to be told *the moment* an opponent appears, and that is the one interaction
-where a 750 ms poll reads as lag rather than as instant. If the queue is what
-forces SSE, it is worth knowing that before the transport is chosen for
-gameplay's sake.
+⚠️ **The queue is the one place worth watching.** A player waiting for an
+opponent is staring at a spinner, and that is a different tolerance from waiting
+on a turn — it is the one interaction where polling could read as lag. Still
+almost certainly fine at 2 seconds; noted as the first place to look if
+something feels slow, rather than as a reason to build anything.
 
 #### How two people meet
 
@@ -729,12 +726,12 @@ argument live; this is the phase that keeps changing them.
   `parseTerrainGrid` reads the rows, `maps.test.ts` already knows what makes a
   board valid — deployable, crossable, one army each way — and `/maps` already
   draws one. An editor is those three joined by a paint tool.
-- ⚠️ **"Short, like a game of chess" is a content requirement, not just a
-  transport one.** Nothing caps a match today: eight units a side, no turn
-  limit, and a player who retreats can extend it indefinitely. If matches are
-  meant to finish in one sitting, the dial is army size, board size, or a
-  condition that ends it — and which one is a **design** question this phase
-  owns, not a number to quietly tune.
+- ⚠️ **"Short, like a game of chess" lands here, and only here.** 11 puts both
+  players at the board at once and changes no transport to do it; what it cannot
+  do is make the game *end*. Nothing caps a match today — eight units a side, no
+  turn limit, and a player who retreats can extend it indefinitely. The dial is
+  army size, board size, or a condition that ends it, and which one is a
+  **design** question this phase owns rather than a number to quietly tune.
 
 ### 14 — Presentation: animation, sound, UI
 
