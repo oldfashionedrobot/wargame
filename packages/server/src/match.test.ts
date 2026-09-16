@@ -318,7 +318,7 @@ describe('storage guarantees', () => {
       args: [JSON.stringify(lastStand), JSON.stringify(lastStand), id],
     });
 
-    // blue-1 is the artillery on the flank: range 2..5, so it kills from three
+    // blue-1 is the artillery on the flank: range 3..5, so it kills from three
     // tiles off without moving, and a one-health defender does not survive it.
     const result = await store.submit(
       id,

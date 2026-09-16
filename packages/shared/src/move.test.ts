@@ -113,13 +113,19 @@ describe('validateMove, with a target', () => {
     expect(validateMove(near, move('b1', at(0, 0), at(3, 0), 'r1'))).toBe('target is out of range');
   });
 
-  // `min: 2` is artillery's defining weakness, and it is this predicate rather
-  // than any rule naming it.
+  // `min: 3` is artillery's defining weakness, and it is this predicate rather
+  // than any rule naming it. ⚠️ **Both tiles of the dead zone**, because one of
+  // them is the whole of what raising the minimum bought: a gun could hold off
+  // an enemy at two before, and two is inside infantry's own band.
   it('refuses a target standing too close for the attacker', () => {
-    const adjacent = lane(1, 'artillery');
-    expect(validateMove(adjacent, move('b1', at(0, 0), at(0, 0), 'r1'))).toBe(
-      'target is too close',
-    );
+    for (const enemyRow of [1, 2]) {
+      const closed = lane(enemyRow, 'artillery');
+      expect(validateMove(closed, move('b1', at(0, 0), at(0, 0), 'r1'))).toBe(
+        'target is too close',
+      );
+    }
+    // And the first tile past it is fine, so this is a band rather than a ban.
+    expect(validateMove(lane(3, 'artillery'), move('b1', at(0, 0), at(0, 0), 'r1'))).toBeNull();
   });
 
   it('refuses a target that is not on the board', () => {
@@ -203,7 +209,7 @@ describe('resolveMove', () => {
   it('is unanswered when the defender did not survive it', () => {
     const state = makeState(8, [
       { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
-      { id: 'r1', col: 0, row: 2, owner: 'red', health: 3 },
+      { id: 'r1', col: 0, row: 3, owner: 'red', health: 3 },
     ]);
     const [, battle] = resolved(state, move('b1', at(0, 0), at(0, 0), 'r1'));
     if (battle.type !== 'battleResolved') throw new Error('expected a battle');
@@ -327,7 +333,7 @@ describe('resolveMove', () => {
 });
 
 // ⚠️ **A turn rule, which is why it could not fall out of the range band.**
-// `min: 2` describes a distance and says nothing about whether a gun may shoot
+// `min: 3` describes a distance and says nothing about whether a gun may shoot
 // in the same turn it repositioned -- so unlike every other behaviour AW spreads
 // across direct-versus-indirect, this one needed a flag.
 describe('validateMove, a slow unit', () => {
@@ -461,8 +467,8 @@ describe('resolveMove, charging', () => {
   });
 
   // ⚠️ Charge never asks the counter rule, so a defender that could not have
-  // shot back still repels. Artillery is the case that proves it: `min: 2`
-  // means a battery cannot answer at contact, and charging one must not be free.
+  // shot back still repels. Artillery is the case that proves it -- a battery
+  // answers nothing at all -- and charging one must not be free.
   it('is repelled by artillery, which could never have countered', () => {
     const guns = makeState(7, [
       { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },

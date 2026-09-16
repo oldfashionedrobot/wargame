@@ -126,7 +126,7 @@ export const CHARGE_THRESHOLD: Partial<Record<UnitTypeId, Record<UnitTypeId, num
  * ⚠️ **Not the defender's own `BASE_DAMAGE` row**, which was considered and
  * refused: artillery's 60 was tuned as *ranged* fire, and borrowing it at contact
  * would assert a battery is as dangerous close as far -- the opposite of what
- * `range.min: 2` exists to say. Hence 8 here against 60 there.
+ * `range.min: 3` exists to say. Hence 8 here against 60 there.
  *
  * ⚠️ **This is not the "defence stat" the damage design refuses.** That refusal
  * is about *damage*, where a scalar defence forces a transitive ordering and

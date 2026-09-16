@@ -477,8 +477,8 @@ export function refuseCharge(
  * ⚠️ **A charge never consults the counter rule**, so `answered` means *repelled*
  * here. That rule asks whether the attacker is inside the defender's *range*,
  * which is a question about shooting; applying it would make charging artillery
- * free, since `min: 2` means a battery cannot answer at contact -- the one unit
- * cavalry exists to punish would be the only one unable to punish back. The
+ * free: a battery answers nothing at all now, so the one unit cavalry exists to
+ * punish would be the only one unable to punish back. The
  * repel **is** the defence, and every defender has one.
  *
  * ⚠️ **The repel is flat plus a small term from the overshoot**, the same shape

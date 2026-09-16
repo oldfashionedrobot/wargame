@@ -217,8 +217,8 @@ describe('wouldCounter', () => {
   // traversed, and cannot be swung round in time -- so this is not a band check
   // with a hole in it, it is the band never being consulted.
   it('never answers when the defender is slow', () => {
-    const gun = unitAt('artillery', 0, 0); // range 2..5, and slow
-    for (const row of [1, 2, 5, 6]) expect(wouldCounter(gun, at(0, row))).toBe(false);
+    const gun = unitAt('artillery', 0, 0); // range 3..5, and slow
+    for (const row of [1, 3, 5, 6]) expect(wouldCounter(gun, at(0, row))).toBe(false);
   });
 
   // ⚠️ **The band's `near` end is no longer observable here**, and that is a
@@ -279,9 +279,11 @@ describe('wouldCounter', () => {
     // shot that was already safe into anything else -- and cannot be mistaken
     // for having granted a counter it did not.
     it('changes nothing about a shot that was out of range anyway', () => {
-      const gun = unitAt('artillery', 0, 4, 'south'); // range 2..5
-      expect(wouldCounter(gun, at(0, 5))).toBe(false); // rear *and* too close
-      expect(wouldCounter(gun, at(0, 3))).toBe(false); // front, still too close
+      // ⚠️ Infantry, not a gun: artillery returns false on `slow` before the
+      // band is consulted, so it cannot show that the band is what refused.
+      const foot = unitAt('infantry', 0, 4, 'south'); // range 1..2
+      expect(wouldCounter(foot, at(0, 7))).toBe(false); // rear *and* outranged
+      expect(wouldCounter(foot, at(0, 1))).toBe(false); // front, still outranged
     });
   });
 });
@@ -305,8 +307,9 @@ describe('tilesInRange', () => {
     const tiles = tilesInRange(unit('artillery'), { col: 5, row: 5 }, 12, 12);
     expect(has(tiles, 5, 5)).toBe(false); // its own tile
     expect(has(tiles, 5, 6)).toBe(false); // reached: inside min
-    expect(has(tiles, 5, 7)).toBe(true);
-    expect(has(tiles, 5, 10)).toBe(true); // five out, the edge of the band
+    expect(has(tiles, 5, 7)).toBe(false); // and so is two -- the zone is deep
+    expect(has(tiles, 5, 8)).toBe(true); // three, the near edge of the band
+    expect(has(tiles, 5, 10)).toBe(true); // five out, the far edge
     expect(has(tiles, 5, 11)).toBe(false);
   });
 

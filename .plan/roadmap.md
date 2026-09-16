@@ -118,7 +118,7 @@ bayonets fixed is what cavalry breaks on, a battery firing canister hurts but is
 the least prepared of the three to be reached, and cavalry receiving a charge is
 simply being run into. ⚠️ Artillery at 20 is deliberately **well under its
 ranged 60** — borrowing that number would assert a battery is as dangerous at
-contact as at reach, which is the opposite of what `min: 2` exists to say.
+contact as at reach, which is the opposite of what `min: 3` exists to say.
 
 ⚠️ **The level was picked against the crossover, not by feel.** Charging is a
 losing bet below roughly these odds and a winning one above:

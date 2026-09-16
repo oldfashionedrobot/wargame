@@ -295,7 +295,7 @@ short, and a copy here would be a second set of numbers to tune.
 **`unitTypes.ts`** — `{ id, name, char, movementType, movementRange, range, slow }`
 per type. `range` is `{ min, max }` tiles, inclusive, read by `refuseAttack`,
 `tilesInRange` and `wouldCounter`. ⚠️ **It classifies nothing:** there is no
-direct/indirect flag, and `min: 2` describes a gun rather than naming a kind of
+direct/indirect flag, and `min: 3` describes a gun rather than naming a kind of
 one — which is what lets a single rule ask "is the attacker inside my own range"
 and get an answer for every unit.
 
@@ -522,6 +522,14 @@ that shoots on the move but cannot answer, which nothing in the period is.
 ```ts
 slow: boolean   // artillery, and nothing else
 ```
+
+⚠️ **It pairs with a `min` of 3, and the two are one design.** The band leaves a
+gun blind for two tiles; `slow` makes fixing that cost a whole turn, because
+withdrawing is all the gun can do with one. Either alone is survivable — a deep
+dead zone a gun could back out of and still fire, or a `slow` gun that could
+still shoot what walked up to it. Together they say a battery that has been
+reached is out of the fight until someone relieves it, which is the role the
+piece is for.
 
 The two rules it carries sit in different places, because they are asked at
 different moments:
@@ -786,9 +794,9 @@ leaves a wider window to fail into so its expected overshoot is larger.
 
 ⚠️ **A charge never consults the counter rule**, so `answered` means *repelled*.
 That rule asks whether the attacker is inside the defender's *range*, which is a
-question about shooting — applying it would make charging artillery free, since
-`min: 2` means a battery cannot answer at contact, and the one unit cavalry
-exists to punish would be the only one unable to punish back. The repel **is**
+question about shooting — applying it would make charging artillery free: a
+battery answers nothing at all, so the one unit cavalry exists to punish would
+be the only one unable to punish back. The repel **is**
 the defence, and every defender has one.
 
 ⚠️ **Success is damage to zero, not "it dies"**, which is what lets a charge be

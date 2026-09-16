@@ -870,8 +870,9 @@ describe('the tiles firing mode lights', () => {
     expect(readAimClick(state, withB1Firing(state, at(1, 1)), at(1, 2))).toBeNull();
   });
 
-  // Artillery cannot shoot what has reached it, so its band starts two out --
-  // the one exclusion that survives, because it is the *range*, not a colour.
+  // Artillery cannot shoot anything that has closed with it, so its band starts
+  // three out -- the one exclusion that survives, because it is the *range*,
+  // not a colour.
   it('never includes what a minimum range forbids', () => {
     const tiles = tilesFor(
       makeState(9, [
@@ -880,6 +881,7 @@ describe('the tiles firing mode lights', () => {
       ]),
     );
     expect(has(tiles, 1, 2)).toBe(false);
-    expect(has(tiles, 1, 3)).toBe(true);
+    expect(has(tiles, 1, 3)).toBe(false);
+    expect(has(tiles, 1, 4)).toBe(true);
   });
 });

@@ -30,7 +30,7 @@ export interface UnitType {
    * How far this unit can shoot, inclusive at both ends, in tiles.
    *
    * ⚠️ **Two numbers, and *almost* no category beside them.** There is no
-   * direct/indirect flag: `min: 2` *describes* a gun rather than classifying it,
+   * direct/indirect flag: `min: 3` *describes* a gun rather than classifying it,
    * and most of what AW spreads across those categories falls out of this pair
    * -- including how far a counter reaches, which is "is the attacker inside my
    * own range" for every unit `slow` does not speak for first.
@@ -57,8 +57,9 @@ export interface UnitType {
    * still right about direct-versus-indirect -- it is just not right about this,
    * because a turn is not a distance.
    *
-   * ⚠️ It subsumes what `min: 2` was already doing at contact: a gun could not
-   * answer a unit standing on it, because 1 is outside `[2, 5]`. This removes
+   * ⚠️ It subsumes what `min: 3` was already doing up close: a gun could not
+   * answer anything that had closed with it, because 1 and 2 are outside
+   * `[3, 5]`. This removes
    * **counter-battery** as well, where two guns within reach of each other used
    * to answer each other.
    */
@@ -111,8 +112,11 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     char: 'i',
     movementType: 'foot',
     movementRange: 3,
-    // ⚠️ Reaching two tiles is what gives infantry a choice against a battery:
-    // trade at two and be answered, or close to one where the gun cannot fire.
+    // ⚠️ Reaching two tiles is what lets infantry fight a battery at all, and
+    // since `slow` it is a free shot rather than a trade: two is inside this
+    // band and outside the gun's, so the gun can neither fire back nor answer.
+    // Closing to one buys nothing extra -- what it buys is a charge, which
+    // infantry does not have. That is cavalry's job.
     range: { min: 1, max: 2 },
     slow: false,
   },
@@ -134,10 +138,14 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     char: 'a',
     movementType: 'wheels',
     movementRange: 4,
-    // ⚠️ `min: 2` is the unit's defining weakness and the reason cavalry has a
-    // job: a gun cannot fire at what has reached it, and therefore cannot
-    // counter it either -- the same predicate, not a second rule.
-    range: { min: 2, max: 5 },
+    // ⚠️ `min: 3` is the unit's defining weakness and the reason cavalry has a
+    // job: a gun cannot fire at anything that has closed with it. ⚠️ **Three
+    // rather than two, from play**: at two the dead zone was one tile deep and
+    // a battery could hold off the very infantry that outranges it there. Two
+    // tiles of blindness is what makes closing the distance a *plan* rather
+    // than a single step, and it is the gap `slow` then makes expensive to fix
+    // -- a gun that has been reached must spend its whole turn withdrawing.
+    range: { min: 3, max: 5 },
     slow: true,
   },
 };
