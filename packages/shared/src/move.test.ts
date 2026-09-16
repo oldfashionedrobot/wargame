@@ -276,14 +276,22 @@ describe('resolveMove', () => {
 
   // ⚠️ Most of AW's exchange calculus, and it falls out of the formula rather
   // than needing a rule: the counter is computed on the defender's *reduced*
-  // health, so a harder first blow buys a softer reply. Same board, same
-  // counter roll -- only the attack roll differs, which is enough to push the
-  // defender down a band.
+  // health, so a harder first blow buys a softer reply. Same board, same counter
+  // roll -- only the attack roll differs.
+  //
+  // ⚠️ **The defender's starting health is chosen, not incidental.** The reply
+  // is scaled by `band()`, so a luckier blow only softens it when the extra
+  // damage pushes the defender across a *band boundary* -- inside one band the
+  // counter is identical and this asserts nothing. At 65 the luck spread lands
+  // the defender between 24 and 15, which straddles one. ⚠️ Retuning
+  // `BASE_DAMAGE` moves where that happens, and this test is how you find out:
+  // it failed on the jump from 30 to 45, where rolls 0 and 9 both left the
+  // defender in band 6.
   it('counters on post-damage health, so striking first compounds', () => {
     const board = () =>
       makeState(8, [
         { id: 'b1', col: 0, row: 0 },
-        { id: 'r1', col: 0, row: 2, owner: 'red' },
+        { id: 'r1', col: 0, row: 2, owner: 'red', health: 65 },
       ]);
     const command = move('b1', at(0, 0), at(0, 0), 'r1');
 

@@ -44,9 +44,32 @@ starts from a position rather than a blank table.
 
 | | infantry | cavalry | artillery |
 |---|---|---|---|
-| **infantry** | 30 | 35 | 45 |
-| **cavalry** | 20 | 25 | 30 |
+| **infantry** | 45 | 50 | 60 |
+| **cavalry** | 30 | 35 | 40 |
 | **artillery** | 75 | 60 | 40 |
+
+⚠️ **Infantry and cavalry were raised fifteen, to widen the *first-strike*
+advantage.** There is no dial for "counters hit softer" and there should not be:
+both sides use one formula, and the whole asymmetry is that a counter reads the
+defender's **post-damage** health, exactly as AW does. That makes the table
+non-linear in the useful direction — hit harder, and the defender loses more
+bands before answering, so the counter shrinks as the attack grows. Past a base
+of about 50 it shrinks in absolute terms.
+
+An infantry exchange ran **27 against 21** at the old numbers, a ratio of 1.29
+and barely a first strike; it is 1.67 now, and the table spans **1.29 to 2.48**
+against AW2's own 1.11 to 5.06.
+
+⚠️ **Artillery's row was deliberately left alone.** At 75 a gun already killed
+infantry in two hits, so raising it bought lethality where the matchup was
+already decided rather than in the flat exchanges this was for — and the ratio it
+would have added is academic, since a defender that dies to the first blow never
+answers at all.
+
+⚠️ **And not raised further**, which would have reached AW's ceiling: terrain
+stops changing the hit count in a fourth matchup, and units stop lingering at the
+health where a charge is a good bet. AW affords 5:1 with far more unit types to
+spread a triangle across than three.
 
 ⚠️ **An earlier cut ran 40–90 and the harness killed it.** Everything died in two
 hits, which flattened three things at once: terrain became a rounding error (a

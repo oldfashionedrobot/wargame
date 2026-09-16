@@ -33,13 +33,39 @@ import type { UnitTypeId } from './unitTypes';
  * would say infantry cannot hurt horses and leave cavalry untouchable.
  *
  * ⚠️ **Cavalry is bad in every column on purpose** -- carbines from horseback.
- * Its identity lives in the charge table (10a), and a cavalry that also shoots
- * well has no reason to close. Six hits to kill infantry is what makes that
- * true rather than merely stated.
+ * Its identity lives in the charge table, and a cavalry that also shoots well
+ * has no reason to close. Four hits to kill infantry is what makes that true
+ * rather than merely stated.
+ *
+ * ⚠️ **Raised fifteen points for infantry and cavalry, to widen the
+ * *first-strike* advantage. Artillery's row was left alone**, and the harness is
+ * why: at 75 a gun already killed infantry in two hits, so raising it bought
+ * lethality in matchups that were already decided rather than in the flat ones
+ * this was for. It costs the table's top ratio -- 2.48 rather than 3.45 -- and
+ * that number was largely academic, since a defender dying to the first blow
+ * never answers at all.
+ *
+ * ⚠️ **The rest of the reasoning:** The two sides of an exchange use one formula, so there is no dial
+ * for "counters hit softer" and there should not be: the whole asymmetry is that
+ * a counter is computed on the defender's **post-damage** health, the same as
+ * Advance Wars. That makes the table non-linear in exactly the useful direction
+ * -- hit harder and the defender loses more bands before answering, so the
+ * counter shrinks while the attack grows, and past a base of about 50 it shrinks
+ * in absolute terms.
+ *
+ * At 30 an infantry exchange ran 27 against 21, a ratio of 1.29 and barely a
+ * first strike at all; at 45 it is 1.67, and the table now spans **1.29 to
+ * 2.48** where AW2's own numbers span 1.11 to 5.06.
+ *
+ * ⚠️ **Not raised to AW's ceiling**, which a further five would have reached,
+ * because it costs two other mechanics: terrain stops changing the hit count in
+ * four matchups rather than three, and units stop lingering at the health where
+ * a charge is a good bet. AW affords a 5:1 top end with far more unit types to
+ * spread a triangle across than three.
  */
 export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
-  infantry: { infantry: 30, cavalry: 35, artillery: 45 },
-  cavalry: { infantry: 20, cavalry: 25, artillery: 30 },
+  infantry: { infantry: 45, cavalry: 50, artillery: 60 },
+  cavalry: { infantry: 30, cavalry: 35, artillery: 40 },
   artillery: { infantry: 75, cavalry: 60, artillery: 40 },
 };
 
