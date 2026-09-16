@@ -7,6 +7,7 @@ import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Scene } from '@babylonjs/core/scene';
 import { directionBetween } from '@vod/shared';
+import { PLAYER_COLORS } from './playerColors';
 import type { Coordinate, Facing, PlayerColor, Unit, UnitTypeId } from '@vod/shared';
 import { tileToWorld } from './coordinates';
 import type { UnitModels } from './unitModels';
@@ -58,17 +59,6 @@ const FACING_ROTATION: Record<Facing, number> = {
   east: Math.PI / 2,
   south: Math.PI,
   west: -Math.PI / 2,
-};
-
-// Chosen to read against the board rather than to be canonical blue and red:
-// the ground is a bright saturated teal, so the old darker colours sank into
-// it. Green is deliberately pushed toward lime -- a true green sits almost on
-// top of the grass, which matters the day there are four players.
-const PLAYER_COLORS: Record<PlayerColor, Color3> = {
-  blue: new Color3(0.35, 0.6, 1),
-  red: new Color3(1, 0.33, 0.3),
-  green: new Color3(0.6, 0.92, 0.25),
-  yellow: new Color3(1, 0.85, 0.25),
 };
 
 /**

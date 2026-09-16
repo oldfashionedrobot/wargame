@@ -12,6 +12,7 @@ import {
 } from './interaction/selection';
 import type { ActionKind, SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
+import { PLAYER_HEX } from './render/playerColors';
 import { createGameRenderer } from './render/renderer';
 import type { CutawayScene, CutawaySide as CutawaySideData, GameRenderer } from './render/renderer';
 
@@ -111,7 +112,7 @@ function CutawaySide({ side, align }: { side: CutawaySideData; align: 'left' | '
           style={{
             width: `${shown}%`,
             height: '100%',
-            background: side.color === 'blue' ? '#4a7fd4' : '#d4534a',
+            background: PLAYER_HEX[side.color],
             transition: 'width 700ms ease-out',
           }}
         />
