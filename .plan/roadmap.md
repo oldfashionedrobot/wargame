@@ -239,17 +239,17 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 
 | | Current state | What it needs eventually |
 |---|---|---|
-| **Session identity** | Opaque id in an httpOnly cookie; the server trusts it on sight | Phase 11 — OAuth sign-in and a real session record. Same cookie, real meaning. No passwords at any point |
-| **`actor` under hot-seat** | Server stamps `currentTurn` on its one connection | Phase 11 — session→player map established at join |
-| **Matches are unowned and unbounded** | Anyone can create any number; no delete, no expiry. `list()` is capped at 50 newest — a bound, not pagination | Phase 11 — scope listing to the player, and add deletion. Until identity exists there's nothing to scope by |
-| **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | Phase 11 — match lifecycle and, eventually, notification. Not new mechanics |
-| **Ruleset versioning**, and with it **old matches are expendable** | None. ⚠️ `current_state` and `initial_state` are JSON columns with `.$type<GameState>()`, which is a **compile-time cast and no runtime check** — so a match stored before a field existed reads back missing it while the types insist otherwise. A shape change therefore does not migrate rows; it abandons them, and that is **accepted policy until phase 11** rather than an oversight. The dev database is gitignored scratch: delete it. ⚠️ The failure is silent where it matters — a `Unit` with no `health` is `undefined`, and `undefined` arithmetic is `NaN`, so the first symptom is a damage number rather than an error | Stamp a ruleset id on the match so old logs replay under the rules they were played with. That is also what retires the policy above: a match that knows its ruleset can be refused rather than quietly misread |
+| **Session identity** | Opaque id in an httpOnly cookie; the server trusts it on sight | *Multiplayer and auth* — a real session record behind whatever provides identity. Same cookie, real meaning. No passwords at any point |
+| **`actor` under hot-seat** | Server stamps `currentTurn` on its one connection | *Multiplayer and auth* — session→player map established at join |
+| **Matches are unowned and unbounded** | Anyone can create any number; no delete, no expiry. `list()` is capped at 50 newest — a bound, not pagination | *Multiplayer and auth* — scope listing to the player, and add deletion. Until identity exists there's nothing to scope by |
+| **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | *Multiplayer and auth* — match lifecycle and, eventually, notification. Not new mechanics |
+| **Ruleset versioning**, and with it **old matches are expendable** | None. ⚠️ `current_state` and `initial_state` are JSON columns with `.$type<GameState>()`, which is a **compile-time cast and no runtime check** — so a match stored before a field existed reads back missing it while the types insist otherwise. A shape change therefore does not migrate rows; it abandons them, and that is **accepted policy until a ruleset id exists** rather than an oversight. The dev database is gitignored scratch: delete it. ⚠️ The failure is silent where it matters — a `Unit` with no `health` is `undefined`, and `undefined` arithmetic is `NaN`, so the first symptom is a damage number rather than an error | Stamp a ruleset id on the match so old logs replay under the rules they were played with. That is also what retires the policy above: a match that knows its ruleset can be refused rather than quietly misread |
 | **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Picked from at match creation, and browsable at `/maps` | A `maps` table once maps stop being written by developers. ⚠️ The other condition — enough maps to choose among — has already been met, so this is due a re-read rather than a wait; see below |
 | **Elevation is visual only, and capped at 0.5** | Height is a look, never data. A mesa and a bridge deck raise where a unit *stands*, but `shared/` has no idea: there is no height on a tile, `entryCost` never asks about one, and no rule reads one. ⚠️ Both halves of the old technical objection are now gone — `screenToTile` tries every surface height tallest-first, so a click finds a peak where it is drawn, and `surfaceAt` is a lookup that knows each tile's height. What caps height now is the *camera*: at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and past about half a tile it occupies its neighbour | ⚠️ **Nothing — this is where it stays.** It was once written here as waiting on machinery, which stopped being true when picking learned about height, and elevation as a *rule* is now declined for v1 rather than queued. Mesas are enough at this board size. The reasons, and the two findings worth keeping if it is ever reopened, are in *Out of scope for v1* |
 | **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
 | ~~**`shared/`'s test files are not typechecked**~~ ✅ **Fixed.** `tsconfig.dev.json` covers `scripts/` and `src/**/*.test.ts` together — see *Testing* in [`architecture.md`](architecture.md). It cost `@types/bun` as a devDependency of the zero-dependency package, and it surfaced **twenty** errors that had been invisible | — |
 | **Migrations run at boot** | `migrate()` on startup, fine for one instance and ~0.4 ms once nothing is pending. Drizzle lists runtime migration as a first-class flow for monoliths, so this is a choice rather than a shortcut | `bun run db:migrate` as a deploy step, once there is more than one instance, a rolling deploy, or a reason to deny the runtime DDL rights |
-| **Two reads per command** | `resolveActor` needs state to stamp `actor = currentTurn`, but `submit` owns the read | Phase 11 — `resolveActor` becomes a session lookup and the extra read disappears |
+| **Two reads per command** | `resolveActor` needs state to stamp `actor = currentTurn`, but `submit` owns the read | *Multiplayer and auth* — `resolveActor` becomes a session lookup and the extra read disappears |
 
 ### Maps in a table
 
@@ -305,6 +305,24 @@ option, and both cost a few lines against a table's seeding machinery.
 
 ## Remaining phases
 
+⚠️ **Three of these are a queue and two are tracks.** 11, 12 and 15 run in that
+order and cannot be reordered: nothing outward-facing happens without a hosted
+build, and the last portal step needs both the build and whatever provides
+identity. 13 and 14 depend on none of it, and they are what actually move the
+numbers a portal gates on — so they run alongside rather than waiting their
+turn, in whatever order is most interesting that week.
+
+⚠️ **Cross-references name a phase rather than number it.** Inserting phase 11
+renumbered the one after it and turned every "Phase 11 —" in *Known
+compromises* into a pointer at the wrong thing. A name survives an insert; a
+number is a thing somebody has to remember to recount.
+
+⚠️ **Platform mechanics are not written down here.** They are per-platform,
+dated, and change — see *Victory or Death — Publishing Pipeline* in Drive, which
+carries the gate, exclusivity, identity and size rules for each portal with the
+date each was verified. Anything copied into this file is a second copy to keep
+in step, and the last audit of this document was mostly about exactly that.
+
 ### 9 — Combat: the smallest thing you can win ✅
 
 Terrain and pathing already exist, so the numbers mean something. The integration risk here is the chain — command → resolve → events → animate → death → mesh removal → victory — not the damage formula.
@@ -320,7 +338,7 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
   *Combat*, the tables under *Content*, mesh removal under *Rendering*.
   ⚠️ Two decisions they forced are **not** there, because they are still
   forward-looking and stayed in this file: old matches are expendable until
-  phase 11 (*Known compromises*), and luck's flat ordering with the
+  a ruleset id exists (*Known compromises*), and luck's flat ordering with the
   measurements behind it, which now live in *Combat* in
   [`architecture.md`](architecture.md) and in `git log`.
 
@@ -473,7 +491,49 @@ one formula cannot be read apart, not because the geometry might be wrong.
   animation and a charge one, and it is carried for that.
 
 
-### 11 — Multiplayer and auth
+### 11 — A hosted build, client and server apart
+
+The smallest remaining phase and the one that unblocks every outward-facing
+thing. Nothing here is new mechanics: it is the deploy story, and it is first
+because itch.io accepts a build the day one exists, and because two assumptions
+die the moment the client is served from somewhere that is not us.
+
+- **Same-origin stops being true.** Today the client calls `/api/*` relative and
+  that works in dev (Vite proxies) and in production (the server serves the
+  bundle). A portal hosts the client's files on its own CDN and explicitly does
+  not host the server — "we only host the game files" — so the client needs an
+  API base, and the server needs CORS with credentials.
+- ⚠️ **The session cookie is the sharp edge, not CORS.** `SameSite=Lax` is what
+  currently covers CSRF, and Lax means the browser will not send the cookie on a
+  cross-site request at all. A client on someone else's origin gets no session.
+  Either the cookie becomes `SameSite=None; Secure` and CSRF needs the real
+  defence Lax was standing in for, or identity stops riding a cookie. That is a
+  decision, and it wants making here rather than inside phase 12.
+- **Two deploy targets, one repo.** The client is static files; the server is a
+  process with a database. They version together and ship apart, which is the
+  first time `seq` and the ruleset-versioning compromise have teeth.
+- **Size is measured, not feared.** The build is currently ~7.9 MB over 724
+  files, against CrazyGames' ≤50 MB initial, ≤250 MB total, ≤1500 files. Comfort
+  able on bytes; the file count is already half the cap, and a terrain kit is
+  what grows it.
+
+### 12 — Multiplayer and auth
+
+⚠️ **This section was written assuming we own identity, and two target
+platforms forbid that.** CrazyGames requires progress tied to a CrazyGames
+account with automatic login and permits **no external login options**;
+Kongregate permits **no account system in a new game** and requires
+authentication through its API. So "OAuth sign-in with sessions in our own
+database" is one provider, not the design.
+
+⚠️ **What survives is the seam, and it already exists.** `resolveActor` is the
+single place a request becomes a `PlayerId`, and the work is to make it
+pluggable rather than to pick a winner: hot-seat is a provider, our own OAuth is
+a provider, a portal SDK is a provider. Everything below about sessions, cookie
+rotation and ownership is right for the provider we host, and simply does not
+apply to the ones we do not. ⚠️ Whether our own OAuth is built **at all** before
+a portal is a real question — it may be that the first shipped identity is
+somebody else's, and the sessions table waits.
 
 - **Match lifecycle** — a way for a second person to join, and matches bound to users rather than open to anyone. The largest of the three and still a single bullet: it wants a lobby state, a join mechanism, and the `status` column this section is careful to keep apart from game outcome. Phase 4 was split in two for less; this should be split before it starts.
 - **OAuth sign-in** with sessions in our own database — see *Identity* below.
@@ -526,3 +586,56 @@ Both are defaults in Better Auth, which is a further point in its favour above.
 
 **Where the check goes.** Whatever provides identity resolves to a `PlayerId` in one place, before `actor` is stamped — see *Identity* above. Ownership is then a lookup in front of the authority, never a rule the reducers know about. Note that `canSelectUnit` deliberately stays a game fact and needs no identity: the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
 
+### 13 — Depth: more units, more tuning
+
+A track, not a queue — it depends on nothing above and it is what moves the
+metrics a portal actually gates on. *Tuning* above is where the numbers and the
+argument live; this is the phase that keeps changing them.
+
+- **More unit types.** The catalog is built for this: `Record<UnitTypeId, …>`
+  means adding one is a compile error in every table that needs an entry, and
+  `maps.test.ts` already checks a new movement type can cross every board. ⚠️
+  The one table that will *not* complain is `CHARGE_THRESHOLD`, which is
+  `Partial` so artillery can have no row — a new unit silently gets no charge.
+- **Whatever play says next.** Three things have already moved this way, and two
+  of the three turned out to be rules rather than dials.
+
+### 14 — Presentation: animation, sound, UI
+
+The other track. ⚠️ `battleResolved.kind` is carried for exactly this and read by
+nothing yet — the cutaway was built to branch on it and does not, so a volley
+and a charge currently play the same absence of an animation.
+
+- **Model animation in the cutaway**, which is the version 10c deliberately did
+  not build.
+- **Sound.** Nothing in the codebase makes any, and there is no audio path at
+  all — this is a new capability rather than a pass over an existing one.
+- **A UI pass.** The board's chrome now reads `--board-*` tokens, so this is
+  editing a palette rather than hunting literals. The page's own tokens exist
+  and are still used by nothing.
+- ⚠️ **The dev handle from *Open questions* belongs here or before it.** Every
+  visual change is verified by screenshotting and guessing a pixel, and a
+  `tileToScreen` behind `import.meta.env.DEV` turns that into addressing a tile.
+  It cost real time twice in one session.
+
+### 15 — Platforms
+
+Per-portal integration and submission. Gated by 11 (a hosted build) and by 12
+(identity, which several portals supply themselves), and worth attempting only
+once 13 and 14 have moved playtime and retention — CrazyGames' Basic Launch bar
+is published and specific, and the game is judged against it.
+
+- **Per-platform SDK work**, which is mostly identity, room/invite plumbing and
+  an ads hook. What each one demands is in the Publishing Pipeline doc.
+- **Nobody offers matchmaking.** Every portal checked supplies accounts or
+  nothing; a queue is ours to build if it is wanted, and a room-plus-invite-link
+  flow is what the platforms are actually shaped around.
+- ⚠️ **Exclusivity is a strategy decision, not an integration task.** One target
+  is web-exclusive and blocks external requests by default, which rules out a
+  game with its own server unless an exemption is granted. Deciding that is
+  cheap now and expensive after an integration.
+- ⚠️ **The genre is against the grain and this is known going in.** The one
+  portal publishing numbers says hypercasual and puzzle dominate, with strategy
+  landing with older players; a turn-based keyboard-and-mouse game is not what
+  these audiences are built around. Online multiplayer doubles long-term
+  retention there, which is the strongest argument for 12 existing before 15.
