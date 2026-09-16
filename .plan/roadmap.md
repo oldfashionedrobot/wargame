@@ -514,7 +514,7 @@ one formula cannot be read apart, not because the geometry might be wrong.
 
 **Two people, in the same match, at the same time.** The shape is a game of
 chess: sit down, play it now, finish it now. That is the sentence the rest of
-this phase is derived from, and four decisions follow from it.
+this phase is derived from, and everything below follows from it.
 
 ⚠️ **Played in one sitting.** Both players at their clients, the match started
 and finished now. ⚠️ **"Live" here is a *session shape*, not a transport** —
@@ -761,9 +761,9 @@ average.
 
 - **Per-platform SDK work**, which is mostly identity, room/invite plumbing and
   an ads hook. What each one demands is in the Publishing Pipeline doc.
-- **Nobody offers matchmaking.** Every portal checked supplies accounts or
-  nothing; a queue is ours to build if it is wanted, and a room-plus-invite-link
-  flow is what the platforms are actually shaped around.
+- **Nobody offers matchmaking**, which *Multiplayer* already accounts for: the
+  queue is ours wherever the game runs. What a portal adds here is its own room
+  and invite plumbing around it, which is the shape that phase builds anyway.
 - ✅ **No exclusivity, decided.** One target is web-exclusive and blocks external
   requests by default; a game with its own server cannot take that deal without
   an exemption, and the deal is worth less than the other portals together. The
@@ -773,4 +773,5 @@ average.
   portal publishing numbers says hypercasual and puzzle dominate, with strategy
   landing with older players; a turn-based keyboard-and-mouse game is not what
   these audiences are built around. Online multiplayer doubles long-term
-  retention there, which is the strongest argument for 12 existing before 15.
+  retention there, which is the strongest argument for *Multiplayer* preceding
+  this phase rather than being deferred to it.
