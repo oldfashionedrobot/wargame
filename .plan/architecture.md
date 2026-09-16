@@ -6,18 +6,20 @@ Turn-based strategy game, American Revolutionary War theme. React + TypeScript
 **This document describes the code as it is.** No rationale, no history. What
 is planned but unbuilt lives in [`roadmap.md`](roadmap.md).
 
-**What plays today:** hot-seat against a real server process. Select a unit, see
-the tiles it can reach across terrain, click a destination to pin the route
-there and click it again to send the unit walking — then click the unit to stop
-there, a tile beside it to end up looking that way, or anywhere else to think
-again —
-and the turn passes. Two players, a rank of eight each — two guns, two horse,
-four foot — on one of six maps chosen when the match is created.
+**What plays today:** hot-seat against a real server process, from the opening
+move to a winner. Select a unit and see the tiles it can reach across terrain;
+click a destination to pin the route there and click it again to send the unit
+walking. Where it arrives a panel asks what it is doing — hold, fire or charge,
+listing only the ones it can actually do and skipping itself when that leaves
+one — after which a held unit is pointed somewhere, since facing decides whether
+a shot is answered. A shot or a charge
+cuts away to the two units and plays the exchange. Every unit acts once and the
+turn ends when the last of them has gone; when a player has nothing left, the
+match is over and says so.
 
-⚠️ **No combat is playable yet, but half of it exists.** Units carry `health`,
-and `computeDamage` is complete and tested — what is missing is a command that
-carries an attack, which is what makes any of it reachable from the board. Until
-then the formula is exercised only by its tests and by the tuning harness.
+Two players, a rank of eight each — two guns, two horse, four foot — on a map
+chosen when the match is created. `/maps` shows the boards without starting
+one.
 
 ## Packages
 
@@ -83,8 +85,8 @@ packages/
   client/
     index.html  vite.config.ts  public/  scripts/compressDist.ts
     src/
-      main.tsx · App.tsx · index.css · test-setup.ts
-      routes/     the three screens
+      main.tsx    the entry point; App.tsx is the route table beside it
+      routes/     the top-level screens
       net/        the HTTP client and the polling GameServer
       game/       the session hook and the canvas component
         interaction/  click handling, pure
@@ -315,7 +317,8 @@ percentage of a full-health target, and `LUCK_MAX`. ⚠️ **A matrix rather tha
 attack stat and a defence stat, and that is arithmetic rather than taste:** any
 `f(attack, defence)` produces a *transitive* ordering, so no pair of scalars can
 express rock-paper-scissors. `road` and `bridge` are currently identical in both
-their columns, so the board has five distinct terrains rather than six.
+their columns, so two of the terrains are indistinguishable to every rule that
+reads them.
 
 **`terrain.ts`** — `{ char, defense, cost }` per terrain. `char` is the symbol a
 map is drawn with; `defense` is stars of cover, read by `computeDamage`; `cost` is
@@ -415,8 +418,8 @@ resize.
 | `common` | Open field with the opposite road — up the middle, the fast way *at* the enemy — and hills on both flanks: 4 stars of cover apiece and shut to wheels, so a strong position no gun can ever hold |
 
 ⚠️ **A river may only leave the board where the army does not stand.** The rank
-lands on columns 6–13 of the first and last row and `wheels` cannot enter water
-or rock, so neither may be drawn there. `two-bridges` is where this shows: its
+is centred, so it lands on the middle eight columns of the first and last row,
+and `wheels` cannot enter water or rock, so neither may be drawn there. `two-bridges` is where this shows: its
 north–south arm stops one row short of the edge rather than reaching it.
 
 `StartScreen` picks between them and `POST /api/matches` carries the choice;
@@ -1089,8 +1092,9 @@ own `batch()` cannot pass a transaction mode.
 
 **`net/api.ts`** — the `/api` base, JSON, and the one place a response becomes
 `notFound`, `unreachable`, or a rejection. `HttpError` carries a `FailureKind`;
-`RejectedError` is a separate type for a 422. Also holds `api.matches.list()`
-and `.create()`, and `api.maps.list()` and `.preview()`.
+`RejectedError` is a separate type for a 422. Also holds `api`, the endpoints
+that are **not** scoped to a single match — which is the whole reason they are
+not on `GameServer`.
 
 **`net/gameServer.ts`** — `connectGameServer(matchId, { onConnectionChange? })`
 returns `{ ok: true, server } | { ok: false, kind, reason }`.
@@ -1915,15 +1919,13 @@ Every package is tested. `bun test` runs `shared` and `server`, Vitest runs
 - `fetch` and timers are faked in `gameServer.test.ts`; every timer advance is
   the async form.
 
-- React components are tested with the renderer mocked, so Babylon never
-  loads: `GameCanvas` covers the chrome, the renderer lifecycle, the tile click
-  and what each mode projects at every stage — pin, re-pin, confirm, walk,
-  arrive; `MatchRoute` covers both failure branches, Retry, and disposal
-  including a connection that resolves after teardown; `StartScreen` covers
-  each of its states and create-and-navigate; `MapViewer` covers the picker,
-  both failure branches, and — the half that leaks silently — that every scene
-  it stops showing is disposed, including one that finishes building *after*
-  the map has already changed.
+- React components are tested with the renderer mocked, so Babylon never loads.
+  What the suites cover is chrome, lifecycle, and what each interaction
+  *projects* — never pixels. ⚠️ **Disposal is tested wherever a renderer or a
+  connection is built**, including one that finishes arriving *after* teardown,
+  because that is the failure which leaks in silence: an undisposed scene holds
+  a WebGL context and a render loop, and nothing on screen looks any different
+  for several of them.
 
 - ⚠️ **`routeArrow.pieceFor` is tested on the same principle**: it is the only
   part of that module that *decides* anything, and a wrong rotation on one of

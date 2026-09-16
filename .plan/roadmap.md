@@ -29,10 +29,14 @@ lives.
 
 ### Tuning
 
-**Twenty numbers**, of which play has moved two: the nine of `BASE_DAMAGE`,
-the six of `CHARGE_THRESHOLD`, the three of `CHARGE_REPEL`, and
-`FLANK_MULTIPLIER` and `REAR_MULTIPLIER`. Plus `LUCK_MAX`, `CHARGE_HALF_LIFE`
-and the repel's miss-scaling, which are dials rather than table entries.
+The surface is `BASE_DAMAGE`, `CHARGE_THRESHOLD` and `CHARGE_REPEL`, plus the
+loose dials beside them: `FLANK_MULTIPLIER`, `REAR_MULTIPLIER`, `LUCK_MAX`,
+`CHARGE_HALF_LIFE`, and the repel's miss-scaling.
+
+⚠️ **This used to open by counting them, and the count is gone.** The total is a
+product of how many unit types exist, so every table's size moves together and
+the figure was stale the moment anything was added — while never carrying the
+point, which is *which* dials there are.
 
 #### The first cut
 
@@ -80,7 +84,7 @@ spread a triangle across than three.
 
 ⚠️ **An earlier cut ran 40–90 and the harness killed it.** Everything died in two
 hits, which flattened three things at once: terrain became a rounding error (a
-four-star mountain bought one extra blow or none), the nine matchup numbers
+four-star mountain bought one extra blow or none), the matchup numbers
 produced two distinct outcomes, and luck moved nothing. Worse, it starved phase
 10 — `CHARGE_THRESHOLD` wants infantry at ≤25 health, and a unit went 100 → 45 →
 dead without ever passing through the band where a charge is legal.
@@ -101,7 +105,10 @@ untouchable. What transfers is that the losing edges must genuinely lose.
 
 ⚠️ **Cavalry is bad in every column deliberately** — carbines from horseback —
 because its identity is in the charge table, and a cavalry that shoots well has
-no reason to close. At six hits to kill infantry it plainly cannot.
+no reason to close. It is the worst shooter in every column by a clear margin,
+which is what makes closing the point. ⚠️ A hits-to-kill figure stood here and
+went stale with the first retune — `scripts/matchups.ts` prints the current
+grid, and a number copied out of it is a number that has to be copied again.
 
 `CHARGE_THRESHOLD`, charger down the side. Target HP at or below this succeeds
 without luck; artillery has no row:
@@ -141,7 +148,7 @@ these numbers move. Doubling the table pushes every crossover right and makes
 charging rare; halving it makes charging nearly free.
 
 ⚠️ **The multiplicative drafts all pushed this to 40%+**, which would have made a
-six-entry threshold table a lot of tuning for something seldom done. That is the
+threshold table a lot of tuning for something seldom done. That is the
 symptom to watch for.
 
 `FLANK_MULTIPLIER 1.5`, `REAR_MULTIPLIER 2`, `REPEL_DIVISOR 10`, `luckMax 9` — the
@@ -237,7 +244,7 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 | **Matches are unowned and unbounded** | Anyone can create any number; no delete, no expiry. `list()` is capped at 50 newest — a bound, not pagination | Phase 11 — scope listing to the player, and add deletion. Until identity exists there's nothing to scope by |
 | **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | Phase 11 — match lifecycle and, eventually, notification. Not new mechanics |
 | **Ruleset versioning**, and with it **old matches are expendable** | None. ⚠️ `current_state` and `initial_state` are JSON columns with `.$type<GameState>()`, which is a **compile-time cast and no runtime check** — so a match stored before a field existed reads back missing it while the types insist otherwise. A shape change therefore does not migrate rows; it abandons them, and that is **accepted policy until phase 11** rather than an oversight. The dev database is gitignored scratch: delete it. ⚠️ The failure is silent where it matters — a `Unit` with no `health` is `undefined`, and `undefined` arithmetic is `NaN`, so the first symptom is a damage number rather than an error | Stamp a ruleset id on the match so old logs replay under the rules they were played with. That is also what retires the policy above: a match that knows its ruleset can be refused rather than quietly misread |
-| **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Six of them, picked from at match creation and browsable at `/maps` | A `maps` table once maps stop being written by developers. ⚠️ The other condition — enough maps to choose among — has already been met, so this is due a re-read rather than a wait; see below |
+| **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Picked from at match creation, and browsable at `/maps` | A `maps` table once maps stop being written by developers. ⚠️ The other condition — enough maps to choose among — has already been met, so this is due a re-read rather than a wait; see below |
 | **Elevation is visual only, and capped at 0.5** | Height is a look, never data. A mesa and a bridge deck raise where a unit *stands*, but `shared/` has no idea: there is no height on a tile, `entryCost` never asks about one, and no rule reads one. ⚠️ Both halves of the old technical objection are now gone — `screenToTile` tries every surface height tallest-first, so a click finds a peak where it is drawn, and `surfaceAt` is a lookup that knows each tile's height. What caps height now is the *camera*: at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and past about half a tile it occupies its neighbour | ⚠️ **Nothing — this is where it stays.** It was once written here as waiting on machinery, which stopped being true when picking learned about height, and elevation as a *rule* is now declined for v1 rather than queued. Mesas are enough at this board size. The reasons, and the two findings worth keeping if it is ever reopened, are in *Out of scope for v1* |
 | **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
 | ~~**`shared/`'s test files are not typechecked**~~ ✅ **Fixed.** `tsconfig.dev.json` covers `scripts/` and `src/**/*.test.ts` together — see *Testing* in [`architecture.md`](architecture.md). It cost `@types/bun` as a devDependency of the zero-dependency package, and it surfaced **twenty** errors that had been invisible | — |
@@ -248,8 +255,9 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 
 ⚠️ **This condition has already been met, and the decision has not been
 re-taken.** It said *revisit when there are enough maps to choose among* —
-there are now six, and **two** screens pick between them: `StartScreen` chooses
-what to play on and `/maps` exists only to look through them. That is the picker
+there are enough to choose among, and **two** screens now pick between them:
+`StartScreen` chooses what to play on and `/maps` exists only to look through
+them. That is the picker
 this section names as what turns maps into a library rather than a constant, and
 a library of selectable rows is what a table is for. ⚠️ The viewer arrived after
 this was written and makes the case louder rather than differently — a second
@@ -288,7 +296,7 @@ option, and both cost a few lines against a table's seeding machinery.
 - **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
 - **Buildings / capture points.** A terrain type with attached `{ owner, captureProgress }`, not a separate object layered on a tile.
 - **Graying out acted units.** The mechanical restriction is in scope; the visual is a later UI pass — but note phase 9 asks for a "units that can still act" indicator, which is the same thing under another name. Whichever phase draws it, it should be one treatment, not two.
-- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — `mountain` is `defense: 4` and costs a horse 4, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Combat does not exist yet**, and charge and facing are already two original mechanics with untuned numbers; a third interacting axis is the trap this document warns about elsewhere. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
+- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — `mountain` is `defense: 4` and costs a horse 4, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
 
   ⚠️ Two findings worth keeping if it is ever reopened. `entryCost` takes a *destination*; height would make it take a **step**, which is a real signature change but a contained one — `exploreMovement` and `validatePath` are its only callers, and invariant 10 is what guarantees that. And if height ever did enter combat, the door is an **attack** bonus for striking downhill rather than a defence bonus for standing high, because terrain does not express the former and already expresses the latter.
 - **Manual routing.** Dragging out a deliberately non-optimal path. Unblocked by the protocol carrying a path and the server validating it — purely a matter of building the UI for it. ⚠️ The substrate now exists and did not before: a route is **pinned, re-pinnable, and drawn as an arrow**, so waypoints have something to hang off rather than needing the whole idea built at once.
@@ -376,7 +384,7 @@ Terrain and pathing already exist, so the numbers mean something. The integratio
 
 **Keep game outcome separate from lobby status.** An outcome is a fact about the board — produced by a reducer, replayable from the log — so it belongs in `GameState`. "Waiting for an opponent to join" is about *users*, belongs on the `matches` row, and no reducer should know about it. A single `status` field spanning both is the muddle to avoid.
 
-⚠️ **The board's vocabulary gets judged here, and nowhere earlier.** Terrain has exactly two mechanical dimensions — `cost`, which movement reads, and `defense`, which `computeDamage` now reads. So a terrain differing only in `defense` was *indistinguishable in play* until 9c, and one differing only in `cost` mostly duplicates what `river` already is: passable on foot, shut to horse and wheels. That is why renaming `mountain` to something the period would recognise buys accuracy and nothing else, and why new types are worse than nothing until the numbers they differ by are read by something. ⚠️ **And the count is five, not six.** `road` and `bridge` are mechanically the same terrain — `defense: 0` both, `cost: { foot: 1, horse: 1, wheels: 1 }` both — differing only in the character that draws them and the model that renders them. So the question this phase answers is whether *five* distinct terrains give enough tactical variety, which is a different question. Revolutionary-war terrain is a real want — fields, woodlots, orchards, marsh, and stone walls above all — but the first three are a **palette** job that touches no rule (`terrainModels.ts` material overrides), and the last is not a tile at all: a wall gives cover *from one direction*, which makes it an **edge** feature against a grid that only has cells, and it multiplies with facing. Both halves of that belong after this phase can say whether six terrains give enough tactical variety.
+⚠️ **The board's vocabulary gets judged here, and nowhere earlier.** Terrain has exactly two mechanical dimensions — `cost`, which movement reads, and `defense`, which `computeDamage` now reads. So a terrain differing only in `defense` was *indistinguishable in play* until 9c, and one differing only in `cost` mostly duplicates what `river` already is: passable on foot, shut to horse and wheels. That is why renaming `mountain` to something the period would recognise buys accuracy and nothing else, and why new types are worse than nothing until the numbers they differ by are read by something. ⚠️ **And the count is five, not six.** `road` and `bridge` are mechanically the same terrain — `defense: 0` both, `cost: { foot: 1, horse: 1, wheels: 1 }` both — differing only in the character that draws them and the model that renders them. So the question this phase answers is whether *five* distinct terrains give enough tactical variety, which is a different question. Revolutionary-war terrain is a real want — fields, woodlots, orchards, marsh, and stone walls above all — but the first three are a **palette** job that touches no rule (`terrainModels.ts` material overrides), and the last is not a tile at all: a wall gives cover *from one direction*, which makes it an **edge** feature against a grid that only has cells, and it multiplies with facing. Both halves of that belong after this phase can say whether the distinct ones give enough tactical variety.
 
 **Where identity shows up.** Two bits of UI here need to know who the user is — a "your units that can still act" indicator, and a victory screen saying *You won* rather than *Blue won*. Get it from one function rather than inlining `state.currentTurn` at each call site. Hot-seat: whoever's turn it is, because two people share one client. With auth: the session. Same concept, different source — nothing to build in advance.
 
