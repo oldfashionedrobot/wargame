@@ -84,7 +84,7 @@ packages/
     index.html  vite.config.ts  public/  scripts/compressDist.ts
     src/
       main.tsx · App.tsx · index.css · test-setup.ts
-      routes/     the two screens
+      routes/     the three screens
       net/        the HTTP client and the polling GameServer
       game/       the session hook and the canvas component
         interaction/  click handling, pure
@@ -211,6 +211,7 @@ StateResponse     { seq, state }
 EventsResponse    { seq, events, state? }
 MatchSummary      { id, createdAt, seq, currentTurn, mapId, winner }
 MapSummary        { id, name }                       // GET /api/maps
+MapPreview        { id, name, state }                // GET /api/maps/:id/preview
 ErrorResponse     { error }                          // the body of every non-2xx
 ```
 
@@ -992,6 +993,7 @@ alike; the client calls `/api/*` relative.
 
 ```
 GET  /api/maps                        → MapSummary[]
+GET  /api/maps/:id/preview            → MapPreview               (stores nothing)
 GET  /api/matches                     → MatchSummary[]           (newest 50)
 POST /api/matches   { mapId? }        → MatchSummary             201
                                       | { error }                400 unknown map
@@ -1005,7 +1007,10 @@ POST /api/matches/:id/commands        → { ok: true, seq, events, state }   200
 
 Status carries the outcome: a missing match is **404**, a malformed body, a body that was never a
 command, and a bad `since` query parameter are all **400**, a well-formed command the rules refused is **422** with the
-reason in the body. Every non-2xx body this code writes is an `ErrorResponse`;
+reason in the body. ⚠️ **An unknown map id is a 404 at `preview` and a 400 at
+create**, which is a distinction rather than a slip: asking to look at a board
+that does not exist is a missing resource, asking to *build* on one is a bad
+argument. `findMap` is `getMap` without the throw and serves both. Every non-2xx body this code writes is an `ErrorResponse`;
 the one exception is bun's own 413 from `maxRequestBodySize`, which it answers
 before a handler runs.
 
@@ -1095,13 +1100,52 @@ return. Updates are deduplicated by `seq` before reaching any listener.
 
 **`routes/`** — `/` is `StartScreen` (list, and create on a chosen map — the
 picker simply does not appear if `GET /api/maps` fails, which falls back to the
-server's default and is what happened before there was one); `/:matchId` is
+server's default and is what happened before there was one); `/maps` is
+`MapViewer`; `/:matchId` is
 `MatchRoute`, which is keyed on the id so a param change remounts the
 connection. It owns the async connect, renders `GameCanvas` only once a server
 is ready, and disposes on unmount including a connection that resolves after
 teardown. A failure renders one of two things, which is what `FailureKind` is
 for: `notFound` offers a link back and no retry, `unreachable` offers a working
 Retry that re-runs the connect.
+
+⚠️ **`/maps` ranks above `/:matchId` whatever the order they are written in** —
+react-router scores a static segment above a dynamic one — so a match whose id
+were literally `maps` would be unreachable. Ids are uuids, so that is a
+curiosity rather than a bug.
+
+### The map viewer
+
+`MapViewer` is a picker over `GET /api/maps` and **the game's own renderer**
+built on `GET /api/maps/:id/preview`. ⚠️ **It draws a whole `GameState`, not a
+terrain grid**, which is why the endpoint returns one: a second way to draw a
+board would be a second thing to keep in step with `composeTerrain`, and it
+would be the copy nobody notices has gone stale. Showing the deployment is the
+point rather than the price — a deployment square drawn onto a river is a
+property of the *pair*, which is the same reason `maps.test.ts` asserts against
+`createMatchState` rather than against rows.
+
+⚠️ **Nothing is wired for input**: `onTileClick` is never registered, so the
+canvas orbits and zooms and answers nothing else. That is the whole difference
+from `GameCanvas`, and it is an omission rather than a mode — there is no
+selection state on this page to be in.
+
+⚠️ **One effect does the fetch *and* the build**, so a single `disposed` flag
+covers both halves of one attempt. Split in two — state into `useState`, a
+second effect watching it — a map switched twice in flight can resolve out of
+order and leave the scene showing the first answer.
+
+⚠️ **The canvas is keyed on the map id**, so each scene gets a fresh element.
+Babylon takes the canvas's WebGL context at construction and gives it back on
+`dispose`; building a second engine on the same element asks for a context that
+has just been handed back, which is a black canvas on some drivers and fine on
+others.
+
+⚠️ **The viewport is roughly square, and that is arithmetic.** `holdTheBoard`
+sizes the frustum from the board's ground-plane *half-diagonal* — the worst case
+over every angle the camera may be turned to — so a wide box spends the surplus
+on background. Boards are square: measured, the board fills 44% of an 880×520
+box and 68% of a 620×580 one.
 
 **`game/useGameSession.ts`** — the session: render replica, rejection state,
 in-flight guard, selection, and submits. Takes `onEvents` and `onSnap` callbacks
@@ -1872,7 +1916,10 @@ Every package is tested. `bun test` runs `shared` and `server`, Vitest runs
   and what each mode projects at every stage — pin, re-pin, confirm, walk,
   arrive; `MatchRoute` covers both failure branches, Retry, and disposal
   including a connection that resolves after teardown; `StartScreen` covers
-  each of its states and create-and-navigate.
+  each of its states and create-and-navigate; `MapViewer` covers the picker,
+  both failure branches, and — the half that leaks silently — that every scene
+  it stops showing is disposed, including one that finishes building *after*
+  the map has already changed.
 
 - ⚠️ **`routeArrow.pieceFor` is tested on the same principle**: it is the only
   part of that module that *decides* anything, and a wrong rotation on one of

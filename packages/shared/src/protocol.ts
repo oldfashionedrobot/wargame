@@ -77,6 +77,30 @@ export interface MapSummary {
   name: string;
 }
 
+/**
+ * GET /api/maps/:id/preview -- a board with nobody having played on it.
+ *
+ * ⚠️ **A whole `GameState`, not the map's rows**, and that is the point rather
+ * than a convenience: a map on its own is characters, and what anyone wants to
+ * look at is the board *and the army deployed onto it*. Those are the same pair
+ * `maps.test.ts` asserts against, for the same reason -- a deployment square
+ * drawn onto a river is a property of the pair and invisible in either half.
+ *
+ * ⚠️ **It is not a match and nothing is stored.** `createMatchState` is pure, so
+ * this costs a grid and sixteen units per request and leaves no row behind. A
+ * viewer that created real matches to look at boards would fill the lobby with
+ * them, and there is no delete.
+ *
+ * ⚠️ `id` rides along although the caller asked for it. A picker can be changed
+ * twice before the first answer lands, and an id in the body makes discarding
+ * the stale one a comparison rather than a bookkeeping exercise.
+ */
+export interface MapPreview {
+  id: string;
+  name: string;
+  state: GameState;
+}
+
 /** GET /api/state -- initial load. No events; there's nothing to animate. */
 export interface StateResponse {
   seq: number;

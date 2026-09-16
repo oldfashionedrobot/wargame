@@ -1,4 +1,4 @@
-import type { ErrorResponse, MapSummary, MatchSummary } from '@vod/shared';
+import type { ErrorResponse, MapPreview, MapSummary, MatchSummary } from '@vod/shared';
 
 // Same-origin: in dev Vite proxies /api to the server, in production the
 // server serves this bundle itself. Either way there's no base URL to
@@ -92,6 +92,10 @@ export const api = {
   maps: {
     list(): Promise<MapSummary[]> {
       return getJson<MapSummary[]>('/maps');
+    },
+    /** The board a match on this map would start from. Creates nothing. */
+    preview(id: string): Promise<MapPreview> {
+      return getJson<MapPreview>(`/maps/${encodeURIComponent(id)}/preview`);
     },
   },
   matches: {

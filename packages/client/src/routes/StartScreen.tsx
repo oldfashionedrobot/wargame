@@ -84,7 +84,8 @@ export function StartScreen() {
         )}
         <button type="button" onClick={onRefresh}>
           Refresh
-        </button>
+        </button>{' '}
+        <Link to="/maps">Browse maps</Link>
       </p>
 
       {error && <p style={{ color: '#c0392b' }}>{error}</p>}

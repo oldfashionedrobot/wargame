@@ -73,6 +73,7 @@ export type {
   ErrorResponse,
   EventsResponse,
   GameServer,
+  MapPreview,
   MapSummary,
   MatchSummary,
   StateResponse,

@@ -1,4 +1,5 @@
 import { BrowserRouter, Route, Routes } from 'react-router';
+import { MapViewer } from './routes/MapViewer';
 import { MatchRoute } from './routes/MatchRoute';
 import { StartScreen } from './routes/StartScreen';
 
@@ -11,6 +12,11 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<StartScreen />} />
+        {/* ⚠️ Before `/:matchId` for the reader's sake only -- react-router
+            ranks a static segment above a dynamic one whatever the order, so a
+            match whose id is literally "maps" is unreachable either way. Ids
+            are uuids, so that is a curiosity rather than a bug. */}
+        <Route path="/maps" element={<MapViewer />} />
         <Route path="/:matchId" element={<MatchRoute />} />
       </Routes>
     </BrowserRouter>

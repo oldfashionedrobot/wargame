@@ -8,6 +8,7 @@ import type {
   CommandResult,
   ErrorResponse,
   EventsResponse,
+  MapPreview,
   MatchSummary,
   StateResponse,
 } from '@vod/shared';
@@ -156,6 +157,49 @@ describe('GET /api/maps', () => {
     const maps = (await response.json()) as { id: string; name: string }[];
     expect(maps.map((map) => map.id)).toContain('classic');
     expect(maps.every((map) => map.name.length > 0)).toBe(true);
+  });
+});
+
+describe('GET /api/maps/:id/preview', () => {
+  it('returns the board a match on that map would start from', async () => {
+    const response = await get('/api/maps/classic/preview');
+    expect(response.status).toBe(200);
+
+    const preview = (await response.json()) as MapPreview;
+    expect(preview.id).toBe('classic');
+    expect(preview.name.length).toBeGreaterThan(0);
+
+    // Coherent rather than a fixed size, like the state endpoint above: the
+    // dimensions belong to the map, and pinning them here would fail on a map
+    // edit while saying nothing about this route.
+    const { state } = preview;
+    const width = state.grid[0]?.length ?? 0;
+    expect(state.grid.length).toBeGreaterThan(0);
+    expect(state.grid.every((row) => row.length === width)).toBe(true);
+    // ⚠️ **The army is the half worth asserting.** Rows alone would have been a
+    // cheaper endpoint; this one exists to answer *board plus deployment*, and
+    // a response that forgot the units would still look like a valid board.
+    expect(new Set(state.units.map((unit) => unit.owner)).size).toBe(2);
+  });
+
+  // ⚠️ **Stores nothing**, which is the whole reason this is not "create a
+  // match and read it back". Asserted through the lobby, because that is where
+  // a stray match would show up and is the thing that would actually hurt.
+  it('creates no match', async () => {
+    const before = ((await (await get('/api/matches')).json()) as MatchSummary[]).length;
+    expect((await get('/api/maps/classic/preview')).status).toBe(200);
+    expect((await get('/api/maps/meadow/preview')).status).toBe(200);
+    const after = ((await (await get('/api/matches')).json()) as MatchSummary[]).length;
+    expect(after).toBe(before);
+  });
+
+  // ⚠️ 404 here where create answers 400, and deliberately: looking at a board
+  // that does not exist is a missing resource, building on one is a bad
+  // argument. Pinned because the client tells the two apart.
+  it('404s an id no map has', async () => {
+    const response = await get('/api/maps/atlantis/preview');
+    expect(response.status).toBe(404);
+    expect(((await response.json()) as ErrorResponse).error.length).toBeGreaterThan(0);
   });
 });
 

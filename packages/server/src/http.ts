@@ -2,10 +2,12 @@ import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { BunRequest } from 'bun';
 import { parseCommand } from '@vod/shared';
-import type { ErrorResponse, GameState, PlayerId } from '@vod/shared';
+import type { ErrorResponse, GameState, MapPreview, PlayerId } from '@vod/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore } from './match';
+import { createMatchState } from './matchState';
 import { listMaps, getMap } from './maps';
+import type { GameMap } from './maps';
 import { DEFAULT_PORT, IS_PROD, SESSION_COOKIE } from './const';
 
 // fileURLToPath, not .pathname -- the latter percent-encodes, so a checkout
@@ -51,6 +53,23 @@ export async function createServer({ port, databaseUrl, clientDist }: ServerOpti
           // map's terrain reaches the client inside the match state anyway.
           Response.json(listMaps().map(({ id, name }) => ({ id, name }))),
         ),
+      },
+
+      // ⚠️ **A board to look at, and deliberately not a match.** The viewer
+      // needs what a match on this map *would* start from; `createMatchState` is
+      // pure, so answering costs nothing and stores nothing. The alternative --
+      // creating a throwaway match and reading its state -- fills an unowned,
+      // undeletable lobby with boards nobody played on.
+      '/api/maps/:id/preview': {
+        GET: withSession(async (request) => {
+          const map = findMap(request.params.id);
+          if (!map) return notFound();
+          return Response.json({
+            id: map.id,
+            name: map.name,
+            state: createMatchState(map),
+          } satisfies MapPreview);
+        }),
       },
 
       '/api/matches': {
@@ -262,11 +281,23 @@ function readMapId(body: unknown): string | undefined | typeof INVALID {
   const { mapId } = body as { mapId?: unknown };
   if (mapId === undefined) return undefined;
   if (typeof mapId !== 'string') return INVALID;
+  return findMap(mapId)?.id ?? INVALID;
+}
 
+/**
+ * `getMap` without the throw.
+ *
+ * ⚠️ An unknown id is a 404 here and a 400 at create, which is not an
+ * inconsistency: asking to *look at* a board that does not exist is a missing
+ * resource, and asking to *build on* one is a bad argument. Both callers want
+ * the lookup and neither wants an exception, which is what this is for --
+ * `getMap` keeps throwing, because every other content lookup does.
+ */
+function findMap(id: string): GameMap | null {
   try {
-    return getMap(mapId).id;
+    return getMap(id);
   } catch {
-    return INVALID;
+    return null;
   }
 }
 
