@@ -193,28 +193,39 @@ export interface CutawayScene {
   defender: CutawaySide;
 }
 
+/**
+ * Which of the three mutually exclusive overlays is lit.
+ *
+ * ⚠️ Takes tiles rather than a centre, like every other overlay: `facing` used
+ * to derive its four itself, which put a question about the *selection* inside
+ * the thing that paints. Clipping to the board went to `selection.ts` with it,
+ * where it is testable -- nothing in here has unit tests, being WebGL.
+ */
+export type StepOverlay = 'attack' | 'charge' | 'facing';
+
 export interface GameRenderer {
   onTileClick(handler: (coordinate: Coordinate) => void): void;
   setSelectedTile(coordinate: Coordinate | null): void;
   /** Light the tiles a selected unit may reach, or clear them. */
   setRange(tiles: Coordinate[]): void;
   /**
-   * Light what an arrived unit can shoot at, or clear it.
+   * Light one of the step overlays and clear the other two, or clear all three.
    *
-   * ⚠️ The **band**, not the targets: red means *in range*. Which tiles those
-   * are -- and how the four beside the unit are split between this and
-   * `setFacingChoices` -- is decided in `selection.ts`, where the board is.
-   */
-  setAttackRange(tiles: Coordinate[]): void;
-  /**
-   * Light the tiles a unit may charge, or clear them.
+   * ⚠️ **One call, because only one may ever be lit**, and this used to be
+   * three independent setters with that rule written in a comment over the
+   * caller. Every update then had to remember to clear the other two, which is
+   * an invariant a reader has to reconstruct from three call sites instead of
+   * reading off the signature. Now it cannot be broken.
    *
-   * ⚠️ **Targets, not reach.** Unlike the shooting band, which shows *range*,
-   * every tile lit here is one a charge could actually be launched at -- a
-   * charge is contact-only, so there is no reach to communicate and an
-   * unclickable lit tile would promise nothing.
+   * ⚠️ **Named for what it paints, not for what the player is doing.** `attack`
+   * is the shooting *band* -- red means in range -- while `charge` is
+   * *targets*, since a charge is contact-only and has no reach to show; and
+   * `facing` is the four a unit may turn to look at. Which tiles those are is
+   * decided in `selection.ts`, where the board is. Keeping the two vocabularies
+   * apart is what stops `render/` importing the interaction layer to name a
+   * colour.
    */
-  setChargeTargets(tiles: Coordinate[]): void;
+  setStepTiles(overlay: StepOverlay | null, tiles: Coordinate[]): void;
   /**
    * Draw a pinned route, or clear it.
    *
@@ -232,16 +243,6 @@ export interface GameRenderer {
    * camera turns. React owns the content, this owns the placement.
    */
   anchorTo(element: HTMLElement | null, coordinate: Coordinate | null): void;
-  /**
-   * Light the tiles a unit may turn to look at, or clear them.
-   *
-   * ⚠️ Takes tiles, like every other overlay setter. It used to take the centre
-   * and derive the four itself, which put a question about the *selection* --
-   * which tiles mean something -- inside the thing that paints. Clipping to the
-   * board went with it to `selection.ts`, where it is testable; nothing in here
-   * has unit tests, being WebGL.
-   */
-  setFacingChoices(tiles: Coordinate[]): void;
   /** Animates what the authority says happened. Resolves when done. */
   playEvents(events: GameEvent[]): Promise<void>;
   /**
@@ -824,20 +825,16 @@ export async function createGameRenderer(
         gridHeight,
       );
     },
-    setFacingChoices(tiles) {
-      facingOverlay.setTiles(tiles);
+    setStepTiles(overlay, tiles) {
+      attackOverlay.setTiles(overlay === 'attack' ? tiles : []);
+      chargeOverlay.setTiles(overlay === 'charge' ? tiles : []);
+      facingOverlay.setTiles(overlay === 'facing' ? tiles : []);
     },
     setRange(tiles) {
       rangeOverlay.setTiles(tiles);
     },
     setRoute(path) {
       routeArrow.setPath(path);
-    },
-    setAttackRange(tiles) {
-      attackOverlay.setTiles(tiles);
-    },
-    setChargeTargets(tiles) {
-      chargeOverlay.setTiles(tiles);
     },
     anchorTo(element, coordinate) {
       anchorElement = element;

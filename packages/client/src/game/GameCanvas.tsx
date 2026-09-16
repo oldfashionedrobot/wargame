@@ -10,11 +10,16 @@ import {
   isPlan,
   destinationOf,
 } from './interaction/selection';
-import type { ActionKind, SelectionState } from './interaction/selection';
+import type { ActionKind, MenuStep, Pinned, SelectionState } from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
 import { PLAYER_HEX } from './render/playerColors';
 import { createGameRenderer } from './render/renderer';
-import type { CutawayScene, CutawaySide as CutawaySideData, GameRenderer } from './render/renderer';
+import type {
+  CutawayScene,
+  CutawaySide as CutawaySideData,
+  GameRenderer,
+  StepOverlay,
+} from './render/renderer';
 
 // Pushes a selection to the renderer. Module-level so there's one place that
 // knows how a selection is displayed -- attacking adds a third overlay here.
@@ -23,27 +28,64 @@ import type { CutawayScene, CutawaySide as CutawaySideData, GameRenderer } from 
 // ⚠️ Takes `walking` as well as the selection, and has to: the route comes down
 // on *confirm* rather than on arrival, so the walk is a visible state of its own
 // that no phase records. Still pure, and still no game state fetched.
-function showSelection(renderer: GameRenderer, selection: SelectionState, walking: boolean): void {
-  const arrived = selection.phase === 'destinationChosen';
-  const pinned = selection.phase === 'routePinned';
-  // ⚠️ The route and the pane are one affordance -- both say *confirm this* --
-  // so both come down the instant it is confirmed, and the ghost walks over a
-  // clean board rather than retracing a line it has already been handed.
-  const awaitingConfirm = pinned && !walking;
+/**
+ * What each step means to the board and to the reader: which overlay it lights,
+ * and what the line under the canvas says while it is up.
+ *
+ * ⚠️ **One table, where this was four branches on the same discriminant.** The
+ * three overlay setters each re-tested `step.kind`, and the hint line tested it
+ * again in a nested ternary somewhere else entirely -- so "what a step means"
+ * was knowledge a reader had to gather from four places and an author had to
+ * remember to update in all of them. `Record<MenuStep['kind'], …>` also makes a
+ * new step a compile error here rather than a step that silently lights nothing
+ * and says nothing.
+ *
+ * ⚠️ At `choosing` *nothing* is lit, and that is deliberate rather than a gap:
+ * the buttons are the whole affordance there, so a lit tile would promise a
+ * choice that is not being offered yet. "Lit does something" survives by
+ * nothing being lit.
+ */
+const STEP_UI: Record<MenuStep['kind'], { overlay: StepOverlay | null; hint: string | null }> = {
+  choosing: { overlay: null, hint: null },
+  holding: {
+    overlay: 'facing',
+    hint: 'Click a tile beside the unit to face that way, or the unit to keep its facing.',
+  },
+  firing: {
+    overlay: 'attack',
+    hint: 'Click an enemy in range, then click it again to fire. Click elsewhere to go back.',
+  },
+  charging: {
+    overlay: 'charge',
+    hint: 'Click an enemy beside the unit, then click again to charge. Click elsewhere to go back.',
+  },
+};
 
-  // ⚠️ **Exactly one set is lit, and the mode is what guarantees it.** These
-  // were two independent conditions that merely happened never to be true at
-  // once; now the step says which tiles mean something, so the other overlay
-  // clears because there is nothing else it could be showing.
-  //
-  // ⚠️ At the panel *nothing* is lit, and that is deliberate rather than a gap:
-  // the buttons are the whole affordance there, so a lit tile would promise a
-  // choice that is not being offered yet. "Lit does something" survives by
-  // nothing being lit.
-  const step = arrived ? selection.step : null;
-  renderer.setFacingChoices(step?.kind === 'holding' ? step.tiles : []);
-  renderer.setAttackRange(step?.kind === 'firing' ? step.tiles : []);
-  renderer.setChargeTargets(step?.kind === 'charging' ? step.tiles : []);
+/**
+ * Is a drawn route still waiting to be confirmed?
+ *
+ * ⚠️ **One place, because it was two.** The rule lived in `showSelection` and
+ * again in the component, spelled slightly differently both times, and it
+ * governs three separate things -- the route, the confirm pane, and whether the
+ * board is still lit. ⚠️ The route and the pane are one affordance (both say
+ * *confirm this*), so both come down the instant it is confirmed and the ghost
+ * walks over a clean board rather than retracing a line it has been handed.
+ */
+function isAwaitingConfirm(selection: SelectionState, walking: boolean): selection is Pinned {
+  return selection.phase === 'routePinned' && !walking;
+}
+
+function showSelection(renderer: GameRenderer, selection: SelectionState, walking: boolean): void {
+  const pinned = selection.phase === 'routePinned';
+
+  // ⚠️ **Exactly one set is lit, and one call is what guarantees it.** These
+  // were three independent setters with the rule in a comment above them, so
+  // every update had to remember to clear the other two.
+  const step = selection.phase === 'destinationChosen' ? selection.step : null;
+  renderer.setStepTiles(
+    step ? STEP_UI[step.kind].overlay : null,
+    step && 'tiles' in step ? step.tiles : [],
+  );
 
   // ⚠️ The unit's own tile, never the pin. A pinned route has not been walked,
   // so highlighting its destination would claim the unit is somewhere it is
@@ -67,7 +109,7 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
   // `handleTileClick` asks `reachable`, and a click on a friend selects it.
   const ranged = selection.phase === 'unitSelected' || pinned;
   renderer.setRange(ranged ? selection.movement.settled : []);
-  renderer.setRoute(awaitingConfirm ? selection.path : []);
+  renderer.setRoute(isAwaitingConfirm(selection, walking) ? selection.path : []);
 }
 
 /**
@@ -264,7 +306,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
 
   // ⚠️ Only while the route is still a plan, and not while it is being walked:
   // the pane invites a click, and clicks are refused until the mesh arrives.
-  const awaitingConfirm = selection.phase === 'routePinned' && !walking;
+  const awaitingConfirm = isAwaitingConfirm(selection, walking);
 
   // The panel is the same DOM-over-canvas trick as the confirm pane, anchored
   // over the target instead of the destination. Only one is ever up, which is
@@ -277,6 +319,9 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   const [cutaway, setCutaway] = useState<CutawayScene | null>(null);
 
   const menuOpen = selection.phase === 'destinationChosen' && selection.step.kind === 'choosing';
+  // The same table the overlays come from, so a step's tiles and its
+  // instruction cannot describe two different things.
+  const hint = selection.phase === 'destinationChosen' ? STEP_UI[selection.step.kind].hint : null;
   const aiming = isAiming(selection) ? selection : null;
   const forecast = aiming ? attackForecast(server.getState(), aiming) : null;
 
@@ -553,15 +598,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
         {/* ⚠️ One line per mode, because a mode is exactly one question. The
             combined sentence this replaced had to describe three readings of a
             tile click at once, which is the thing the panel exists to stop. */}
-        {selection.phase === 'destinationChosen' && selection.step.kind !== 'choosing' && (
-          <span>
-            {selection.step.kind === 'holding'
-              ? 'Click a tile beside the unit to face that way, or the unit to keep its facing.'
-              : selection.step.kind === 'charging'
-                ? 'Click an enemy beside the unit, then click again to charge. Click elsewhere to go back.'
-                : 'Click an enemy in range, then click it again to fire. Click elsewhere to go back.'}
-          </span>
-        )}
+        {hint && <span>{hint}</span>}
         {rejection && <span style={{ color: '#c0392b' }}> rejected: {rejection}</span>}
         {connection === 'retrying' && <span style={{ color: '#b9770e' }}> reconnecting…</span>}
       </div>

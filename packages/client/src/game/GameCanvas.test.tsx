@@ -13,6 +13,18 @@ vi.mock('./render/renderer', () => ({ createGameRenderer: vi.fn() }));
 const { createGameRenderer } = await import('./render/renderer');
 
 let renderer: GameRenderer;
+
+/**
+ * The overlay and tiles of the last `setStepTiles`.
+ *
+ * ⚠️ **What this replaced was three mocks and an "and the other two are dark"
+ * assertion beside every one of them.** Exclusivity is structural now -- one
+ * call cannot light two overlays -- so the tests assert *which* is lit and stop
+ * re-proving that the others are not.
+ */
+const lastOverlay = (): [string | null, { col: number; row: number }[]] | undefined =>
+  vi.mocked(renderer.setStepTiles).mock.lastCall as
+    [string | null, { col: number; row: number }[]] | undefined;
 let clickTile: (coordinate: Coordinate) => void;
 
 const board: GameState = makeState(5, [{ id: 'b1', col: 1, row: 1 }]);
@@ -43,8 +55,7 @@ beforeEach(() => {
     }),
     setSelectedTile: vi.fn(),
     setRange: vi.fn(),
-    setAttackRange: vi.fn(),
-    setChargeTargets: vi.fn(),
+    setStepTiles: vi.fn(),
     setRoute: vi.fn(),
     anchorTo: vi.fn(),
     playEvents: vi.fn(() => Promise.resolve()),
@@ -52,7 +63,6 @@ beforeEach(() => {
     lastDrawn: vi.fn(() => board),
     onCutaway: vi.fn(),
     dismissCutaway: vi.fn(),
-    setFacingChoices: vi.fn(),
     previewMove: vi.fn(() => Promise.resolve()),
     cancelPreview: vi.fn(),
     toggleInspector: vi.fn(),
@@ -258,7 +268,7 @@ describe('GameCanvas', () => {
 
     expect(renderer.previewMove).toHaveBeenCalled();
     // Still walking: the range is the context, and no directions are offered.
-    expect(renderer.setFacingChoices).toHaveBeenLastCalledWith([]);
+    expect(lastOverlay()?.[0]).toBeNull();
     expect(vi.mocked(renderer.setRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
     expect(screen.queryByText('Hold')).toBeNull();
     // And the pane is down, because it invites a click that is refused now.
@@ -269,8 +279,7 @@ describe('GameCanvas', () => {
     // *questions*, not of tiles -- so the overlays stay clear until one is
     // picked, and the buttons are the only affordance.
     expect(screen.getByText('Hold')).toBeTruthy();
-    expect(renderer.setFacingChoices).toHaveBeenLastCalledWith([]);
-    expect(renderer.setAttackRange).toHaveBeenLastCalledWith([]);
+    expect(lastOverlay()?.[0]).toBeNull();
     expect(renderer.setRange).toHaveBeenLastCalledWith([]);
     expect(renderer.setRoute).toHaveBeenLastCalledWith([]);
 
@@ -278,7 +287,8 @@ describe('GameCanvas', () => {
     // Hold is chosen. The renderer used to derive them, which hid the clipping
     // rule somewhere untestable.
     await act(async () => screen.getByText('Hold').click());
-    expect(renderer.setFacingChoices).toHaveBeenLastCalledWith(
+    expect(lastOverlay()?.[0]).toBe('facing');
+    expect(lastOverlay()?.[1]).toEqual(
       expect.arrayContaining([
         { col: 1, row: 4 },
         { col: 1, row: 2 },
@@ -286,8 +296,6 @@ describe('GameCanvas', () => {
         { col: 0, row: 3 },
       ]),
     );
-    // And firing's band is dark, because exactly one mode is live.
-    expect(renderer.setAttackRange).toHaveBeenLastCalledWith([]);
   });
 
   // ⚠️ The other half of omitting: the row appears the moment there is anything
@@ -348,15 +356,13 @@ describe('GameCanvas', () => {
     await act(async () => clickTile({ col: 1, row: 1 })); // confirms
 
     await act(async () => screen.getByText('Charge').click());
-    expect(vi.mocked(renderer.setChargeTargets).mock.lastCall?.[0]).toEqual([{ col: 1, row: 2 }]);
-    expect(renderer.setAttackRange).toHaveBeenLastCalledWith([]);
-    expect(renderer.setFacingChoices).toHaveBeenLastCalledWith([]);
+    expect(lastOverlay()).toEqual(['charge', [{ col: 1, row: 2 }]]);
 
-    // And back the other way, so neither is merely never set.
+    // And back the other way, so the mode is genuinely read and not a constant.
     await act(async () => clickTile({ col: 4, row: 4 })); // dark: back to the panel
     await act(async () => screen.getByText('Fire').click());
-    expect(vi.mocked(renderer.setAttackRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
-    expect(renderer.setChargeTargets).toHaveBeenLastCalledWith([]);
+    expect(lastOverlay()?.[0]).toBe('attack');
+    expect(lastOverlay()?.[1].length).toBeGreaterThan(0);
   });
 
   // ⚠️ **The half of the cutaway that can be tested.** The staged models are
