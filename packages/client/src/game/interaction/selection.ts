@@ -17,6 +17,7 @@ import {
   getUnitAt,
   getUnitType,
   isWithinGrid,
+  orthogonalNeighbours,
 } from '@vod/shared';
 import type {
   AttackKind,
@@ -356,12 +357,7 @@ function attackTilesFor(state: GameState, unit: Unit, from: Coordinate): Coordin
 function neighboursOf(state: GameState, around: Coordinate): Coordinate[] {
   const height = state.grid.length;
   const width = state.grid[0]?.length ?? 0;
-  return [
-    { col: around.col, row: around.row + 1 },
-    { col: around.col, row: around.row - 1 },
-    { col: around.col + 1, row: around.row },
-    { col: around.col - 1, row: around.row },
-  ].filter((tile) => isWithinGrid(tile, width, height));
+  return orthogonalNeighbours(around).filter((tile) => isWithinGrid(tile, width, height));
 }
 
 /**

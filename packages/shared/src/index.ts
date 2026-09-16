@@ -57,7 +57,7 @@ export {
   directionBetween,
   facingToward,
   isWithinGrid,
-  tileDistance,
+  orthogonalNeighbours,
 } from './coordinate';
 export { getCurrentPlayer, getUnit, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';

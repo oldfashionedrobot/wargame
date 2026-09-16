@@ -1,3 +1,4 @@
+import { orthogonalNeighbours } from '@vod/shared';
 import type { Coordinate, TileType } from '@vod/shared';
 import type { TerrainModel } from './terrainModels';
 
@@ -133,13 +134,6 @@ const TREE_SPAN = 0.84;
 const TREE_SPACING = 0.22;
 const SCATTER_ATTEMPTS = 20;
 
-const ORTHOGONAL: readonly (readonly [number, number])[] = [
-  [0, -1],
-  [1, 0],
-  [0, 1],
-  [-1, 0],
-];
-
 /**
  * Forest tiles grouped into the woods they actually form.
  *
@@ -165,9 +159,7 @@ function woodlands(grid: TileType[][]): Coordinate[][] {
       // underneath, which needs no second array and no non-null assertion.
       for (let head = 0; head < group.length; head++) {
         const tile = group[head];
-        for (const [dc, dr] of ORTHOGONAL) {
-          const c = tile.col + dc;
-          const r = tile.row + dr;
+        for (const { col: c, row: r } of orthogonalNeighbours(tile)) {
           if (at(grid, c, r) !== 'forest' || seen.has(`${c},${r}`)) continue;
           seen.add(`${c},${r}`);
           group.push({ col: c, row: r });
@@ -427,7 +419,7 @@ const isWater = (tile: TileType | undefined): boolean => tile === 'river' || til
  * cleanly off the board rather than growing a shoreline along it, while a road
  * treats it as land and ends.
  */
-export function neighbourMask(
+function neighbourMask(
   grid: TileType[][],
   col: number,
   row: number,

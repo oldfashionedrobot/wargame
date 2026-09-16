@@ -26,6 +26,34 @@ export function tileDistance(a: Coordinate, b: Coordinate): number {
   return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
 }
 
+/**
+ * The four tiles orthogonally touching this one, **unclipped**.
+ *
+ * ⚠️ **Here for the same reason `tileDistance` is**, and it arrived late: this
+ * was written out three times -- the movement search, the client's facing
+ * choices, and the terrain tiler's flood fill -- in two spellings, one of which
+ * (`neighborsOf`) was the only American spelling in the codebase and therefore
+ * invisible to a grep for the other two.
+ *
+ * ⚠️ **Unclipped, because the two callers want different clipping.** The search
+ * rejects a tile by cost and the panel rejects it by the board's edge; folding
+ * either in here would make the other pass a width and a height it does not
+ * use. `isWithinGrid` is the filter, applied where it is wanted.
+ *
+ * ⚠️ Returned north, east, south, west. Nothing depends on that today, and one
+ * thing deliberately does not: `neighbourMask` in the terrain tiler packs the
+ * same four into bits `N=1, E=2, S=4, W=8` and spells them out, because there
+ * the order *is* the meaning and a list would hide it.
+ */
+export function orthogonalNeighbours({ col, row }: Coordinate): Coordinate[] {
+  return [
+    { col, row: row + 1 },
+    { col: col + 1, row },
+    { col, row: row - 1 },
+    { col: col - 1, row },
+  ];
+}
+
 // A rule, not a rendering concern -- what's on the board is a game fact, so
 // pathfinding and picking both read it from here.
 export function isWithinGrid(

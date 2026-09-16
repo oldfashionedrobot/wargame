@@ -1,4 +1,4 @@
-import { coordinatesEqual, coordinateKey } from './coordinate';
+import { coordinatesEqual, coordinateKey, orthogonalNeighbours } from './coordinate';
 import { getTerrain } from './data/terrain';
 import type { MovementType } from './data/unitTypes';
 import type { TileType } from './data/terrain';
@@ -107,15 +107,6 @@ interface Settled {
   from: string | null;
 }
 
-function neighborsOf(coordinate: Coordinate): Coordinate[] {
-  return [
-    { col: coordinate.col + 1, row: coordinate.row },
-    { col: coordinate.col - 1, row: coordinate.row },
-    { col: coordinate.col, row: coordinate.row + 1 },
-    { col: coordinate.col, row: coordinate.row - 1 },
-  ];
-}
-
 /**
  * One search, two outputs: where a unit may stop, and how it gets anywhere it
  * settled.
@@ -160,7 +151,7 @@ export function exploreMovement(
     const currentCost = settled.get(currentKey)?.cost ?? 0;
     if (currentCost >= movementRange) continue; // nothing left to spend
 
-    for (const next of neighborsOf(current)) {
+    for (const next of orthogonalNeighbours(current)) {
       // Off the board, impassable, or held by an enemy -- one question, and
       // the same answer validatePath walks with.
       const entry = entryCost(state, unit, next, movementType);
