@@ -603,9 +603,10 @@ comparable quantities:
 - **Partitioned cookie** — httpOnly, unreadable, and simply *does not work* for
   a real share of iOS users. They cannot play. That is a visible, total failure
   for those people.
-- **Bearer token in `localStorage`** — works in every browser, and is readable
-  by any other game sharing itch's origin. That is an invisible, partial risk
-  for everyone.
+- **Bearer token in browser storage** — works in every browser, and is readable
+  by another game sharing itch's origin. ⚠️ How *much* of a risk depends
+  entirely on which storage, which is the thing the first pass got lazy about —
+  see *What everyone else does about this* below.
 
 ⚠️ **Weigh it against what a token is worth here**, which is the part a
 textbook cannot do: this is a free turn-based game with no money, no PII beyond
@@ -614,14 +615,58 @@ lets someone move pieces in a wargame. Even signed-in, the token is *our*
 session, never a Google one. The attack also needs a malicious game published on
 itch and the victim playing it in the same browser.
 
-⬜ **Recommendation, not a decision: do both, and detect.** Better Auth sets the
-cookie either way and its bearer plugin reads `Authorization` when present, so a
-client can prefer the cookie and fall back to the token when a probe shows the
-cookie did not survive. That costs a startup round trip and one branch, and it
-is the only option with no group of players locked out. ⚠️ The reason it is not
-simply decided here is that a fallback is a *second* auth path through the most
-security-sensitive function in the phase, which is the thing this section
-otherwise argues against.
+#### What everyone else does about this
+
+⚠️ **Mostly: they arrange not to have the problem.** The IETF's answer is
+[RFC 10017, *OAuth 2.0 for Browser-Based Applications*](https://www.rfc-editor.org/info/rfc10017/),
+and its recommendation is a **backend-for-frontend**: tokens never reach the
+browser at all, the browser holds an httpOnly session cookie, and nothing is
+exfiltratable by script. That works because the frontend and the BFF are
+same-site — which is exactly the property a portal takes away. ⚠️ On
+`localStorage` the RFC is blunt: keep tokens in memory where practical, and
+there are **no practical mechanisms** a frontend app can use to counter
+same-origin malicious script.
+
+⚠️ **The games industry's answer is the portal's own SDK**, and that is not a
+coincidence — CrazyGames requires its account, Poki ships User Accounts. The
+portal is first-party to itself, so its SDK has the cookie we cannot have. itch
+offers none, which is why itch games mostly have no accounts at all.
+
+⚠️ **`sessionStorage` is the narrowing nobody mentions, and it fits this game.**
+It is partitioned by origin **and by tab**, survives reloads, and dies with the
+tab. So a malicious itch game opened in *another tab* cannot read it, which is
+the entire attack `localStorage` hands over. Three storage choices, honestly
+ranked:
+
+| | readable by another itch game | survives |
+|---|---|---|
+| `localStorage` | any game, any tab, any time | forever |
+| `sessionStorage` | only a game loaded **into the same tab afterwards** | tab close |
+| in memory | nobody | page reload |
+
+⚠️ **It narrows the window rather than closing it.** sessionStorage is keyed to
+(origin, tab), so browsing from our game to another itch game *in the same tab*
+still exposes it. What makes that acceptable is the pairing with a **short
+expiry and rotation** — a stolen token is then worth minutes of a free wargame —
+not any claim that the hole is shut.
+
+⚠️ **And the shape of the session is the argument.** This phase decided a match
+is one sitting, in one tab, like a game of chess. Storage that dies with the tab
+is not a compromise against that; it is the same sentence.
+
+⬜ **Recommendation, not a decision: cookie first, token in `sessionStorage` as
+the fallback, and detect which one the browser allowed.** Better Auth sets the
+cookie either way and its bearer plugin reads `Authorization` when present, so
+the client prefers the cookie and falls back when a probe shows it did not
+survive. That costs a startup round trip and one branch, and it is the only
+option that locks nobody out.
+
+⚠️ **The reason this is a recommendation and not a decision** is that a fallback
+is a *second* auth path through the most security-sensitive function in the
+phase — the thing this section otherwise argues against. The alternative worth
+weighing is picking **one**: ship the token path alone, accept that it is what
+the RFC calls a last resort, and keep a single path. Simpler, and honest about
+the trade rather than covering it.
 
 ⚠️ **CORS is load-bearing, not boilerplate.** A partitioned cookie is still sent
 automatically, and the neighbours in that partition are other itch games. What
