@@ -531,9 +531,9 @@ own thing. Nothing in this phase forecloses it.
 ⚠️ **Identity is a guest by default and an account by choice.** Nobody signs in
 to start playing: a guest id is enough to own a match and be *you* across turns,
 which satisfies "no passwords, ever" trivially and costs a fraction of OAuth.
-Signing in is the upgrade for people who want an identity that persists — and
-it is what makes the `⬜` Better Auth spike below *later work* rather than a
-gate on this phase. ⚠️ Frictionless to first move is the requirement, and it is
+Signing in is the upgrade for people who want an identity that persists, and
+Better Auth supports exactly that split as a first-class path — see the spike
+result below, which came back green. ⚠️ Frictionless to first move is the requirement, and it is
 worth stating as one: on a portal, a sign-in wall in front of a free game is
 the funnel.
 
@@ -562,19 +562,62 @@ has no accounts to borrow. The seam still earns its place, for the opposite
 reason to the one first written here: ours will have to sit *beside* a portal's
 rather than instead of it.
 
-⚠️ **Decide the transport here, not in 12.** The client will be served from
-another origin — itch hosts the files, the server stays ours — and `SameSite=Lax`
-means a browser will not send the session cookie cross-site at all. So the
-choice is `SameSite=None; Secure` plus the real CSRF defence that Lax is
-currently standing in for, or identity that does not ride a cookie. Both are
-cheap to choose now and expensive to retrofit, and 12 cannot make the decision
-because by then the sessions are already built.
+#### How identity travels — settled, after two reversals
+
+⚠️ **Decided here rather than in 12**, because by then the sessions are built.
+The client will be served from another origin — itch hosts the files, the server
+stays ours — and that breaks the cookie in a way `SameSite` alone does not fix.
+
+**The answer is `SameSite=None; Secure; Partitioned` on the httpOnly cookie we
+already set.** Three findings, in the order they overturn each other:
+
+1. **`SameSite=Lax` is dead cross-site.** Lax means the browser does not send
+   the cookie on a cross-site request at all, so a client on itch gets no
+   session. That much was already written down.
+2. **`SameSite=None` alone is not enough either.** Safari has blocked *all*
+   third-party cookies since 13.1 regardless of `SameSite`, so the obvious fix
+   fails on Safari outright. ⚠️ This is what briefly made a bearer token in
+   `localStorage` look like the answer.
+3. **But `localStorage` is the wrong place on itch specifically, and that is a
+   fact about itch rather than a judgement.** Every itch HTML5 game is served
+   from one shared origin — `html-classic.itch.zone`, with no per-game
+   isolation and [itch saying they will not add
+   it](https://itch.io/t/3099694/notice-for-html-game-devs-upcoming-change-to-cdn-domain).
+   So a token in `localStorage` is readable by **any other game on itch**. That
+   is the configuration OWASP names explicitly, and it is disqualifying.
+4. **`Partitioned` (CHIPS) closes the loop.** Safari shipped opt-in partitioned
+   cookies in 18.4 and Chrome supports them, so an httpOnly cookie works
+   cross-site again — and httpOnly is exactly the property that the shared itch
+   origin makes essential, because no other game's script can read it.
+
+⚠️ **CORS is load-bearing, not boilerplate.** A partitioned cookie is still sent
+automatically, and the neighbours in that partition are other itch games. What
+stops one using it is a **strict origin allowlist**: a JSON `POST` is not a
+simple request, so it is preflighted, and a preflight we refuse never becomes a
+request. That is the CSRF defence, and it wants stating as one.
+
+⚠️ **Three things this costs, all worth knowing before it is built:**
+
+- **Safari 18.4+.** Older Safari blocks the cookie whatever we do. Failing
+  gracefully — and detectably — matters more than pretending it cannot happen.
+- **ITP can still flag the API domain**, and a flagged domain cannot use
+  partitioned cookies either. Unlikely for a game API that appears on a handful
+  of sites; not impossible.
+- ⚠️ **Partitioned means partitioned.** The session is keyed to the *top-level
+  site*, so signing in on itch does **not** carry to CrazyGames — same account,
+  different partition, a fresh sign-in. That is a product fact rather than a bug,
+  and it is the strongest argument for identity that a player can deliberately
+  re-establish (sign in) rather than one they are assumed to keep.
 
 - **Match lifecycle** — a way for a second person to join, and matches bound to users rather than open to anyone. The largest of the three and still a single bullet: it wants a lobby state, a join mechanism, and the `status` column this section is careful to keep apart from game outcome. Phase 4 was split in two for less; this should be split before it starts.
 - **Guest identity first**, with sessions in our own database; sign-in is the later upgrade and OAuth is its candidate rather than its conclusion — see *Identity* below, and the seam above.
 - **Session→player map** at join, so `actor` comes from *who you are* rather than *whose turn it is*.
 
-#### Transport: nothing changes
+#### Seeing the other player move — nothing changes
+
+⚠️ **Not to be confused with *How identity travels* above.** That one is how a
+credential reaches the server; this one is how a move reaches the other player,
+and only the first of the two is changing.
 
 ⚠️ **This was written as an open fork and it is not one.** Co-presence needs no
 push: two clients polling a `seq` cursor is already two people watching the same
@@ -618,7 +661,56 @@ FIFO pair-off and nothing more. Map choice, and eventually anything like a
 rating, are what turn it into a real matchmaker — and neither exists yet, so the
 honest first version is the pair-off.
 
-⬜ **Spike Better Auth before designing around it.** Identity names it the first candidate and names the real unknown in the same breath — "what it assumes about a framework, since `Bun.serve` is not one". That is structurally the same gating question 5c carried about bun's bundler, and 5c is the reason to mark it: a plan built around an unverified assumption had to be rewritten when the spike came back negative. Answer three things first — does it run without a framework adapter, does its cookie replace `vod_session` cleanly, does its Drizzle adapter fit the existing libSQL client — and if any answer is no, the fallback is the thing the section already describes anyway: a `sessions` table of our own plus a small OAuth library.
+✅ **The Better Auth spike is answered, from its own docs.** It asked three
+things and all three come back usable:
+
+- **No framework adapter needed.** `auth.handler(request)` takes a standard
+  fetch `Request` and returns a `Response`, which is exactly what a `Bun.serve`
+  route hands it. The framework adapters are convenience wrappers around that
+  same call — the question that gated this phase turns out to have been the
+  easy one.
+- **Drizzle with `provider: 'sqlite'`** is first-class, which is the client
+  already in use.
+- **The cookie question changed shape** rather than being answered: it is not
+  "does its cookie replace `vod_session`" but "can its cookie carry the
+  attributes *How identity travels* settled on", and `defaultCookieAttributes`
+  is exactly that hook. ⚠️ That keeps us on Better Auth's **happy path**. Its
+  bearer plugin — which the earlier reading of this pointed at — carries an
+  explicit caution in its own docs that it is for APIs that cannot use cookies,
+  and we are not one.
+
+⚠️ **And it already implements the decision at the top of this phase.** The
+[anonymous plugin](https://better-auth.com/docs/plugins/anonymous) is
+guest-by-default and account-by-choice as a supported path, not a pattern to
+assemble: `/sign-in/anonymous`, `/anonymous/link`, and an `onLinkAccount`
+callback for carrying a guest's matches onto the real account when they sign in.
+Google is then a config block and a redirect route.
+
+⚠️ **The cost is that it owns the schema**, and that is the decision rather than
+the difficulty. Adopting it means its `user`/`session`/`account` tables instead
+of ours, and `withSession` disappears entirely. ⚠️ **Which argues for adopting it
+first rather than second** — hand-rolling two tables and migrating onto them
+later is building the session system twice, and the guest path is the half that
+would be thrown away.
+
+⬜ **What is left to verify, and it is narrow**: that `defaultCookieAttributes`
+reaches `Partitioned` (a newer attribute than the option), and that the
+anonymous plugin's session survives the same attributes. Both are an afternoon
+against a real browser, and neither gates the design.
+
+**The shape, either way.** If Better Auth is adopted its schema stands in for
+the first two of these; if it is not, they are what gets built:
+
+```
+players        a person, guest or signed-in; a guest is a row with no credentials
+sessions       token → player, so sign-in can rotate the token onto the same person
+match_players  match, player, seat — who is blue and who is red
+```
+
+⚠️ **A join table rather than `blue_player_id` / `red_player_id` columns.**
+`soleSurvivor` already generalises victory to any number of players and
+`GameState.players` is already an array, so two columns would be the one place
+that re-hardcodes two — for no less work.
 
 ⚠️ **`owner_id` lands on a table full of unowned rows**, exactly as `'land'` tiles meet phase 6. Nullable column, backfill to a sentinel, or wipe — dev-only data, so wiping is almost certainly right, but it is a step to write down rather than hit.
 
@@ -638,9 +730,9 @@ Never accepting a password deletes the parts of auth that are both hardest and m
 
 A small OAuth library plus a sessions table, not an auth platform. Hosted providers (Clerk, WorkOS, Auth0) stay a contained swap if auth ever becomes a distraction.
 
-**Better Auth is the candidate to evaluate first**, because it *is* that description rather than an alternative to it: sessions in our own database, a first-class Drizzle adapter, SQLite supported, httpOnly cookies, OAuth providers, no password path required. It would replace `resolveActor`, supply the `sessions` table, and subsume `withSession` entirely — session creation becomes an insert, which retires the concurrent-mint race rather than working around it.
+**Better Auth is the candidate and the spike came back green** (above), because it *is* that description rather than an alternative to it: sessions in our own database, a first-class Drizzle adapter, SQLite supported, httpOnly cookies, OAuth providers, no password path required, and guest-to-account as a supported plugin. It would replace `resolveActor`, supply the `sessions` table, and subsume `withSession` entirely — session creation becomes an insert, which retires the concurrent-mint race rather than working around it.
 
-**The transport does not change** — it is the same cookie the server already sets. What changes is what the session *means*: a row in `sessions` tied to a real player record, rather than an opaque id the server trusts on sight.
+**It is still a cookie**, which is the same mechanism the server already uses — what changes is its *attributes* (see *How identity travels*) and what it *means*: a row tied to a real player record, rather than an opaque id the server trusts on sight.
 
 Whatever provides identity, **it resolves to a `PlayerId` in one place on the server**, before `actor` is stamped. Auth is a lookup in front of the authority, never something the reducers know about — and game rules never move into the database layer, whatever the store turns out to be.
 
@@ -650,7 +742,7 @@ Until all three land, two tabs share control of both players rather than being t
 
 **Today there is no authorization, not weak authorization.** `resolveActor` ignores the session and returns `state.currentTurn`, so the cookie gates nothing: any client, with or without one, can submit as whichever player's turn it is, to any match id — and `GET /api/matches` hands out the ids. That's the deliberate hot-seat concession, but it's worth stating in those terms, because several defences are pointless until it changes:
 
-- **CSRF hardening is premature.** `SameSite=Lax` already blocks a cross-site POST from carrying the cookie, and an attacker doesn't need the cookie anyway — there is no authority to forge. Tokens and double-submit patterns become meaningful the same day `resolveActor` starts trusting the session, and not before. ⚠️ **And that day may be the same day Lax goes**, if the transport decision above sends the cookie cross-site: the protection and the thing that made it unnecessary would then leave together.
+- **CSRF hardening is premature *today*, and stops being so in this phase.** `SameSite=Lax` currently blocks a cross-site POST from carrying the cookie, and an attacker doesn't need the cookie anyway — there is no authority to forge. ⚠️ **Both halves of that expire together here**: `resolveActor` starts trusting the session, and `SameSite` goes to `None` so the cookie *is* sent cross-site. The replacement is named in *How identity travels* and is not a token pattern — it is a **strict CORS origin allowlist**, which works because a JSON `POST` is preflighted and a refused preflight never becomes a request. ⚠️ That makes the allowlist a security control rather than configuration, and it should be reviewed like one.
 - **`GET /api/matches` becomes an information leak.** It currently lists every match from every visitor. Harmless while matches are unowned; the moment they're owned, listing must be scoped to the player — which is the same change already recorded under Known compromises, arriving for a second reason.
 - **`404` on a missing match stops being neutral.** Once matches are owned, "no such match" and "not yours" should be the same response, or the endpoint becomes an existence oracle.
 
