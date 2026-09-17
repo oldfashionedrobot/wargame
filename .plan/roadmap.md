@@ -562,14 +562,16 @@ has no accounts to borrow. The seam still earns its place, for the opposite
 reason to the one first written here: ours will have to sit *beside* a portal's
 rather than instead of it.
 
-#### How identity travels — settled, after two reversals
+#### How identity travels — ⬜ **open, and both options are compromised**
 
 ⚠️ **Decided here rather than in 12**, because by then the sessions are built.
 The client will be served from another origin — itch hosts the files, the server
 stays ours — and that breaks the cookie in a way `SameSite` alone does not fix.
 
-**The answer is `SameSite=None; Secure; Partitioned` on the httpOnly cookie we
-already set.** Three findings, in the order they overturn each other:
+⚠️ **This said "settled" and it is not.** Every option has a real hole, the
+holes are different shapes, and picking between them is a judgement about this
+game's threat model rather than a lookup. Four findings, in the order they
+overturn each other:
 
 1. **`SameSite=Lax` is dead cross-site.** Lax means the browser does not send
    the cookie on a cross-site request at all, so a client on itch gets no
@@ -585,10 +587,41 @@ already set.** Three findings, in the order they overturn each other:
    it](https://itch.io/t/3099694/notice-for-html-game-devs-upcoming-change-to-cdn-domain).
    So a token in `localStorage` is readable by **any other game on itch**. That
    is the configuration OWASP names explicitly, and it is disqualifying.
-4. **`Partitioned` (CHIPS) closes the loop.** Safari shipped opt-in partitioned
-   cookies in 18.4 and Chrome supports them, so an httpOnly cookie works
-   cross-site again — and httpOnly is exactly the property that the shared itch
-   origin makes essential, because no other game's script can read it.
+4. **`Partitioned` (CHIPS) would close the loop, except on Safari's timeline.**
+   An httpOnly partitioned cookie is sent cross-site and unreadable by another
+   game's script, which is exactly what the shared origin demands. ⚠️ **But the
+   support floor is far newer than it first looked**, and the first reading of
+   this got it wrong. From MDN's compat data: **Chrome 114** (2023), **Firefox
+   141** (2025), and Safari — **added in 18.4, removed again in 18.5**
+   ([WebKit 292975](https://bugs.webkit.org/show_bug.cgi?id=292975)), then
+   restored in **26.2, released 12 December 2025**. On iOS every browser is
+   WebKit, so *every* iOS device below 26.2 gets no session at all.
+
+⚠️ **So the trade is a functional gap against a theft vector**, and they are not
+comparable quantities:
+
+- **Partitioned cookie** — httpOnly, unreadable, and simply *does not work* for
+  a real share of iOS users. They cannot play. That is a visible, total failure
+  for those people.
+- **Bearer token in `localStorage`** — works in every browser, and is readable
+  by any other game sharing itch's origin. That is an invisible, partial risk
+  for everyone.
+
+⚠️ **Weigh it against what a token is worth here**, which is the part a
+textbook cannot do: this is a free turn-based game with no money, no PII beyond
+a display name, and guest sessions carrying almost nothing. A stolen session
+lets someone move pieces in a wargame. Even signed-in, the token is *our*
+session, never a Google one. The attack also needs a malicious game published on
+itch and the victim playing it in the same browser.
+
+⬜ **Recommendation, not a decision: do both, and detect.** Better Auth sets the
+cookie either way and its bearer plugin reads `Authorization` when present, so a
+client can prefer the cookie and fall back to the token when a probe shows the
+cookie did not survive. That costs a startup round trip and one branch, and it
+is the only option with no group of players locked out. ⚠️ The reason it is not
+simply decided here is that a fallback is a *second* auth path through the most
+security-sensitive function in the phase, which is the thing this section
+otherwise argues against.
 
 ⚠️ **CORS is load-bearing, not boilerplate.** A partitioned cookie is still sent
 automatically, and the neighbours in that partition are other itch games. What
@@ -596,10 +629,11 @@ stops one using it is a **strict origin allowlist**: a JSON `POST` is not a
 simple request, so it is preflighted, and a preflight we refuse never becomes a
 request. That is the CSRF defence, and it wants stating as one.
 
-⚠️ **Three things this costs, all worth knowing before it is built:**
+⚠️ **Three things the cookie route costs, whichever way this lands:**
 
-- **Safari 18.4+.** Older Safari blocks the cookie whatever we do. Failing
-  gracefully — and detectably — matters more than pretending it cannot happen.
+- **Safari 26.2+, which is December 2025.** Detecting the failure is the
+  requirement, not hoping about it — a player who cannot hold a session should
+  be told, not left clicking.
 - **ITP can still flag the API domain**, and a flagged domain cannot use
   partitioned cookies either. Unlikely for a game API that appears on a handful
   of sites; not impossible.
@@ -673,11 +707,11 @@ things and all three come back usable:
   already in use.
 - **The cookie question changed shape** rather than being answered: it is not
   "does its cookie replace `vod_session`" but "can its cookie carry the
-  attributes *How identity travels* settled on", and `defaultCookieAttributes`
-  is exactly that hook. ⚠️ That keeps us on Better Auth's **happy path**. Its
-  bearer plugin — which the earlier reading of this pointed at — carries an
-  explicit caution in its own docs that it is for APIs that cannot use cookies,
-  and we are not one.
+  attributes *How identity travels* needs", and `defaultCookieAttributes` is
+  exactly that hook. ⚠️ **Its bearer plugin is the other half of that still-open
+  question.** Its own docs caution that the plugin is for APIs which cannot use
+  cookies — which, on every browser where a partitioned cookie does not survive,
+  is arguably what we are.
 
 ⚠️ **And it already implements the decision at the top of this phase.** The
 [anonymous plugin](https://better-auth.com/docs/plugins/anonymous) is
@@ -742,7 +776,7 @@ Until all three land, two tabs share control of both players rather than being t
 
 **Today there is no authorization, not weak authorization.** `resolveActor` ignores the session and returns `state.currentTurn`, so the cookie gates nothing: any client, with or without one, can submit as whichever player's turn it is, to any match id — and `GET /api/matches` hands out the ids. That's the deliberate hot-seat concession, but it's worth stating in those terms, because several defences are pointless until it changes:
 
-- **CSRF hardening is premature *today*, and stops being so in this phase.** `SameSite=Lax` currently blocks a cross-site POST from carrying the cookie, and an attacker doesn't need the cookie anyway — there is no authority to forge. ⚠️ **Both halves of that expire together here**: `resolveActor` starts trusting the session, and `SameSite` goes to `None` so the cookie *is* sent cross-site. The replacement is named in *How identity travels* and is not a token pattern — it is a **strict CORS origin allowlist**, which works because a JSON `POST` is preflighted and a refused preflight never becomes a request. ⚠️ That makes the allowlist a security control rather than configuration, and it should be reviewed like one.
+- **CSRF hardening is premature *today*, and stops being so in this phase.** `SameSite=Lax` currently blocks a cross-site POST from carrying the cookie, and an attacker doesn't need the cookie anyway — there is no authority to forge. ⚠️ **Both halves of that expire together here**, if the cookie route wins: `resolveActor` starts trusting the session, and `SameSite` goes to `None`, so the cookie *is* sent cross-site. The defence is then a **strict CORS origin allowlist** — a JSON `POST` is preflighted, and a refused preflight never becomes a request — which makes the allowlist a security control rather than configuration, and it should be reviewed like one. ⚠️ **A bearer token needs none of this**: a header attached deliberately is never sent automatically, so CSRF is not a category for it at all. That is the point in the token's favour that *How identity travels* weighs against the shared-origin problem.
 - **`GET /api/matches` becomes an information leak.** It currently lists every match from every visitor. Harmless while matches are unowned; the moment they're owned, listing must be scoped to the player — which is the same change already recorded under Known compromises, arriving for a second reason.
 - **`404` on a missing match stops being neutral.** Once matches are owned, "no such match" and "not yours" should be the same response, or the endpoint becomes an existence oracle.
 
