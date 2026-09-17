@@ -562,135 +562,80 @@ has no accounts to borrow. The seam still earns its place, for the opposite
 reason to the one first written here: ours will have to sit *beside* a portal's
 rather than instead of it.
 
-#### How identity travels — ⬜ **open, and both options are compromised**
+#### How identity travels — a bearer token, decided
 
-⚠️ **Decided here rather than in 12**, because by then the sessions are built.
-The client will be served from another origin — itch hosts the files, the server
-stays ours — and that breaks the cookie in a way `SameSite` alone does not fix.
+**`Authorization: Bearer <token>`. No cookie, on any platform.** The client is
+served from a portal's origin and the server is ours, and a cookie cannot
+survive that reliably: `SameSite=Lax` is not sent cross-site at all, `None`
+alone is blocked by Safari's third-party rules, and `Partitioned` only came back
+to Safari in **26.2 (12 December 2025)** after being pulled in 18.5 — so every
+older iOS device gets no session. A header is not subject to any of it.
 
-⚠️ **This said "settled" and it is not.** Every option has a real hole, the
-holes are different shapes, and picking between them is a judgement about this
-game's threat model rather than a lookup. Four findings, in the order they
-overturn each other:
+⚠️ **This is not a compromise dressed up.** A header attached deliberately is
+never sent automatically, so **CSRF stops being a category** rather than needing
+a defence. The thing it gives up — httpOnly, which no script can read — is
+addressed below by making the token worth very little rather than by hiding it
+better.
 
-1. **`SameSite=Lax` is dead cross-site.** Lax means the browser does not send
-   the cookie on a cross-site request at all, so a client on itch gets no
-   session. That much was already written down.
-2. **`SameSite=None` alone is not enough either.** Safari has blocked *all*
-   third-party cookies since 13.1 regardless of `SameSite`, so the obvious fix
-   fails on Safari outright. ⚠️ This is what briefly made a bearer token in
-   `localStorage` look like the answer.
-3. **But `localStorage` is the wrong place on itch specifically, and that is a
-   fact about itch rather than a judgement.** Every itch HTML5 game is served
-   from one shared origin — `html-classic.itch.zone`, with no per-game
-   isolation and [itch saying they will not add
-   it](https://itch.io/t/3099694/notice-for-html-game-devs-upcoming-change-to-cdn-domain).
-   So a token in `localStorage` is readable by **any other game on itch**. That
-   is the configuration OWASP names explicitly, and it is disqualifying.
-4. **`Partitioned` (CHIPS) would close the loop, except on Safari's timeline.**
-   An httpOnly partitioned cookie is sent cross-site and unreadable by another
-   game's script, which is exactly what the shared origin demands. ⚠️ **But the
-   support floor is far newer than it first looked**, and the first reading of
-   this got it wrong. From MDN's compat data: **Chrome 114** (2023), **Firefox
-   141** (2025), and Safari — **added in 18.4, removed again in 18.5**
-   ([WebKit 292975](https://bugs.webkit.org/show_bug.cgi?id=292975)), then
-   restored in **26.2, released 12 December 2025**. On iOS every browser is
-   WebKit, so *every* iOS device below 26.2 gets no session at all.
+**Three providers, one seam.** `resolveActor` becomes *verify a token, produce a
+`PlayerId`*, and what differs is who mints and who stores:
 
-⚠️ **So the trade is a functional gap against a theft vector**, and they are not
-comparable quantities:
+| provider | who mints | who stores it | verified by |
+|---|---|---|---|
+| **guest** — itch, and our own site | us | the client, in `sessionStorage` | a row in our `sessions` table |
+| **crazygames** | CrazyGames | **nobody** | their signature |
+| **oauth** — later, if wanted | us, after the dance | the client, same as guest | our `sessions` table |
 
-- **Partitioned cookie** — httpOnly, unreadable, and simply *does not work* for
-  a real share of iOS users. They cannot play. That is a visible, total failure
-  for those people.
-- **Bearer token in browser storage** — works in every browser, and is readable
-  by another game sharing itch's origin. ⚠️ How *much* of a risk depends
-  entirely on which storage, which is the thing the first pass got lazy about —
-  see *What everyone else does about this* below.
+⚠️ **The middle row is the one worth reading twice.** CrazyGames' `getUserToken()`
+returns a JWT carrying `userId`, lasts an hour, is refreshed by the SDK, and
+their docs say **not to store it — call the method again when you need one**. We
+verify it against
+[their public key](https://sdk.crazygames.com/publicKey.json) and hold nothing.
+So on that platform we store no credential, mint no credential, and can leak
+none. ⚠️ Their account-integration requirement stops being a cost and becomes
+the thing that removes our storage problem.
 
-⚠️ **Weigh it against what a token is worth here**, which is the part a
-textbook cannot do: this is a free turn-based game with no money, no PII beyond
-a display name, and guest sessions carrying almost nothing. A stolen session
-lets someone move pieces in a wargame. Even signed-in, the token is *our*
-session, never a Google one. The attack also needs a malicious game published on
-itch and the victim playing it in the same browser.
+⚠️ **And the platform with the storage risk is the platform with nothing worth
+storing.** itch has no accounts to integrate, so the guest token stands behind
+no email, no OAuth grant, no profile — stealing one buys the ability to move
+pieces in somebody's free wargame. That symmetry is what makes the decision
+comfortable rather than merely necessary.
 
-#### What everyone else does about this
+⚠️ **"Security is the platform's responsibility" is half true, and the other
+half is ours.** True on CrazyGames, literally: they mint, they refresh, we check
+a signature. Not true on itch, where there is no platform identity at all — and
+the part that is always ours is the **blast radius**. A stolen token should be
+worth as little as possible, which means short expiry, rotation, and never
+carrying anything but an id.
 
-⚠️ **Mostly: they arrange not to have the problem.** The IETF's answer is
-[RFC 10017, *OAuth 2.0 for Browser-Based Applications*](https://www.rfc-editor.org/info/rfc10017/),
-and its recommendation is a **backend-for-frontend**: tokens never reach the
-browser at all, the browser holds an httpOnly session cookie, and nothing is
-exfiltratable by script. That works because the frontend and the BFF are
-same-site — which is exactly the property a portal takes away. ⚠️ On
-`localStorage` the RFC is blunt: keep tokens in memory where practical, and
-there are **no practical mechanisms** a frontend app can use to counter
-same-origin malicious script.
+#### Where the guest token lives
 
-⚠️ **The games industry's answer is the portal's own SDK**, and that is not a
-coincidence — CrazyGames requires its account, Poki ships User Accounts. The
-portal is first-party to itself, so its SDK has the cookie we cannot have. itch
-offers none, which is why itch games mostly have no accounts at all.
-
-⚠️ **`sessionStorage` is the narrowing nobody mentions, and it fits this game.**
-It is partitioned by origin **and by tab**, survives reloads, and dies with the
-tab. So a malicious itch game opened in *another tab* cannot read it, which is
-the entire attack `localStorage` hands over. Three storage choices, honestly
-ranked:
+**`sessionStorage`, not `localStorage`**, and the difference is not cosmetic.
+Every itch HTML5 game is served from one shared origin —
+`html-classic.itch.zone`, with no per-game isolation and
+[itch saying they will not add it](https://itch.io/t/3099694/notice-for-html-game-devs-upcoming-change-to-cdn-domain)
+— so anything in `localStorage` is readable by **any other game on itch,
+forever**. `sessionStorage` is partitioned by origin *and tab*, survives
+reloads, and dies with the tab.
 
 | | readable by another itch game | survives |
 |---|---|---|
 | `localStorage` | any game, any tab, any time | forever |
-| `sessionStorage` | only a game loaded **into the same tab afterwards** | tab close |
+| `sessionStorage` | only a game loaded into the **same tab afterwards** | tab close |
 | in memory | nobody | page reload |
 
-⚠️ **It narrows the window rather than closing it.** sessionStorage is keyed to
-(origin, tab), so browsing from our game to another itch game *in the same tab*
-still exposes it. What makes that acceptable is the pairing with a **short
-expiry and rotation** — a stolen token is then worth minutes of a free wargame —
-not any claim that the hole is shut.
+⚠️ **It narrows the window rather than closing it**, and the standards say
+plainly that nothing closes it: [RFC 10017, *OAuth 2.0 for Browser-Based
+Applications*](https://www.rfc-editor.org/info/rfc10017/) recommends a
+backend-for-frontend precisely so tokens never reach the browser — which works
+because the frontend and the BFF are same-site, the one property a portal takes
+away. Its advice for everyone else is to keep tokens in memory where practical
+and accept that same-origin script can still take them.
 
-⚠️ **And the shape of the session is the argument.** This phase decided a match
-is one sitting, in one tab, like a game of chess. Storage that dies with the tab
-is not a compromise against that; it is the same sentence.
-
-⬜ **Recommendation, not a decision: cookie first, token in `sessionStorage` as
-the fallback, and detect which one the browser allowed.** Better Auth sets the
-cookie either way and its bearer plugin reads `Authorization` when present, so
-the client prefers the cookie and falls back when a probe shows it did not
-survive. That costs a startup round trip and one branch, and it is the only
-option that locks nobody out.
-
-⚠️ **The reason this is a recommendation and not a decision** is that a fallback
-is a *second* auth path through the most security-sensitive function in the
-phase — the thing this section otherwise argues against. The alternative worth
-weighing is picking **one**: ship the token path alone, accept that it is what
-the RFC calls a last resort, and keep a single path. Simpler, and honest about
-the trade rather than covering it.
-
-⚠️ **CORS is load-bearing, not boilerplate.** A partitioned cookie is still sent
-automatically, and the neighbours in that partition are other itch games. What
-stops one using it is a **strict origin allowlist**: a JSON `POST` is not a
-simple request, so it is preflighted, and a preflight we refuse never becomes a
-request. That is the CSRF defence, and it wants stating as one.
-
-⚠️ **Three things the cookie route costs, whichever way this lands:**
-
-- **Safari 26.2+, which is December 2025.** Detecting the failure is the
-  requirement, not hoping about it — a player who cannot hold a session should
-  be told, not left clicking.
-- **ITP can still flag the API domain**, and a flagged domain cannot use
-  partitioned cookies either. Unlikely for a game API that appears on a handful
-  of sites; not impossible.
-- ⚠️ **Partitioned means partitioned.** The session is keyed to the *top-level
-  site*, so signing in on itch does **not** carry to CrazyGames — same account,
-  different partition, a fresh sign-in. That is a product fact rather than a bug,
-  and it is the strongest argument for identity that a player can deliberately
-  re-establish (sign in) rather than one they are assumed to keep.
-
-- **Match lifecycle** — a way for a second person to join, and matches bound to users rather than open to anyone. The largest of the three and still a single bullet: it wants a lobby state, a join mechanism, and the `status` column this section is careful to keep apart from game outcome. Phase 4 was split in two for less; this should be split before it starts.
-- **Guest identity first**, with sessions in our own database; sign-in is the later upgrade and OAuth is its candidate rather than its conclusion — see *Identity* below, and the seam above.
-- **Session→player map** at join, so `actor` comes from *who you are* rather than *whose turn it is*.
+⚠️ **The session shape is the argument, not a consolation.** A match is one
+sitting in one tab, like a game of chess. Storage that dies with the tab is that
+same sentence, and a token that expires in minutes makes the remaining window
+worth little.
 
 #### Seeing the other player move — nothing changes
 
@@ -752,11 +697,10 @@ things and all three come back usable:
   already in use.
 - **The cookie question changed shape** rather than being answered: it is not
   "does its cookie replace `vod_session`" but "can its cookie carry the
-  attributes *How identity travels* needs", and `defaultCookieAttributes` is
-  exactly that hook. ⚠️ **Its bearer plugin is the other half of that still-open
-  question.** Its own docs caution that the plugin is for APIs which cannot use
-  cookies — which, on every browser where a partitioned cookie does not survive,
-  is arguably what we are.
+  attributes we need" — and once *How identity travels* settled on a bearer
+  token, on **its bearer plugin instead**. Its docs caution that the plugin is
+  for APIs which cannot use cookies. We are one, for a reason outside our
+  control.
 
 ⚠️ **And it already implements the decision at the top of this phase.** The
 [anonymous plugin](https://better-auth.com/docs/plugins/anonymous) is
@@ -765,12 +709,19 @@ assemble: `/sign-in/anonymous`, `/anonymous/link`, and an `onLinkAccount`
 callback for carrying a guest's matches onto the real account when they sign in.
 Google is then a config block and a redirect route.
 
-⚠️ **The cost is that it owns the schema**, and that is the decision rather than
-the difficulty. Adopting it means its `user`/`session`/`account` tables instead
-of ours, and `withSession` disappears entirely. ⚠️ **Which argues for adopting it
-first rather than second** — hand-rolling two tables and migrating onto them
-later is building the session system twice, and the guest path is the half that
-would be thrown away.
+⚠️ **But it is not phase 11's problem, and the earlier version of this note was
+wrong to say so.** That argued for adopting it first, because hand-rolling and
+migrating later would build the session system twice. That reasoning assumed
+phase 11 needed OAuth. It does not: itch has no accounts, CrazyGames supplies
+its own, and the guest path is *mint a random token, store a row, verify a
+header* — tens of lines, not a system. Better Auth earns its place the day
+somebody wants to sign in and keep an identity across devices, and that day is
+not in this phase.
+
+⚠️ **The cost, when that day comes, is that it owns the schema**: its
+`user`/`session`/`account` tables instead of ours. Migrating guest rows into its
+anonymous users is a contained job precisely because there is so little of
+ours.
 
 ⬜ **What is left to verify, and it is narrow**: that `defaultCookieAttributes`
 reaches `Partitioned` (a newer attribute than the option), and that the
@@ -799,7 +750,10 @@ Schema work: `owner_id` on `matches`, a lobby `status` column, and a `sessions` 
 
 `resolveActor` is the only server change: it stops returning `state.currentTurn` and looks up the session. Client-side, the one function that answers "who is the user" reads it from the session instead of deriving it, and gains an ownership check so a browser doesn't offer units it can't command.
 
-#### Identity
+#### Identity — when signing in eventually arrives
+
+⚠️ **Not in this phase.** itch needs no login and CrazyGames brings its own; what
+follows is the shape for the day somebody wants an identity that outlives a tab.
 
 **OAuth only, sessions in our own database. No passwords, ever.**
 
@@ -809,9 +763,9 @@ Never accepting a password deletes the parts of auth that are both hardest and m
 
 A small OAuth library plus a sessions table, not an auth platform. Hosted providers (Clerk, WorkOS, Auth0) stay a contained swap if auth ever becomes a distraction.
 
-**Better Auth is the candidate and the spike came back green** (above), because it *is* that description rather than an alternative to it: sessions in our own database, a first-class Drizzle adapter, SQLite supported, httpOnly cookies, OAuth providers, no password path required, and guest-to-account as a supported plugin. It would replace `resolveActor`, supply the `sessions` table, and subsume `withSession` entirely — session creation becomes an insert, which retires the concurrent-mint race rather than working around it.
+**Better Auth is the candidate and the spike came back green** (above), because it *is* that description rather than an alternative to it: sessions in our own database, a first-class Drizzle adapter, SQLite supported, OAuth providers, no password path required, and guest-to-account as a supported plugin. It would replace `resolveActor`, supply the `sessions` table, and subsume `withSession` entirely — session creation becomes an insert, which retires the concurrent-mint race rather than working around it.
 
-**It is still a cookie**, which is the same mechanism the server already uses — what changes is its *attributes* (see *How identity travels*) and what it *means*: a row tied to a real player record, rather than an opaque id the server trusts on sight.
+**It would issue a bearer token, not a cookie** — see *How identity travels*, which settles that for every provider. What sign-in changes is what the token *means*: a row tied to a real person rather than a guest that dies with the tab.
 
 Whatever provides identity, **it resolves to a `PlayerId` in one place on the server**, before `actor` is stamped. Auth is a lookup in front of the authority, never something the reducers know about — and game rules never move into the database layer, whatever the store turns out to be.
 
@@ -821,13 +775,11 @@ Until all three land, two tabs share control of both players rather than being t
 
 **Today there is no authorization, not weak authorization.** `resolveActor` ignores the session and returns `state.currentTurn`, so the cookie gates nothing: any client, with or without one, can submit as whichever player's turn it is, to any match id — and `GET /api/matches` hands out the ids. That's the deliberate hot-seat concession, but it's worth stating in those terms, because several defences are pointless until it changes:
 
-- **CSRF hardening is premature *today*, and stops being so in this phase.** `SameSite=Lax` currently blocks a cross-site POST from carrying the cookie, and an attacker doesn't need the cookie anyway — there is no authority to forge. ⚠️ **Both halves of that expire together here**, if the cookie route wins: `resolveActor` starts trusting the session, and `SameSite` goes to `None`, so the cookie *is* sent cross-site. The defence is then a **strict CORS origin allowlist** — a JSON `POST` is preflighted, and a refused preflight never becomes a request — which makes the allowlist a security control rather than configuration, and it should be reviewed like one. ⚠️ **A bearer token needs none of this**: a header attached deliberately is never sent automatically, so CSRF is not a category for it at all. That is the point in the token's favour that *How identity travels* weighs against the shared-origin problem.
+- ~~**CSRF hardening**~~ ✅ **Not needed, and not because it is premature.** It was premature only while there was no authority to forge; the reason it stays unnecessary is that identity moved to an `Authorization` header, and a header attached deliberately is never sent automatically by a browser. There is no cross-site request to forge with. ⚠️ **CORS is still worth getting right** — it is what stops another origin *reading* a response — but it is no longer standing in for a missing CSRF defence.
 - **`GET /api/matches` becomes an information leak.** It currently lists every match from every visitor. Harmless while matches are unowned; the moment they're owned, listing must be scoped to the player — which is the same change already recorded under Known compromises, arriving for a second reason.
 - **`404` on a missing match stops being neutral.** Once matches are owned, "no such match" and "not yours" should be the same response, or the endpoint becomes an existence oracle.
 
-⚠️ The race below is survivable today partly by accident: in dev, Vite serves `index.html`, so the browser's first contact with *our* server is already an API call, and in production the HTML response sets the cookie before any API call can race. If dev ever collapses to one process serving both, that accidental ordering becomes the only thing between us and concurrent cookie-less requests on a cold load — the constraints below would stop being a production-only concern.
-
-**Two constraints on the sessions table, from how the cookie behaves today.** `withSession` mints an id for any request arriving without one, so concurrent requests from a browser with no cookie yet each mint a *different* id and each set it — last write wins. That is not a defect: nothing reads the id (`resolveActor` ignores it) and nothing persists it, so there is no state to corrupt. It becomes one the moment a session store assumes otherwise, which is why the requirements are recorded here rather than worked around in the wrapper:
+**Two constraints on the sessions table, and moving to a bearer token retires the first one.** `withSession` today mints an id for any request arriving without one, so concurrent cookie-less requests each mint a *different* id and each set it — last write wins. ⚠️ **A token the client asks for explicitly has no such race**: minting stops being something that happens incidentally to any request, and becomes one endpoint the client calls once. The constraint is recorded anyway, because it is the reason that shape is right rather than an accident of it:
 
 - **Create session rows at sign-in, not on arrival.** The orphan problem is a *rows* problem. If a row only exists once someone authenticates, the ids a browser mints and discards never become rows, and the race stops mattering without needing to be prevented — which is the only approach that works, since two cookie-less requests are indistinguishable and cannot be serialised.
 - **Rotate the id on sign-in.** An id minted for an anonymous visitor must not survive into an authenticated one, or an attacker who plants a known cookie inherits the session after the victim logs in. Standard session-fixation defence, and it makes every pre-auth id irrelevant by construction.
