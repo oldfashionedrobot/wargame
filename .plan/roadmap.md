@@ -723,10 +723,10 @@ not in this phase.
 anonymous users is a contained job precisely because there is so little of
 ours.
 
-⬜ **What is left to verify, and it is narrow**: that `defaultCookieAttributes`
-reaches `Partitioned` (a newer attribute than the option), and that the
-anonymous plugin's session survives the same attributes. Both are an afternoon
-against a real browser, and neither gates the design.
+⚠️ **The verification this once listed is void**: it asked whether
+`defaultCookieAttributes` reaches `Partitioned`, and there is no cookie any
+more. What would need checking on the day Better Auth is adopted is its bearer
+plugin against the exchange shape below — not before.
 
 **The shape, either way.** If Better Auth is adopted its schema stands in for
 the first two of these; if it is not, they are what gets built:
