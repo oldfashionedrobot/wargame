@@ -323,7 +323,7 @@ reads them.
 **`terrain.ts`** — `{ char, defense, cost }` per terrain. `char` is the symbol a
 map is drawn with; `defense` is stars of cover, read by `computeDamage`; `cost` is
 movement points to *enter*, one per movement type, with `null` for impassable —
-which is what makes a river a wall to wheels and a toll to boots. ⚠️ Costly and
+which is what makes a river a wall to wheels, a toll to boots, and most of a turn to a horse. ⚠️ Costly and
 impassable are deliberately different answers, and a mountain is where that is
 tuned: 4 against a cavalry's range of 5 puts a peak within reach only from close
 by, while `null` for wheels shuts it outright.
@@ -413,7 +413,7 @@ resize.
 | `classic` | A river across the middle with one bridge, woods on the near approach and high ground on the far one. Infantry ford anywhere; cavalry and artillery must take the crossing, which is the whole board |
 | `crossroads` | A road network closed into a figure of eight. No water and no high ground, so nothing is impassable and cost is the only thing shaping a move — which makes it the board artillery likes |
 | `two-bridges` | One river bent through a right angle with a crossing on each arm. ⚠️ Carries **both deck orientations**, which nothing else does: a board with only one leaves half of `bridgeTurns` unexercised |
-| `lakeland` | A lake ringing an island, plus a pond. The island is the sharpest thing the cost table can say — water is the one terrain only `foot` may enter, so infantry can hold ground the other two cannot reach at any price |
+| `lakeland` | A lake ringing an island, plus a pond. The island is where the water's *price* shows: infantry wades across in one turn, cavalry needs two and spends the night between them in open water at zero defence, and artillery never arrives at all |
 | `meadow` | Open field, a **lateral** road straight across and one rise in the middle. A road across rather than along helps you redeploy along your own line more than it helps you advance |
 | `common` | Open field with the opposite road — up the middle, the fast way *at* the enemy — and hills on both flanks: 4 stars of cover apiece and shut to wheels, so a strong position no gun can ever hold |
 

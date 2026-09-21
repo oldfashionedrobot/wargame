@@ -210,6 +210,32 @@ describe('exploreMovement: terrain costs', () => {
     expect(has(explore(beside, 'b1', 99, 'wheels').reachable, 1, 0)).toBe(false);
   });
 
+  // ⚠️ **A river is a toll for horse and a wall only for wheels**, which is a
+  // change from when it was a wall for both. Written against cavalry's real
+  // budget, because what decides anything is the ratio of the ford to the
+  // budget rather than the 3 on its own.
+  it('lets a horse ford a river, at most of a turn', () => {
+    const HORSE_RANGE = 4;
+    const crosses = (row: string, from = 0) => {
+      const state = makeState([row], [{ id: 'b1', col: from, row: 0 }]);
+      return has(explore(state, 'b1', HORSE_RANGE, 'horse').reachable, row.indexOf('~'), 0);
+    };
+
+    expect(crosses('.~..')).toBe(true); // alongside: the ford is 3 of 4
+    expect(crosses('..~.')).toBe(true); // one step of approach: 1 + 3 exactly
+    expect(crosses('...~')).toBe(false); // two steps: 2 + 3 is over the budget
+
+    // ⚠️ And a second tile of water is out of reach from dry land, which is what
+    // makes a wide river take two turns and leave a unit standing in it.
+    const wide = makeState(['.~~.'], [{ id: 'b1', col: 0, row: 0 }]);
+    const reach = explore(wide, 'b1', HORSE_RANGE, 'horse').reachable;
+    expect(has(reach, 1, 0)).toBe(true); // the near bank of the ford
+    expect(has(reach, 2, 0)).toBe(false); // 3 + 3 is over any single turn
+
+    // Wheels stay refused outright -- costly and impassable did not collapse.
+    expect(has(explore(wide, 'b1', 99, 'wheels').reachable, 1, 0)).toBe(false);
+  });
+
   it('takes the cheap way round rather than the short way through', () => {
     // Two forests sit between the unit and its target on the top row. For
     // wheels the direct line costs 3+3+1 = 7 across three steps; the road

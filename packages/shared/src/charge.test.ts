@@ -207,14 +207,27 @@ describe('refuseCharge', () => {
     );
   });
 
-  // ⚠️ **The rule `entryCost` could not answer.** A successful charge displaces
-  // onto the target's tile, so the attacker has to be able to stand there --
-  // and `entryCost` refuses that tile for being enemy-held, which is the one
-  // objection a charge is not troubled by. `terrainAdmits` is the shared half.
-  it('refuses ground the attacker could never stand on', () => {
+  // ⚠️ **The rule `entryCost` could not answer, and it is currently
+  // unreachable.** A successful charge displaces onto the target's tile, so the
+  // attacker has to be able to stand there -- and `entryCost` refuses that tile
+  // for being enemy-held, which is the one objection a charge is not troubled
+  // by. `terrainAdmits` is the shared half.
+  //
+  // ⚠️ **Nothing that can charge is barred from anywhere any more.** Only
+  // `foot` and `horse` have a `CHARGE_THRESHOLD` row, and since `horse` went to
+  // 3 in the river both can enter every terrain on the board -- `wheels` is the
+  // only movement type with a `null`, and artillery cannot charge. So this
+  // asserts the *reachable* truth: a charge across water is now allowed.
+  it('allows a charge onto water, which it used to refuse', () => {
     const river = contact(100, ['.......', '.-.....', '.~.....', '.......']);
-    expect(refuseCharge(river, b1(river), [at(1, 1)], 'r1')).toBe('horse cannot cross river');
+    expect(refuseCharge(river, b1(river), [at(1, 1)], 'r1')).toBeNull();
   });
+
+  // ⚠️ **The guard stays despite having nothing to catch**, and cheaply: a unit
+  // type that charges on `wheels`, or a terrain barred to `foot`, brings it back
+  // the same day it is added. It is insurance against the catalog growing, not
+  // dead weight -- `CHARGE_THRESHOLD` is `Partial`, so a new charger is exactly
+  // the change that arrives quietly.
 
   it('allows ground the attacker can stand on, enemy or not', () => {
     const wood = contact(100, ['.......', '.-.....', '.f.....', '.......']);

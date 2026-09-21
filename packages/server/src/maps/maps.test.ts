@@ -95,9 +95,12 @@ describe('every map', () => {
       });
 
       // The board has to be crossable by everything on it, or a unit is stranded
-      // from the first turn. Checked per movement type actually deployed: the
-      // river is impassable to horse and wheels, so this is what proves a bridge
-      // connects the two halves rather than merely existing.
+      // from the first turn. Checked per movement type actually deployed.
+      // ⚠️ **It only has teeth for `wheels` now.** It was written when a river
+      // stopped horse as well, so it proved a bridge connected the two halves;
+      // since horse can ford, `foot` and `horse` pass on every board that is not
+      // solid rock. Kept at full breadth anyway -- it costs one flood fill, and
+      // it is the movement type *not* yet invented that it is really for.
       const movementTypes = [
         ...new Set(units.map(({ unitTypeId }) => getUnitType(unitTypeId).movementType)),
       ];

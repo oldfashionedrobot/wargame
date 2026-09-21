@@ -46,7 +46,7 @@ export const TERRAIN: Record<TileType, Terrain> = {
   // That is the shape of the decision: cavalry is fast *in the open*, not fast
   // everywhere. A gun carriage does not go up a rock face at any price.
   mountain: { char: '^', defense: 4, cost: { foot: 2, horse: 4, wheels: null } },
-  river: { char: '~', defense: 0, cost: { foot: 2, horse: null, wheels: null } },
+  river: { char: '~', defense: 0, cost: { foot: 2, horse: 3, wheels: null } },
 };
 
 /**
