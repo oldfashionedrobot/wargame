@@ -637,6 +637,67 @@ sitting in one tab, like a game of chess. Storage that dies with the tab is that
 same sentence, and a token that expires in minutes makes the remaining window
 worth little.
 
+#### The seam, and what is still open
+
+⚠️ **`PlayerId` already means something, and it is not a person.** It is
+`string`, and in practice `'player-blue'` — a **seat**, and every match has one.
+`Unit.owner: PlayerId` means *owned by the blue seat*, which is right: the
+rulebook must never know people exist. ⚠️ **So a session resolves to a person,
+and the person's seat *in this match* is the `PlayerId`** — two lookups and two
+concepts, where this section used to say "session→player map" as though it were
+one. Because `PlayerId` is a bare alias, a person-id would typecheck as a seat
+today and nothing would complain.
+
+⚠️ **Exchange at the door, rather than verifying per request.** Each platform
+gets **one endpoint, called once**, which trades its credential for ours:
+
+```
+POST /api/auth/guest                        → { token }
+POST /api/auth/crazygames { platformToken } → { token }
+```
+
+After that every request carries our token and **the server never branches on
+platform again** — `resolveActor` is one lookup. Adding a platform is one
+endpoint plus one client shim; the hot path of every command and every poll is
+untouched, and the thing most likely to rot is confined to a file called once.
+⚠️ The cost is real: on CrazyGames we would hold our own token rather than
+re-asking their SDK, which gives up the *we store nothing* property. Simplicity
+was judged worth it, and re-establishing after an expiry is the same code as
+establishing.
+
+⚠️ **A platform is an identity provider, and the schema should not know the
+difference.** `('crazygames', theirUserId)` and `('google', sub)` are the same
+row shape. Only guest is special — a player with no `accounts` row:
+
+```
+players   id, created_at, display_name
+accounts  provider, external_id, player_id    -- PK (provider, external_id)
+sessions  token, player_id, expires_at
+```
+
+⚠️ **The test for whether the seam is in the right place:** could CrazyGames be
+added by writing one endpoint and one client module, touching nothing else? Build
+for that, and ship only `guest` — itch needs no more, and building the second
+provider speculatively is how a seam ends up the wrong shape.
+
+**Four choices left open, in the order they bite:**
+
+1. ⬜ **Does a guest survive the tab?** `sessionStorage` dies with it and is
+   invisible to other itch games in other tabs; `localStorage` survives and is
+   readable by any itch game forever. The case that decides it is refreshing
+   mid-match. *Leaning `sessionStorage`, at the cost of losing a match to a
+   closed tab.*
+2. ⬜ **`UserId` split from `PlayerId`?** Cheap now, horrible later, and the
+   bare `string` alias is why. *Leaning: split before any identity code lands.*
+3. ⬜ **Provider chosen at build time or at runtime?** Build time
+   (`--mode crazygames`) ships no unused SDK, makes the seam provably one file,
+   and lets tests use the guest provider for real; runtime (`if
+   (window.CrazyGames)`) is one build everywhere but puts every platform's SDK
+   in every build, which fights the file-count budget and Poki forbids outright.
+   *Leaning build time, with the least confidence of the four.*
+4. ⬜ **What the queue matches on** — see *How two people meet*. A FIFO pair-off
+   until map choice or a rating exists, neither of which does.
+
 #### Seeing the other player move — nothing changes
 
 ⚠️ **Not to be confused with *How identity travels* above.** That one is how a
