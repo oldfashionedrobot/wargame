@@ -312,13 +312,17 @@ option, and both cost a few lines against a table's seeding machinery.
 
 ## Remaining phases
 
-⚠️ **Three of these are a queue and two are tracks.** 11, 12 and 15 run in that
-order. 13 and 14 depend on none of it and are what actually move the numbers a
-portal gates on, so they run alongside rather than waiting their turn, in
-whatever order is most interesting that week. ⚠️ One exception to that
-independence: 11 decides matches are meant to be **short**, and how long a match
-runs is content, which is 13. Co-presence puts two people at the board at the
-same time; only the content makes that a single sitting.
+⚠️ **Three of these are a queue and two are tracks**, and the numbers say the
+order they are being *done* in rather than an order they must be in.
+*Multiplayer* → *A hosted build* → *Platforms* is the queue and cannot be
+rearranged. *Presentation* and *Content* depend on none of it, which is why
+either can be pulled to the front — and *Presentation* has been, deliberately,
+because a graphics pass is wanted before the plumbing.
+
+⚠️ One dependency crosses the two groups: *Multiplayer* decides matches are
+meant to be **short**, and how long a match runs is content. Co-presence puts
+two people at the board at the same time; only *Content* makes that a single
+sitting.
 
 ⚠️ **Multiplayer comes before deploying, and that is a product decision rather
 than a technical one.** A hosted build could ship the day the asset paths are
@@ -326,15 +330,17 @@ fixed, and for a while this file said it should. It should not: hot-seat was
 scaffolding for building the game, not a way to play it, and putting a
 two-people-one-keyboard turn-based strategy game in front of a portal audience
 is shipping the wrong product and learning nothing true from what it does.
-⚠️ The cost of the order is that **phase 11 has to take phase 12's constraint as
-an input** — identity gets designed knowing the client will later be served from
-another origin, rather than having that discovered afterwards. That constraint
-is written into 11 below, where the decision is actually made.
+⚠️ The cost of the order is that ***Multiplayer* has to take *A hosted build*'s
+constraint as an input** — identity gets designed knowing the client will later
+be served from another origin, rather than having that discovered afterwards.
+That constraint is written into *Multiplayer* below, where the decision is made.
 
-⚠️ **Cross-references name a phase rather than number it.** Inserting phase 11
-renumbered the one after it and turned every "Phase 11 —" in *Known
-compromises* into a pointer at the wrong thing. A name survives an insert; a
-number is a thing somebody has to remember to recount.
+⚠️ **Cross-references name a phase rather than number it**, and the rule has
+now been earned twice. Inserting a phase renumbered everything after it and
+turned six "Phase 11 —" pointers in *Known compromises* into pointers at the
+wrong thing; moving *Presentation* to the front broke every surviving number in
+this section the same way. A name survives a renumber. A number is something
+somebody has to remember to recount, and nobody does.
 
 ⚠️ **Platform mechanics are not written down here.** They are per-platform,
 dated, and change — see *Victory or Death — Publishing Pipeline* in Drive, which
@@ -510,7 +516,37 @@ one formula cannot be read apart, not because the geometry might be wrong.
   animation and a charge one, and it is carried for that.
 
 
-### 11 — Multiplayer: identity, and two clients in one match
+### 11 — Presentation: animation, sound, UI
+
+A track, pulled to the front because a graphics pass is wanted before the
+plumbing. Nothing above it in the queue depends on it and it depends on nothing.
+
+⚠️ **The board has one `HemisphericLight` and no shadows at all** — grep the
+client for `Shadow` and it returns nothing. That is why everything reads flat,
+and it is why `UNIT_GLOW` exists: a floor of self-illumination propping up
+silhouettes the lighting is not giving. A directional light with a shadow
+generator is the largest single change available here, and it would let the glow
+come back out rather than being tuned around.
+
+⚠️ `battleResolved.kind` is carried for exactly this and read by nothing yet —
+the cutaway was built to branch on it and does not, so a volley and a charge
+currently play the same absence of an animation.
+
+- **Lighting and shadows.** Contained to the renderer, mostly configuration, and
+  the thing the rest of this list sits on top of.
+- **Model animation in the cutaway**, which is the version 10c deliberately did
+  not build.
+- **Sound.** Nothing in the codebase makes any, and there is no audio path at
+  all — this is a new capability rather than a pass over an existing one.
+- **A UI pass.** The board's chrome now reads `--board-*` tokens, so this is
+  editing a palette rather than hunting literals. The page's own tokens exist
+  and are still used by nothing.
+- ⚠️ **The dev handle from *Open questions* belongs here or before it.** Every
+  visual change is verified by screenshotting and guessing a pixel, and a
+  `tileToScreen` behind `import.meta.env.DEV` turns that into addressing a tile.
+  It cost real time twice in one session.
+
+### 12 — Multiplayer: identity, and two clients in one match
 
 **Two people, in the same match, at the same time.** The shape is a game of
 chess: sit down, play it now, finish it now. That is the sentence the rest of
@@ -770,10 +806,10 @@ assemble: `/sign-in/anonymous`, `/anonymous/link`, and an `onLinkAccount`
 callback for carrying a guest's matches onto the real account when they sign in.
 Google is then a config block and a redirect route.
 
-⚠️ **But it is not phase 11's problem, and the earlier version of this note was
-wrong to say so.** That argued for adopting it first, because hand-rolling and
-migrating later would build the session system twice. That reasoning assumed
-phase 11 needed OAuth. It does not: itch has no accounts, CrazyGames supplies
+⚠️ **But it is not this phase's problem, and the earlier version of this note
+was wrong to say so.** That argued for adopting it first, because hand-rolling
+and migrating later would build the session system twice. That reasoning assumed
+*Multiplayer* needed OAuth. It does not: itch has no accounts, CrazyGames supplies
 its own, and the guest path is *mint a random token, store a row, verify a
 header* — tens of lines, not a system. Better Auth earns its place the day
 somebody wants to sign in and keep an identity across devices, and that day is
@@ -849,7 +885,7 @@ Both are defaults in Better Auth, which is a further point in its favour above.
 
 **Where the check goes.** Whatever provides identity resolves to a `PlayerId` in one place, before `actor` is stamped — see *Identity* above. Ownership is then a lookup in front of the authority, never a rule the reducers know about. Note that `canSelectUnit` deliberately stays a game fact and needs no identity: the server already rejects a command for a unit the actor doesn't own, because `actor === currentTurn` and `unit.owner === currentTurn` compose.
 
-### 12 — A hosted build on itch.io
+### 13 — A hosted build on itch.io
 
 **itch.io.** Open, no gate, no review, no exclusivity, and no accounts to
 integrate — so it is the one portal where "does this deploy at all" can be
@@ -859,8 +895,8 @@ specifically requires; the other portals want a superset.
 The smallest remaining phase, and no new mechanics: it is the deploy story.
 ⚠️ **It could have gone first and deliberately does not** — see the top of
 *Remaining phases* for why, and note that the one decision it would otherwise
-own, whether identity rides a cookie across origins, is taken in 11 instead
-because 11 is where the sessions get built.
+own, whether identity rides a cookie across origins, is taken in *Multiplayer*
+instead, because that is where the sessions get built.
 
 - ⚠️ **Asset paths are absolute and itch serves from a subdirectory.** Verified,
   not anticipated: the build emits `src="/assets/…"` and `href="/favicon.svg"`,
@@ -890,7 +926,7 @@ because 11 is where the sessions get built.
   able on bytes; the file count is already half the cap, and a terrain kit is
   what grows it.
 
-### 13 — Content: units, maps, and the numbers
+### 14 — Content: units, maps, and the numbers
 
 A track, not a queue — it depends on nothing above and it is what moves the
 metrics a portal actually gates on. *Tuning* above is where the numbers and the
@@ -917,29 +953,11 @@ argument live; this is the phase that keeps changing them.
   army size, board size, or a condition that ends it, and which one is a
   **design** question this phase owns rather than a number to quietly tune.
 
-### 14 — Presentation: animation, sound, UI
-
-The other track. ⚠️ `battleResolved.kind` is carried for exactly this and read by
-nothing yet — the cutaway was built to branch on it and does not, so a volley
-and a charge currently play the same absence of an animation.
-
-- **Model animation in the cutaway**, which is the version 10c deliberately did
-  not build.
-- **Sound.** Nothing in the codebase makes any, and there is no audio path at
-  all — this is a new capability rather than a pass over an existing one.
-- **A UI pass.** The board's chrome now reads `--board-*` tokens, so this is
-  editing a palette rather than hunting literals. The page's own tokens exist
-  and are still used by nothing.
-- ⚠️ **The dev handle from *Open questions* belongs here or before it.** Every
-  visual change is verified by screenshotting and guessing a pixel, and a
-  `tileToScreen` behind `import.meta.env.DEV` turns that into addressing a tile.
-  It cost real time twice in one session.
-
 ### 15 — Platforms beyond itch
 
-itch is phase 11's target and is not repeated here; this is the portals that
-gate, review, or supply their own accounts. Worth attempting only once 13 and 14
-have moved playtime and retention — the one portal publishing a bar publishes a
+itch is *A hosted build*'s target and is not repeated here; this is the portals
+that gate, review, or supply their own accounts. Worth attempting only once
+*Presentation* and *Content* have moved playtime and retention — the one portal publishing a bar publishes a
 specific one, and the game is judged against it rather than against a portal-wide
 average.
 
