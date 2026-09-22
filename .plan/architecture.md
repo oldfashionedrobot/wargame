@@ -3,16 +3,12 @@
 Turn-based strategy game, American Revolutionary War theme. React + TypeScript
 + Babylon.js, built with bun.
 
-**This document describes the code as it is, and why.** The ⚠️ notes are most
-of its value — they are what stops a decision being re-litigated from the code
-alone, and the body has always been mostly them, whatever this line used to
-claim. **No history**: `git log` is the history. What is planned but unbuilt
-lives in [`roadmap.md`](roadmap.md).
+**This document describes the code as it is.** No rationale, no history — the
+reasoning lives in `git log`, where the commit that made a decision is the thing
+that explains it. What is planned but unbuilt lives in
+[`roadmap.md`](roadmap.md).
 
-⚠️ **Values live in the modules, not here.** Where a number is quoted it is
-because an *argument* needs it — a derivation, a ratio, a limit and the reason
-for it. A number transcribed for reference alone is a second copy to keep in
-step, and it always loses.
+**Values live in the modules, not here.**
 
 **What plays today:** hot-seat against a real server process, from the opening
 move to a winner. Select a unit and see the tiles it can reach across terrain;
@@ -75,9 +71,8 @@ packages/
     index.ts          the barrel
     data/             the static content tables — unit types, terrain, combat
   shared/scripts/
-    matchups.ts       prints hits-to-kill; the one kind of importer of shared/
+    matchups.ts       prints hits-to-kill
     charges.ts        prints charge odds against the repel band
-                      that is neither server nor client — which only purity allows
   server/
     src/
       http.ts         createServer() — Bun.serve routes, /api/* plus the client build
@@ -133,13 +128,9 @@ resolveAction(state, action, rolls)     → GameEvent[]
 applyEvents(state, events)              → GameState
 ```
 
-⚠️ **`roll` is an argument, never a field on `Action`.** `validateCommand` is the
-only constructor of an Action and has no business generating or receiving dice,
-and `shared/` may not produce randomness at all (invariant 2) — so the server
-rolls and passes it in. `endTurn` ignores it, deliberately: the alternative
-spreads the decision over two places to spare one branch an unused parameter.
-That the roll is an *input* is also what lets the tuning harness drive the whole
-matchup grid with no server and no browser.
+`rolls` is an argument, never a field on `Action`: `shared/` produces no
+randomness (invariant 2), so the server rolls and passes them in. `endTurn`
+ignores the argument.
 
 | | Direction | Contents |
 |---|---|---|
@@ -151,25 +142,18 @@ matchup grid with no server and no browser.
 everything if the game is over, then dispatches to the per-command validator.
 `resolveAction` accepts nothing but an `Action`.
 
-⚠️ **The terminal refusal is one line above the dispatch, not a rule each
-validator remembers.** It therefore covers command types that do not exist yet —
-and `validateEndTurn` takes no arguments at all, so a per-command spelling would
-have had to change its signature to refuse anything. ⚠️ The *order* matters:
-identity first, so a player who was never entitled to give an order still hears
-whose turn it is rather than being told the game is over as though that were the
-only problem.
+The terminal refusal sits one line above the dispatch rather than inside each
+validator, so it covers command types that do not exist yet. The order is
+identity, then terminal state, then the per-command check.
 
 ## Rules that hold
 
 1. **The database is the only mutable state.** No module-level mutable state
    exists in `server/`; every request reads, computes, and writes back.
 2. **`shared/` is pure** — no I/O, no RNG, no Babylon, no React, no `Date.now()`.
-   ⚠️ **And the compiler enforces it, via the client.** `shared` has no program
-   of its own; its source is checked inside the two that import it. `server`'s
-   has `types: ["bun"]` and would happily accept `process.env` in the rulebook —
-   but `client`'s has no node or bun globals, so the same line fails there and
-   the build exits non-zero. Purity survives because one of the two programs
-   checking this source has no operating system. Verified by trying it.
+   The compiler enforces it through the client: `shared` has no program of its
+   own, and `client`'s has no node or bun globals, so `process.env` in the
+   rulebook fails the build there.
 3. **`GameServer.submit()` is async.**
 4. **`GameState` is JSON-serializable** — no `Map`, `Set`, class instance,
    `Date`, or function is reachable from it.
@@ -226,21 +210,14 @@ ErrorResponse     { error }                          // the body of every non-2x
 ```
 
 **A turn is a budget of actions**, `ACTIONS_PER_TURN` in `turns.ts`, and the
-turn ends itself once the budget is spent. It is **`null` — no cap — which is
-Advance Wars**: every unit acts once, the player picks the order, and the turn
-ends when the last of them has gone. A number caps it instead, and at 1 the game
-is chess: one unit, one command, over to you. Everything between is one edited
-line, which is what the constant is for.
+turn ends itself once the budget is spent. It is **`null`** — no cap: every unit
+acts once, the player picks the order, and the turn ends when the last of them
+has gone. A number caps it instead.
 
-⚠️ **`null` rather than `Infinity`, and the reason is JSON.**
-`Math.min(Infinity, roster)` picks the roster for free and needs no branch,
-which is what makes it tempting — but `Infinity` does not survive
-`JSON.stringify`, coming back as `null` anyway. Ruleset versioning is on the
-roadmap, so the day a match records the rules it was played under this becomes
-match data and the value would change meaning in transit. One branch, no
-migration. ⚠️ And the branch tests `=== null`, not `== null`: the loose form
-swallows an explicitly passed `undefined`, which has to keep falling through to
-the default.
+`null` rather than `Infinity`, because `Infinity` does not survive
+`JSON.stringify`. The branch tests `=== null`, not `== null` — the loose form
+would swallow an explicitly passed `undefined`, which has to fall through to the
+default.
 
 ```ts
 actionsTaken(state)    // this player's units with hasActed set
@@ -248,60 +225,44 @@ actionsAllowed(state)  // min(ACTIONS_PER_TURN, this player's roster)
 actionEndsTurn(state)  // does one more action finish the turn
 ```
 
-⚠️ **The `min` is load-bearing.** A player with fewer units than the budget
-could never reach it, so their turn would never end on its own — "everyone has
-acted" has to finish a turn as surely as "the budget is gone".
+The `min` covers a player with fewer units than the budget: "everyone has acted"
+finishes a turn as surely as "the budget is gone".
 
-⚠️ **No state fold is needed to decide.** An action sets `hasActed` on exactly
-one unit that lacked it, so the count afterwards is the count now plus one, and
-resolution can answer without applying its own events to a copy first.
+`actionEndsTurn` needs no state fold — an action sets `hasActed` on exactly one
+unit that lacked it, so the count afterwards is the count now plus one.
 
-⚠️ The budget is taken as a **default argument** rather than read from the
-module, so the arithmetic stays reachable from a test at any value. Baked in,
-the only budget anything could exercise is whichever one the constant holds —
-and the case that matters most, a roster shorter than the budget, is invisible
-at 1.
+The budget is a **default argument** rather than read from the module, so tests
+can exercise the arithmetic at any value.
 
 `resolveAction` appends `turnEnded` to a move that spends the turn, reusing
-`resolveEndTurn` so exactly one place decides who plays next. ⚠️ **Two events,
-never one carrying both effects** — invariant 9, and the shape a successful
-charge takes later.
+`resolveEndTurn` so exactly one place decides who plays next. **Two events,
+never one carrying both effects** — invariant 9.
 
-**The End Turn command survives the budget** rather than being replaced by it.
-It is the early exit: the one thing it does that an auto-end cannot is let a
-player stop before committing every unit they are allowed to, which is exactly
-the job Advance Wars' own `End` does. At a budget of 1 it is a pass.
+**The End Turn command is the early exit**: a player may stop before committing
+every unit they are allowed to. At a budget of 1 it is a pass.
 
 Turn order is array rotation over `GameState.players`, wrapping via modulo.
 `hasActed` is one flag per unit, set by `unitMoved` and reset by `turnEnded` for
 the incoming player only.
 
 `winner` is `null` until somebody wins, and **additive: `currentTurn` is never
-cleared beside it**. `getCurrentPlayer` throws when `currentTurn` names nobody
-and the client's turn label calls it every render, so a terminal state that
-blanked it would crash the board at the moment it should be showing a result.
-⚠️ It is **nullable on the state and not on the event**: `null` is a real state —
-still playing — whereas `gameEnded` exists only because somebody won. Neither is
-the other one left unfinished.
+cleared beside it**. `getCurrentPlayer` throws when `currentTurn` names nobody,
+and the client's turn label calls it every render. `winner` is nullable on the
+state and not on the event.
 
-`facing` is **carried, not derived**. The player picks it, so it need not agree
-with the direction of travel — a unit can end a move looking somewhere it did not
-come from, which is exactly what a derivation could not express. The client
-proposes the travel direction as a default (`directionBetween`), the command
-carries the answer, and `parseCommand` refuses anything but one of the four.
-A single-element path plus a facing is a **turn in place**, and it spends the
-unit's turn like any other action — ⚠️ which costs a turn and buys a counter,
-now that a shot from behind goes unanswered.
+`facing` is **carried, not derived**: the player picks it, so it need not agree
+with the direction of travel. The client proposes the travel direction as a
+default (`directionBetween`), the command carries the answer, and `parseCommand`
+refuses anything but one of the four. A single-element path plus a facing is a
+**turn in place**, and it spends the unit's turn like any other action.
 
-⚠️ **The defender's facing is never changed by being shot at.** A unit answers
-from where it was left looking, which is what makes turning in place a decision
-rather than a formality.
+**A defender's facing is never changed by being shot at.** It answers from where
+it was left looking.
 
 ## Content — `shared/src/data/`
 
 Static tables keyed by `Record`, so adding a member makes every incomplete table
-a compile error. **The values are the modules' — read them there.** All three
-are short, and a copy here would be a second set of numbers to tune.
+a compile error. **The values are the modules' — read them there.**
 
 **`unitTypes.ts`** — `{ id, name, char, movementType, movementRange, range, slow }`
 per type. `range` is `{ min, max }` tiles, inclusive, read by `refuseAttack`,
@@ -321,20 +282,18 @@ unit. ⚠️ It lives here so that the day some unit is tougher than another, it
 becomes a column of `UnitType` and the edit is local.
 
 **`combat.ts`** — `BASE_DAMAGE`, a nested `Record` of attacker → defender as a
-percentage of a full-health target, and `LUCK_MAX`. ⚠️ **A matrix rather than an
-attack stat and a defence stat, and that is arithmetic rather than taste:** any
-`f(attack, defence)` produces a *transitive* ordering, so no pair of scalars can
-express rock-paper-scissors. `road` and `bridge` are currently identical in both
-their columns, so two of the terrains are indistinguishable to every rule that
-reads them.
+percentage of a full-health target, and `LUCK_MAX`. A matrix rather than an
+attack stat and a defence stat: no pair of scalars can express
+rock-paper-scissors, since any `f(attack, defence)` is transitive. `road` and
+`bridge` are identical in both their columns, so two of the terrains are
+indistinguishable to every rule that reads them.
 
 **`terrain.ts`** — `{ char, defense, cost }` per terrain. `char` is the symbol a
 map is drawn with; `defense` is stars of cover, read by `computeDamage`; `cost` is
 movement points to *enter*, one per movement type, with `null` for impassable —
-which is what makes a river a wall to wheels, a toll to boots, and most of a turn to a horse. ⚠️ Costly and
-impassable are deliberately different answers, and a mountain is where that is
-tuned: 4 against a cavalry's range of 5 puts a peak within reach only from close
-by, while `null` for wheels shuts it outright.
+which makes a river a wall to wheels, a toll to boots, and most of a turn to a
+horse. Costly and impassable are different answers: a mountain is expensive for
+horse and `null` for wheels.
 
 `getUnitType` and `getTerrain` throw on an unknown id.
 
@@ -362,11 +321,9 @@ interface GameMap {
 'aciiiica'      // artillery on the ends, cavalry on the wings, infantry between
 ```
 
-Parsed by `parseArmyGrid` over a `char` column on `UnitType`, which is the same
-shape terrain has and exists for the same reason: a legend written once, and
-content that is read in a diff. ⚠️ `.` means *empty* in an army and *plains* in
-a map — one character, two grids, and safe only because no row is ever parsed as
-both.
+Parsed by `parseArmyGrid` over a `char` column on `UnitType`, the same shape
+terrain has. ⚠️ `.` means *empty* in an army and *plains* in a map — one
+character, two grids, and no row is ever parsed as both.
 
 The rank is **centred** on the board's width, sits on row 0 for the first player
 and is placed for the second by a **180° rotation about the board's centre** —
@@ -375,15 +332,14 @@ toward the enemy: north for the first player, south for the second. Unit ids are
 `${colour}-${n}` in **army scan order**, row then column, and are deterministic
 because `initial_state` plus the log must replay identically.
 
-⚠️ **A board too small for the army is refused, not clamped.** A negative
-centring margin deploys units at negative coordinates — a state that parses,
-stores and replays perfectly while being wrong from the first frame.
+**A board too small for the army is refused, not clamped.** ⚠️ A negative
+centring margin would deploy units at negative coordinates — a state that
+parses, stores and replays while being wrong from the first frame.
 
-⚠️ **What a map owes the army is a deployment zone it can stand in.** `wheels`
+**What a map owes the army is a deployment zone it can stand in.** `wheels`
 cannot enter river or mountain at any price, so a board that draws either under
-the rank strands a gun where it starts. `maps.test.ts` checks it, and checks
-every board against the real army rather than against placements of its own —
-so the property under test is the *pair*, which is where the fault would be.
+the rank strands a gun where it starts. `maps.test.ts` checks every board
+against the real army rather than against placements of its own.
 
 ⚠️ **Map ids are immutable.** A match records the id it was built from, so
 changing a map's terrain under its id retroactively changes what every existing
@@ -393,42 +349,24 @@ match claims to have been played on. A changed map gets a new id.
 camera** — row index increases north, so a map written out top-down is upside
 down in the source.
 
-⚠️ **The deployment rows constrain what a map may draw.** The rank lands on
-columns 1–8 of the first and last row, and `wheels` cannot enter river or
-mountain at any price, so neither may appear there — which in practice means a
-river may only leave the board through its east and west edges, or stop short of
-the north and south ones. `two-bridges` does the latter, and the river end it
-leaves behind is the visible cost of the rule.
-
-⚠️ **Every map is 12×12**, and that is a decision rather than a requirement:
-nothing in the code needs boards to agree on a size, and `createMatchState`
-centres the rank on whatever width it is handed. `maps.test.ts` asserts it, so it
-stays a constraint rather than becoming a coincidence.
-
-⚠️ **Twelve is a middle found by overshooting both ways.** Ten was too tight —
-the rank spans eight of its columns, leaving one spare a side and nowhere to go
-round a line, which matters because flanking is the mechanic this game has that
-Advance Wars does not. Twenty was Advance Wars' own competitive size and too
-empty: AW fills that space with properties to capture and bases producing units
-all game, and there is no production here. Twelve leaves **two spare columns a
-side** at 11% occupancy.
-
-⚠️ If a board plays empty from here the dial is **army size**, not another
-resize.
+**Every map is 12×12.** Nothing in the code requires it — `createMatchState`
+centres the rank on whatever width it is handed — but `maps.test.ts` asserts it,
+so it is a constraint rather than a coincidence. The rank spans eight columns,
+leaving two spare a side.
 
 | | |
 |---|---|
 | `classic` | A river across the middle with one bridge, woods on the near approach and high ground on the far one. Infantry ford anywhere; cavalry and artillery must take the crossing, which is the whole board |
 | `crossroads` | A road network closed into a figure of eight. No water and no high ground, so nothing is impassable and cost is the only thing shaping a move — which makes it the board artillery likes |
-| `two-bridges` | One river bent through a right angle with a crossing on each arm. ⚠️ Carries **both deck orientations**, which nothing else does: a board with only one leaves half of `bridgeTurns` unexercised |
+| `two-bridges` | One river bent through a right angle with a crossing on each arm. ⚠️ The only board carrying **both deck orientations**, so it is the only one that exercises all of `bridgeTurns` |
 | `lakeland` | A lake ringing an island, plus a pond. The island is where the water's *price* shows: infantry wades across in one turn, cavalry needs two and spends the night between them in open water at zero defence, and artillery never arrives at all |
 | `meadow` | Open field, a **lateral** road straight across and one rise in the middle. A road across rather than along helps you redeploy along your own line more than it helps you advance |
 | `common` | Open field with the opposite road — up the middle, the fast way *at* the enemy — and hills on both flanks: 4 stars of cover apiece and shut to wheels, so a strong position no gun can ever hold |
 
 ⚠️ **A river may only leave the board where the army does not stand.** The rank
-is centred, so it lands on the middle eight columns of the first and last row,
-and `wheels` cannot enter water or rock, so neither may be drawn there. `two-bridges` is where this shows: its
-north–south arm stops one row short of the edge rather than reaching it.
+is centred on the middle eight columns of the first and last row, and `wheels`
+cannot enter water or rock, so neither may be drawn there. `two-bridges` shows
+it: its north–south arm stops one row short of the edge.
 
 `StartScreen` picks between them and `POST /api/matches` carries the choice;
 omitting it takes `DEFAULT_MAP_ID`.
@@ -467,16 +405,12 @@ destination, so `pathTo` answers for a larger set than `reachable` lists. The
 unit's own tile stays in the map — every path chain terminates there — and
 `pathTo(unit.position)` is `[position]`.
 
-⚠️ **`settled` is what the range overlay draws; `reachable` is what decides a
-click.** They were one set doing both jobs, which punched a hole in the overlay
-wherever a friend stood — and a hole reads as *out of range* rather than as
-*occupied*, which is the opposite of true. Not everything lit is clickable, and
-that is the point: the overlay answers *how far can I go*, `handleTileClick`
-answers *may I stop here*, and a click on a friend selects it instead.
+**`settled` is what the range overlay draws; `reachable` is what decides a
+click.** Not everything lit is clickable: the overlay answers *how far can I
+go*, `handleTileClick` answers *may I stop here*, and a click on a friend
+selects it instead.
 
-⚠️ `settled` is **exactly** the set `pathTo` answers for, and a test says so —
-if they diverge, the overlay is either lighting tiles no route reaches or hiding
-ones it does.
+`settled` is **exactly** the set `pathTo` answers for, and a test says so.
 
 An enemy blocks the tile *and* the route; a friend blocks only the tile.
 
@@ -509,118 +443,60 @@ resolveCharge(state, attacker, defender, rolls)   → BattleResolvedEvent   // c
 computeDamage(state, attacker, defender, roll)    → number
 ```
 
-⚠️ **One private `outsideRange` answers which side of the band a distance falls
-off**, and both callers use it — `refuseAttack` turns it into a reason,
-`wouldCounter` asks whether there is one. It was written twice before, as
-`< min || > max` for the refusal and `>= min && <= max` for the counter, each
-the negation of the other in the same file. Two spellings of one rule is how an
-off-by-one arrives.
+One private `outsideRange` answers which side of the band a distance falls off,
+and both callers use it: `refuseAttack` turns it into a reason, `wouldCounter`
+asks whether there is one.
 
 **A counter fires iff the defender survived, is not `slow`, has the attacker
-inside its own range, and was not shot from directly
-behind.** ⚠️ **One predicate, no categories.** AW's rule reads "both
-units must be direct", which looks categorical and is not — it is equivalent to
-*the attacker is adjacent and the defender can fight at adjacency*, because a
-direct unit in AW can only attack from range 1. Days of Ruin's Anti-Tank settles
-it: indirect out to three, **no minimum range**, and it counters.
+inside its own range, and was not shot from directly behind.** One predicate,
+no unit categories.
 
-⚠️ **Counter-battery is gone, and `slow` is what took it.** Two guns within
-reach used to answer each other — a deliberate divergence from AW, on the
-grounds that history allows it. Play disagreed, and the flag that stops a gun
-shooting in a turn it repositioned stops it answering too, which is the same
-physical fact read twice.
+⚠️ **The `slow` conjunct subsumes the band's lower end**, so the band's *too
+close* case is not observable through `wouldCounter`: artillery is the only unit
+with `min > 1`, and it is slow. `refuseAttack` reads both ends, and is where
+that half is tested.
 
-⚠️ **That conjunct subsumes the band's lower end**, and it is why the band's
-*too close* case is no longer observable through `wouldCounter`: artillery is
-the only unit with `min > 1`, and it is slow. `refuseAttack` still reads both
-ends of the band, which is where a minimum range remains a rule with teeth, and
-where that half is tested.
-
-### Slow — one cause, two rules
-
-⚠️ **One flag, because it is one physical fact.** A gun has to be unlimbered,
-laid and served; it is not swung round to answer a musket, and it does not
-displace and fire in the same afternoon. Two flags would let a unit be written
-that shoots on the move but cannot answer, which nothing in the period is.
+### Slow
 
 ```ts
 slow: boolean   // artillery, and nothing else
 ```
 
-⚠️ **It pairs with a `min` of 3, and the two are one design.** The band leaves a
-gun blind for two tiles; `slow` makes fixing that cost a whole turn, because
-withdrawing is all the gun can do with one. Either alone is survivable — a deep
-dead zone a gun could back out of and still fire, or a `slow` gun that could
-still shoot what walked up to it. Together they say a battery that has been
-reached is out of the fight until someone relieves it, which is the role the
-piece is for.
-
-The two rules it carries sit in different places, because they are asked at
+A slow unit may move **or** attack in a turn, never both, and never answers a
+shot. The two rules are enforced in different places, because they are asked at
 different moments:
 
-- `wouldCounter` returns false outright — before the band, before facing. A slow
-  defender never answers, at any distance, from any side.
+- `wouldCounter` returns false outright, before the band and before facing. A
+  slow defender never answers, at any distance, from any side.
 - `refuseAttack` and `refuseCharge` refuse when the unit has **moved**, which is
-  `path.length > 1`. ⚠️ **Turning is therefore not moving**, and that is the
-  reading rather than an accident of the expression: a piece can be traversed a
-  little without being limbered up and hauled, so a gun may pivot onto a target
-  and fire in one action. It is also what keeps facing a decision for the one
-  unit that can never answer a shot.
+  `path.length > 1`. Turning in place is a single-element path and so is not
+  moving: a gun may pivot onto a target and fire in one action.
 
-⚠️ **This is why both refusals take the whole `path` rather than the
-destination.** Where a unit ends up cannot say whether it travelled: a
-single-element path is a turn in place, and a two-element one that ends where it
-started is not expressible. The path was already being validated by
-`validatePath`, so nothing new is computed — the rule just needed the argument
-that was there.
+Both refusals take the whole `path` rather than the destination, because where a
+unit ends up does not say whether it travelled.
 
-⚠️ **Moving alone stays legal.** The flag forbids the *pair*, so a gun may still
-reposition; it simply spends its turn arriving. That keeps artillery mobile on
-the map and immobile in a fight, which is the distinction worth having.
+Moving alone is legal. The flag forbids the pair, not the movement.
 
-### Facing, and the one thing it changes
+### Facing
 
-⚠️ **Advance Wars has no facing; this is ours**, and it earns its place on theme
-as much as on mechanics — the period's tactics *are* line, flank and rear, and it
-gives cavalry's speed a purpose beyond arriving sooner.
+**Facing does exactly two things**: a shot from directly behind goes unanswered,
+and it adjusts a charge's threshold. `computeDamage` cannot see it at all, so
+there is no shooting damage modifier.
 
-⚠️ **It does exactly two things**, and no more: a shot from directly behind goes
-unanswered, and it adjusts a charge's threshold. `computeDamage` cannot see it at
-all. ⚠️ **No small shooting modifier as a compromise**, which was considered and
-refused: either it is large enough to change decisions — and then every turn owes
-it a thought — or it is too small to change one, and it is pure tax. A modifier
-that never changes a choice should not exist.
-
-⚠️ **And it prices facing proportionally.** Eight units a side, each acting every
-turn, is sixteen moves a round that would otherwise each owe a facing decision
-whether or not it changed anything. Bound to the two rules above, it is thought
-about when the thing it governs is being contemplated.
-
-**One quiet payoff:** the single-element path — legal at cost 0, and justified
-until then only as *wait in place* — becomes **turn in place**, a real defensive
-action.
+A single-element path is a **turn in place** — legal at cost 0, and a real
+defensive action.
 
 ### A shot from behind is never answered
 
-The only place facing changes shooting — `computeDamage` cannot see it, so
-position affects *who may answer*, never what a shot does.
+The only place facing changes shooting. Position affects *who may answer*, never
+what a shot does.
 
-⚠️ **`wouldCounter`'s signature did not change to say so.** A `Unit` already
-carries its facing, so the rule went inside the predicate and both callers
-inherited it untouched: `resolveBattle` for the exchange, and the client's
-`attackForecast` for the panel.
+`wouldCounter` takes no facing argument: a `Unit` carries its own, so both
+callers — `resolveBattle` and the client's `attackForecast` — get the rule
+without passing anything.
 
-⚠️ **It negates the counter rather than shrinking it, and the panel is why.**
-The counter's magnitude is deliberately absent from the preview (below), so a
-counter that was merely *reduced* would be invisible at the moment of choosing —
-the panel would say "they return fire" either way and the benefit would only be
-learnable over many games. An absence is already in its vocabulary.
-
-⚠️ **It only ever subtracts, and only where a counter was possible.** A gun
-firing from outside the defender's band is unanswered whichever way anyone
-looks. And in a head-on meeting it changes nothing at all: deployment points
-each army at the other, so armies arrive front-to-front and the rear is
-something manoeuvre earns.
+It negates the counter rather than shrinking it, and only where a counter was
+possible at all.
 
 `coordinate.ts` classifies:
 
@@ -630,68 +506,43 @@ attackSide(defenderFacing, defenderAt, attackerAt) → 'front' | 'flank' | 'rear
 
 ⚠️ **`attackerAt` is measured *from* the defender.** The direction from a unit
 to its attacker equalling its facing means it is *looking at* the shot, which is
-`front`. Read the other way round — as the direction the shot travels — every
-case inverts and no individual result looks wrong. Both ends are asserted rather
-than one, because a single example is satisfied by the inverted reading.
-Diagonals inherit `facingToward`'s tie-break, so a gun off the axis is
-classified by the same rule that decides which way the attacker turns.
+`front`. Read as the direction the shot travels, every case inverts and no
+individual result looks wrong. Diagonals inherit `facingToward`'s tie-break.
 
-⚠️ **`flank` is returned and read by nothing.** Only `rear` is wired; charge
-wants all three. The one place `shared/` knowingly describes more than the game
-uses. A flanking *damage* bonus does not exist — see the roadmap for why it was
-refused rather than forgotten.
+⚠️ **`flank` is returned and read by nothing.** Only `rear` is wired for
+shooting; charge reads all three. There is no flanking damage bonus.
 
 ⚠️ **The test fixture's `facing` is a rule input.** `makeState` defaults units
-to `south`, which decides whether a counter happens at all, so anything
-asserting one states the defender's facing rather than inheriting it.
+to `south`, which decides whether a counter happens, so anything asserting one
+states the defender's facing rather than inheriting it.
 
-⚠️ **`hasActed` is not consulted.** That flag stops a unit *acting* twice in its
-own turn; answering an attack is not acting, so a spent unit still counters.
-⚠️ **And a charge never asks** — the counter rule is about shooting, and routing
-a charge through it would make charging artillery free.
+**`hasActed` is not consulted.** Answering an attack is not acting, so a spent
+unit still counters. **A charge never asks the counter rule at all.**
 
-⚠️ **`tilesInRange` is in `shared` so the band is stated once.** A client
-looping with its own `>= min && <= max` to paint an overlay would be a third
-spelling of a rule that already had two, and the two were only just merged into
-`outsideRange`.
+`tilesInRange` lives in `shared` so the band is stated once, and the client
+paints its overlay from it.
 
 **The client previews the same formula.** `attackForecast` runs `computeDamage`
-at roll 0 and at `LUCK_MAX`, which is an **exact range** rather than an estimate
-— luck is added last and flat, so those are the true floor and ceiling.
-⚠️ The counter's *magnitude* is deliberately absent: it is computed on the
-defender's post-damage health, so it depends on how the attack roll lands, and
-with health banded the spread comes from band crossings rather than a clean
-range. `answered` is read at the **worst** roll, where the defender is likeliest
-to survive — so it means *they will fire back unless you kill them*.
+at roll 0 and at `LUCK_MAX`, which is an **exact range**: luck is added last and
+flat, so those are the true floor and ceiling. The counter's *magnitude* is
+absent — it is computed on the defender's post-damage health, so it depends on
+how the attack roll lands. `answered` is read at the **worst** roll, so it means
+*they will fire back unless you kill them*.
 
-⚠️ **Preview the formula, never the dice.** The client is told the *shape* of the
-outcome and never which of the ten it will be, which is what makes running the
-server's own function on the client safe rather than a second implementation of
-it. It is also why a range is shown rather than a point: a single number would be
-one the server was always going to miss.
+The client is told the shape of the outcome and never the roll.
 
-`Rolls` is `FireRolls | ChargeRolls` — named members rather than a tuple, since
-`rolls[0]` is anonymous and `rolls[2]` is `undefined`, which is `NaN` damage.
-A shot draws `{ attack, counter }`; a charge draws `{ charge }` alone. ⚠️ **Both
-of a shot's are drawn whether or not both are used** — deciding first and rolling
-second would make the *number of draws* depend on the rules, which is the
-coupling that keeping randomness out of `shared/` exists to avoid. ⚠️ Picking the
-*member* does not breach that, because the attack kind comes from the **command**
-and reading a command is not running a rule. See *Charge* for the rest.
+`Rolls` is `FireRolls | ChargeRolls` — named members rather than a tuple. A shot
+draws `{ attack, counter }`; a charge draws `{ charge }` alone. ⚠️ **Both of a
+shot's are drawn whether or not both are used**, so the number of draws never
+depends on the rules.
 
 ⚠️ **`from` is where the attacker *ends up*, not where it stands.** A command is
-move-then-attack, so a range measured against `attacker.position` measures a
-tile the shot does not happen from. `validateMove` passes the last tile of the
-path, having already proven the route walkable.
+move-then-attack. `validateMove` passes the last tile of the path.
 
-⚠️ **`resolveBattle` is given the attacker as it is *after* moving.** Nothing in
-a first strike reads its position — only its health, and the defender's terrain
-— but a counter-attack reads the *attacker's* terrain, which is the
-destination's. Building the moved unit at the call site means counters inherit
-the right tile rather than retrofitting one.
+⚠️ **`resolveBattle` is given the attacker as it is *after* moving**, because a
+counter-attack reads the *attacker's* terrain, which is the destination's.
 
-All three are pure, and the roll is an **input**, which is what lets the tuning
-harness run the whole grid with no server and no browser.
+All three are pure and take the roll as an **input**.
 
 ```
 band(hp) = ceil(hp / 10)                    // 1..10, never 0 while alive
@@ -700,31 +551,13 @@ damage   = floor(floor(base × band(attackerHP) / 10)
            + luck                           // last, flat, unscaled
 ```
 
-**Health is stored and shown 0–100, where AW stores 100 and displays 1–10.**
-⚠️ That display was a GBA screen constraint, and inheriting it would mean
-permanently explaining why a "9 HP" unit died to 15 damage. Three things people
-know AW by follow from *its* choice and not from ours: exact health cannot be
-read off the board, chip damage accumulates invisibly until a bar drops, and
-counters reliably under-deliver against the preview because the defender answers
-on real internal HP while the preview used the rounded display.
+**Health is stored and shown 0–100.**
 
-⚠️ **Diverging on the display does not mean diverging on the arithmetic.** Both
-health terms in the formula read the ten-point band, never the raw value — which
-is what AW does, and is load-bearing rather than a rounding preference. Health is
-stored and displayed 0–100 here, but feeding raw health to the formula makes a
-unit on one point attack at 1% instead of 10%, and the floors swallow it:
-measured, cavalry at 4 health or less dealt **zero** to infantry in forest even
-on a maximum roll, so two wounded units could be permanently unable to kill each
-other. AW has no minimum-damage rule and needs none — the banding is what it has
-instead. The cost is accepted: a unit at 91 health and one at 100 fight
-identically while the bar shows two different numbers.
-
-⚠️ **Do not port AW's published line literally.** It divides HP by 10 because
-its HP is 1–10; taken at face value here, 4 stars against a full-health defender
-computes `100 − 4 × 10 × 10 = −300`, and mountains would *heal* whatever stood on
-them. `baseDamage` itself needs no rescaling, because it is a percentage of a
-full target in both schemes — which is what lets AW's matchup numbers transfer
-unchanged. Only the HP terms move.
+⚠️ **Both health terms in the formula read the ten-point band, never the raw
+value.** Feeding raw health in makes a unit on one point attack at 1% instead of
+10%, and the floors swallow it entirely — there is no minimum-damage rule, and
+the banding is what stands in for one. The cost: a unit at 91 health and one at
+100 fight identically.
 
 ⚠️ **Luck is added last and flat.** It is therefore worth proportionally *more*
 the weaker the attacker is — nine points on a crippled shot of 18 is half again
@@ -735,50 +568,30 @@ Three behaviours fall out rather than being rules: a wounded attacker hits
 softer, a wounded defender loses its cover (the terrain term scales by *defender*
 band, so damaged units cannot turtle on a peak), and striking first compounds.
 
-⚠️ **The counter is `computeDamage` called a second time in the other
-direction**, on the defender's *post-damage* health — not a branch inside the
-first strike. That is most of AW's exchange calculus for free: striking first
-compounds, because a wounded defender both hits softer and keeps less of its
-terrain cover. ⚠️ **The attacker's blow lands even when the reply kills it** —
-it struck first, which is the mirror of a dead defender never answering.
+The counter is `computeDamage` called a second time in the other direction, on
+the defender's *post-damage* health. **The attacker's blow lands even when the
+reply kills it.**
 
 **One battle is one event.** `battleResolved` carries both resulting healths,
-the `kind`, and `answered`. ⚠️ Split events when the parts are independently
-meaningful; keep them together when they are one fact — a move stands alone, but
-a counter-attack exists *only because* the attack happened. Splitting it would
-leave the client inferring which damage belongs to which exchange from position
-in a batch, which a multi-action catch-up breaks.
+the `kind`, and `answered`.
 
 ⚠️ **There is no `unitDied` and no `died` flag.** *A unit at zero health leaves
-the board* is stated once, in `applyEvents`, so a second event carrying the same
-fact cannot disagree with the number beside it. That reducer's filter is
-deliberately broader than "whoever this event killed" — nothing else can be
-sitting at zero — which is what keeps applying the event twice a no-op.
+the board* is stated once, in `applyEvents`, and that reducer's filter is
+broader than "whoever this event killed" — which is what keeps applying the
+event twice a no-op.
 
-⚠️ **`answered` is a decision, not a duplicate.** It appears nowhere else, and
-reconstructing it means re-running the counter predicate against a rebuilt
-state. The log outlives the rules, a deriving client works from a reconstruction
-that is only right if its fold is, and `resolutions.events` is a consumer the
-moment it is written.
+`answered` is carried rather than derived: reconstructing it means re-running
+the counter predicate against a rebuilt state.
 
 ⚠️ **The event union is exhaustively checked.** `applyEvents`' default branch
 assigns to `never` before throwing, so a new member is a **compile error** until
-it is handled. Without it, adding an event type typechecks cleanly and falls
-through to a runtime throw — the one place a missing case would never be
-noticed. The throw stays, because events arrive as JSON where types guarantee
-nothing.
+it is handled. The throw stays, because events arrive as JSON.
 
 **Randomness lives in `server/match.ts`**, in `rollLuck` — the only
-`Math.random()` in the codebase, because `shared/` is not allowed any.
-⚠️ **No seed, and that is invariant 9 paying off**: events carry resulting
-values rather than inputs, so a replay reads what happened and never re-rolls.
-⚠️ **And no `rolls` column.** Luck is added last and flat, so a roll is
-recoverable from the log as `actualDamage − computeDamage(preState, …, 0)` —
-storing it would store something the log already contains.
-
-Verified against an independent reimplementation of the AW specification across
-113,400 combinations of terrain, matchup, both healths and roll. Sources are in
-the module's doc comment, with a note on which wins where they disagree.
+`Math.random()` in the codebase. No seed is stored: events carry resulting
+values rather than inputs. No `rolls` column either — luck is added last and
+flat, so a roll is recoverable as
+`actualDamage − computeDamage(preState, …, 0)`.
 
 ### Charge
 
@@ -793,42 +606,28 @@ repel   = CHARGE_REPEL[defender] + floor((roll − chance) / REPEL_DIVISOR)
 ```
 
 ⚠️ **Capability is a missing row, not a flag.** `CHARGE_THRESHOLD` is a
-`Partial`, and artillery has none — which says *artillery cannot charge* once,
-where a `canCharge` boolean on the unit catalog would say it a second time and
-could drift. Any unit is still a valid **target**.
+`Partial` and artillery has none, which is the only place *artillery cannot
+charge* is stated. Any unit is still a valid **target**.
 
-⚠️ **Terrain adds to the target's health rather than moving the threshold.** The
-expression already asks *how far is health above the threshold*, so cover
-finishes that sentence instead of being a second mechanism beside it. It also
-needs no constant. Forest costs an attacker 2–7 points of chance and a mountain
-4–13; plains needs no special case, being a ~4% relative change that rounds away.
+**Terrain adds to the target's health rather than moving the threshold**, so
+cover finishes the same expression and needs no constant of its own.
 
-⚠️ **The 1% floor is stated rather than emergent** — integer rounding would
-otherwise produce a silent 0%, and a long shot is not a wall. It doubles as what
-makes `chance` safe to divide by, and at `chance = 100` there are no failing
-rolls at all, since `roll < chance` with `roll ∈ [0, 99]`.
+**The 1% floor is stated rather than emergent**, so integer rounding cannot
+produce a silent 0%. It also makes `chance` safe to divide by. At `chance = 100`
+there are no failing rolls, since `roll ∈ [0, 99]`.
 
-⚠️ **Two tables, and the split is the point: the threshold says how *likely* a
-charge is, the repel says what *failing* costs.** Neither does the other's job,
-which is why `CHARGE_REPEL` is keyed by the defender alone — what a unit does when
-cavalry hits its line is about its own equipment, not about who is arriving, and
-the attacker-versus-defender dimension is already spent on the threshold.
+**Two tables: the threshold says how *likely* a charge is, the repel says what
+*failing* costs.** `CHARGE_REPEL` is keyed by the defender alone.
 
-⚠️ **Repel is flat plus a small term, never a multiplier** — the same shape
-`computeDamage` uses for luck. `REPEL_DIVISOR` is 10 so the term tops out at +9
-without a cap, the overshoot being at most 99. One term gives both behaviours: a
-roll just over `chance` is a near miss and costs the base, and a wild charge
-leaves a wider window to fail into so its expected overshoot is larger.
+**Repel is flat plus a small term, never a multiplier** — the same shape
+`computeDamage` uses for luck, so a near miss costs the base and a wild charge
+costs more.
 
-⚠️ **A charge never consults the counter rule**, so `answered` means *repelled*.
-That rule asks whether the attacker is inside the defender's *range*, which is a
-question about shooting — applying it would make charging artillery free: a
-battery answers nothing at all, so the one unit cavalry exists to punish would
-be the only one unable to punish back. The repel **is**
-the defence, and every defender has one.
+**A charge never consults the counter rule**, so `answered` means *repelled*.
+The repel is the defence, and every defender has one.
 
-⚠️ **Success is damage to zero, not "it dies"**, which is what lets a charge be
-an ordinary `battleResolved` with no special case in the reducer.
+**Success is damage to zero, not "it dies"**, so a charge is an ordinary
+`battleResolved` with no special case in the reducer.
 
 ⚠️ **The displacement is a second `unitMoved`, appended after the battle.** The
 defender leaves the board when its health hits zero, so displacing first would
@@ -838,13 +637,9 @@ for one unit appear in one batch. `playEvents` skips a move whose mesh already
 stands at the destination, which is true of the previewed approach and false of
 the displacement; that asymmetry is what makes it work.
 
-⚠️ **`Rolls` is a union whose member the *command* picks, not the rules.** The
-server knows the attack kind before it rolls because the client said so, and
-reading a command is not running a rule — which is why this does not breach the
-rule that a counter is drawn whether or not it is used. A charge draws **once**,
-on 0..99, since the same number decides success and sizes the repel. Both
-resolvers throw on a mismatched shape: the kind and the rolls are checked
-together, so a mismatch is a broken pipeline rather than a bad request.
+⚠️ **`Rolls` is a union whose member the *command* picks**, not the rules. A
+charge draws **once**, on 0..99, since the same number decides success and sizes
+the repel. Both resolvers throw on a mismatched shape.
 
 ⚠️ **`terrainAdmits` is split out of `entryCost` for this.** A successful charge
 displaces onto the target's tile, so the attacker must be able to stand there —
@@ -852,19 +647,12 @@ and `entryCost` refuses that tile for being *enemy-held*, the one objection a
 charge is not troubled by. Sharing the terrain half is what stops movement and
 charge disagreeing about what ground a unit may be on.
 
-⚠️ **The directional factor multiplies the threshold; it does not add to it.**
-An additive constant stops meaning anything the moment the table underneath it
-moves — halve every threshold and a flat `+20` goes from a nudge to an override.
-A multiplier is scale-free, so `CHARGE_THRESHOLD` can be retuned without dragging
-`FLANK_MULTIPLIER` and `REAR_MULTIPLIER` behind it, and it reads as what it is: a
-rear charge is *twice as likely to break them*, not twenty more points of
-something.
+**The directional factor multiplies the threshold**, so `CHARGE_THRESHOLD` can
+be retuned without dragging `FLANK_MULTIPLIER` and `REAR_MULTIPLIER` behind it.
 
 ⚠️ **The side is read from where the attacker will be standing.** Both callers
 hand over the moved unit — `resolveMove` builds it, and the client's forecast
-builds the same one — so a charge is priced by where the ride *ends*. Read
-against the origin, a unit could circle to the rear and be charged as though it
-had not.
+builds the same one — so a charge is priced by where the ride *ends*.
 
 ⚠️ **This is `attackSide`'s second reader and the first to consult `flank`**; the
 rear-fire rule uses only its `rear` case.
@@ -902,39 +690,26 @@ unit is in forest*, so it needs no neighbours and no road continuation.
 smaller argument — props included, so a wood arrives with its own trees. The cell
 is the board's own, taken from `composeTerrain`'s result.
 
-⚠️ **The figure is framed from its own bounding box, not from constants.** An
-earlier pass carried a fixed extent and a guessed centre; both were wrong in a
-browser — first a thumbnail adrift in its half of the band, then a figure sunk to
-the floor. Measuring what was built is the discipline `topOf` already uses, and
-it survives a new model or a changed `PIECE_SCALE`. ⚠️ The readout's strip is
-reserved in the **camera**, not left to layout: the figures fill their views, so
-a bar inside the band crosses their feet and a bar below it lands on the board.
+**The figure is framed from its own bounding box**, via
+`getHierarchyBoundingVectors`, so it survives a new model or a changed
+`PIECE_SCALE`. The readout's strip is reserved in the **camera** rather than by
+layout.
 
-⚠️ **A backdrop plane, because the board otherwise shows through** and the whole
-thing reads as two figures floating over the map. It is geometry rather than a
-DOM layer for the obvious reason: the models are drawn by Babylon, so anything
-behind them has to be in the scene.
+**A backdrop plane**, in the scene rather than in DOM, because the models are
+drawn by Babylon and anything behind them has to be too.
 
-⚠️ **Built on show and torn down on hide.** A battle is a second and a half and
-the models come from already-loaded containers, so instantiating two is a call
-rather than a load — where keeping them would mean caching by type and colour.
+**Built on show and torn down on hide.** The models come from already-loaded
+containers, so instantiating two is a call rather than a load.
 
-**The readout is DOM.** Health bars and figures want text, layout and
-transitions. ⚠️ **A full bar at the true health with the number beside it**, not
-the board's ten bands — the ring is banded because it is *glanceable*, this is
-*focused*, and the band lines are still drawn so the structure the formula reads
-stays visible. ⚠️ It carries a battle **id** so each side remounts rather than
-correcting itself in an effect, which would be a synchronous `setState` and a
-cascading render.
+**The readout is DOM.** A full bar at the true health with the number beside it,
+not the board's ten bands, with the band lines drawn over it. ⚠️ It carries a
+battle **id** so each side remounts rather than correcting itself in an effect.
 
-⚠️ **It ends on a click, not a timer**, so an exchange is read at the reader's
-pace rather than snatched away mid-sentence. ⚠️ The click has to come from the
-**overlay**: it covers the canvas and swallows pointer events — which it must,
-since a click during a cutaway is otherwise read against authoritative state the
-board is not yet showing — so Babylon never sees one while a cutaway is open. The
-whole overlay is the target, because the whole overlay is what is in the way.
-⚠️ `dismissCutaway` is a no-op when nothing is waiting, which makes a late click
-from a cutaway that has already closed harmless rather than a caller's problem.
+**It ends on a click, not a timer.** ⚠️ The click comes from the **overlay**,
+which covers the canvas and swallows pointer events — a click during a cutaway
+would otherwise be read against state the board is not yet showing — so Babylon
+never sees one while a cutaway is open. `dismissCutaway` is a no-op when nothing
+is waiting.
 
 ## Victory
 
@@ -947,65 +722,41 @@ isOver(state)       → boolean            // whether the marker is set
 
 Elimination is the only condition: **a player with no units has lost**.
 
-⚠️ **`soleSurvivor` is the roster; `isOver` is the marker.** A board can satisfy
-the condition before any resolution has recorded it — that gap is exactly the
-moment `resolveAction` asks. One produces the fact; the other reads it.
+⚠️ **`soleSurvivor` reads the roster; `isOver` reads the marker.** A board can
+satisfy the condition before any resolution has recorded it, and that gap is
+where `resolveAction` asks.
 
-⚠️ **Sole survivor, never "the one who isn't the loser".** With two players those
-are the same answer, and `players.find(p => p.id !== loser)` is the shorter way
-to write it — and two-player-only, needing a rewrite the day a third arrives.
-This predicate is already the N-player one, which is what lets a future
-`playerEliminated` event be a *companion* rather than a rework. An empty board
-answers `null` rather than guessing, and is unreachable anyway: at most one
-player can be eliminated per resolution, because `wouldCounter` is false at zero
-health, so a defender that dies never ripostes, so a single battle kills exactly
+`soleSurvivor` is the N-player predicate, not "the one who isn't the loser". An
+empty board answers `null`. At most one player is eliminated per resolution,
+because `wouldCounter` is false at zero health, so a single battle kills exactly
 one unit.
 
-⚠️ **`resolveAction` folds to ask.** Units leave the board in `applyEvents` —
-`resolveBattle` only says what each side *has* — so the question cannot be
-answered from `state`, which predates the death, nor from the events, which would
-mean re-deriving what the reducer already does. It is the only fold in
-resolution. ⚠️ `endTurn` does not ask, because ending a turn removes no units; a
-condition that could trigger on an empty action, such as a turn limit, would move
-the check out to cover both branches.
+⚠️ **`resolveAction` folds to ask.** Units leave the board in `applyEvents`, so
+the question cannot be answered from `state`, which predates the death. It is
+the only fold in resolution. `endTurn` does not ask, because ending a turn
+removes no units.
 
-⚠️ **`gameEnded` is emitted alone, never with `turnEnded`.** An early return
-guarantees it. There is nothing to hand to a player who has already lost, and a
-`turnEnded` beside it would refresh the loser's `hasActed` flags for a turn that
-will never come.
-
-⚠️ **`isOver` exists so the question is spelled once.** The refusal in
-`validateCommand` and the client's "can I still play" both need it, and two
-inlined `winner !== null` checks is two spellings of one rule.
+⚠️ **`gameEnded` is emitted alone, never with `turnEnded`** — an early return
+guarantees it, so the loser's `hasActed` flags are not refreshed for a turn that
+never comes.
 
 ### What each surface does with it
 
-⚠️ **One guard, in `submitCommand`, covering all three callers.** Every command
-the client sends goes through it, so End Turn, an attack and a move inherit the
-same answer to "may I still play". The alternative had each caller answer for
-itself — a click checking `isOver`, End Turn relying on its button carrying
-`disabled`, an open attack panel relying on being unreachable — and two of those
-are presentation, not rules. A keyboard shortcut, or a panel still open when an
-opponent's winning move lands, walks straight past a `disabled` attribute.
+⚠️ **One guard, in `submitCommand`, covering all three callers** — End Turn, an
+attack and a move inherit the same answer to "may I still play", rather than
+each relying on its own button being `disabled`.
 
-⚠️ **`clickTile` keeps a guard of its own, and it is not redundant.** Selecting a
-unit, drawing a route and walking a preview submit nothing, so `submitCommand`
-never sees them — without this the board would stay fully interactive and merely
-refuse at the end. It reads the **live** state rather than the rendered copy, so
-it takes effect in the render where the winning batch arrives rather than the one
-after.
+⚠️ **`clickTile` keeps a guard of its own.** Selecting a unit, drawing a route
+and walking a preview submit nothing, so `submitCommand` never sees them. It
+reads the **live** state rather than the rendered copy.
 
-Neither is the rule. `validateCommand` is still what refuses; these stop the
-pointless round trip and the rejection banner it would raise.
+Neither is the rule — `validateCommand` is what refuses. These stop the round
+trip and the rejection banner.
 
 ⚠️ **The status bar asks `isOver`, not whether the winner resolved to a player.**
-Two questions: whether the game is finished, and what to *call* the winner. Key
-the rule off the lookup and a `winner` naming somebody outside `players` leaves a
-live turn label and an enabled button on a finished game — unreachable, since
-`soleSurvivor` picks from `players`, and exactly the sort of thing that stops
-being unreachable quietly. Asking `isOver` first also keeps `getCurrentPlayer`
-out of a terminal render, which matters because it *throws* when `currentTurn`
-names nobody and runs every frame. End Turn is disabled off the same answer.
+Asking `isOver` first also keeps `getCurrentPlayer` out of a terminal render,
+which matters because it *throws* when `currentTurn` names nobody and runs every
+frame. End Turn is disabled off the same answer.
 
 ⚠️ **In the lobby the winner *displaces* the turn rather than joining it.** A
 finished row showing both would read *player-blue · player-red won* — true, since
@@ -1082,13 +833,9 @@ parses no boards. `map_id` is read only to label a match in the list — replay
 never needs it, because `initial_state` already holds the instantiated board.
 `action` is written and never read.
 
-⚠️ **`winner` is denormalised for the same reason as `current_turn`** — the lobby
-must say whether a match is finished without parsing a board per row — and is
-**nullable**, where `map_id` took a default. That is the fact rather than a gap:
-null means *still being played*, and there is no sensible finished-ness to
-backfill an existing row with. It is written on **every** submit rather than only
-when it changes, because it is a copy of a field on the state being written
-beside it, and deriving when to skip it is how the two come to disagree.
+`winner` is denormalised for the same reason as `current_turn`, and is
+**nullable** where `map_id` took a default: null means *still being played*. It
+is written on **every** submit rather than only when it changes.
 
 **Paths:** a relative `file:` URL in `DATABASE_URL` resolves against the repo
 root, not the cwd. `DEFAULT_DB_URL` lives in `src/const.ts`, and
@@ -1113,8 +860,8 @@ own `batch()` cannot pass a transaction mode.
 **`net/api.ts`** — the `/api` base, JSON, and the one place a response becomes
 `notFound`, `unreachable`, or a rejection. `HttpError` carries a `FailureKind`;
 `RejectedError` is a separate type for a 422. Also holds `api`, the endpoints
-that are **not** scoped to a single match — which is the whole reason they are
-not on `GameServer`.
+that are **not** scoped to a single match, which is why they are not on
+`GameServer`.
 
 **`net/gameServer.ts`** — `connectGameServer(matchId, { onConnectionChange? })`
 returns `{ ok: true, server } | { ok: false, kind, reason }`.
@@ -1126,10 +873,9 @@ interval and a `visibilitychange` listener resets and polls immediately on
 return. Updates are deduplicated by `seq` before reaching any listener.
 `dispose()` stops the loop, clears listeners, and removes the listener.
 
-**`routes/`** — `/` is `StartScreen` (list, and create on a chosen map — the
-picker simply does not appear if `GET /api/maps` fails, which falls back to the
-server's default and is what happened before there was one); `/maps` is
-`MapViewer`; `/:matchId` is
+**`routes/`** — `/` is `StartScreen` (list, and create on a chosen map; the
+picker does not appear if `GET /api/maps` fails, and creating then takes the
+server's default); `/maps` is `MapViewer`; `/:matchId` is
 `MatchRoute`, which is keyed on the id so a param change remounts the
 connection. It owns the async connect, renders `GameCanvas` only once a server
 is ready, and disposes on unmount including a connection that resolves after
@@ -1153,10 +899,9 @@ point rather than the price — a deployment square drawn onto a river is a
 property of the *pair*, which is the same reason `maps.test.ts` asserts against
 `createMatchState` rather than against rows.
 
-⚠️ **Nothing is wired for input**: `onTileClick` is never registered, so the
-canvas orbits and zooms and answers nothing else. That is the whole difference
-from `GameCanvas`, and it is an omission rather than a mode — there is no
-selection state on this page to be in.
+**Nothing is wired for input**: `onTileClick` is never registered, so the canvas
+orbits and zooms and answers nothing else. That is the whole difference from
+`GameCanvas`.
 
 ⚠️ **One effect does the fetch *and* the build**, so a single `disposed` flag
 covers both halves of one attempt. Split in two — state into `useState`, a
@@ -1169,11 +914,9 @@ Babylon takes the canvas's WebGL context at construction and gives it back on
 has just been handed back, which is a black canvas on some drivers and fine on
 others.
 
-⚠️ **The viewport is roughly square, and that is arithmetic.** `holdTheBoard`
-sizes the frustum from the board's ground-plane *half-diagonal* — the worst case
-over every angle the camera may be turned to — so a wide box spends the surplus
-on background. Boards are square: measured, the board fills 44% of an 880×520
-box and 68% of a 620×580 one.
+**The viewport is roughly square.** `holdTheBoard` sizes the frustum from the
+board's ground-plane *half-diagonal* — the worst case over every camera angle —
+so a wide box spends the surplus on background, and boards are square.
 
 **`game/useGameSession.ts`** — the session: render replica, rejection state,
 in-flight guard, selection, and submits. Takes `onEvents` and `onSnap` callbacks
@@ -1185,34 +928,26 @@ the next click see the same value. `pendingRef` stays a ref — it is a mutex
 against a second submit landing before the first resolves, and has to be
 synchronously current rather than rendered.
 
-⚠️ `clickTile`, `chooseAction` and `endTurn` are the verbs. **The panel's two
-buttons are the first thing in the game that is not a tile**, and it had to be:
-a preview with numbers in it cannot be a tile, and neither can Hold — the only
-tile that would face an adjacent enemy is the one they are standing on.
+`clickTile`, `chooseAction` and `endTurn` are the verbs. The panel's buttons are
+the only thing in the game that is not a tile.
 
-Otherwise A plan is pinned, confirmed
-*and* abandoned by a click on the board — whatever is lit does something and
-everything else is the way out, in both modes. A refused
+Otherwise a plan is pinned, confirmed *and* abandoned by a click on the board —
+whatever is lit does something and everything else is the way out. A refused
 submit rolls back to the unit **selected**, not to the destination the server
-just refused — handing that back would invite confirming the same move again.
+just refused.
 
 ⚠️ **Confirming a pinned route** — a second click on the tile it already ends at
-— starts a **preview walk**: the unit moves on screen while
-nothing has been sent. `onPreview(next | null)` drives it, and the two cases it
-is *not* called on are the design — a confirm and an incoming update both end
-with `onSnap` writing an authoritative position over the mesh, so the correction
-the renderer already performs is the instruction, and there is no commit verb. It
-*is* called on a rejection, which is the one ending that produces no update at
-all.
+— starts a **preview walk**: the unit moves on screen while nothing has been
+sent. `onPreview(next | null)` drives it. There is no commit verb: a confirm and
+an incoming update both end with `onSnap` writing an authoritative position over
+the mesh. It *is* called on a rejection, the one ending that produces no update.
 
 ⚠️ `walking` is true until the preview settles, and **nothing is answerable
-during it** — `playEvents` skips a move only once its mesh
-stands at the destination, so committing early would replay the committed move
-from halfway along the path, and a second confirm would start the same walk
-twice. That is why `clickTile` closes over `walking`
-rather than reading it from a render that may predate the walk, and why the
-guard sits at the top rather than inside a phase: a poll can unpin a plan
-mid-walk, and the mesh is still moving either way.
+during it** — `playEvents` skips a move only once its mesh stands at the
+destination, so committing early would replay the committed move from halfway
+along the path. `clickTile` closes over `walking` rather than reading it from a
+render that may predate the walk, and the guard sits at the top rather than
+inside a phase, because a poll can unpin a plan mid-walk.
 
 Every update runs through a serial promise queue:
 
@@ -1227,38 +962,18 @@ on update (events, state):
 
 ⚠️ **An uncommitted plan does not survive that commit** — either kind, pinned or
 arrived, is dropped back to the unit selected, because the board it was drawn
-against has moved and the plan may not even be legal any more. The confirm step
-widens the window this can land in: a route now waits for a second click, so an
-opponent's move is that much likelier to arrive while one is pinned. Correct,
-and the first thing to suspect when a pin seems to vanish on its own.
+against has moved. This is the first thing to suspect when a pin seems to vanish
+on its own.
 
 `worthAnimating` is false for an empty batch, while the tab is hidden, and for
 a batch of more than **four events**.
 
-⚠️ **A backlog gate, not a duration one, which is why a plain count suffices.**
-In normal play it never fires: one action produces at most four events —
-approach, battle, displacement, turn-end — so a turn always animates. It speaks
-only when several resolutions arrive together, which means the client was away,
-and replaying somebody else's turns at tween speed is worse than useless.
+⚠️ **A backlog gate, not a duration one**, which is why a plain count suffices.
+One action produces at most four events — approach, battle, displacement,
+turn-end — so a turn always animates. It fires only when several resolutions
+arrive together, which means the client was away.
 
-⚠️ **Four is derived**: one action's maximum, and it preserves the ceiling the
-previous model had — two firing actions is two cutaways and two moves, about the
-four seconds its 28-tile budget came to.
-
-⚠️ **It replaced a per-event cost model summed in tiles**, whose premise was that
-*tiles are what cost time*. True while every animation was a walk; false once a
-cutaway costs the same second and a half whatever any path length is. ⚠️ And it
-measured the wrong question — twelve resolutions arriving at once means twelve
-turns passed while this client was away, and the tile gate **animated** them,
-where three resolutions means barely behind and it **snapped**. ⚠️ Its variance
-was largely unreachable anyway: a legal path is bounded by `movementRange`, at
-most four.
-
-⚠️ **The cost is that long and short moves are now alike**; the gain is that a
-new event type needs no entry anywhere, which is how the cutaway costs this gate
-nothing. Erring toward snapping is the safe direction: skipping when you could
-have animated costs a board that corrects itself, animating when you should have
-skipped costs a player stuck watching.
+A new event type needs no entry anywhere. Long and short moves are alike.
 
 A failing animation or snap is caught and logged; the commit always happens.
 
@@ -1294,22 +1009,17 @@ sixteen against up to sixty and needs no grid bounds. ⚠️ **Unavailable actio
 are omitted, not greyed**, following AW — the cost is that *nothing in range* and
 *I misread the menu* look alike, and the menu changes height between units.
 
-⚠️ **`destinationOf` was three functions.** `pinnedDestination` and
-`facingChoiceOrigin` were the same one-line body under other names, separated
-only by what the caller meant to do next — the tile a second click must land on
-to commit, and the tile the facing choices are drawn around. Both are just *where
-the unit is standing*; the intent is a comment's job, and three names for one
-line is three things to keep in step.
+`destinationOf` answers *where the unit is standing* — which is also the tile a
+second click must land on to commit, and the tile the facing choices are drawn
+around.
 
 ⚠️ `pinned` above is **any** phase carrying a path; `arrived` is only those that
 have walked. `unpinDestination` is the sole helper serving both, because
 backing out means the same thing in both modes and nothing else does.
 
-`handleTileClick` **never produces a command** — it picks a destination, and
-nothing more. ⚠️ A click *can* commit, but the phase dispatch that decides so
-lives in `clickTile` above it, which is why this stayed selection-only: every
-command's accompanying selection is a constant the caller already knows, so a
-paired return would carry no information.
+`handleTileClick` **never produces a command** — it picks a destination and
+nothing more. The phase dispatch that decides whether a click commits lives in
+`clickTile` above it.
 
 ```ts
 | { phase: 'idle' }
@@ -1327,81 +1037,53 @@ MenuStep
 `movement` is the whole `exploreMovement` result, snapshotted at selection time.
 `reachable` decides whether a click pins; `pathTo` builds the path.
 
-⚠️ **Each mode carries the tiles it lights**, built when the mode is entered
-rather than snapshotted on arrival — which used to compute two sets for a player
-who would look at one, and from a state older than the moment of choosing.
-`showSelection` stays a *pure projection of the selection*, needing no game state
-to know what to paint, because the tiles still live on the selection. They cannot
-go stale: any board change discards the plan. ⚠️ Facing tiles were once derived
-inside the *renderer* from a single coordinate, which put a question about the
-selection inside the thing that paints and hid the board-edge clipping where
-nothing could test it. Both sets are decided in `selection.ts`, and the renderer
-colours lists.
+⚠️ **Each mode carries the tiles it lights**, built when the mode is entered.
+`showSelection` is therefore a *pure projection of the selection* and needs no
+game state to know what to paint. The tiles cannot go stale, because any board
+change discards the plan. Which tiles those are is decided in `selection.ts`,
+including the board-edge clipping; the renderer colours lists.
 
-⚠️ **`Pinned` is `Extract`ed on carrying a path**, not hand-written as a union of
-phase names — so a phase with a path joins it by existing. That matters because
-listing them by name is how `targetChosen` was forgotten once already, in the
-poll handler that discards a plan when the board moves under it and in the End
-Turn guard.
+⚠️ **`Pinned` is `Extract`ed on carrying a path**, not hand-written as a union
+of phase names, so a phase with a path joins it by existing.
 
-⚠️ **`isPlan` needs a runtime list, and the list is pinned to the type from both
-directions.** `satisfies readonly Pinned['phase'][]` rejects a name that is not a
-phase; a `never` assertion beside it rejects a phase left *out* — which
-`satisfies` cannot see, and which would otherwise leave the type and the
-predicate consistently wrong and still compile. Same trick `applyEvents` uses on
-its event union, pointed at a list instead of a switch. The test that walks every
-phase is left doing the thing types cannot: saying that *carrying a path* is the
-right property to mean "uncommitted plan".
+⚠️ **`isPlan`'s runtime list is pinned to the type from both directions.**
+`satisfies readonly Pinned['phase'][]` rejects a name that is not a phase; a
+`never` assertion beside it rejects a phase left *out*, which `satisfies` cannot
+see. Same trick `applyEvents` uses on its event union.
 
-⚠️ **Four phases, and the menu's steps are a field rather than more of them.**
-*Movement selection* is `unitSelected` and `routePinned` — the range is lit and
-both answer clicks identically, which is why pinning and re-pinning are one code
-path. `destinationChosen` is everything after the walk, with `step` saying which
-question is being asked. `targetChosen` used to be a phase of its own; it carried
-identical data apart from the target, which put the menu's steps in two different
-type constructs. Its justification survives the move — the open panel *is* a
-mode — but a mode is what `step` is for.
+**Four phases, and the menu's steps are a field rather than more of them.**
+`unitSelected` and `routePinned` both light the range and answer clicks
+identically, which is why pinning and re-pinning are one code path.
+`destinationChosen` is everything after the walk, with `step` saying which
+question is being asked.
 
-#### The panel picks the intent, and that is the whole design
+#### The panel picks the intent
 
-⚠️ **Reading intent out of a click costs quadratically.** Every action a tile
-could mean is another reading to order against all the others, so *n* actions is
-*n(n−1)/2* orderings. That failed at **n = 2**: an adjacent enemy is also a
-facing choice, whichever question ran first won, and the fix was to force the
-order inside one reader. Asking the player first makes a new action one member of
-`MenuStep` and one tile set, colliding with nothing — which is what makes charge,
-capture, entrench and dismount rows in a menu rather than new guesses.
+**There is no single click reader.** `readAimClick` answers *is this an enemy I
+may attack, by the rule of the mode I am in*; `readHoldClick` answers *which way
+is this*; neither can be asked in the other's mode, so the collision is
+unrepresentable. The two attack modes share one reader, differing only in which
+refusal they ask — `refuseAttack` or `refuseCharge`.
 
-⚠️ **So there is no single click reader.** `readAimClick` answers *is this an
-enemy I may attack, by the rule of the mode I am in*, `readHoldClick` answers
-*which way is this*, and neither can be asked in the other's mode. The collision
-is unrepresentable rather than merely avoided. ⚠️ The two attack modes share one
-reader because they differ only in which refusal they ask -- `refuseAttack` or
-`refuseCharge` -- so the same adjacent enemy is a target for one and not the
-other, decided by what the player chose rather than by what the click carries.
-
-⚠️ **Buttons pick intent; tiles pick targets.** A target pins and confirms
-exactly like a route — first click pins it and shows the forecast, second commits,
-a click on a different lit enemy re-pins — so the forecast panel is
-*informational* and carries no button, like the route's confirm pane.
+**Buttons pick intent; tiles pick targets.** A target pins and confirms exactly
+like a route: first click pins it and shows the forecast, second commits, a
+click on a different lit enemy re-pins. The forecast panel is *informational*
+and carries no button.
 
 ⚠️ **Two rules for backing out, not a chain.** A dark click inside a mode returns
 to the panel; a dark click at the panel un-walks the ghost and returns to movement
 selection. "Lit does something, dark backs out" reads because at most one set is
 ever lit.
 
-⚠️ **Exactly one overlay is lit, and `setStepTiles` is what guarantees it.**
-This was three independent setters with the rule written as a comment over the
-caller, so every update had to remember to clear the other two; one call taking
-the lit overlay puts the invariant in the signature. It is named for what it
-paints — `attack`, `charge`, `facing` — rather than for what the player is
-doing, which is what keeps `render/` from importing the interaction layer to
-name a colour. `STEP_UI` in `GameCanvas` maps between the two vocabularies and
-carries the hint line with it, so a step's tiles and its instruction cannot
-describe different things. ⚠️ And the attack band stopped being
-filtered: it used to exclude the four tiles beside the unit when nothing hostile
-stood on them, because both sets were lit at once and the colours had to be split
-somehow. Facing is its own mode, so reach is simply reach.
+⚠️ **Exactly one overlay is lit, and `setStepTiles` is what guarantees it** —
+one call taking the lit overlay, so the invariant is in the signature. It is
+named for what it paints — `attack`, `charge`, `facing` — rather than for what
+the player is doing, which keeps `render/` from importing the interaction layer
+to name a colour. `STEP_UI` in `GameCanvas` maps between the two vocabularies
+and carries the hint line with it.
+
+The attack band is unfiltered: facing is its own mode, so reach is simply
+reach.
 
 **The forecast reads through the step.** `attackForecast` and `facingForTarget`
 take a `TargetPinned` — an attack mode with a target pinned — which
@@ -1424,70 +1106,46 @@ into one shape would force the charge to present its certainty as an estimate.
 ⚠️ That band narrows on its own as the odds improve — a likely charge leaves a
 narrow window to fail into — which falls out of `99 − chance` rather than a rule.
 
-⚠️ **The charge overlay lights targets, not reach**, the opposite of the shooting
-band and deliberately. Red means *in range* for a shot because reach is what a
-shot is planned against; a charge is contact-only, so it has no reach to show and
-a lit tile that could not be charged would promise nothing.
+**The charge overlay lights targets, not reach** — the opposite of the shooting
+band, because a charge is contact-only and has no reach to show.
 
-⚠️ **`canCharge` is `canFire`'s twin and asks `refuseCharge`** — the rule the
-click will ask — so the menu row and the board cannot disagree. Capability comes
-through the same path: artillery has no threshold row, so the rule refuses every
-target and the row never appears.
+`canCharge` is `canFire`'s twin and asks `refuseCharge`, the rule the click will
+ask, so the menu row and the board cannot disagree. Artillery has no threshold
+row, so the rule refuses every target and the row never appears.
 
-⚠️ **`availableActions` is the one list both the panel and the skip read.** The
-panel renders from it and the arrival path counts it; asking `canFire` and
-`canCharge` separately in each would be one question spelled twice, and the
-failure would be a panel offering a row the skip had decided did not exist.
-Holding is always last and always present, so the list is never empty — which is
-what makes *one action* mean **nothing to attack** rather than nothing at all.
+**`availableActions` is the one list both the panel and the skip read.** Holding
+is always last and always present, so the list is never empty — which makes *one
+action* mean **nothing to attack** rather than nothing at all.
 
-⚠️ **It reads a table, and the table is pinned to `ActionKind` from both
-directions.** `PANEL_ACTIONS` pairs each kind with the predicate that offers it;
-`satisfies` checks every entry names a real kind and a `never`-assertion fails
-the build when a kind has no entry — the same guard `PINNED_PHASES` carries. The
-hand-written list this replaced meant a new `ActionKind` compiled cleanly and
-simply never appeared in the menu. Holding's predicate is a constant `true`
-rather than a `push` after the loop, so *always available* is a fact in the
-table.
+⚠️ **It reads a table pinned to `ActionKind` from both directions.**
+`PANEL_ACTIONS` pairs each kind with the predicate that offers it; `satisfies`
+checks every entry names a real kind, and a `never`-assertion fails the build
+when a kind has no entry — the same guard `PINNED_PHASES` carries. Holding's
+predicate is a constant `true`, so *always available* is a fact in the table.
 
-⚠️ **A one-row panel is skipped, in both directions.** A menu with one answer is
-a click that asks nothing, and it falls on the commonest action in the game —
-move and wait. Backing out skips it too: a panel the player never saw on the way
-in is a dead end on the way out, its single row being the mode they just left.
-Where there *is* a choice the panel still appears, so this buys back the click
-the panel cost without reviving the ambiguity the panel removed.
+**A one-row panel is skipped, in both directions** — on the way in, and on the
+way out, since its single row is the mode just left.
 
 Either pinned phase is a **plan, not a submission** — nothing has been sent, and
-a click that means nothing else discards it without the server hearing.
-`path[0]` is where the unit still
-stands, so unpinning needs no extra field, and the selected unit's own tile is a
-destination like any other: that is how acting without moving needs no gesture of
-its own, and a single-element path is legal at cost 0. ⚠️ Which also means
-clicking the unit **pins standing still** rather than deselecting — the one
-gesture this arrangement spends.
+a click that means nothing else discards it without the server hearing. `path[0]`
+is where the unit still stands, so unpinning needs no extra field, and the
+selected unit's own tile is a destination like any other: acting without moving
+needs no gesture of its own. ⚠️ Which means clicking the unit **pins standing
+still** rather than deselecting.
 
 ⚠️ In `destinationChosen` — and only there — `handleTileClick` returns the
-**same object** it was given: the caller has already read the click as a
-direction, and a re-render for a click that changes nothing is waste.
-`routePinned` is deliberately excluded, because a route is still being chosen
-and its clicks are tile clicks.
+**same object** it was given, so a click already read as a direction causes no
+re-render. `routePinned` is excluded, because its clicks are tile clicks.
 
-⚠️ **`destinationChosen` is also the facing choice**, which used to be a phase of
-its own. Once the preview arrives, the tiles around the unit are the menu: a
-click on the destination keeps the direction travelled (`holdFacing`), a click on
-one of the four beside it overrides that (`facingChoiceAt`), and **either commits**
-— the direction is the last decision, so there is nothing left to confirm.
-Anything further away is ignored. Facing is therefore *offered* rather than
-demanded, which is what the design always asked for.
+**In the holding step the tiles around the unit are the menu**: a click on the
+destination keeps the direction travelled (`holdFacing`), a click on one of the
+four beside it overrides that (`facingChoiceAt`), and **either commits**.
+Anything further away is ignored.
 
 ⚠️ The two answers cannot collide: `facingChoiceAt` returns `null` for the
 destination itself, because `directionBetween` wants a step of exactly one tile.
 `holdFacing` is the only one that needs `GameState`, for the case with no last
-step to read — acting without moving keeps the facing the unit already had. The
-unit is already standing in the direction it walked, so keeping that facing is a
-click on the tile it is looking
-at. The renderer clips the four to the board, which costs nothing: facing off the
-edge is a strictly worse choice than any of the alternatives.
+step to read. The renderer clips the four to the board.
 
 **`game/GameCanvas.tsx`** — the canvas ref, the renderer lifecycle, and the
 chrome around it: the turn label, End Turn, the rejection reason, the
@@ -1496,15 +1154,13 @@ reconnecting banner, and a Toggle Inspector button under an
 Turn is disabled while *either* kind of plan is open, since ending the turn
 there would submit around one the player has not answered for.
 
-⚠️ The tile menu lights **on arrival** rather than on confirm: an inert lit tile
-invites a click that does nothing. So `showSelection` is a projection of the
-selection *and* `walking` — the range stays lit while the unit walks, as the
-context the choice was made against, and comes down as the menu lights.
+The tile menu lights **on arrival** rather than on confirm, so `showSelection`
+is a projection of the selection *and* `walking`: the range stays lit while the
+unit walks and comes down as the menu lights.
 
 ⚠️ **The route and the confirm pane are one affordance**, drawn on
-`routePinned && !walking` and gone the instant a route is confirmed, so the
-ghost walks over a clean board instead of retracing a line it was already
-handed. That predicate is why `walking` is a display input and not just a guard.
+`routePinned && !walking` and gone the instant a route is confirmed. That
+predicate is why `walking` is a display input and not just a guard.
 
 **The confirm pane is DOM over canvas** — a small box anchored above the pinned
 tile, mounted only while it applies. ⚠️ React populates refs during the commit,
@@ -1515,9 +1171,8 @@ that swallowed the click would block its own confirmation. Its container clips,
 since `Vector3.Project` does not: a tile zoom has pushed off screen would
 otherwise position an absolute child outside the viewport and add scrollbars.
 
-⚠️ The hint line and the pane **hand over rather than overlap** — the pane
-belongs to movement selection, the hint to action selection — and between them
-they are the only thing naming any gesture, since there are no buttons left.
+The hint line and the pane **hand over rather than overlap**: the pane belongs
+to movement selection, the hint to action selection.
 
 Its two callbacks read the renderer ref at call time, so a queue task resolving
 after unmount finds `null` rather than a disposed renderer.
@@ -1559,12 +1214,9 @@ turns. ⚠️ Projection lands in render-buffer pixels and is scaled to CSS pixe
 by the hardware scaling level — equal today only because `adaptToDeviceRatio`
 is off.
 
-⚠️ **The element is lifted a tile above the surface, in *world* space.**
-Projecting the tile's own surface put the element's bottom edge exactly there,
-so a pane sat on the thing it was describing — a route's arrowhead, or the unit
-whose choices it was offering. A pixel margin would drift with zoom; a world
-offset holds, because it is projected like everything else, and one tile clears
-both a tile's drawn extent and the tallest piece standing on it.
+⚠️ **The element is lifted a tile above the surface, in *world* space**, so the
+pane clears the thing it is describing. A pixel margin would drift with zoom; a
+world offset is projected like everything else.
 
 ⚠️ **Because the renderer writes only `transform`, everything else about a pane
 is CSS.** The three anchored panes — menu, forecast, confirm — are
@@ -1578,16 +1230,11 @@ against grass and stone; wiring them to `--bg` would produce a light-mode panel
 that is unreadable over the board. `--danger` and `--warn` *are* page chrome and
 live with the page tokens.
 
-⚠️ **One surface where there were three.** Each pane carried its own
-near-identical `rgba` — 0.94, 0.92 and 0.88, over two different greys — which
-was drift rather than intent, since nothing ever said why an informational pane
-should be more transparent than an interactive one. Same for the three negative
-margins that are now `--board-clearance`, and for the error red, which was
-written out in both routes and the canvas.
+**One surface token for all three panes**, one `--board-clearance` for their
+offsets, and one `--danger` for the error red across both routes and the canvas.
 
-⚠️ **Row hover is `:hover`, not React state.** It was a `useState` per row, so
-moving the pointer across the menu re-rendered a component; there is no disabled
-row — an unavailable action is omitted — so hover is the only state a row has.
+**Row hover is `:hover`, not React state.** There is no disabled row — an
+unavailable action is omitted — so hover is the only state a row has.
 
 - **Camera:** `ArcRotateCamera` in `ORTHOGRAPHIC_CAMERA` mode, starting at a
   fixed isometric angle. Orbit stays on the default input; **wheel zoom does
@@ -1607,50 +1254,32 @@ row — an unavailable action is omitted — so hover is the only state a row ha
   needing the most vertical room. Only the **window** and the **wheel** move the
   extent after that.
 
-  ⚠️ **A fit that consults the camera makes the board breathe**, and it is wrong
-  at both ends. A square board is half-width across down an axis and
-  half-diagonal across at 45°, and its depth projects by `cos β`, which changes
-  as you tilt — so reading either rescales a board that has not moved, and a
-  mouse drag moves both at once. Verified by probing `orthoTop` through rotate,
-  tilt and mixed drags: it does not change at all, while the wheel moves it
-  as expected.
+  ⚠️ **Nothing in the fit may read the camera**, or the board rescales as it is
+  turned: a square board is half-width across down an axis and half-diagonal
+  across at 45°, and its depth projects by `cos β`. The price is dead space at
+  every angle but the worst one — on a 12×12 the board sits in roughly three
+  quarters of the height it could fill looking down an axis.
 
-  ⚠️ The price is dead space at every angle but the worst one — on a 12×12 the
-  board sits in roughly three quarters of the height it could fill looking down
-  an axis. That is what a still image costs, and it is the better trade.
+  Each frame the frustum is sized so `zoom = 1` is *the whole board just fits*,
+  which is both the **floor** the wheel cannot go below and the **default** it
+  starts at. The target is then clamped per axis to whatever board the viewport
+  does not already cover. **Centring is not a rule of its own**: at full zoom-out
+  the slack goes to zero and the clamp centres the board.
 
-  From that, each frame: the frustum is sized so `zoom = 1` is *the whole board
-  just fits* — which is both the **floor** the wheel cannot go below and the
-  **default** it starts at. The board is the view you play from, and zooming in
-  is for detail; starting anywhere else starts the player somewhere they did not
-  ask to be, looking at the middle of a board with neither army in frame. The
-  target is then clamped per axis to whatever board the viewport does not
-  already cover. ⚠️ **Centring is not a rule of its own** — at full
-  zoom-out the viewport covers everything, the slack goes to zero, and the board
-  is centred with nowhere to pan. It is the clamp at its limit.
+  Run every frame rather than on a change, since orbit, tilt, zoom and window
+  all move independently.
 
-  ⚠️ Run every frame rather than on a change, because the orbit, the tilt, the
-  zoom and the window all move independently and sixteen dot products is not
-  worth the bookkeeping of tracking which.
-
-  ⚠️ **Rotation is free; tilt is not.** `alpha` spins without limit, because
-  facing and flanking mean a unit's rear has to be somewhere the player can go
-  and look at. `beta` is clamped to a band — **30° to 60° above the horizon,
-  starting at 38.6°** — where before it had no limits at all. The shallow end is
-  a *legibility* bound rather than a picking one: `screenToTile` searches every
-  surface height, so a click stays right however low the camera gets, and what
-  degrades is only how much board a raised tile hides.
+  ⚠️ **Rotation is free; tilt is not.** `alpha` spins without limit, since a
+  unit's rear has to be somewhere the player can go and look at. `beta` is
+  clamped to **30° to 60° above the horizon, starting at 38.6°**. The shallow end
+  is a *legibility* bound rather than a picking one: `screenToTile` searches
+  every surface height, so a click stays right however low the camera gets.
 - **Tile lookup is math, not mesh-picking**, and the pointer event has to agree
   with that. ⚠️ **The handler listens for `POINTERTAP`, never `POINTERPICK`.**
-  Babylon emits `POINTERPICK` only when its ray hits a **pickable mesh** — and
-  the terrain sets `isPickable = false`, precisely because lookup here is plane
-  arithmetic. So `POINTERPICK` meant clicks arrived only where some *other*
-  pickable mesh happened to be: a unit, a decoration, or a lit overlay quad, with
-  bare ground swallowing them. Measured at one tile in sixteen on a sweep of the
-  board. It survived unnoticed because almost every meaningful click lands on a
-  unit or a lit tile; it stopped surviving the moment *a click on the dark* became
-  a rule. `POINTERTAP` fires for any tap that is not a drag, which is what the
-  arithmetic always assumed.
+  Babylon emits `POINTERPICK` only when its ray hits a **pickable mesh**, and the
+  terrain sets `isPickable = false` — so `POINTERPICK` delivers a click only
+  where some *other* pickable mesh happens to be, with bare ground swallowing the
+  rest. `POINTERTAP` fires for any tap that is not a drag.
 - Heights: tile lookup is no longer against *one* plane.
   `screenToTile` tries each distinct surface height the board has, **tallest
   first**, and takes the first answer that agrees with itself: the tile found at
@@ -1698,25 +1327,22 @@ row — an unavailable action is omitted — so hover is the only state a row ha
 - Terrain is built from **glTF models**, one per tile, and then **merged by
   material** — grouping every tile's meshes by material leaves about fourteen
   draw calls for a board, against several hundred as loose copies. ⚠️ That
-  number grows with the *palette*, not the board: it was eight before scenery,
-  a mesa and six kinds of tree arrived, and each genuinely new colour costs one.
-  Which is why a doodad painted in a material the board already has is free and
-  a flower is not. Merging is right because
-  terrain is made once and never moves. `terrainModels.ts` loads the set and
+  number grows with the *palette*, not the board — each genuinely new colour
+  costs one, so a doodad painted in a material the board already has is free.
+  Merging works because terrain is made once and never moves.
+  `terrainModels.ts` loads the set and
   shares one material per name across all of them, which is what makes the
-  grouping work. ⚠️ Three families are recoloured, all for the same reason — the
-  kit reuses a handful of materials and it twice made two kinds of tile the same
-  object. A **road** shares `dirt`/`dirtDark` with a riverbank and gets grey
-  gravel; a **mesa** shares the same warm orange and gets grey stone, keeping
-  its grass cap; and **scenery on grass** is painted the exact green of the
-  ground it stands on, which makes a tuft invisible by construction, so it gets
-  a warmer, lighter green. An override supplies a *name* as well as a colour,
-  since the name is what merging groups on.
+  grouping work. ⚠️ Three families are recoloured, because the kit reuses materials
+  across things that must not look alike. A **road** shares `dirt`/`dirtDark`
+  with a riverbank and gets grey gravel; a **mesa** shares the same warm orange
+  and gets grey stone, keeping its grass cap; and **scenery on grass** would
+  otherwise be the exact green of the ground it stands on, so it gets a warmer,
+  lighter green. An override supplies a *name* as well as a colour, since the
+  name is what merging groups on.
 - ⚠️ The loaded PBR materials are **replaced** with flat `StandardMaterial`s
   carrying their albedo. The kit ships `metallicFactor: 1`, and a fully metallic
-  surface has no diffuse response — with no environment map to reflect, the
-  whole board renders blank white. Flattening also puts terrain and units in one
-  lighting model, both matte.
+  surface with no environment map to reflect renders blank white. Flattening
+  also puts terrain and units in one lighting model.
 - `composeTerrain.ts` decides each cell's model and quarter turns, purely: a
   4-bit neighbour mask (`N=1, E=2, S=4, W=8`) indexes a table per family. A
   bridge belongs to **both** families — it is water with a road over it — so a
@@ -1738,13 +1364,10 @@ row — an unavailable action is omitted — so hover is the only state a row ha
   advanced only by `syncUnits`, with authority still read from
   `server.getState()`.
 
-  ⚠️ **Measured off the *loaded* mesh, not the file** — and the difference is
-  not academic. The glTF loader flips z on its own `__root__`, which leaves a
-  model's bounding box where the raw accessors say it is while putting the
-  *relief* on the far side of it. A piece read out of the file therefore comes
-  out facing backwards with its extents looking correct, so nothing about the
-  numbers gives the mistake away. A probe in the browser settles it in seconds;
-  reading the accessors does not settle it at all.
+  ⚠️ **Measured off the *loaded* mesh, not the file.** The glTF loader flips z on
+  its own `__root__`, which leaves a model's bounding box where the raw
+  accessors say it is while putting the *relief* on the far side of it — so a
+  piece read out of the file faces backwards with its extents looking correct.
 - The kit ships **two** water vocabularies — a body set for lakes and a channel
   set (`Bend`, `Cross`, `Split`) for one-tile rivers — and a 4-bit mask cannot
   tell which a cell wants: water north and east is a lake's corner if the
@@ -1782,43 +1405,31 @@ row — an unavailable action is omitted — so hover is the only state a row ha
 
   Five trees a tile, planted **round robin**: one pass per tree, each visiting
   every tile of the group once, the first pass required so no square comes out
-  bare. ⚠️ Round robin rather than handing each tree to a randomly chosen tile,
-  which is a multinomial and looks like one — measured over a four-by-four wood,
-  random assignment left 2 trees on one square against 7 on another with a
-  target of 5. ⚠️ The visiting order rotates each pass, because it is not
-  neutral: whichever tile goes last has every neighbour's trunk already down to
-  dodge, so a fixed order thins the same squares every time.
+  bare. ⚠️ The visiting order rotates each pass, because whichever tile goes last
+  has every neighbour's trunk already down to dodge — a fixed order thins the
+  same squares every time.
 
   ⚠️ The spacing that turns a candidate away is measured **across tile
   boundaries**, which is what makes the group the unit of placement rather than
   the tile. `KEEP_CLEAR` still binds every trunk, because a unit may stand on
   any of those tiles — so each square keeps its hole however the wood is shaped.
-- **Six tree shapes**, each turned and scaled, because one stamped repeatedly
-  reads as wallpaper. Free: every one is painted `woodBark` and `leafsGreen`, so
-  a denser wood costs no draw call — the kit's pines each carry two more
-  materials, which is why none is used. ⚠️ **They are scaled to about a third,
-  and the pieces set that number rather than the trees.** A tree model is
-  1.15–1.71 tall against a unit's 0.39–0.64, so at the size they are drawn a
-  wood stands two to four times higher than the army walking through it, and a
-  piece reads by standing *over* the wood rather than by being given room in
-  it.
+- **Six tree shapes**, each turned and scaled. Every one is painted `woodBark`
+  and `leafsGreen`, so a denser wood costs no draw call — the kit's pines carry
+  two more materials each, which is why none is used. ⚠️ **They are scaled down
+  hard, and the pieces set that number rather than the trees**: at model scale a
+  wood stands several times higher than the army walking through it.
 - **Open ground carries light scenery** — grass tufts, a small bush, the odd
   flower, on about a third of plains tiles. ⚠️ None of it means anything: a tile
-  with a flower plays exactly like one without, and the scatter stays thin
-  precisely so it does not read as a feature worth asking about.
-- Grid lines are **one flat grid at the board's floor**, mid grey at 7%. Flat
-  is correct rather than a compromise: a mountain raises a *rock*, not its
-  ground, so every tile's floor is the same plane. ⚠️ They were briefly a square
-  per tile at each tile's own surface, for a raised-ground design that no longer
-  exists — and long spans are better anyway, since each interior edge is drawn
-  once rather than by both its tiles, so the alpha means what it says.
+  with a flower plays exactly like one without.
+- Grid lines are **one flat grid at the board's floor**, mid grey at 7%. A
+  mountain raises a *rock*, not its ground, so every tile's floor is the same
+  plane. Long spans draw each interior edge once rather than twice, so the alpha
+  means what it says.
 - **A slab under the board** — `boardBase.ts`, sized to the grid exactly, 0.8
-  thick, not pickable and unknown to `surfaceAt`. ⚠️ Plain on purpose: the kit's
-  `cliff_*` faces were fitted round the perimeter to make it read as broken
-  rock, and came out worse than a box. Every face of them is vertical and the
-  only light is hemispheric from above, so the relief takes one shade the whole
-  way round and survives as nothing but a bumpy top edge. It is what makes the board an
-  object rather than geometry that stops. ⚠️ It hangs off `bottomOf` — the
+  thick, not pickable and unknown to `surfaceAt`. ⚠️ Plain, and the lighting is why: every face of a
+  cliff model is vertical and the only light is hemispheric from above, so
+  relief takes one shade the whole way round. The slab is what makes the board
+  an object rather than geometry that stops. ⚠️ It hangs off `bottomOf` — the
   **lowest geometry** on the board — where the grid lines take the highest
   *top*. The two ask different questions, and the reason is that **a tile is not
   flat**: a river is a channel cut *down* into its tile, banks at 0.00 and water
@@ -1830,37 +1441,29 @@ row — an unavailable action is omitted — so hover is the only state a row ha
   depth-fight a coplanar face in bands that move with the camera.
 - A highlight follows the pointer, moved from `POINTERMOVE` inside the
   renderer. React never hears about hover. ⚠️ That highlight is **all** hover
-  does — it is a tint, and being inert on a touchscreen costs nothing. The
-  route used to be computed here too, from `pathTo` on the hovered tile, which
-  meant it existed only under a pointer and a touchscreen never saw one. Showing
-  a route needs a *point* input distinct from *select*; touch is the only device
-  without one, so the second click supplies it and the route is state now.
+  does — a tint, inert on a touchscreen. The route is selection state rather
+  than a hover effect, so it survives on a device with no pointer: the second
+  click is what supplies the destination.
 - **A unit's health is a ring of ten segments at its base** — `healthRing.ts`,
   extinguishing as it weakens and **absent entirely at full strength**, since a
-  ring under every untouched unit is noise. ⚠️ **One segment per band, and it
-  calls the rulebook's own `band`** — the same function `computeDamage` reads.
-  So 91 and 100 show the same count *because* they fight identically, rather
-  than because two constants in two packages happen to agree: the ring computed
-  `ceil(health / 10)` itself once, in its own spelling, which made the whole
-  claim a coincidence. Ten-for-ten is what stops the display promising precision
-  the rules lack. Segments extinguish rather than dim — bands are discrete, and a
-  fade would imply a continuum.
+  ring under every untouched unit is noise. ⚠️ **One segment per band, calling the rulebook's own `band`** — the same
+  function `computeDamage` reads, so 91 and 100 show the same count *because*
+  they fight identically. Segments extinguish rather than dim, since bands are
+  discrete.
   ⚠️ **Parented to the unit's node**, so it rides the walk animation for free and
   is disposed with it. It therefore turns with the unit; accepted, since a ring
   is rotationally symmetric and only the segment boundaries move. It also
   inherits `PIECE_SCALE`, which is wanted — that constant makes each piece fill
   its tile, so the ring stays proportionate to its piece.
-  ⚠️ Orange-red, and **not** the amber `SELECTED_COLOR`/`FACING_COLOR` family: a
-  ring in that range was tried and read as another selection tint under the
-  piece. ⚠️ One material for every ring, cached on the scene by name — so the
+  ⚠️ Orange-red, deliberately **not** the amber `SELECTED_COLOR`/`FACING_COLOR`
+  family, which reads as another selection tint under the piece. One material
+  for every ring, cached on the scene by name, so the
   `disposeMaterialAndTextures: false` that protects unit colours protects these
   too.
   ⚠️ **`syncUnits` is its only writer and it never tweens.** The ring is
-  persistent state, not an animation: it says how close a unit is to breaking
-  while you plan, and showing *change* belongs to the combat cutaway. That also
-  keeps it out of `playEvents`, where an animation on the ring would be a
-  different target from the unit node and would survive
-  `scene.stopAnimation(mesh)`.
+  persistent state; showing *change* belongs to the cutaway. That keeps it out
+  of `playEvents`, where an animation on the ring would be a different target
+  from the unit node and would survive `scene.stopAnimation(mesh)`.
 - **The pinned route is an arrow, not a tint** — `routeArrow.ts`, a sibling of
   `tileOverlay.ts` that merges per-tile quads into one mesh the same way and
   adds UVs. A tint says *these tiles*; an arrow says *this way, ending here*.
@@ -1871,11 +1474,10 @@ row — an unavailable action is omitted — so hover is the only state a row ha
   `N E S W` is load-bearing — a rotation is `+1` around it, which is what makes
   orientation arithmetic instead of a lookup table, and the four rotations of a
   canonical `{SOUTH, EAST}` bend cover all four bends exactly.
-  ⚠️ **A one-tile path draws nothing**: that is standing still, which Advance
-  Wars also draws nothing for, so the case that looks like it needs a fifth
-  shape needs none. The atlas is strokes drawn into a `DynamicTexture` with
-  canvas 2D at startup — no asset file — in white, with the colour on the
-  material's `emissiveColor` so it stays one tunable constant. ⚠️ Babylon's
+  **A one-tile path draws nothing**, so standing still needs no fifth shape. The
+  atlas is strokes drawn into a `DynamicTexture` with canvas 2D at startup — no
+  asset file — in white, with the colour on the material's `emissiveColor`.
+  ⚠️ Babylon's
   `ICanvasRenderingContext` has no `lineCap`; the default `butt` is wanted
   anyway, since a flush end is what lets one tile's segment meet the next
   without a seam.
@@ -1888,22 +1490,15 @@ row — an unavailable action is omitted — so hover is the only state a row ha
 - One `StandardMaterial` per player colour, looked up by name so the scene is
   the cache. The models arrive untextured and near-white, so colour is the whole
   of a side's identity. Matte like the terrain — specular is zeroed — plus a
-  floor of `emissiveColor` at 28% of the diffuse: units are mostly vertical and
-  the only light is hemispheric from above, so their sides fall into shadow
-  exactly where the silhouette has to read. Colours are picked to sit against
-  the board rather than to be canonical, and green leans to lime because a true
-  green sits almost on the grass.
+  floor of `emissiveColor` (`UNIT_GLOW`): ⚠️ units are mostly vertical and the
+  only light is hemispheric from above, so without it their sides fall into
+  shadow exactly where the silhouette has to read.
 - Model origins are at the base, so a unit's `y` is the surface it stands on
   rather than half its own height — and so scaling a piece grows it upward off
   that surface rather than sinking it through one.
-- ⚠️ **A player's colour is one palette, in `render/playerColors.ts`.** Hex is
-  the source and `Color3` derives from it rather than the reverse: whichever
-  form is written down is the one a person edits, so it should be the one every
-  tool already speaks — `Color3(0.35, 0.6, 1)` is not a colour anybody can
-  picture. ⚠️ It exists because there were two of these and they disagreed: the
-  board drew blue as `#5999ff` and the cutaway's health bar drew the same player
-  `#4a7fd4`. The bar also picked its colour with `=== 'blue' ? blue : red`, so a
-  third player would have rendered red; indexing the palette covers all four.
+- **A player's colour is one palette, in `render/playerColors.ts`**, read by
+  both the board and the cutaway's health bar. Hex is the source and `Color3`
+  derives from it, since hex is the form a person edits.
 - ⚠️ **Pieces are not at terrain scale, deliberately.** `PIECE_SCALE` in
   `units.ts` is a `Record` per unit type: a unit is a formation rather than a
   man, so no size makes it and a tree both correct, and a piece is sized to read
@@ -1911,11 +1506,9 @@ row — an unavailable action is omitted — so hover is the only state a row ha
   proportions disagree too much for a multiplier to close: infantry and cavalry
   are scaled to a common height, while artillery meets its **footprint** first
   and stays low — which is what lets a gun carriage tell itself apart from the
-  other two at a glance. ⚠️ The measured depths and heights behind that used to
-  be transcribed here; they belong to whichever glTF is loaded that week, and
-  `getHierarchyBoundingVectors` is how they are read. ⚠️ Keyed on `UnitTypeId`, so the key is `artillery` — the
-  model file is `cannon.gltf` and the mismatch silently scales a mesh by
-  `undefined`.
+  other two at a glance. `getHierarchyBoundingVectors` is how the proportions are
+  read. ⚠️ Keyed on `UnitTypeId`, so the key is `artillery` while the model file
+  is `cannon.gltf` — a mismatch silently scales a mesh by `undefined`.
 - Unit meshes are built once at startup; there is no add or remove.
 - `playEvents` walks `unitMoved` paths one tween per tile, at
   `FRAMES_PER_TILE` over `FRAME_RATE` in `units.ts` — one dial for every unit's
@@ -1926,26 +1519,21 @@ row — an unavailable action is omitted — so hover is the only state a row ha
   animation first. It **ends any preview** before either — authority overwrites
   every position, so there is no separate commit step, and a live preview holds
   a mesh by id that must not be disposed mid-tween.
-  ⚠️ **Removal only, never creation.** Nothing can add a unit to a match:
-  `applyEvents` only maps over `units`, and there is no production,
-  reinforcement or recruitment. Units enter state once, in `createMatchState`,
-  before the renderer is built. ⚠️ Disposal passes `dispose(false, false)`
-  deliberately — every unit of a colour shares one material cached on the scene
-  by name, and disposing it with the first casualty would leave the rest of that
-  army untextured, several turns later and looking unrelated.
-- **The preview** is one nullable `{ unitId, origin, facing, settle }`. Arriving
-  and ending are separate moments: the walk resolves the promise, but the record
-  outlives it, because a cancel *after* the unit lands is exactly when something
-  needs to know where to put it back. The promise means *the preview settled*,
-  which includes a cancel or a snap ending it early — `stopAnimation` fires no
-  end callback, so a promise tied to the tween alone would hang and whatever
-  waits on it would never proceed.
+  ⚠️ **Removal only, never creation.** Nothing can add a unit to a match — units
+  enter state once, in `createMatchState`, before the renderer is built.
+  ⚠️ Disposal passes `dispose(false, false)`: every unit of a colour shares one
+  material cached on the scene by name, and disposing it with the first casualty
+  would leave the rest of that army untextured.
+- **The preview** is one nullable `{ unitId, origin, facing, settle }`. The
+  record outlives the walk, because a cancel *after* the unit lands still needs
+  to know where to put it back. ⚠️ The promise means *the preview settled*,
+  including a cancel or a snap ending it early — `stopAnimation` fires no end
+  callback, so a promise tied to the tween alone would hang.
 - `playEvents` **skips a `unitMoved` whose mesh already stands at the path's
   destination**. A confirmed preview has walked the unit there, and replaying
   would send it back to the second tile and forward again. Positional rather
   than a flag, and sound because the menu only opens once the walk has arrived.
-- `setUnitFacing` is the only writer of `rotation.y`, so replacing the
-  models' orientation a single constant.
+- `setUnitFacing` is the only writer of `rotation.y`.
 - Babylon imports are **per-file**, not from the `@babylonjs/core` barrel. Side
   effect modules are imported where the augmented method is used:
   `Animations/animatable` for `beginAnimation`/`stopAnimation`, `Culling/ray`
@@ -1995,10 +1583,9 @@ Every package is tested. `bun test` runs `shared` and `server`, Vitest runs
   a WebGL context and a render loop, and nothing on screen looks any different
   for several of them.
 
-- ⚠️ **`routeArrow.pieceFor` is tested on the same principle**: it is the only
-  part of that module that *decides* anything, and a wrong rotation on one of
-  the four bends stays invisible until somebody routes that way — a screenshot
-  shows one bend at a time, and a browser can only say that something looks off.
+- **`routeArrow.pieceFor` is tested** as the only part of that module that
+  *decides* anything: a wrong rotation on one of the four bends stays invisible
+  until somebody routes that way.
 - `composeTerrain` is the one piece of the renderer that is pure, and it is
   tested like any other pure module — including that no cell declares a
   `standOn` above `MAX_STAND_HEIGHT`. The other half of that ceiling is how tall
@@ -2020,15 +1607,12 @@ See below for why that config exists and why it does not weaken invariant 2.
 `@vod/shared` through its `exports` and pull that source into their own
 programs. `shared` emits nothing. `strict`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`,
 `erasableSyntaxOnly` and `verbatimModuleSyntax` are on in every tsconfig.
-`shared` has no program of its own for `src`, and its `tsconfig.json` earns its
-keep twice over. ⚠️ **It is the name editors look for** — the language server
-walks up for `tsconfig.json` *specifically*, so a file called anything else is
-invisible to it and `src` would be edited under default options with no `strict`
-and none of the linting flags. ⚠️ **And it is the only place `src` has no bun
-types**, which is what makes the rulebook's purity *visible while you type*:
-`process.env` in `combat.ts` is red in the editor rather than a surprise at the
-gate. Merging it into `tsconfig.dev.json` would keep purity enforced — the
-client program still rejects it — and stop it being legible.
+`shared` has no program of its own for `src`, and its `tsconfig.json` does two
+jobs. ⚠️ **It is the name editors look for** — the language server walks up for
+`tsconfig.json` *specifically*, so `src` would otherwise be edited under default
+options with no `strict`. ⚠️ **And it is the only place `src` has no bun
+types**, which makes the rulebook's purity visible while you type: `process.env`
+in `combat.ts` is red in the editor rather than a surprise at the gate.
 
 ⚠️ `extends` **replaces** `include` rather than merging it, which is why
 `tsconfig.dev.json` names `src/**/*.test.ts` explicitly instead of inheriting
@@ -2047,12 +1631,11 @@ also checks `src` and has no node or bun globals at all. Giving test files bun
 types cannot let `process.env` into the rulebook, because the client still
 rejects it.
 
-⚠️ It could not have existed before the first script did: an `include` matching
-an empty directory is `TS18003` and a non-zero exit. And **`@types/bun` is now a
-devDependency of `shared`** — the one package whose defining property is having
-none. Paid deliberately: with the test files outside every program, a helper
-missing a required field and seven calls left at the wrong arity all compiled,
-and *twenty* errors surfaced the moment they were covered.
+⚠️ An `include` matching an empty directory is `TS18003` and a non-zero exit, so
+this config cannot exist before the directory it names has a file in it.
+**`@types/bun` is a devDependency of `shared`** — the one package whose defining
+property is having none — and that is the price of the test files being
+typechecked at all.
 
 ## Deployment
 
