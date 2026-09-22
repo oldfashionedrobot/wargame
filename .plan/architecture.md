@@ -3,8 +3,16 @@
 Turn-based strategy game, American Revolutionary War theme. React + TypeScript
 + Babylon.js, built with bun.
 
-**This document describes the code as it is.** No rationale, no history. What
-is planned but unbuilt lives in [`roadmap.md`](roadmap.md).
+**This document describes the code as it is, and why.** The ⚠️ notes are most
+of its value — they are what stops a decision being re-litigated from the code
+alone, and the body has always been mostly them, whatever this line used to
+claim. **No history**: `git log` is the history. What is planned but unbuilt
+lives in [`roadmap.md`](roadmap.md).
+
+⚠️ **Values live in the modules, not here.** Where a number is quoted it is
+because an *argument* needs it — a derivation, a ratio, a limit and the reason
+for it. A number transcribed for reference alone is a second copy to keep in
+step, and it always loses.
 
 **What plays today:** hot-seat against a real server process, from the opening
 move to a winner. Select a unit and see the tiles it can reach across terrain;
@@ -777,7 +785,7 @@ the module's doc comment, with a note on which wins where they disagree.
 A second attack, chosen instead of firing and spending the turn either way.
 
 ```
-threshold = floor(CHARGE_THRESHOLD[attacker][defender] × directionalMultiplier)
+threshold = floor(CHARGE_THRESHOLD[attacker][defender] × directional)
 margin = max(0, targetHealth + terrainDefense − threshold)
 chance = max(1, round(100 × 0.5 ^ (margin / CHARGE_HALF_LIFE)))
 success = roll < chance                                    // roll is 0..99
@@ -844,7 +852,7 @@ and `entryCost` refuses that tile for being *enemy-held*, the one objection a
 charge is not troubled by. Sharing the terrain half is what stops movement and
 charge disagreeing about what ground a unit may be on.
 
-⚠️ **`directionalMultiplier` multiplies the threshold; it does not add to it.**
+⚠️ **The directional factor multiplies the threshold; it does not add to it.**
 An additive constant stops meaning anything the moment the table underneath it
 moves — halve every threshold and a flat `+20` goes from a nudge to an override.
 A multiplier is scale-free, so `CHARGE_THRESHOLD` can be retuned without dragging
@@ -1177,7 +1185,7 @@ the next click see the same value. `pendingRef` stays a ref — it is a mutex
 against a second submit landing before the first resolves, and has to be
 synchronously current rather than rendered.
 
-⚠️ `clickTile`, `commitAttack` and `endTurn` are the verbs. **The panel's two
+⚠️ `clickTile`, `chooseAction` and `endTurn` are the verbs. **The panel's two
 buttons are the first thing in the game that is not a tile**, and it had to be:
 a preview with numbers in it cannot be a tile, and neither can Hold — the only
 tile that would face an adjacent enemy is the one they are standing on.
@@ -1680,8 +1688,8 @@ row — an unavailable action is omitted — so hover is the only state a row ha
   CC0, as GLB — the loader units already use. What the code relies on, measured
   rather than assumed: ground tiles are **exactly 1×1 in x and z**, which is
   `TILE_SIZE`, so nothing is scaled; they carry no textures, only flat material
-  colours; they are multi-mesh **split by material**, with ten materials across
-  the whole set, which is what makes merging by material worth doing;
+  colours; they are multi-mesh **split by material**, and the set shares a
+  small palette of them, which is what makes merging by material worth doing;
   and every model hangs under a node translated **−0.05 in y**, so reading the
   position accessors gives heights a uniform 0.05 too high. ⚠️ `bridge_wood` is
   1.04 square rather than 1.00 and so overhangs its tile by 2% a side. That is
@@ -1899,18 +1907,19 @@ row — an unavailable action is omitted — so hover is the only state a row ha
 - ⚠️ **Pieces are not at terrain scale, deliberately.** `PIECE_SCALE` in
   `units.ts` is a `Record` per unit type: a unit is a formation rather than a
   man, so no size makes it and a tree both correct, and a piece is sized to read
-  on its tile. A table rather than one dial because the models disagree too much
-  for a multiplier to close — infantry is 0.48 at its deepest and 0.57 tall,
-  cavalry 0.68 and 0.64, artillery **0.80 and 0.39**. Infantry and cavalry are
-  scaled to a common height of 0.85; artillery meets its footprint first and
-  stays low, which is what lets a gun carriage tell itself apart from the other
-  two at a glance. ⚠️ Keyed on `UnitTypeId`, so the key is `artillery` — the
+  on its tile. A table rather than one dial because the models'
+  proportions disagree too much for a multiplier to close: infantry and cavalry
+  are scaled to a common height, while artillery meets its **footprint** first
+  and stays low — which is what lets a gun carriage tell itself apart from the
+  other two at a glance. ⚠️ The measured depths and heights behind that used to
+  be transcribed here; they belong to whichever glTF is loaded that week, and
+  `getHierarchyBoundingVectors` is how they are read. ⚠️ Keyed on `UnitTypeId`, so the key is `artillery` — the
   model file is `cannon.gltf` and the mismatch silently scales a mesh by
   `undefined`.
 - Unit meshes are built once at startup; there is no add or remove.
-- `playEvents` walks `unitMoved` paths one tween per tile, 0.15s each
-  (`FRAMES_PER_TILE` over `FRAME_RATE` in `units.ts` — one dial for every
-  unit's pace). Each step turns the mesh before it moves, so a unit walks the
+- `playEvents` walks `unitMoved` paths one tween per tile, at
+  `FRAMES_PER_TILE` over `FRAME_RATE` in `units.ts` — one dial for every unit's
+  pace. Each step turns the mesh before it moves, so a unit walks the
   way it is looking; the turn is snapped rather than tweened.
 - `syncUnits` makes the meshes match state: it **removes the dead**, then
   positions *and* orients the living with no tween, stopping any running
