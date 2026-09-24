@@ -233,55 +233,52 @@ and 40% on a mountain at full health. Only the charge side was weak.
 
 **The sentence it buys: 100% needs position *and* open ground.**
 
-**The star scale has three tiers, not five.** Measured across all nine matchups,
-hits-to-kill by star value:
+**The star scale is too light, and one constant fixes it.** The damage term is
+`(100 − stars × band(hp)) / 100`, which is **10% per star** at full health.
+Weighting it — `stars × band(hp) × TERRAIN_WEIGHT`, at **1.5** — makes every step
+of the scale do something.
 
-| step | cells that move |
-|---|---|
-| 0 → 1 | 2 of 9 |
-| **1 → 2** | **0 of 9** |
-| **2 → 3** | **5 of 9** |
-| 3 → 4 | 1 of 9 |
+Cells of the nine-matchup hits-to-kill grid that move at each step:
 
-⚠️ **1 and 2 stars are the same terrain.** Not similar — identical in every
-matchup. And 3 → 4 is worth one cell. So the scale really offers *open*,
-*something*, and *a lot*, and the current table spends its values at 0, 1, 2 and
-4 — which puts plains and forest in the **same tier** and leaves the useful step
-unused.
+| step | at 10%/star (today) | at 15%/star |
+|---|---|---|
+| 0 → 1 | 2 of 9 | 2 of 9 |
+| 1 → 2 | **0 of 9** | 5 of 9 |
+| 2 → 3 | 5 of 9 | 4 of 9 |
+| 3 → 4 | 1 of 9 | 6 of 9 |
+| 4 → 5 | 4 of 9 | 7 of 9 |
 
-⚠️ **The table that follows from that is `open 0, forest 3, mountain 4`.** Forest
-has to reach 3 to be cover at all; mountain keeps 4 to stay a notch above it,
-though the notch is one cell wide. ⬜ Whether forest and mountain should differ
-by more than that is a question for the tuning pass — the answer may be to widen
-`BASE_DAMAGE` rather than the stars.
+⚠️ **`0 → 1` cannot be fixed and should not be used.** It stays at 2 of 9 for
+every weight tried up to 20%, because at zero stars damage is at its maximum and
+the hits-to-kill boundaries are furthest apart there. **So no terrain should sit
+at 1 star** — the lightest cover starts at 2.
+
+⚠️ **A harmonic shape was tried and is worse.** Dividing by `(1 + stars × K)`
+instead of subtracting a percentage should in theory make hits-to-kill scale
+linearly; measured, it gives a flatter spread than the weighted linear form
+because the `band(hp)` term dominates either way.
+
+**The table that follows: `open 0 · forest 2 · mountain 4`**, with 3 and 5 left
+free for terrain that does not exist yet. At 15%/star forest buys a hit in
+**seven** of nine matchups where today it buys one in two, and mountain buys two.
+
+⚠️ **It also makes terrain work against artillery for the first time.**
+`artillery → infantry` is 2 hits on *every* terrain today including a mountain —
+the heaviest attack ignoring the heaviest cover, which the measurement below
+flagged as never having been chosen. At 15% a peak takes it to 3.
+
+⚠️ **The cost is longer matches**, and that runs against *Multiplayer*'s decision
+that a match should be one sitting. Worst case goes from 5 hits to 6 at four
+stars, and a five-star tile would be 8. ⬜ If those collide, the lever is
+`BASE_DAMAGE` rather than backing this out — cover being worth something and
+matches being short are not actually in conflict, but the two dials have to be
+set together.
 
 ⚠️ **The measurement is the point, not the numbers.** A star is worth
-`stars × band(hp)` percent, and hits-to-kill is integer — so most single-star
-changes are below the resolution of the system and simply do not exist in play.
-Anything proposed for this column should be run through
-`scripts/matchups.ts` before it is believed.
-
-**0. Open ground is open ground.** `road`, `bridge`, `plains` and `river` all go
-to **0**; cover means `forest` **3** or `mountain` **4**.
-
-⚠️ **This is what makes forest mean anything at all.** Measured against the
-current table, the forest column of the hits-to-kill grid is **identical to the
-plains column in all nine matchups** — the extra 10% never crosses a hit
-boundary, so a wood costs movement and buys nothing. Dropping plains to 0 is what
-separates them: forest starts buying a hit against cavalry defenders, and the
-gap widens everywhere else.
-
-⚠️ **It costs almost no lethality.** Only two cells of the grid move —
-`infantry → cavalry` and `cavalry → cavalry` on plains, each from 3 hits to 2 and
-4 to 3. Hits-to-kill is coarse enough that a 10% change rarely crosses a
-boundary, which is the same reason the old plains star was doing nothing.
-
-⚠️ **And the current value is backwards.** At 1 star, open field gives cover
-*equal to a wood* in every matchup that matters — the exposure the design wants
-from open ground is not there today.
-
-It also cleans the charge floors: open ground carries no floor, so 100% from the
-flank or rear is reachable on any open tile rather than only on a road.
+`stars × band(hp)` percent and hits-to-kill is an integer, so most single-star
+changes sit below the resolution of the system. Anything proposed for this
+column goes through `scripts/matchups.ts` before it is believed — the column has
+already fooled this document twice.
 
 **A first cut at the numbers**, chosen by printing the resulting grid rather
 than by feel:
