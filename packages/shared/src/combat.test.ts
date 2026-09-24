@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { Facing } from './types';
 import { makeState } from './testing';
 import { band, BANDS, computeDamage, tilesInRange, wouldCounter } from './combat';
-import { BASE_DAMAGE, LUCK_MAX } from './data/combat';
+import { BASE_DAMAGE, LUCK_MAX, TERRAIN_WEIGHT } from './data/combat';
 import { TERRAIN } from './data/terrain';
 import { MAX_HEALTH } from './data/unitTypes';
 import type { GameState, Unit } from './types';
@@ -121,6 +121,31 @@ describe('computeDamage', () => {
       return LUCK_MAX / computeDamage(state, a, d, LUCK_MAX);
     };
     expect(share(1)).toBeGreaterThan(share(MAX_HEALTH));
+  });
+
+  // ⚠️ **The clamp that is not there.** `computeDamage` subtracts cover from
+  // 100 and never clamps the result, which is safe only while
+  // `maxStars × TERRAIN_WEIGHT < 10`. Past that line cover exceeds 100% and
+  // terrain starts healing whoever stands on it. This used to be a fact about
+  // one column -- "the stoutest ground is 4 stars" -- and is now two constants
+  // that move independently, which is the reason it is checked rather than
+  // remembered. The test below catches the same thing at today's values; this
+  // one catches it for a terrain nobody has added yet.
+  it('keeps cover under 100%, which is what lets the formula go unclamped', () => {
+    const stoutest = Math.max(...Object.values(TERRAIN).map((ground) => ground.defense));
+    expect(stoutest * BANDS * TERRAIN_WEIGHT).toBeLessThan(100);
+  });
+
+  // ⚠️ **No terrain sits at 1 star, and it is a rule rather than a gap.** At
+  // the weight above, the step from 0 stars to 1 moves the hit count in two
+  // matchups of nine -- and it stays at two for every weight up to 20%, because
+  // at zero stars damage is at its maximum and the hits-to-kill boundaries are
+  // furthest apart there. A 1-star tile would therefore draw a `★` in the
+  // cutaway promising cover the arithmetic cannot pay out. Cover starts at 2;
+  // 3 and 5 are free for ground that does not exist yet.
+  it('gives no terrain exactly one star', () => {
+    const single = Object.entries(TERRAIN).filter(([, ground]) => ground.defense === 1);
+    expect(single.map(([name]) => name)).toEqual([]);
   });
 
   it('never returns a negative number', () => {
