@@ -3,6 +3,7 @@ import type { Facing } from './types';
 import { makeState } from './testing';
 import { band, BANDS, computeDamage, tilesInRange, wouldCounter } from './combat';
 import { BASE_DAMAGE, LUCK_MAX } from './data/combat';
+import { TERRAIN } from './data/terrain';
 import { MAX_HEALTH } from './data/unitTypes';
 import type { GameState, Unit } from './types';
 
@@ -135,9 +136,13 @@ describe('computeDamage', () => {
   // possible roll. It is a statement about the *table* as much as the formula:
   // drop a base value far enough and the floors will swallow it again, and this
   // is what says so before a playtest does.
+  //
+  // ⚠️ **The terrains come from `TERRAIN`, never a list written out here.** A
+  // copy would leave a newly added ground unswept by the one test that guards
+  // the tuning, and it would pass while doing it.
   it('leaves no living attacker harmless, in any matchup on any terrain', () => {
     const types = ['infantry', 'cavalry', 'artillery'] as const;
-    for (const terrain of ['-', '=', '.', 'f', '^', '~']) {
+    for (const terrain of Object.values(TERRAIN).map((ground) => ground.char)) {
       for (const attacker of types) {
         for (const defender of types) {
           for (const health of [1, 4, 9, 10, 11, 50, 99, MAX_HEALTH]) {

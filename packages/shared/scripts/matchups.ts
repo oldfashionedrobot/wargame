@@ -14,6 +14,7 @@
  * something it reaches for.
  */
 import { computeDamage } from '../src/combat';
+import { TERRAIN } from '../src/data/terrain';
 import { BASE_DAMAGE, LUCK_MAX } from '../src/data/combat';
 import { MAX_HEALTH } from '../src/data/unitTypes';
 import { makeState } from '../src/testing';
@@ -21,16 +22,15 @@ import type { UnitTypeId } from '../src/data/unitTypes';
 
 const TYPES: UnitTypeId[] = ['infantry', 'cavalry', 'artillery'];
 
-// Every terrain a unit can be standing on when it is shot at, with the
-// character maps are drawn in. `defense` is the only column that matters here.
-const GROUND: Array<{ name: string; char: string }> = [
-  { name: 'road', char: '-' },
-  { name: 'bridge', char: '=' },
-  { name: 'plains', char: '.' },
-  { name: 'forest', char: 'f' },
-  { name: 'mountain', char: '^' },
-  { name: 'river', char: '~' },
-];
+// Every terrain a unit can be standing on when it is shot at. `defense` is the
+// only column that matters here.
+//
+// ⚠️ **Read off `TERRAIN` rather than listed again.** A hand-written copy is a
+// terrain that gets added and then never swept -- the new ground would be
+// missing from the one table built to say what ground is worth, and nothing
+// would report it. The `Record<TileType, …>` is what makes the table itself
+// complete; this is what carries that completeness through to the print-out.
+const GROUND = Object.entries(TERRAIN).map(([name, { char }]) => ({ name, char }));
 
 /** A two-tile board: attacker on plains, defender on whatever is being tested. */
 function duel(ground: string, attacker: UnitTypeId, defender: UnitTypeId, health: number) {
