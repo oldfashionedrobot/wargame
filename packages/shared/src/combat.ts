@@ -26,8 +26,8 @@ export const BANDS = 10;
  * The health term the formula reads: AW's displayed 1-10, `ceil(health / 10)`.
  *
  * ⚠️ **This is the whole reason a living unit can still fight.** Health is
- * stored and shown as 0-100 here -- see *HP representation* in the roadmap,
- * where displaying 1-10 was rejected as a GBA screen constraint -- but the
+ * stored and shown as 0-100 here -- displaying 1-10 was a GBA screen
+ * constraint rather than a rule worth keeping -- but the
  * *formula* reads the band, exactly as AW's does. Feed it raw health instead
  * and a unit on 1 point attacks at 1% rather than 10%, which floors to nothing:
  * measured, a cavalry unit at 4 health or less dealt **zero** to infantry in
