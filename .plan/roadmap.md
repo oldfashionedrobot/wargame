@@ -233,20 +233,42 @@ and 40% on a mountain at full health. Only the charge side was weak.
 
 **The sentence it buys: 100% needs position *and* open ground.**
 
+**0. Plains loses its star.** Open ground is open ground: `road`, `bridge`,
+`plains` and `river` all go to **0**, and cover means `forest` 2 or `mountain` 4.
+
+⚠️ **This is what makes forest mean anything at all.** Measured against the
+current table, the forest column of the hits-to-kill grid is **identical to the
+plains column in all nine matchups** — the extra 10% never crosses a hit
+boundary, so a wood costs movement and buys nothing. Dropping plains to 0 is what
+separates them: forest starts buying a hit against cavalry defenders, and the
+gap widens everywhere else.
+
+⚠️ **It costs almost no lethality.** Only two cells of the grid move —
+`infantry → cavalry` and `cavalry → cavalry` on plains, each from 3 hits to 2 and
+4 to 3. Hits-to-kill is coarse enough that a 10% change rarely crosses a
+boundary, which is the same reason the old plains star was doing nothing.
+
+⚠️ **And the current value is backwards.** At 1 star, open field gives cover
+*equal to a wood* in every matchup that matters — the exposure the design wants
+from open ground is not there today.
+
+It also cleans the charge floors: open ground carries no floor, so 100% from the
+flank or rear is reachable on any open tile rather than only on a road.
+
 **A first cut at the numbers**, chosen by printing the resulting grid rather
 than by feel:
 
 | | | |
 |---|---|---|
 | `FRONTAL_FLOOR` | **3** | caps a head-on charge at 87% on bare ground |
-| `FLOOR_PER_STAR` | **3** | plains 3, forest 6, mountain 12 — a mountain caps everything at 57% |
+| `FLOOR_PER_STAR` | **3** | open 0, forest 6, mountain 12 — a mountain caps everything at 57% |
 | `cavalry → artillery` | 60 → **45** | under the `× REAR_MULTIPLIER < MAX_HEALTH` line |
 | `infantry → artillery` | 45 → **35** | keeps cavalry clearly the better lance |
 | flank counter | **2/3** | |
 
 What that grid says: a healthy unit charged head-on is 2–8%; a broken one is
-76–87% from the front and reaches 100% only from the flank or rear **and** on
-0-star ground; a full-health battery taken from behind on a road drops from
+87% from the front and reaches 100% only from the flank or rear **and** on open
+ground; a full-health battery taken from behind on a road drops from
 **100% to 63%**; and nothing charged onto a mountain exceeds **57%** from any
 direction.
 
