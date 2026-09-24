@@ -1,19 +1,202 @@
 # Victory or Death — Roadmap and design
 
-Forward-looking only: mechanics that are specified but not built, and the
-order they are planned in. What the code does *today* is in
+Forward-looking only: what is designed but not built. Order is the table
+below. What the code does *today* is in
 [`architecture.md`](architecture.md); nothing here describes current
 behaviour.
 
 ---
 
-## Tuning
+## Order
+
+**This table is the only place order lives.** Everything below is an *epic* — a
+chunk of work, not a step in a sequence — and the sections are in whatever order
+they were written in.
+
+⚠️ **A phase number is an identifier, not a position.** The numbers below are
+kept because links, commits and cross-references already use them, and they say
+nothing about what comes next. Epics added from here on get a **name and no
+number**. Reordering is editing one row of this table and nothing else.
+
+| Order | Epic | |
+|---|---|---|
+| 1 | **Tuning and gameplay tweaks** | Iterate on how it actually plays, before anything is built on top of it |
+| 2 | **Presentation** (11) | The 3D look first, then animation, sound and UI |
+| 3 | **Multiplayer** (12) | Identity, and two clients in one match |
+| 4 | **A hosted build** (13) | itch.io — the client and server deploy apart |
+| 5 | **Content** (14) | More units, maps in a table, an editor |
+| 6 | **Platforms** (15) | The portals that gate, review, or supply accounts |
+
+⚠️ **Only one ordering constraint is real**: *Multiplayer* → *A hosted build* →
+*Platforms*. Nothing outward-facing happens without a build, and the portal step
+needs both the build and whatever provides identity. Everything else is a
+preference, and preferences have already changed three times.
+
+⚠️ **Cross-references name an epic rather than number it.** The rule has been
+earned twice — inserting a phase once turned six pointers in *Known compromises*
+at the wrong thing, and moving *Presentation* to the front broke every surviving
+number in the section below. A name survives a reorder; a number is something
+somebody has to remember to recount, and nobody does.
+
+## Open questions
+
+- ⚠️ **Nothing can ask where a tile is on screen, and a browser is the only check
+  the renderer has.** It is WebGL, so it has no unit tests at all; every visual
+  verification therefore means screenshotting, measuring by eye, and clicking a
+  guessed pixel. A guess that misses is indistinguishable from a bug, which makes
+  the workflow trial-and-error by construction — and it is how a real bug
+  (`POINTERPICK`) got found by accident rather than by method.
+
+  The fix is small and already half-built: `anchorTo` projects a tile to screen
+  pixels every frame. Exposing that in dev — a `tileToScreen` on the renderer, or
+  a `window.__vod` handle behind `import.meta.env.DEV` — turns every future check
+  from *guess a pixel* into *address a tile*. ⚠️ It is test-only surface on a
+  production object, which is the reason to think before building it rather than
+  the reason not to. *Presentation* is where it would pay for itself fastest.
+
+
+## Known compromises
+
+Deliberate limits of the current design, and what each would take to lift. Distinct from *Out of scope for v1* below, which is unbuilt features rather than accepted limits.
+
+| | Current state | What it needs eventually |
+|---|---|---|
+| **Session identity** | Opaque id in an httpOnly cookie; the server trusts it on sight | *Multiplayer and auth* — a real session record behind whatever provides identity. Same cookie, real meaning. No passwords at any point |
+| **`actor` under hot-seat** | Server stamps `currentTurn` on its one connection | *Multiplayer and auth* — session→player map established at join |
+| **Matches are unowned and unbounded** | Anyone can create any number; no delete, no expiry. `list()` is capped at 50 newest — a bound, not pagination | *Multiplayer and auth* — scope listing to the player, and add deletion. Until identity exists there's nothing to scope by |
+| **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | *Multiplayer and auth* — match lifecycle and, eventually, notification. Not new mechanics |
+| **Ruleset versioning**, and with it **old matches are expendable** | None. ⚠️ `current_state` and `initial_state` are JSON columns with `.$type<GameState>()`, which is a **compile-time cast and no runtime check** — so a match stored before a field existed reads back missing it while the types insist otherwise. A shape change therefore does not migrate rows; it abandons them, and that is **accepted policy until a ruleset id exists** rather than an oversight. The dev database is gitignored scratch: delete it. ⚠️ The failure is silent where it matters — a `Unit` with no `health` is `undefined`, and `undefined` arithmetic is `NaN`, so the first symptom is a damage number rather than an error | Stamp a ruleset id on the match so old logs replay under the rules they were played with. That is also what retires the policy above: a match that knows its ruleset can be refused rather than quietly misread |
+| **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Picked from at match creation, and browsable at `/maps` | ✅ **Decided** — a `maps` table plus an editor, in *Content*. ⚠️ The other condition — enough maps to choose among — has already been met, so this is due a re-read rather than a wait; see below |
+| **Elevation is visual only, and capped at 0.5** | Height is a look, never data. A mesa and a bridge deck raise where a unit *stands*, but `shared/` has no idea: there is no height on a tile, `entryCost` never asks about one, and no rule reads one. ⚠️ Both halves of the old technical objection are now gone — `screenToTile` tries every surface height tallest-first, so a click finds a peak where it is drawn, and `surfaceAt` is a lookup that knows each tile's height. What caps height now is the *camera*: at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and past about half a tile it occupies its neighbour | ⚠️ **Nothing — this is where it stays.** It was once written here as waiting on machinery, which stopped being true when picking learned about height, and elevation as a *rule* is now declined for v1 rather than queued. Mesas are enough at this board size. The reasons, and the two findings worth keeping if it is ever reopened, are in *Out of scope for v1* |
+| **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
+| **Migrations run at boot** | `migrate()` on startup, fine for one instance and ~0.4 ms once nothing is pending. Drizzle lists runtime migration as a first-class flow for monoliths, so this is a choice rather than a shortcut | `bun run db:migrate` as a deploy step, once there is more than one instance, a rolling deploy, or a reason to deny the runtime DDL rights |
+| **Two reads per command** | `resolveActor` needs state to stamp `actor = currentTurn`, but `submit` owns the read | *Multiplayer and auth* — `resolveActor` becomes a session lookup and the extra read disappears |
+
+### Maps in a table
+
+✅ **Decided: maps become a table.** The trigger condition below was met a
+while ago and the decision is now taken rather than pending. ⚠️ It also grows a
+second half that was never in the original argument — **a map editor**. Rows in
+a table are only better than modules if something other than a text editor
+writes them, and an editor is what turns "maps are content" from a claim into a
+fact. That is a phase of its own and belongs near *Depth*, not here; what
+belongs here is that the storage decision no longer waits on anything.
+
+⚠️ **The original argument, unchanged, and its condition:** It said *revisit when there are enough maps to choose among* —
+there are enough to choose among, and **two** screens now pick between them:
+`StartScreen` chooses what to play on and `/maps` exists only to look through
+them. That is the picker
+this section names as what turns maps into a library rather than a constant, and
+a library of selectable rows is what a table is for. ⚠️ The viewer arrived after
+this was written and makes the case louder rather than differently — a second
+reader of the registry is a second thing a `maps` table would serve.
+
+What follows is the argument as it stood at one map. None of it has been
+refuted, and the one real risk it names was closed in the meantime by making
+map ids immutable. What has *not* happened is the other half — maps that stop
+being written by developers, which is what user-authored maps, random selection
+or filtering would bring.
+
+The tempting argument against — *content lives in code, like `terrain.ts` and
+`unitTypes.ts`* — does not actually hold. Those are **fixed global lookups**:
+one table each, always loaded, never chosen between. Maps are a **collection
+you select from**, which is a different shape and a more database-shaped one.
+What holds instead is narrower:
+
+- The character-grid format exists to be read in a diff. A `TEXT` column keeps
+  the format and throws away the reason for it.
+- There is no seeding machinery. Migrations are schema-only and nothing inserts
+  data at boot, so a table means inventing an idempotent seed step.
+- The foreign key would protect metadata that cannot corrupt anything —
+  `initial_state` holds the instantiated grid, so a match replays correctly
+  whatever `map_id` points at. A dangling id is a wrong label, not a broken
+  match.
+
+⚠️ **One real risk while maps stay in code:** editing `classic.ts` retroactively
+changes what every existing match's `map_id: 'classic'` refers to. This is
+ruleset versioning in miniature. The cheap mitigation is not a table — it is to
+treat **map ids as immutable**: a changed map gets a new id, and the old one
+stays as it was played. Stamping the map rows onto the match row is the other
+option, and both cost a few lines against a table's seeding machinery.
+
+## Out of scope for v1
+
+- **A `playerEliminated` event.** With two players it states the same fact as
+  `gameEnded` twice. It becomes the right shape with three, and is purely
+  additive when it comes, because nothing in `GameState` marks elimination for
+  an absent event to desync.
+- **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
+- **Buildings / capture points.** A terrain type with attached `{ owner, captureProgress }`, not a separate object layered on a tile.
+- **Graying out acted units.** The mechanical restriction is built; the visual is not. ⚠️ *Multiplayer* wants a "your units that can still act" indicator, which is the same thing under another name — whichever draws it, it should be one treatment rather than two.
+- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — `mountain` is `defense: 4` and costs a horse 4, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
+
+  ⚠️ Two findings worth keeping if it is ever reopened. `entryCost` takes a *destination*; height would make it take a **step**, which is a real signature change but a contained one — `exploreMovement` and `validatePath` are its only callers, and invariant 10 is what guarantees that. And if height ever did enter combat, the door is an **attack** bonus for striking downhill rather than a defence bonus for standing high, because terrain does not express the former and already expresses the latter.
+- **Manual routing.** Dragging out a deliberately non-optimal path. Unblocked by the protocol carrying a path and the server validating it — purely a matter of building the UI for it. ⚠️ The substrate now exists and did not before: a route is **pinned, re-pinnable, and drawn as an arrow**, so waypoints have something to hang off rather than needing the whole idea built at once.
+- **A blocky / voxel art style.** Tried on a branch with [KayKit's Block Bits](https://kaylousberg.itch.io/block-bits) and rejected — recorded so it is not re-litigated from the screenshots alone. It works: every terrain maps onto a block, and **the autotiler turns out not to be load-bearing** — a cube has no shoreline, so a one-tile river bends through a right angle with no mask arithmetic at all, and `composeTerrain` drops from ~250 lines to ~60. What killed it is the camera. The style lives on block *sides*, a near-top-down board shows only tops, and stepping by whole blocks to expose the sides is the elevation problem above. So it is a real option, but only alongside a different camera — not a swap.
+
+
+## The epics
+
+**Order is in the table at the top of this file**, not here. Each section below
+is self-contained; read the one you are about to work on.
+
+⚠️ One dependency crosses epics: *Multiplayer* decides matches are meant to be
+**short**, and how long a match runs is content. Co-presence puts two people at
+the board at the same time; only *Content* makes that a single sitting.
+
+⚠️ **Multiplayer comes before deploying, and that is a product decision rather
+than a technical one.** A hosted build could ship the day the asset paths are
+fixed, and for a while this file said it should. It should not: hot-seat was
+scaffolding for building the game, not a way to play it, and putting a
+two-people-one-keyboard turn-based strategy game in front of a portal audience
+is shipping the wrong product and learning nothing true from what it does.
+⚠️ The cost of the order is that ***Multiplayer* has to take *A hosted build*'s
+constraint as an input** — identity gets designed knowing the client will later
+be served from another origin, rather than having that discovered afterwards.
+That constraint is written into *Multiplayer* below, where the decision is made.
+
+⚠️ **Platform mechanics are not written down here.** They are per-platform,
+dated, and change — see *Victory or Death — Publishing Pipeline* in Drive, which
+carries the gate, exclusivity, identity and size rules for each portal with the
+date each was verified. Anything copied into this file is a second copy to keep
+in step, and the last audit of this document was mostly about exactly that.
+
+### Tuning and gameplay tweaks
+
+**Iterate on how it plays, before anything is built on top of it.** Graphics,
+multiplayer and deployment all add surface to whatever the game currently is;
+changing how it plays afterwards means changing them too.
+
+⚠️ **Play is already the authority here, not the tables.** Three rules have
+moved on evidence from actually playing rather than from the harness — infantry
+and cavalry damage up fifteen, `slow`, and artillery's minimum range to three —
+and two of those turned out to be *rules* rather than dials. The harness says
+what a number does; it cannot say whether a turn is interesting.
+
+⬜ **What goes in this epic is not settled.** What follows is what is already
+known to want attention.
+
+#### Known to want attention
+
+- ⚠️ **`cavalry → artillery` saturates and hides a dial.** At a base of 60 the
+  flank is 100% from 85 health down and the rear is 100% everywhere, so
+  `REAR_MULTIPLIER` is doing nothing in that row. Invisible in a head-on column,
+  and the exact dead dial the harness was built to catch.
+- **Match length.** Nothing caps a match: eight units a side, no turn limit, and
+  a player who retreats can extend it indefinitely. *Multiplayer* wants a match
+  to be one sitting; the dial is army size, board size, or a condition that ends
+  it. ⚠️ Listed under *Content* as well, because which of those it turns out to
+  be decides where the work lands.
+- **Terrain values.** Measured below, and the measurement is what makes them
+  arguable rather than a matter of taste.
+
+#### The dials
 
 The surface is `BASE_DAMAGE`, `CHARGE_THRESHOLD` and `CHARGE_REPEL`, plus the
 loose dials beside them: `FLANK_MULTIPLIER`, `REAR_MULTIPLIER`, `LUCK_MAX`,
 `CHARGE_HALF_LIFE`, and the repel's miss-scaling.
 
-### The first cut
+##### The first cut
 
 ⚠️ **Written down to be argued with, not because they were right.** Nothing had
 been played when these were chosen. They existed so the harness had something to
@@ -163,7 +346,7 @@ call, and it is cheaper to say so with a number than with a rule forbidding it.
 value only appears raw on road or bridge. Worth knowing before reading a printed
 number as a bug.
 
-### ⚠️ What terrain is actually worth, measured
+##### ⚠️ What terrain is actually worth, measured
 
 The doc long carried a worry that `mountain: 4` — a 40% reduction — might make a
 unit parked on a peak *unkillable* with eight units and no reinforcements. It
@@ -187,142 +370,6 @@ should be re-read once charge exists and a peak can be stormed.
 **The harnesses exist** — `packages/shared/scripts/matchups.ts` and `charges.ts`, run with `bun`. It prints hits-to-kill across every matchup and terrain, which is the artefact worth tuning against; a raw damage number is not. They have already earned themselves three times: the first killed a table where everything died in two hits and settled the mountain question above, and the second found cavalry-into-artillery saturating at the flank on its opening run. ⚠️ Its details belong to [`architecture.md`](architecture.md) now, not here.
 
 *Sources: [Wars World News — Battle Mechanics](https://www.warsworldnews.com/wp/aw/game-aw/battle-mechanics/) · [AWBW Wiki — Damage Formula](https://awbw.fandom.com/wiki/Damage_Formula) · [Advance Wars Wiki — Luck](https://advancewars.fandom.com/wiki/Luck) · [AWBW Wiki — Terrain](https://awbw.fandom.com/wiki/Terrain) · [Advance Wars Wiki — Indirect Combat](https://advancewars.fandom.com/wiki/Indirect_Combat)*
-
-
-## Open questions
-
-- ⚠️ **Nothing can ask where a tile is on screen, and a browser is the only check
-  the renderer has.** It is WebGL, so it has no unit tests at all; every visual
-  verification therefore means screenshotting, measuring by eye, and clicking a
-  guessed pixel. A guess that misses is indistinguishable from a bug, which makes
-  the workflow trial-and-error by construction — and it is how a real bug
-  (`POINTERPICK`) got found by accident rather than by method.
-
-  The fix is small and already half-built: `anchorTo` projects a tile to screen
-  pixels every frame. Exposing that in dev — a `tileToScreen` on the renderer, or
-  a `window.__vod` handle behind `import.meta.env.DEV` — turns every future check
-  from *guess a pixel* into *address a tile*. ⚠️ It is test-only surface on a
-  production object, which is the reason to think before building it rather than
-  the reason not to. *Presentation* is where it would pay for itself fastest.
-
-
-## Known compromises
-
-Deliberate limits of the current design, and what each would take to lift. Distinct from *Out of scope for v1* below, which is unbuilt features rather than accepted limits.
-
-| | Current state | What it needs eventually |
-|---|---|---|
-| **Session identity** | Opaque id in an httpOnly cookie; the server trusts it on sight | *Multiplayer and auth* — a real session record behind whatever provides identity. Same cookie, real meaning. No passwords at any point |
-| **`actor` under hot-seat** | Server stamps `currentTurn` on its one connection | *Multiplayer and auth* — session→player map established at join |
-| **Matches are unowned and unbounded** | Anyone can create any number; no delete, no expiry. `list()` is capped at 50 newest — a bound, not pagination | *Multiplayer and auth* — scope listing to the player, and add deletion. Until identity exists there's nothing to scope by |
-| **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | *Multiplayer and auth* — match lifecycle and, eventually, notification. Not new mechanics |
-| **Ruleset versioning**, and with it **old matches are expendable** | None. ⚠️ `current_state` and `initial_state` are JSON columns with `.$type<GameState>()`, which is a **compile-time cast and no runtime check** — so a match stored before a field existed reads back missing it while the types insist otherwise. A shape change therefore does not migrate rows; it abandons them, and that is **accepted policy until a ruleset id exists** rather than an oversight. The dev database is gitignored scratch: delete it. ⚠️ The failure is silent where it matters — a `Unit` with no `health` is `undefined`, and `undefined` arithmetic is `NaN`, so the first symptom is a damage number rather than an error | Stamp a ruleset id on the match so old logs replay under the rules they were played with. That is also what retires the policy above: a match that knows its ruleset can be refused rather than quietly misread |
-| **Maps live in code, not a table** | Modules in `server/maps/`; `map_id` is a plain text column with no foreign key. Picked from at match creation, and browsable at `/maps` | ✅ **Decided** — a `maps` table plus an editor, in *Content*. ⚠️ The other condition — enough maps to choose among — has already been met, so this is due a re-read rather than a wait; see below |
-| **Elevation is visual only, and capped at 0.5** | Height is a look, never data. A mesa and a bridge deck raise where a unit *stands*, but `shared/` has no idea: there is no height on a tile, `entryCost` never asks about one, and no rule reads one. ⚠️ Both halves of the old technical objection are now gone — `screenToTile` tries every surface height tallest-first, so a click finds a peak where it is drawn, and `surfaceAt` is a lookup that knows each tile's height. What caps height now is the *camera*: at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and past about half a tile it occupies its neighbour | ⚠️ **Nothing — this is where it stays.** It was once written here as waiting on machinery, which stopped being true when picking learned about height, and elevation as a *rule* is now declined for v1 rather than queued. Mesas are enough at this board size. The reasons, and the two findings worth keeping if it is ever reopened, are in *Out of scope for v1* |
-| **Shared build step** | TS source consumed directly, bun-only | A build if the server ever moves off bun |
-| **Migrations run at boot** | `migrate()` on startup, fine for one instance and ~0.4 ms once nothing is pending. Drizzle lists runtime migration as a first-class flow for monoliths, so this is a choice rather than a shortcut | `bun run db:migrate` as a deploy step, once there is more than one instance, a rolling deploy, or a reason to deny the runtime DDL rights |
-| **Two reads per command** | `resolveActor` needs state to stamp `actor = currentTurn`, but `submit` owns the read | *Multiplayer and auth* — `resolveActor` becomes a session lookup and the extra read disappears |
-
-### Maps in a table
-
-✅ **Decided: maps become a table.** The trigger condition below was met a
-while ago and the decision is now taken rather than pending. ⚠️ It also grows a
-second half that was never in the original argument — **a map editor**. Rows in
-a table are only better than modules if something other than a text editor
-writes them, and an editor is what turns "maps are content" from a claim into a
-fact. That is a phase of its own and belongs near *Depth*, not here; what
-belongs here is that the storage decision no longer waits on anything.
-
-⚠️ **The original argument, unchanged, and its condition:** It said *revisit when there are enough maps to choose among* —
-there are enough to choose among, and **two** screens now pick between them:
-`StartScreen` chooses what to play on and `/maps` exists only to look through
-them. That is the picker
-this section names as what turns maps into a library rather than a constant, and
-a library of selectable rows is what a table is for. ⚠️ The viewer arrived after
-this was written and makes the case louder rather than differently — a second
-reader of the registry is a second thing a `maps` table would serve.
-
-What follows is the argument as it stood at one map. None of it has been
-refuted, and the one real risk it names was closed in the meantime by making
-map ids immutable. What has *not* happened is the other half — maps that stop
-being written by developers, which is what user-authored maps, random selection
-or filtering would bring.
-
-The tempting argument against — *content lives in code, like `terrain.ts` and
-`unitTypes.ts`* — does not actually hold. Those are **fixed global lookups**:
-one table each, always loaded, never chosen between. Maps are a **collection
-you select from**, which is a different shape and a more database-shaped one.
-What holds instead is narrower:
-
-- The character-grid format exists to be read in a diff. A `TEXT` column keeps
-  the format and throws away the reason for it.
-- There is no seeding machinery. Migrations are schema-only and nothing inserts
-  data at boot, so a table means inventing an idempotent seed step.
-- The foreign key would protect metadata that cannot corrupt anything —
-  `initial_state` holds the instantiated grid, so a match replays correctly
-  whatever `map_id` points at. A dangling id is a wrong label, not a broken
-  match.
-
-⚠️ **One real risk while maps stay in code:** editing `classic.ts` retroactively
-changes what every existing match's `map_id: 'classic'` refers to. This is
-ruleset versioning in miniature. The cheap mitigation is not a table — it is to
-treat **map ids as immutable**: a changed map gets a new id, and the old one
-stays as it was played. Stamping the map rows onto the match row is the other
-option, and both cost a few lines against a table's seeding machinery.
-
-## Out of scope for v1
-
-- **A `playerEliminated` event.** With two players it states the same fact as
-  `gameEnded` twice. It becomes the right shape with three, and is purely
-  additive when it comes, because nothing in `GameState` marks elimination for
-  an absent event to desync.
-- **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
-- **Buildings / capture points.** A terrain type with attached `{ owner, captureProgress }`, not a separate object layered on a tile.
-- **Graying out acted units.** The mechanical restriction is built; the visual is not. ⚠️ *Multiplayer* wants a "your units that can still act" indicator, which is the same thing under another name — whichever draws it, it should be one treatment rather than two.
-- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — `mountain` is `defense: 4` and costs a horse 4, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
-
-  ⚠️ Two findings worth keeping if it is ever reopened. `entryCost` takes a *destination*; height would make it take a **step**, which is a real signature change but a contained one — `exploreMovement` and `validatePath` are its only callers, and invariant 10 is what guarantees that. And if height ever did enter combat, the door is an **attack** bonus for striking downhill rather than a defence bonus for standing high, because terrain does not express the former and already expresses the latter.
-- **Manual routing.** Dragging out a deliberately non-optimal path. Unblocked by the protocol carrying a path and the server validating it — purely a matter of building the UI for it. ⚠️ The substrate now exists and did not before: a route is **pinned, re-pinnable, and drawn as an arrow**, so waypoints have something to hang off rather than needing the whole idea built at once.
-- **A blocky / voxel art style.** Tried on a branch with [KayKit's Block Bits](https://kaylousberg.itch.io/block-bits) and rejected — recorded so it is not re-litigated from the screenshots alone. It works: every terrain maps onto a block, and **the autotiler turns out not to be load-bearing** — a cube has no shoreline, so a one-tile river bends through a right angle with no mask arithmetic at all, and `composeTerrain` drops from ~250 lines to ~60. What killed it is the camera. The style lives on block *sides*, a near-top-down board shows only tops, and stepping by whole blocks to expose the sides is the elevation problem above. So it is a real option, but only alongside a different camera — not a swap.
-
-
-## Remaining phases
-
-⚠️ **Three of these are a queue and two are tracks**, and the numbers say the
-order they are being *done* in rather than an order they must be in.
-*Multiplayer* → *A hosted build* → *Platforms* is the queue and cannot be
-rearranged. *Presentation* and *Content* depend on none of it, which is why
-either can be pulled to the front — and *Presentation* has been, deliberately,
-because a graphics pass is wanted before the plumbing.
-
-⚠️ One dependency crosses the two groups: *Multiplayer* decides matches are
-meant to be **short**, and how long a match runs is content. Co-presence puts
-two people at the board at the same time; only *Content* makes that a single
-sitting.
-
-⚠️ **Multiplayer comes before deploying, and that is a product decision rather
-than a technical one.** A hosted build could ship the day the asset paths are
-fixed, and for a while this file said it should. It should not: hot-seat was
-scaffolding for building the game, not a way to play it, and putting a
-two-people-one-keyboard turn-based strategy game in front of a portal audience
-is shipping the wrong product and learning nothing true from what it does.
-⚠️ The cost of the order is that ***Multiplayer* has to take *A hosted build*'s
-constraint as an input** — identity gets designed knowing the client will later
-be served from another origin, rather than having that discovered afterwards.
-That constraint is written into *Multiplayer* below, where the decision is made.
-
-⚠️ **Cross-references name a phase rather than number it**, and the rule has
-now been earned twice. Inserting a phase renumbered everything after it and
-turned six "Phase 11 —" pointers in *Known compromises* into pointers at the
-wrong thing; moving *Presentation* to the front broke every surviving number in
-this section the same way. A name survives a renumber. A number is something
-somebody has to remember to recount, and nobody does.
-
-⚠️ **Platform mechanics are not written down here.** They are per-platform,
-dated, and change — see *Victory or Death — Publishing Pipeline* in Drive, which
-carries the gate, exclusivity, identity and size rules for each portal with the
-date each was verified. Anything copied into this file is a second copy to keep
-in step, and the last audit of this document was mostly about exactly that.
 
 ### 11 — Presentation
 
@@ -782,7 +829,7 @@ instead, because that is where the sessions get built.
 ### 14 — Content: units, maps, and the numbers
 
 A track, not a queue — it depends on nothing above and it is what moves the
-metrics a portal actually gates on. *Tuning* above is where the numbers and the
+metrics a portal actually gates on. *Tuning and gameplay tweaks* is where the numbers and the
 argument live; this is the phase that keeps changing them.
 
 - **More unit types.** The catalog is built for this: `Record<UnitTypeId, …>`
@@ -810,12 +857,10 @@ argument live; this is the phase that keeps changing them.
   three are a **palette** job touching no rule, and a wall is not a tile at all:
   cover *from one direction* is an **edge** feature against a grid that only has
   cells, and it multiplies with facing.
-- ⚠️ **"Short, like a game of chess" lands here, and only here.** 11 puts both
-  players at the board at once and changes no transport to do it; what it cannot
-  do is make the game *end*. Nothing caps a match today — eight units a side, no
-  turn limit, and a player who retreats can extend it indefinitely. The dial is
-  army size, board size, or a condition that ends it, and which one is a
-  **design** question this phase owns rather than a number to quietly tune.
+- ⚠️ **Match length, if the answer turns out to be army size.** *Multiplayer*
+  wants a match to be one sitting and cannot make the game *end*; *Tuning and
+  gameplay tweaks* owns the question. It lands here only if the dial chosen is
+  the roster rather than a turn limit or an ending condition.
 
 ### 15 — Platforms beyond itch
 
