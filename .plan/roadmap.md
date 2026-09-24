@@ -233,6 +233,37 @@ and 40% on a mountain at full health. Only the charge side was weak.
 
 **The sentence it buys: 100% needs position *and* open ground.**
 
+**A first cut at the numbers**, chosen by printing the resulting grid rather
+than by feel:
+
+| | | |
+|---|---|---|
+| `FRONTAL_FLOOR` | **3** | caps a head-on charge at 87% on bare ground |
+| `FLOOR_PER_STAR` | **3** | plains 3, forest 6, mountain 12 — a mountain caps everything at 57% |
+| `cavalry → artillery` | 60 → **45** | under the `× REAR_MULTIPLIER < MAX_HEALTH` line |
+| `infantry → artillery` | 45 → **35** | keeps cavalry clearly the better lance |
+| flank counter | **2/3** | |
+
+What that grid says: a healthy unit charged head-on is 2–8%; a broken one is
+76–87% from the front and reaches 100% only from the flank or rear **and** on
+0-star ground; a full-health battery taken from behind on a road drops from
+**100% to 63%**; and nothing charged onto a mountain exceeds **57%** from any
+direction.
+
+⚠️ **Cover compresses positional advantage, and nothing had to be built for
+it.** The floor is shared across directions, so as it rises the gap between
+front and rear narrows on its own — 87% against 100% on a road, 50% against 57%
+on a mountain. *Taking cover protects your flanks* falls out of the same
+constant rather than needing a mechanism.
+
+⚠️ **`FRONTAL_FLOOR` equals `FLOOR_PER_STAR`, which is worth keeping if it
+survives tuning**: it means facing a unit's front is worth exactly one star of
+terrain to it.
+
+⚠️ **A mountain flattens the grid** — at low health every matchup and every
+direction lands on 57%, because the floor dominates every margin. Simple and
+readable, and the first thing to look at if cover feels too absolute.
+
 **2. The `cavalry → artillery` row comes down.** Still needed alongside the
 floor, not replaced by it: at threshold 60 a rear charge is 120, so a
 full-health battery on a road is margin 0 and the floor is 0 too.
