@@ -516,31 +516,51 @@ one formula cannot be read apart, not because the geometry might be wrong.
   animation and a charge one, and it is carried for that.
 
 
-### 11 — Presentation: animation, sound, UI
+### 11 — Presentation
 
 A track, pulled to the front because a graphics pass is wanted before the
-plumbing. Nothing above it in the queue depends on it and it depends on nothing.
+plumbing. Nothing in the queue depends on it and it depends on nothing.
 
-⚠️ **The board has one `HemisphericLight` and no shadows at all** — grep the
-client for `Shadow` and it returns nothing. That is why everything reads flat,
-and it is why `UNIT_GLOW` exists: a floor of self-illumination propping up
-silhouettes the lighting is not giving. A directional light with a shadow
-generator is the largest single change available here, and it would let the glow
-come back out rather than being tuned around.
+**Split in two, and 11a comes first on its own.**
+
+#### 11a — The 3D look
+
+Models, textures, materials, lighting, shading, rendering. ⬜ **The style is
+undecided.** Low-poly PS1 is what is being explored; nothing is settled, and
+nothing below assumes it.
+
+Three facts about the current setup that constrain whatever is chosen:
+
+- ⚠️ **An orthographic camera makes affine texture mapping a no-op.** It is one
+  of the two signatures of the PS1 look — textures swimming on oblique polygons
+  — and it comes from UVs being interpolated without a perspective divide. Under
+  ortho there is no divide to skip: `w` is 1 everywhere, so perspective-correct
+  and linear interpolation are the same thing. Getting that effect means a
+  perspective camera, and the camera is load-bearing for reading the board.
+- ⚠️ **Nothing is textured.** The kit models arrive untextured and near-white and
+  the materials are flat colours, so anything texture-borne — dither patterns,
+  paletted crunch, point-sampling shimmer — is an art job before it is a shader
+  job.
+- ⚠️ **Whether to add shadows is a style question, not a default.** This section
+  previously called a directional light and a shadow generator "the largest
+  single change available", which is true of a realistic target and wrong of a
+  period one — the PS1 had vertex lighting and blob shadows and no shadow maps
+  at all. `UNIT_GLOW` exists to prop up silhouettes the hemispheric light does
+  not give, and whether it comes out depends on which way this goes.
 
 ⚠️ `battleResolved.kind` is carried for exactly this and read by nothing yet —
 the cutaway was built to branch on it and does not, so a volley and a charge
 currently play the same absence of an animation.
 
-- **Lighting and shadows.** Contained to the renderer, mostly configuration, and
-  the thing the rest of this list sits on top of.
+#### 11b — Animation, sound, UI
+
 - **Model animation in the cutaway**, which is the version 10c deliberately did
   not build.
-- **Sound.** Nothing in the codebase makes any, and there is no audio path at
-  all — this is a new capability rather than a pass over an existing one.
-- **A UI pass.** The board's chrome now reads `--board-*` tokens, so this is
-  editing a palette rather than hunting literals. The page's own tokens exist
-  and are still used by nothing.
+- **Sound.** Nothing in the codebase makes any and there is no audio path at
+  all — a new capability rather than a pass over an existing one.
+- **A UI pass.** The board's chrome reads `--board-*` tokens, so this is editing
+  a palette rather than hunting literals. The page's own tokens exist and are
+  used by nothing.
 - ⚠️ **The dev handle from *Open questions* belongs here or before it.** Every
   visual change is verified by screenshotting and guessing a pixel, and a
   `tileToScreen` behind `import.meta.env.DEV` turns that into addressing a tile.
