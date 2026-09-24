@@ -265,6 +265,23 @@ describe('resolveMove', () => {
     expect(battle.attacker.health).toBeLessThan(MAX_HEALTH);
   });
 
+  // ⚠️ The middle case, and the one the boolean cannot express: a flanked
+  // defender still answers, for two-thirds of what it would have managed
+  // head-on. `answered` is true in both, so the *health* is the only evidence.
+  it('answers a flanking shot, but for less than a head-on one', () => {
+    const shot = (look: 'east' | 'south') => {
+      const state = makeState(8, [
+        { id: 'b1', col: 0, row: 0 },
+        { id: 'r1', col: 0, row: 2, owner: 'red', facing: look },
+      ]);
+      const [, battle] = resolved(state, move('b1', at(0, 0), at(0, 0), 'r1'));
+      if (battle.type !== 'battleResolved') throw new Error('expected a battle');
+      return battle;
+    };
+    expect(shot('east').answered).toBe(true);
+    expect(shot('east').attacker.health).toBeGreaterThan(shot('south').attacker.health);
+  });
+
   // `hasActed` stops a unit *acting* twice in its own turn; answering an attack
   // is not acting, and the predicate is purely geometric so it never asks.
   it('is answered by a defender that has already acted', () => {

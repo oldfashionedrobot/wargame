@@ -485,17 +485,26 @@ Moving alone is legal. The flag forbids the pair, not the movement.
 
 ### Facing
 
-**Facing does exactly two things**: a shot from directly behind goes unanswered,
-and it adjusts a charge's threshold. `computeDamage` cannot see it at all, so
-there is no shooting damage modifier.
+**Facing does exactly three things**: a shot from directly behind goes
+unanswered, a shot on the flank cuts the counter to `FLANK_COUNTER_SHARE`, and
+it adjusts a charge's threshold. `computeDamage` cannot see facing at all, so
+there is no modifier on the *outgoing* shot — position limits the reply, it does
+not sharpen the blow.
 
 A single-element path is a **turn in place** — legal at cost 0, and a real
 defensive action.
 
-### A shot from behind is never answered
+### A shot from behind is never answered, and a flanking one is answered softly
 
-The only place facing changes shooting. Position affects *who may answer*, never
-what a shot does.
+Where facing changes shooting. Position affects *the reply* — who may answer and
+how hard — never what the attacking shot does.
+
+⚠️ **Only the negation is visible before committing.** `attackForecast` reports
+*they return fire* or nothing, so a reduced counter reads the same as a full one
+at the moment of choosing; the cutaway prints both sides' damage afterwards, so
+the flank rule is learned in play. ⚠️ **The scaling is applied after luck**,
+which narrows the luck band on a flanked counter from 0–9 to 0–6 and destroys
+the roll's recoverability from the log — see `rollLuck`.
 
 `wouldCounter` takes no facing argument: a `Unit` carries its own, so both
 callers — `resolveBattle` and the client's `attackForecast` — get the rule
