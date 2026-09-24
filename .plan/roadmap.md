@@ -192,10 +192,60 @@ known to want attention.
 
 #### Drafted changes
 
-⬜ **Drafted, not settled.** The shapes below are agreed; every number in them
-is a placeholder, and the tuning pass is the point of the epic.
+⬜ **Drafted, not settled.** The shapes are agreed; every number is a first cut,
+and settling them is the point of the epic.
 
-**1. A charge is never certain from the front, and never easy into cover.**
+##### 1. Terrain, which is where most of the value turned out to be
+
+**Open ground carries no cover, and the star term is weighted.** `road`,
+`bridge`, `plains` and `river` go to **0**; `forest` **2**, `mountain` **4**.
+The damage term becomes `stars × band(hp) × TERRAIN_WEIGHT` at **1.5** — 15% a
+star at full health, up from 10%.
+
+⚠️ **Both halves are needed, and the measurements are why.** Against the table
+as it stands the forest column of the hits-to-kill grid is **identical to the
+plains column in all nine matchups**: a wood costs movement and buys nothing.
+Plains at 1 star was giving open field the cover of a wood, and 2 stars was too
+light to register regardless.
+
+Cells of the nine-matchup grid that move at each step of the scale:
+
+| step | at 10%/star (today) | at 15%/star |
+|---|---|---|
+| 0 → 1 | 2 of 9 | 2 of 9 |
+| 1 → 2 | **0 of 9** | 5 of 9 |
+| 2 → 3 | 5 of 9 | 4 of 9 |
+| 3 → 4 | **1 of 9** | 6 of 9 |
+| 4 → 5 | 4 of 9 | 7 of 9 |
+
+⚠️ **`0 → 1` cannot be fixed and should not be used.** It stays at 2 of 9 for
+every weight tried up to 20%, because at zero stars damage is at its maximum and
+the hits-to-kill boundaries are furthest apart there. **No terrain sits at 1
+star**; the lightest cover starts at 2, and 3 and 5 stay free for terrain that
+does not exist yet.
+
+⚠️ **A harmonic shape was tried and measured worse.** Dividing by
+`(1 + stars × K)` should in theory make hits-to-kill scale linearly; the
+`band(hp)` term dominates either way and the spread comes out flatter than the
+weighted linear form.
+
+⚠️ **It makes terrain work against artillery for the first time.**
+`artillery → infantry` is 2 hits on *every* terrain today including a mountain —
+the heaviest attack ignoring the heaviest cover, which the measurement below
+flagged as never having been chosen. At 15% a peak takes it to 3.
+
+⚠️ **The cost is longer matches**, against *Multiplayer*'s decision that a match
+is one sitting. Worst case goes from 5 hits to 6 at four stars. ⬜ If those
+collide the lever is `BASE_DAMAGE`, not backing this out — cover mattering and
+matches being short are compatible, but the two dials have to be set in one
+pass.
+
+⚠️ **Run it through `scripts/matchups.ts` before believing it.** A star is worth
+a percentage and hits-to-kill is an integer, so most single-star changes sit
+below the resolution of the system. This column has already fooled this document
+twice.
+
+##### 2. A charge is never certain from the front, nor easy into cover
 
 One line, two constants, no new table:
 
@@ -204,142 +254,69 @@ margin = max(floor, targetHealth − threshold)
 floor  = FRONTAL_FLOOR (front only) + terrainStars × FLOOR_PER_STAR
 ```
 
-⚠️ **A floor caps the odds at `0.5 ^ (floor / CHARGE_HALF_LIFE)`** — 5 caps at
-79%, 3 at 87%, 8 at 69%. **`FRONTAL_FLOOR` starts as one scalar**, so that cap is
-the same for every matchup. What differs is *how easily each matchup reaches it*:
-the threshold decides that, and it already does — a gun crew is at its ceiling by
-60 health, bayonets only by 25.
+⚠️ **A floor caps the odds at `0.5 ^ (floor / CHARGE_HALF_LIFE)`**, and with
+`FRONTAL_FLOOR` as one scalar that cap is the same for every matchup. What
+differs is how easily each reaches it: a gun crew is at its ceiling by 60 health,
+bayonets only by 25 — the threshold already says so.
 
 ⚠️ **If the ceilings themselves should differ, the expansion is keyed by the
-defender, not by the pair.** "Can this unit brace against a charge from the
-front" is a fact about its own equipment, which is the same argument
-`CHARGE_REPEL` already uses for being defender-keyed — three entries, not nine.
-Not done yet: one scalar first, and play decides whether it needs the column.
+defender, not the pair.** "Can this unit brace against a charge head-on" is a
+fact about its own equipment — the same argument `CHARGE_REPEL` already uses for
+being defender-keyed. Three entries, not nine, and only if play asks.
 
-⚠️ **The floor only bites near certainty**, which is the right place. Against a
-full-health target the margin is 50–75 and no floor reaches it; against a
-weakened one the floor *is* the answer. Terrain and facing come to matter exactly
-where a charge was about to become a sure thing.
+⚠️ **The floor only bites near certainty.** Against a full-health target the
+margin is 50–75 and no floor reaches it; against a weakened one the floor *is*
+the answer. Terrain and facing come to matter exactly where a charge was about to
+become a sure thing.
 
-⚠️ **The floor replaces terrain's current contribution to a charge**, rather
-than sitting beside it. Terrain adds `stars` to the margin today — at most 4
-against a 100-point scale, which is why cover barely registers. Folding it into
-the floor concentrates terrain where it is felt. The cost: terrain stops
+⚠️ **It replaces terrain's flat contribution to a charge.** Terrain adds `stars`
+to the margin today — at most 4 against a 100-point scale. Folding it into the
+floor concentrates terrain where it is felt; the cost is that terrain stops
 affecting a charge that was a long shot anyway.
 
-⚠️ **Shooting is untouched.** `computeDamage` keeps reading `defense` as a
-percentage against the ten-point band, where it is already worth 20% in forest
-and 40% on a mountain at full health. Only the charge side was weak.
+⚠️ **Cover compresses positional advantage, and nothing was built for it.** The
+floor is shared across directions, so as it rises the gap between front and rear
+closes on its own — 87% against 100% on open ground, 50% against 57% on a
+mountain. *Taking cover protects your flanks* falls out of the same constant as
+*cover is hard to charge*.
+
+⚠️ **`FRONTAL_FLOOR` equals `FLOOR_PER_STAR`**, which reads as: facing a unit
+head-on is worth one star of terrain to it. Worth keeping if it survives tuning.
+
+⚠️ **A mountain flattens the grid** — at low health every matchup and direction
+lands on 57%, because the floor dominates every margin. Readable, and the first
+thing to look at if cover feels too absolute.
 
 **The sentence it buys: 100% needs position *and* open ground.**
 
-**The star scale is too light, and one constant fixes it.** The damage term is
-`(100 − stars × band(hp)) / 100`, which is **10% per star** at full health.
-Weighting it — `stars × band(hp) × TERRAIN_WEIGHT`, at **1.5** — makes every step
-of the scale do something.
+##### 3. The `cavalry → artillery` row comes down
 
-Cells of the nine-matchup hits-to-kill grid that move at each step:
+Needed alongside the floor, not replaced by it: at threshold 60 a rear charge is
+120, so a full-health battery on open ground is margin 0 with a floor of 0.
 
-| step | at 10%/star (today) | at 15%/star |
-|---|---|---|
-| 0 → 1 | 2 of 9 | 2 of 9 |
-| 1 → 2 | **0 of 9** | 5 of 9 |
-| 2 → 3 | 5 of 9 | 4 of 9 |
-| 3 → 4 | 1 of 9 | 6 of 9 |
-| 4 → 5 | 4 of 9 | 7 of 9 |
+⚠️ **The constraint: `threshold × REAR_MULTIPLIER < MAX_HEALTH`.** Above it a
+rear charge is automatically certain against a *full-health* defender, because
+doubling carries the threshold past the health ceiling and the margin can never
+be positive. At `REAR_MULTIPLIER` 2 that means every entry under **50**, and
+only the artillery column is near it.
 
-⚠️ **`0 → 1` cannot be fixed and should not be used.** It stays at 2 of 9 for
-every weight tried up to 20%, because at zero stars damage is at its maximum and
-the hits-to-kill boundaries are furthest apart there. **So no terrain should sit
-at 1 star** — the lightest cover starts at 2.
-
-⚠️ **A harmonic shape was tried and is worse.** Dividing by `(1 + stars × K)`
-instead of subtracting a percentage should in theory make hits-to-kill scale
-linearly; measured, it gives a flatter spread than the weighted linear form
-because the `band(hp)` term dominates either way.
-
-**The table that follows: `open 0 · forest 2 · mountain 4`**, with 3 and 5 left
-free for terrain that does not exist yet. At 15%/star forest buys a hit in
-**seven** of nine matchups where today it buys one in two, and mountain buys two.
-
-⚠️ **It also makes terrain work against artillery for the first time.**
-`artillery → infantry` is 2 hits on *every* terrain today including a mountain —
-the heaviest attack ignoring the heaviest cover, which the measurement below
-flagged as never having been chosen. At 15% a peak takes it to 3.
-
-⚠️ **The cost is longer matches**, and that runs against *Multiplayer*'s decision
-that a match should be one sitting. Worst case goes from 5 hits to 6 at four
-stars, and a five-star tile would be 8. ⬜ If those collide, the lever is
-`BASE_DAMAGE` rather than backing this out — cover being worth something and
-matches being short are not actually in conflict, but the two dials have to be
-set together.
-
-⚠️ **The measurement is the point, not the numbers.** A star is worth
-`stars × band(hp)` percent and hits-to-kill is an integer, so most single-star
-changes sit below the resolution of the system. Anything proposed for this
-column goes through `scripts/matchups.ts` before it is believed — the column has
-already fooled this document twice.
-
-**A first cut at the numbers**, chosen by printing the resulting grid rather
-than by feel:
-
-| | | |
-|---|---|---|
-| `TERRAIN_WEIGHT` | **1.5** | 15% per star at full health, up from 10% |
-| `FRONTAL_FLOOR` | **3** | caps a head-on charge at 87% on bare ground |
-| `FLOOR_PER_STAR` | **3** | open 0, forest 6, mountain 12 — a mountain caps everything at 57% |
-| `cavalry → artillery` | 60 → **45** | under the `× REAR_MULTIPLIER < MAX_HEALTH` line |
-| `infantry → artillery` | 45 → **35** | keeps cavalry clearly the better lance |
-| flank counter | **2/3** | |
-
-What that grid says: a healthy unit charged head-on is 2–8%; a broken one is
-87% from the front and reaches 100% only from the flank or rear **and** on open
-ground; a full-health battery taken from behind on a road drops from
-**100% to 63%**; and nothing charged onto a mountain exceeds **57%** from any
-direction.
-
-⚠️ **Cover compresses positional advantage, and nothing had to be built for
-it.** The floor is shared across directions, so as it rises the gap between
-front and rear narrows on its own — 87% against 100% on a road, 50% against 57%
-on a mountain. *Taking cover protects your flanks* falls out of the same
-constant rather than needing a mechanism.
-
-⚠️ **`FRONTAL_FLOOR` equals `FLOOR_PER_STAR`, which is worth keeping if it
-survives tuning**: it means facing a unit's front is worth exactly one star of
-terrain to it.
-
-⚠️ **A mountain flattens the grid** — at low health every matchup and every
-direction lands on 57%, because the floor dominates every margin. Simple and
-readable, and the first thing to look at if cover feels too absolute.
-
-**2. The `cavalry → artillery` row comes down.** Still needed alongside the
-floor, not replaced by it: at threshold 60 a rear charge is 120, so a
-full-health battery on a road is margin 0 and the floor is 0 too.
-
-⚠️ **The constraint the table has to respect: `threshold × REAR_MULTIPLIER <
-MAX_HEALTH`.** Above that, a rear charge is automatically certain against a
-*full-health* defender, because doubling the threshold carries it past the health
-ceiling and the margin can never be positive. At `REAR_MULTIPLIER` 2 that means
-every entry stays **under 50**, and only the artillery column is anywhere near
-it.
-
-⚠️ **Lowering is not free**: the same number sets the frontal odds, so dropping
-60 also makes a head-on charge on a battery harder than the 16% it is today.
-Worth watching in the same pass.
+⚠️ **Lowering is not free** — the same number sets the frontal odds, so dropping
+60 makes a head-on charge on a battery harder than today's 16%.
 
 ⚠️ **The unevenness behind it is structural.** The directional factor multiplies
-the *threshold*, so its absolute effect scales with the threshold's size — flank
+the *threshold*, so its absolute effect scales with the threshold's size: flank
 adds +30 against artillery and +12.5 against infantry. Retuning the multipliers
 cannot even that out; retuning the row can.
 
-**3. A flank shot reduces the counter; a rear shot still negates it.**
+##### 4. A flank shot reduces the counter; a rear shot still negates it
 
-Front full, **flank two-thirds**, rear none — the fraction a starting point
-rather than a settled number. ⚠️ **No data change anywhere**:
-`resolveBattle` already holds the defender's facing and the attacker's position,
-which is all `attackSide` takes, and `attacker.health` on the event is an
-absolute value that already expresses a smaller counter. `answered` stays a
-boolean, because a flanked defender still answers.
+Front full, **flank two-thirds**, rear none.
+
+⚠️ **No data change anywhere.** `resolveBattle` already holds the defender's
+facing and the attacker's position, which is all `attackSide` takes, and
+`attacker.health` on the event is an absolute value that already expresses a
+smaller counter. `answered` stays a boolean, because a flanked defender still
+answers.
 
 ⚠️ **The forecast stays binary and that is accepted.** *They will counter / they
 will not* is coarser than the outcome, and the **cutaway already prints each
@@ -349,6 +326,27 @@ rule is.
 ⚠️ **This is what makes the two attacks read differently**: shooting position is
 about limiting the reply, charge position is about finishing something already
 weak.
+
+##### The numbers, first cut
+
+Chosen by printing the resulting grids rather than by feel:
+
+| | | |
+|---|---|---|
+| `TERRAIN_WEIGHT` | **1.5** | 15% a star at full health, up from 10% |
+| `defense` column | **open 0 · forest 2 · mountain 4** | no terrain at 1 star |
+| `FRONTAL_FLOOR` | **3** | caps a head-on charge at 87% on open ground |
+| `FLOOR_PER_STAR` | **3** | forest 6, mountain 12 — a mountain caps everything at 57% |
+| `cavalry → artillery` | 60 → **45** | under the `× REAR_MULTIPLIER < MAX_HEALTH` line |
+| `infantry → artillery` | 45 → **35** | keeps cavalry the better lance |
+| flank counter | **2/3** | |
+
+**What the grids say.** A healthy unit charged head-on is 2–8%; a broken one is
+87% from the front, and 100% needs the flank or rear *and* open ground. A
+full-health battery taken from behind on a road falls from **100% to 63%**.
+Nothing charged onto a mountain beats **57%** from any direction. A wood buys a
+hit in **seven** of nine matchups where today it buys one in two, and a peak
+buys two.
 
 #### The dials
 
@@ -508,9 +506,12 @@ number as a bug.
 
 ##### ⚠️ What terrain is actually worth, measured
 
-The doc long carried a worry that `mountain: 4` — a 40% reduction — might make a
-unit parked on a peak *unkillable* with eight units and no reinforcements. It
-does not. Hits-to-kill, defender on the peak against defender on a road:
+⚠️ **Measured at 10% a star, so it predates the weighting drafted above** — the
+finding it records is what *prompted* that change and the figures are the old
+ones. The doc long carried a worry that `mountain: 4` — then a 40% reduction —
+might make a unit parked on a peak *unkillable* with eight units and no
+reinforcements. It does not. Hits-to-kill, defender on the peak against defender
+on a road:
 
 | | road | mountain |
 |---|---|---|
