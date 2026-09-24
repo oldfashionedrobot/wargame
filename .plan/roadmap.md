@@ -204,28 +204,49 @@ margin = max(floor, targetHealth − threshold)
 floor  = FRONTAL_FLOOR (front only) + terrainStars × FLOOR_PER_STAR
 ```
 
-⚠️ **A floor caps the odds at `0.5 ^ (floor / CHARGE_HALF_LIFE)`, and that cap is
-the same for every matchup** — the floor lives in *margin* space, which is
-matchup-independent once the threshold has done its work. So a frontal ceiling
-is one scalar rather than a table: 5 caps at 79%, 3 at 87%, 8 at 69%.
+⚠️ **A floor caps the odds at `0.5 ^ (floor / CHARGE_HALF_LIFE)`** — 5 caps at
+79%, 3 at 87%, 8 at 69%. **`FRONTAL_FLOOR` starts as one scalar**, so that cap is
+the same for every matchup. What differs is *how easily each matchup reaches it*:
+the threshold decides that, and it already does — a gun crew is at its ceiling by
+60 health, bayonets only by 25.
+
+⚠️ **If the ceilings themselves should differ, the expansion is keyed by the
+defender, not by the pair.** "Can this unit brace against a charge from the
+front" is a fact about its own equipment, which is the same argument
+`CHARGE_REPEL` already uses for being defender-keyed — three entries, not nine.
+Not done yet: one scalar first, and play decides whether it needs the column.
 
 ⚠️ **The floor only bites near certainty**, which is the right place. Against a
 full-health target the margin is 50–75 and no floor reaches it; against a
 weakened one the floor *is* the answer. Terrain and facing come to matter exactly
 where a charge was about to become a sure thing.
 
-⚠️ **It also replaces terrain's current contribution** rather than sitting beside
-it. Terrain adds `stars` to the margin today — at most 4 against a 100-point
-scale, which is why cover barely registers in a charge. Folding it into the floor
-concentrates terrain where it is felt instead of spreading it thin. The cost:
-terrain stops affecting a charge that was a long shot anyway.
+⚠️ **The floor replaces terrain's current contribution to a charge**, rather
+than sitting beside it. Terrain adds `stars` to the margin today — at most 4
+against a 100-point scale, which is why cover barely registers. Folding it into
+the floor concentrates terrain where it is felt. The cost: terrain stops
+affecting a charge that was a long shot anyway.
+
+⚠️ **Shooting is untouched.** `computeDamage` keeps reading `defense` as a
+percentage against the ten-point band, where it is already worth 20% in forest
+and 40% on a mountain at full health. Only the charge side was weak.
 
 **The sentence it buys: 100% needs position *and* open ground.**
 
 **2. The `cavalry → artillery` row comes down.** Still needed alongside the
 floor, not replaced by it: at threshold 60 a rear charge is 120, so a
-full-health battery on a road is margin 0 and the floor is 0 too. The
-saturation is the threshold's, and only the threshold fixes it.
+full-health battery on a road is margin 0 and the floor is 0 too.
+
+⚠️ **The constraint the table has to respect: `threshold × REAR_MULTIPLIER <
+MAX_HEALTH`.** Above that, a rear charge is automatically certain against a
+*full-health* defender, because doubling the threshold carries it past the health
+ceiling and the margin can never be positive. At `REAR_MULTIPLIER` 2 that means
+every entry stays **under 50**, and only the artillery column is anywhere near
+it.
+
+⚠️ **Lowering is not free**: the same number sets the frontal odds, so dropping
+60 also makes a head-on charge on a battery harder than the 16% it is today.
+Worth watching in the same pass.
 
 ⚠️ **The unevenness behind it is structural.** The directional factor multiplies
 the *threshold*, so its absolute effect scales with the threshold's size — flank
@@ -234,7 +255,8 @@ cannot even that out; retuning the row can.
 
 **3. A flank shot reduces the counter; a rear shot still negates it.**
 
-Front full, flank reduced, rear none. ⚠️ **No data change anywhere**:
+Front full, **flank two-thirds**, rear none — the fraction a starting point
+rather than a settled number. ⚠️ **No data change anywhere**:
 `resolveBattle` already holds the defender's facing and the attacker's position,
 which is all `attackSide` takes, and `attacker.health` on the event is an
 absolute value that already expresses a smaller counter. `answered` stays a
