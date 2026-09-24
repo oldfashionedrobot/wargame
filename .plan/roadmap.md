@@ -233,8 +233,36 @@ and 40% on a mountain at full health. Only the charge side was weak.
 
 **The sentence it buys: 100% needs position *and* open ground.**
 
-**0. Plains loses its star.** Open ground is open ground: `road`, `bridge`,
-`plains` and `river` all go to **0**, and cover means `forest` 2 or `mountain` 4.
+**The star scale has three tiers, not five.** Measured across all nine matchups,
+hits-to-kill by star value:
+
+| step | cells that move |
+|---|---|
+| 0 → 1 | 2 of 9 |
+| **1 → 2** | **0 of 9** |
+| **2 → 3** | **5 of 9** |
+| 3 → 4 | 1 of 9 |
+
+⚠️ **1 and 2 stars are the same terrain.** Not similar — identical in every
+matchup. And 3 → 4 is worth one cell. So the scale really offers *open*,
+*something*, and *a lot*, and the current table spends its values at 0, 1, 2 and
+4 — which puts plains and forest in the **same tier** and leaves the useful step
+unused.
+
+⚠️ **The table that follows from that is `open 0, forest 3, mountain 4`.** Forest
+has to reach 3 to be cover at all; mountain keeps 4 to stay a notch above it,
+though the notch is one cell wide. ⬜ Whether forest and mountain should differ
+by more than that is a question for the tuning pass — the answer may be to widen
+`BASE_DAMAGE` rather than the stars.
+
+⚠️ **The measurement is the point, not the numbers.** A star is worth
+`stars × band(hp)` percent, and hits-to-kill is integer — so most single-star
+changes are below the resolution of the system and simply do not exist in play.
+Anything proposed for this column should be run through
+`scripts/matchups.ts` before it is believed.
+
+**0. Open ground is open ground.** `road`, `bridge`, `plains` and `river` all go
+to **0**; cover means `forest` **3** or `mountain` **4**.
 
 ⚠️ **This is what makes forest mean anything at all.** Measured against the
 current table, the forest column of the hits-to-kill grid is **identical to the
@@ -261,7 +289,7 @@ than by feel:
 | | | |
 |---|---|---|
 | `FRONTAL_FLOOR` | **3** | caps a head-on charge at 87% on bare ground |
-| `FLOOR_PER_STAR` | **3** | open 0, forest 6, mountain 12 — a mountain caps everything at 57% |
+| `FLOOR_PER_STAR` | **3** | open 0, forest 9, mountain 12 — a mountain caps everything at 57% |
 | `cavalry → artillery` | 60 → **45** | under the `× REAR_MULTIPLIER < MAX_HEALTH` line |
 | `infantry → artillery` | 45 → **35** | keeps cavalry clearly the better lance |
 | flank counter | **2/3** | |
