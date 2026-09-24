@@ -613,8 +613,9 @@ A second attack, chosen instead of firing and spending the turn either way.
 
 ```
 threshold = floor(CHARGE_THRESHOLD[attacker][defender] × directional)
-margin = max(0, targetHealth + terrainDefense − threshold)
-chance = max(1, round(100 × 0.5 ^ (margin / CHARGE_HALF_LIFE)))
+floor_    = (head-on ? FRONTAL_FLOOR : 0) + terrainDefense × FLOOR_PER_STAR
+margin    = max(floor_, targetHealth − threshold)
+chance    = max(1, round(100 × 0.5 ^ (margin / CHARGE_HALF_LIFE)))
 success = roll < chance                                    // roll is 0..99
 repel   = CHARGE_REPEL[defender] + floor((roll − chance) / REPEL_DIVISOR)
 ```
@@ -623,8 +624,20 @@ repel   = CHARGE_REPEL[defender] + floor((roll − chance) / REPEL_DIVISOR)
 `Partial` and artillery has none, which is the only place *artillery cannot
 charge* is stated. Any unit is still a valid **target**.
 
-**Terrain adds to the target's health rather than moving the threshold**, so
-cover finishes the same expression and needs no constant of its own.
+**Terrain and a braced front set a floor under the margin rather than adding
+to it**, which makes them a *ceiling on the odds* — `0.5 ^ (floor / half-life)`.
+Both therefore matter exactly where a charge was about to become a sure thing,
+and not at all to one that was already a long shot. Head-on caps at 87% on open
+ground and 50% on a peak; **100% needs position *and* open ground**.
+
+⚠️ **The floor is shared across the sides, so cover compresses position.** As
+it rises the gap between a head-on charge and one from behind closes on its
+own — 87% against 100% in the open, 50% against 57% on a mountain. *Taking
+cover protects your flanks* is the same constant as *cover is hard to charge*.
+
+⚠️ **A charge is therefore never free.** A repel is exacted only when a charge
+*fails*, so a certain one was a guaranteed kill at no cost. Head-on no longer
+has that, from any position.
 
 **The 1% floor is stated rather than emergent**, so integer rounding cannot
 produce a silent 0%. It also makes `chance` safe to divide by. At `chance = 100`

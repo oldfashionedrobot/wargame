@@ -31,13 +31,27 @@ describe('chargeThreshold, which is also the capability rule', () => {
 });
 
 describe('chargeChance', () => {
-  // ⚠️ The contrast used to be plains, which no longer carries cover -- open
-  // ground is 0 stars now, so only a wood or a peak pushes this under certain.
-  it('is certain at or below the threshold', () => {
-    const flat = contact(25, ['.......', '.-.....', '.-.....', '.......']);
-    const wood = contact(25, ['.......', '.-.....', '.f.....', '.......']);
-    expect(chargeChance(flat, unit(flat, 'b1'), unit(flat, 'r1'))).toBe(100);
-    expect(chargeChance(wood, unit(wood, 'b1'), unit(wood, 'r1'))).toBeLessThan(100);
+  const oddsOf = (state: GameState) => chargeChance(state, unit(state, 'b1'), unit(state, 'r1'))!;
+  const road = (health: number) => contact(health, ['.......', '.-.....', '.-.....', '.......']);
+
+  // ⚠️ **This used to assert the opposite** -- that a charge at or below the
+  // threshold was certain. A certain charge cannot be repelled, so it was a
+  // guaranteed kill at no cost: the one move in the game with no downside.
+  it('is never certain head-on, however spent the target is', () => {
+    expect(oddsOf(road(1))).toBeLessThan(100);
+    // Both sit on the ceiling, so being weaker stops helping once it is reached.
+    expect(oddsOf(road(1))).toBe(oddsOf(road(25)));
+  });
+
+  // The other half of the sentence: **position *and* open ground**, not either.
+  it('is certain from behind, but only on open ground', () => {
+    const behind = (rows: string[]) =>
+      makeState(rows, [
+        { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+        { id: 'r1', col: 1, row: 2, owner: 'red', health: 25, facing: 'north' },
+      ]);
+    expect(oddsOf(behind(['...', '.-.', '.-.']))).toBe(100);
+    expect(oddsOf(behind(['...', '.-.', '.^.']))).toBeLessThan(100);
   });
 
   // ⚠️ The shape, stated as the dial it is: every CHARGE_HALF_LIFE points of
@@ -69,12 +83,21 @@ describe('chargeChance', () => {
   // ⚠️ Terrain adds to the target's *health*, not to the threshold -- so cover
   // finishes the sentence the formula already asks rather than adding a second
   // mechanism beside it.
+  // ⚠️ **Aimed at a target near the threshold, and that is not incidental.**
+  // Cover is a ceiling rather than a nudge, so it changes nothing about a
+  // charge that was already a long shot -- at 55 health the margin is 30 and no
+  // floor reaches it. This asserted exactly that case before the floor existed,
+  // and passed for the other reason.
   it('is harder against a target in cover', () => {
-    const open = contact(55, ['.......', '.-.....', '.-.....', '.......']);
-    const wood = contact(55, ['.......', '.-.....', '.f.....', '.......']);
-    const a = chargeChance(open, unit(open, 'b1'), unit(open, 'r1'))!;
-    const b = chargeChance(wood, unit(wood, 'b1'), unit(wood, 'r1'))!;
-    expect(b).toBeLessThan(a);
+    const wood = contact(25, ['.......', '.-.....', '.f.....', '.......']);
+    expect(oddsOf(wood)).toBeLessThan(oddsOf(road(25)));
+  });
+
+  // ⚠️ The stated cost of concentrating terrain where it is felt: a charge that
+  // was hopeless stays exactly as hopeless in a wood as in the open.
+  it('leaves a long shot alone, wherever the target is standing', () => {
+    const wood = contact(100, ['.......', '.-.....', '.f.....', '.......']);
+    expect(oddsOf(wood)).toBe(oddsOf(road(100)));
   });
 
   // The attacker's own ground is irrelevant: cover protects whoever is in it.
@@ -150,24 +173,24 @@ describe('chargeChance, by which side it arrives on', () => {
     );
   });
 
-  // The two terms are independent: cover still helps a defender taken in the
-  // rear, and facing still helps an attacker charging into cover.
-  it('composes with terrain rather than replacing it', () => {
-    const open = makeState(
-      ['...', '.-.', '.-.'],
-      [
-        { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-        { id: 'r1', col: 1, row: 2, owner: 'red', health: 70, facing: 'north' },
-      ],
-    );
-    const wood = makeState(
-      ['...', '.-.', '.f.'],
-      [
-        { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-        { id: 'r1', col: 1, row: 2, owner: 'red', health: 70, facing: 'north' },
-      ],
-    );
-    expect(odds(wood)).toBeLessThan(odds(open));
+  // ⚠️ **Cover compresses position, and nothing was built for it.** The floor
+  // is shared across the sides, so as it rises the gap between a head-on charge
+  // and one from behind closes on its own. *Taking cover protects your flanks*
+  // falls out of the same constant as *cover is hard to charge* -- one of them
+  // was designed and the other came free.
+  it('closes the gap between the sides as cover deepens', () => {
+    const ground = (tile: string, look: 'south' | 'north') =>
+      makeState(
+        ['...', '.-.', `.${tile}.`],
+        [
+          { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+          { id: 'r1', col: 1, row: 2, owner: 'red', health: 25, facing: look },
+        ],
+      );
+    const spread = (tile: string) => odds(ground(tile, 'north')) - odds(ground(tile, 'south'));
+    expect(spread('^')).toBeLessThan(spread('-'));
+    // Still worth riding round, though -- compressed, not erased.
+    expect(spread('^')).toBeGreaterThan(0);
   });
 });
 

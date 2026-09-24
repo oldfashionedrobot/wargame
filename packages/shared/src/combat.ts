@@ -4,6 +4,8 @@ import {
   BASE_DAMAGE,
   TERRAIN_WEIGHT,
   CHARGE_HALF_LIFE,
+  FLOOR_PER_STAR,
+  FRONTAL_FLOOR,
   CHARGE_REPEL,
   CHARGE_THRESHOLD,
   FLANK_MULTIPLIER,
@@ -426,8 +428,14 @@ export function chargeChance(state: GameState, attacker: Unit, defender: Unit): 
   const side = attackSide(defender.facing, defender.position, attacker.position);
   const directional = side === 'rear' ? REAR_MULTIPLIER : side === 'flank' ? FLANK_MULTIPLIER : 1;
 
+  // ⚠️ **Terrain and a braced front set a floor under the margin; they do not
+  // add to it.** A floor is a ceiling on the odds -- see `FRONTAL_FLOOR` -- so
+  // both come to matter exactly where a charge was about to become a sure
+  // thing, and stop mattering to one that was hopeless anyway. 100% now needs
+  // position *and* open ground.
   const { defense } = getTerrain(state.grid[defender.position.row][defender.position.col]);
-  const margin = Math.max(0, defender.health + defense - Math.floor(threshold * directional));
+  const floor = (side === 'front' ? FRONTAL_FLOOR : 0) + defense * FLOOR_PER_STAR;
+  const margin = Math.max(floor, defender.health - Math.floor(threshold * directional));
   return Math.max(1, Math.round(100 * 0.5 ** (margin / CHARGE_HALF_LIFE)));
 }
 

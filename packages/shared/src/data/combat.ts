@@ -173,6 +173,36 @@ export const CHARGE_REPEL: Record<UnitTypeId, number> = {
 export const CHARGE_HALF_LIFE = 15;
 
 /**
+ * A floor under the charge margin, which is a **ceiling on the odds**: the
+ * margin can never fall below it, so the chance can never rise above
+ * `0.5 ^ (floor / CHARGE_HALF_LIFE)`.
+ *
+ * `FRONTAL_FLOOR` applies only to a charge arriving head-on; `FLOOR_PER_STAR`
+ * applies on any side, multiplied by the defender's cover. Both live in margin
+ * space, which is why neither needs a per-matchup table -- a margin means the
+ * same thing whoever is charging whom. What differs between matchups is how
+ * easily each *reaches* the ceiling, and `CHARGE_THRESHOLD` already says that:
+ * the ceiling arrives at exactly the threshold.
+ *
+ * ⚠️ **`FRONTAL_FLOOR` equals `FLOOR_PER_STAR` on purpose** -- facing a unit
+ * head-on is worth one star of terrain to it. Nothing depends on the two being
+ * equal; it is a starting position, not a constraint.
+ *
+ * ⚠️ **They replace terrain's flat contribution rather than adding to it.**
+ * Cover used to add its stars straight onto the margin -- at most 4 against a
+ * 100-point scale, which is nothing. Folding it into the floor concentrates
+ * terrain where it is felt, and the accepted cost is that terrain stops
+ * affecting a charge that was a long shot anyway.
+ *
+ * ⚠️ **What this really buys is that no charge is free.** `resolveCharge`
+ * exacts a repel only when a charge *fails*, so a certain charge was a
+ * guaranteed kill at no cost -- the one move in the game with no downside.
+ * Head-on is capped at 87% on open ground and 50% on a peak.
+ */
+export const FRONTAL_FLOOR = 3;
+export const FLOOR_PER_STAR = 3;
+
+/**
  * What a failed charge's overshoot is divided by before being added to the flat
  * repel cost.
  *
