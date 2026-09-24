@@ -285,8 +285,9 @@ than by feel:
 
 | | | |
 |---|---|---|
+| `TERRAIN_WEIGHT` | **1.5** | 15% per star at full health, up from 10% |
 | `FRONTAL_FLOOR` | **3** | caps a head-on charge at 87% on bare ground |
-| `FLOOR_PER_STAR` | **3** | open 0, forest 9, mountain 12 — a mountain caps everything at 57% |
+| `FLOOR_PER_STAR` | **3** | open 0, forest 6, mountain 12 — a mountain caps everything at 57% |
 | `cavalry → artillery` | 60 → **45** | under the `× REAR_MULTIPLIER < MAX_HEALTH` line |
 | `infantry → artillery` | 45 → **35** | keeps cavalry clearly the better lance |
 | flank counter | **2/3** | |
