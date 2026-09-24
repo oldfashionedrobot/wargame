@@ -685,11 +685,18 @@ builds the same one — so a charge is priced by where the ride *ends*.
 rear-fire rule uses only its `rear` case.
 
 ⚠️ **A multiplied threshold can exceed 100, and the charge is then automatic at
-any health.** That is the mechanic's signature moment where it is meant —
-cavalry into the rear of a battery — and a dead dial where it is not, because a
-base value that reads reasonable head-on can saturate at the *flank* and leave
-the rear distinction doing nothing. The two look identical in a head-on column,
-which is why `scripts/charges.ts` prints all three.
+any health** — a dead dial rather than a signature moment, because the rear
+distinction stops doing anything. The hard constraint is therefore
+`threshold × REAR_MULTIPLIER < MAX_HEALTH`, which at 2 means every entry under
+50; the artillery column is the only one that was ever near it.
+
+⚠️ **That guards the full-health case only, and a saturation band survives on
+the flank.** `floor(45 × 1.5)` is 67, so a flank charge on a battery is
+automatic at 67 health and below on open ground. Accepted: at that health the
+gun crew has been worked down, and riding round it should decide the matter. A
+base value that reads reasonable head-on can saturate at the flank while the
+head-on column looks fine, which is why `scripts/charges.ts` prints all three
+approaches on every depth of cover.
 
 ### The combat cutaway
 

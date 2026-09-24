@@ -110,8 +110,14 @@ export const TERRAIN_WEIGHT = 1.5;
 export const LUCK_MAX = 9;
 
 /**
- * Target health at or below which a charge is **certain**, attacker down the
- * side. A percentage, read against the defender's raw health.
+ * Target health at or below which a charge reaches its **ceiling**, attacker
+ * down the side. A percentage, read against the defender's raw health.
+ *
+ * ⚠️ **It used to mean *certain*, and the floor took that away.** A head-on
+ * charge caps at 87% on open ground, so this is the health at which being any
+ * weaker stops helping -- not the health at which the charge cannot fail. From
+ * the flank or rear on open ground there is no frontal floor and it does still
+ * mean certain.
  *
  * ⚠️ **`Partial`, and the missing row is the rule.** Artillery has none, which is
  * how "artillery cannot charge" is said -- rather than a `canCharge` flag on the
@@ -120,20 +126,40 @@ export const LUCK_MAX = 9;
  *
  * ⚠️ **The triangle closes here, not in `BASE_DAMAGE`.** Cavalry loses the
  * shooting exchange with artillery -- 30 out against 60 back -- so it has to
- * close, and `cavalry → artillery 60` is what makes closing pay. Against
- * infantry it is 25: a frontal charge needs a nearly-dead target, which is what
+ * close, and `cavalry → artillery` is what makes closing pay. Against infantry
+ * it is 25: a frontal charge needs a nearly-dead target, which is what
  * "infantry beats cavalry by not breaking" has to mean numerically.
+ *
+ * ⚠️ **The hard constraint is `threshold × REAR_MULTIPLIER < MAX_HEALTH`.**
+ * Past it, doubling carries the threshold beyond the health ceiling, the margin
+ * can never be positive, and a rear charge is automatically certain against a
+ * *full-health* defender -- a dead dial rather than a signature moment. At
+ * `REAR_MULTIPLIER` 2 that means every entry under 50. The artillery column was
+ * the only one near the line and came down to clear it: 60 → 45 and 45 → 35,
+ * which took a full-health battery charged from behind on a road from 100% to
+ * 63%.
+ *
+ * ⚠️ **The constraint only guards the full-health case, and a band survives on
+ * the flank.** `floor(45 × 1.5)` is 67, so a flank charge on a battery is still
+ * automatic at 67 health and below in the open -- down from 85, and accepted:
+ * riding round a gun crew that has been worked that far down *should* decide
+ * it. The levers if play disagrees are another cut to the row or
+ * `FLANK_MULTIPLIER`.
+ *
+ * ⚠️ **Lowering was not free.** The same number sets the head-on odds, so a
+ * frontal charge on a full-health battery fell from 16% to 8%.
  *
  * ⚠️ `infantry → cavalry 15` is the lowest number in either table on purpose.
  * Charging cavalry on foot should almost never be the right call, and a number
  * says so more cheaply than a rule forbidding it.
  *
- * ⚠️ **Untuned.** Nothing has been played. These exist so the harness has
- * something to print and so tuning starts from a position rather than a blank.
+ * ⚠️ **Lightly tuned.** The shape is first-cut and the artillery column has had
+ * one pass; the rest is where it started. `scripts/charges.ts` prints all three
+ * approaches on every depth of cover, which is the artefact to argue with.
  */
 export const CHARGE_THRESHOLD: Partial<Record<UnitTypeId, Record<UnitTypeId, number>>> = {
-  cavalry: { infantry: 25, cavalry: 25, artillery: 60 },
-  infantry: { infantry: 20, cavalry: 15, artillery: 45 },
+  cavalry: { infantry: 25, cavalry: 25, artillery: 45 },
+  infantry: { infantry: 20, cavalry: 15, artillery: 35 },
 };
 
 /**
