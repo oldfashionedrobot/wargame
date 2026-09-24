@@ -167,370 +167,58 @@ in step, and the last audit of this document was mostly about exactly that.
 multiplayer and deployment all add surface to whatever the game currently is;
 changing how it plays afterwards means changing them too.
 
-⚠️ **Play is already the authority here, not the tables.** Three rules have
-moved on evidence from actually playing rather than from the harness — infantry
-and cavalry damage up fifteen, `slow`, and artillery's minimum range to three —
-and two of those turned out to be *rules* rather than dials. The harness says
-what a number does; it cannot say whether a turn is interesting.
+⚠️ **Play is the authority here, not the tables, and not the harness either.**
+The harness says what a number does; it cannot say whether a turn is
+interesting. Several rules have already moved on evidence from playing rather
+than from measuring, and more than one of those turned out to be a *rule*
+rather than a dial — which is the shape to expect from this epic too.
 
-⬜ **What goes in this epic is not settled.** What follows is what is already
-known to want attention.
+⚠️ **The first pass is shipped and the numbers in it are first cuts.** Terrain
+weighting, the charge floor, the artillery charge row and the flank counter are
+all in `architecture.md` now, at values chosen by printing grids rather than by
+playing. ⬜ **They want a pass against real games**, which is the part of this
+epic that cannot be done at a terminal.
+
+⬜ **What else goes in this epic is not settled.**
 
 #### Known to want attention
 
-- ⚠️ **`cavalry → artillery` saturates and hides a dial.** At a base of 60 the
-  flank is 100% from 85 health down and the rear is 100% everywhere, so
-  `REAR_MULTIPLIER` is doing nothing in that row. Invisible in a head-on column,
-  and the exact dead dial the harness was built to catch.
 - **Match length.** Nothing caps a match: eight units a side, no turn limit, and
   a player who retreats can extend it indefinitely. *Multiplayer* wants a match
   to be one sitting; the dial is army size, board size, or a condition that ends
   it. ⚠️ Listed under *Content* as well, because which of those it turns out to
-  be decides where the work lands.
-- **Terrain values.** Measured below, and the measurement is what makes them
-  arguable rather than a matter of taste.
-
-#### Drafted changes
-
-⬜ **Drafted, not settled.** The shapes are agreed; every number is a first cut,
-and settling them is the point of the epic.
-
-##### 1. Terrain, which is where most of the value turned out to be
-
-**Open ground carries no cover, and the star term is weighted.** `road`,
-`bridge`, `plains` and `river` go to **0**; `forest` **2**, `mountain` **4**.
-The damage term becomes `stars × band(hp) × TERRAIN_WEIGHT` at **1.5** — 15% a
-star at full health, up from 10%.
-
-⚠️ **Both halves are needed, and the measurements are why.** Against the table
-as it stands the forest column of the hits-to-kill grid is **identical to the
-plains column in all nine matchups**: a wood costs movement and buys nothing.
-Plains at 1 star was giving open field the cover of a wood, and 2 stars was too
-light to register regardless.
-
-Cells of the nine-matchup grid that move at each step of the scale:
-
-| step | at 10%/star (today) | at 15%/star |
-|---|---|---|
-| 0 → 1 | 2 of 9 | 2 of 9 |
-| 1 → 2 | **0 of 9** | 5 of 9 |
-| 2 → 3 | 5 of 9 | 4 of 9 |
-| 3 → 4 | **1 of 9** | 6 of 9 |
-| 4 → 5 | 4 of 9 | 7 of 9 |
-
-⚠️ **`0 → 1` cannot be fixed and should not be used.** It stays at 2 of 9 for
-every weight tried up to 20%, because at zero stars damage is at its maximum and
-the hits-to-kill boundaries are furthest apart there. **No terrain sits at 1
-star**; the lightest cover starts at 2, and 3 and 5 stay free for terrain that
-does not exist yet.
-
-⚠️ **A harmonic shape was tried and measured worse.** Dividing by
-`(1 + stars × K)` should in theory make hits-to-kill scale linearly; the
-`band(hp)` term dominates either way and the spread comes out flatter than the
-weighted linear form.
-
-⚠️ **It makes terrain work against artillery for the first time.**
-`artillery → infantry` is 2 hits on *every* terrain today including a mountain —
-the heaviest attack ignoring the heaviest cover, which the measurement below
-flagged as never having been chosen. At 15% a peak takes it to 3.
-
-⚠️ **The cost is longer matches**, against *Multiplayer*'s decision that a match
-is one sitting. Worst case goes from 5 hits to 6 at four stars. ⬜ If those
-collide the lever is `BASE_DAMAGE`, not backing this out — cover mattering and
-matches being short are compatible, but the two dials have to be set in one
-pass.
-
-⚠️ **Run it through `scripts/matchups.ts` before believing it.** A star is worth
-a percentage and hits-to-kill is an integer, so most single-star changes sit
-below the resolution of the system. This column has already fooled this document
-twice.
-
-##### 2. A charge is never certain from the front, nor easy into cover
-
-One line, two constants, no new table:
-
-```
-margin = max(floor, targetHealth − threshold)
-floor  = FRONTAL_FLOOR (front only) + terrainStars × FLOOR_PER_STAR
-```
-
-⚠️ **A floor caps the odds at `0.5 ^ (floor / CHARGE_HALF_LIFE)`**, and with
-`FRONTAL_FLOOR` as one scalar that cap is the same for every matchup. What
-differs is how easily each reaches it: a gun crew is at its ceiling by 60 health,
-bayonets only by 25 — the threshold already says so.
-
-⚠️ **If the ceilings themselves should differ, the expansion is keyed by the
-defender, not the pair.** "Can this unit brace against a charge head-on" is a
-fact about its own equipment — the same argument `CHARGE_REPEL` already uses for
-being defender-keyed. Three entries, not nine, and only if play asks.
-
-⚠️ **The floor only bites near certainty.** Against a full-health target the
-margin is 50–75 and no floor reaches it; against a weakened one the floor *is*
-the answer. Terrain and facing come to matter exactly where a charge was about to
-become a sure thing.
-
-⚠️ **It replaces terrain's flat contribution to a charge.** Terrain adds `stars`
-to the margin today — at most 4 against a 100-point scale. Folding it into the
-floor concentrates terrain where it is felt; the cost is that terrain stops
-affecting a charge that was a long shot anyway.
-
-⚠️ **Cover compresses positional advantage, and nothing was built for it.** The
-floor is shared across directions, so as it rises the gap between front and rear
-closes on its own — 87% against 100% on open ground, 50% against 57% on a
-mountain. *Taking cover protects your flanks* falls out of the same constant as
-*cover is hard to charge*.
-
-⚠️ **`FRONTAL_FLOOR` equals `FLOOR_PER_STAR`**, which reads as: facing a unit
-head-on is worth one star of terrain to it. Worth keeping if it survives tuning.
-
-⚠️ **A mountain flattens the grid** — at low health every matchup and direction
-lands on 57%, because the floor dominates every margin. Readable, and the first
-thing to look at if cover feels too absolute.
-
-**The sentence it buys: 100% needs position *and* open ground.**
-
-##### 3. The `cavalry → artillery` row comes down
-
-Needed alongside the floor, not replaced by it: at threshold 60 a rear charge is
-120, so a full-health battery on open ground is margin 0 with a floor of 0.
-
-⚠️ **The constraint: `threshold × REAR_MULTIPLIER < MAX_HEALTH`.** Above it a
-rear charge is automatically certain against a *full-health* defender, because
-doubling carries the threshold past the health ceiling and the margin can never
-be positive. At `REAR_MULTIPLIER` 2 that means every entry under **50**, and
-only the artillery column is near it.
-
-⚠️ **Lowering is not free** — the same number sets the frontal odds, so dropping
-60 makes a head-on charge on a battery harder than today's 16%.
-
-⚠️ **The unevenness behind it is structural.** The directional factor multiplies
-the *threshold*, so its absolute effect scales with the threshold's size: flank
-adds +30 against artillery and +12.5 against infantry. Retuning the multipliers
-cannot even that out; retuning the row can.
-
-##### 4. A flank shot reduces the counter; a rear shot still negates it
-
-Front full, **flank two-thirds**, rear none.
-
-⚠️ **No data change anywhere.** `resolveBattle` already holds the defender's
-facing and the attacker's position, which is all `attackSide` takes, and
-`attacker.health` on the event is an absolute value that already expresses a
-smaller counter. `answered` stays a boolean, because a flanked defender still
-answers.
-
-⚠️ **The forecast stays binary and that is accepted.** *They will counter / they
-will not* is coarser than the outcome, and the **cutaway already prints each
-side's damage** — so the flank bonus is learned in play, the same way the rear
-rule is.
-
-⚠️ **This is what makes the two attacks read differently**: shooting position is
-about limiting the reply, charge position is about finishing something already
-weak.
-
-##### The numbers, first cut
-
-Chosen by printing the resulting grids rather than by feel:
-
-| | | |
-|---|---|---|
-| `TERRAIN_WEIGHT` | **1.5** | 15% a star at full health, up from 10% |
-| `defense` column | **open 0 · forest 2 · mountain 4** | no terrain at 1 star |
-| `FRONTAL_FLOOR` | **3** | caps a head-on charge at 87% on open ground |
-| `FLOOR_PER_STAR` | **3** | forest 6, mountain 12 — a mountain caps everything at 57% |
-| `cavalry → artillery` | 60 → **45** | under the `× REAR_MULTIPLIER < MAX_HEALTH` line |
-| `infantry → artillery` | 45 → **35** | keeps cavalry the better lance |
-| flank counter | **2/3** | |
-
-**What the grids say.** A healthy unit charged head-on is 2–8%; a broken one is
-87% from the front, and 100% needs the flank or rear *and* open ground. A
-full-health battery taken from behind on a road falls from **100% to 63%**.
-Nothing charged onto a mountain beats **57%** from any direction. A wood buys a
-hit in **seven** of nine matchups where today it buys one in two, and a peak
-buys two.
+  be decides where the work lands. ⚠️ **Deeper cover made this worse** — worst
+  case went from 5 blows to 6 — and the lever if the two collide is
+  `BASE_DAMAGE`, which has room upward and none down: the *no living attacker is
+  harmless* sweep binds one point below the lowest row.
+- ⬜ **Healing**, in some form — parked rather than decided. Nothing recovers
+  health today, so a wounded unit is wounded for the rest of the match. ⚠️ It
+  sits upstream of the numbers above rather than beside them: cover scales with
+  the defender's band and the charge floor only bites near the threshold, so
+  both mechanics are most active at low health, and how often units *are* at low
+  health is what healing decides.
+- ⬜ **Capture points**, sketched and parked: presence is possession, so a point
+  is held by standing on it and there is no capture meter to build.
 
 #### The dials
 
-The surface is `BASE_DAMAGE`, `CHARGE_THRESHOLD` and `CHARGE_REPEL`, plus the
-loose dials beside them: `FLANK_MULTIPLIER`, `REAR_MULTIPLIER`, `LUCK_MAX`,
-`CHARGE_HALF_LIFE`, and the repel's miss-scaling.
+The tables are `BASE_DAMAGE`, `CHARGE_THRESHOLD` and `CHARGE_REPEL`; the scalars
+beside them are `TERRAIN_WEIGHT`, `FRONTAL_FLOOR`, `FLOOR_PER_STAR`,
+`FLANK_MULTIPLIER`, `REAR_MULTIPLIER`, `FLANK_COUNTER_SHARE`, `LUCK_MAX`,
+`CHARGE_HALF_LIFE` and `REPEL_DIVISOR`. The `defense` column of `terrain.ts` is
+a dial too, and turned out to be the one carrying the most weight.
 
-##### The first cut
+**Tune against the harnesses, never against a damage number.**
+`scripts/matchups.ts` prints hits-to-kill across every matchup and terrain, and
+`charges.ts` prints charge odds for all three approaches on every depth of
+cover. ⚠️ **Both have earned themselves more than once** — one killed a table
+where everything died in two hits, another found cavalry-into-artillery
+saturating at the flank on its opening run, and the hits-to-kill grid is what
+showed that a wood was worth literally nothing.
 
-⚠️ **Written down to be argued with, not because they were right.** Nothing had
-been played when these were chosen. They existed so the harness had something to
-print and so tuning could start from a position rather than a blank table.
-
-⚠️ **Play has since moved three things, and only one was a number here.**
-`BASE_DAMAGE`'s infantry and cavalry rows went up fifteen — below. The other two
-were both about artillery and neither was a dial: its minimum range went from
-two to three, and `slow` was added, which is a flag. Worth keeping from that:
-the first cut's *shape* held, and what it got wrong it got wrong as a **rule**
-rather than as a value.
-
-`BASE_DAMAGE`, attacker down the side, as a percentage of a full-health target:
-
-| | infantry | cavalry | artillery |
-|---|---|---|---|
-| **infantry** | 45 | 50 | 60 |
-| **cavalry** | 30 | 35 | 40 |
-| **artillery** | 75 | 60 | 40 |
-
-⚠️ **Infantry and cavalry were raised fifteen, to widen the *first-strike*
-advantage.** There is no dial for "counters hit softer" and there should not be:
-both sides use one formula, and the whole asymmetry is that a counter reads the
-defender's **post-damage** health, exactly as AW does. That makes the table
-non-linear in the useful direction — hit harder, and the defender loses more
-bands before answering, so the counter shrinks as the attack grows. Past a base
-of about 50 it shrinks in absolute terms.
-
-An infantry exchange ran **27 against 21** at the old numbers, a ratio of 1.29
-and barely a first strike; it is 1.67 now, and the table spans **1.29 to 2.48**
-against AW2's own 1.11 to 5.06.
-
-⚠️ **Artillery's row was deliberately left alone.** At 75 a gun already killed
-infantry in two hits, so raising it bought lethality where the matchup was
-already decided rather than in the flat exchanges this was for — and the ratio it
-would have added is academic, since a defender that dies to the first blow never
-answers at all.
-
-⚠️ **And not raised further**, which would have reached AW's ceiling: terrain
-stops changing the hit count in a fourth matchup, and units stop lingering at the
-health where a charge is a good bet. AW affords 5:1 with far more unit types to
-spread a triangle across than three.
-
-⚠️ **An earlier cut ran 40–90 and the harness killed it.** Everything died in two
-hits, which flattened three things at once: terrain became a rounding error (a
-four-star mountain bought one extra blow or none), the matchup numbers
-produced two distinct outcomes, and luck moved nothing. Worse, it starved phase
-10 — `CHARGE_THRESHOLD` wants infantry at ≤25 health, and a unit went 100 → 45 →
-dead without ever passing through the band where a charge is legal.
-
-**The fix was spread, not shape.** AW's nine analogous cells run 12 to 90:
-
-| AW2 | Infantry | Recon | Artillery |
-|---|---|---|---|
-| **Infantry** | 55 | 12 | 15 |
-| **Recon** | 70 | 35 | 45 |
-| **Artillery** | 90 | 80 | 75 |
-
-⚠️ **Copy the range, never the shape.** AW's 12 and 15 encode *armour
-penetration* — a rifle cannot hurt a vehicle. There is no armour in a
-horse-and-musket war and musketry into cavalry was famously lethal, so importing
-that 12 would say infantry cannot hurt horses and leave cavalry riding around
-untouchable. What transfers is that the losing edges must genuinely lose.
-
-⚠️ **Cavalry is bad in every column deliberately** — carbines from horseback —
-because its identity is in the charge table, and a cavalry that shoots well has
-no reason to close. It is the worst shooter in every column by a clear margin,
-which is what makes closing the point. ⚠️ A hits-to-kill figure stood here and
-went stale with the first retune — `scripts/matchups.ts` prints the current
-grid, and a number copied out of it is a number that has to be copied again.
-
-`CHARGE_THRESHOLD`, charger down the side. Target HP at or below this succeeds
-without luck; artillery has no row:
-
-| | infantry | cavalry | artillery |
-|---|---|---|---|
-| **cavalry** | 25 | 25 | 60 |
-| **infantry** | 20 | 15 | 45 |
-
-`CHARGE_REPEL`, keyed by **who is being charged** — the flat cost of a failed
-charge, before the overshoot term adds up to 9 more:
-
-| infantry | cavalry | artillery |
-|---|---|---|
-| 10 | 5 | 8 |
-
-⚠️ **This table was missing from the first cut entirely** — every other one was
-here and this was not, so the first tuning run would have had nothing to print
-for it. The ordering is the sentence the design already gives: infantry with
-bayonets fixed is what cavalry breaks on, a battery firing canister hurts but is
-the least prepared of the three to be reached, and cavalry receiving a charge is
-simply being run into. ⚠️ Artillery at 20 is deliberately **well under its
-ranged 60** — borrowing that number would assert a battery is as dangerous at
-contact as at reach, which is the opposite of what `min: 3` exists to say.
-
-⚠️ **The level was picked against the crossover, not by feel.** Charging is a
-losing bet below roughly these odds and a winning one above:
-
-| | into infantry | into cavalry | into artillery |
-|---|---|---|---|
-| **cavalry charges** | 19% | 11% | 16% |
-| **infantry charges** | 20% | 14% | 12% |
-
-That puts charge where it belongs — a **finisher you can reach for**, not an
-opener and not a last resort — and it is the property to re-measure first when
-these numbers move. Doubling the table pushes every crossover right and makes
-charging rare; halving it makes charging nearly free.
-
-⚠️ **The multiplicative drafts all pushed this to 40%+**, which would have made a
-threshold table a lot of tuning for something seldom done. That is the
-symptom to watch for.
-
-`FLANK_MULTIPLIER 1.5`, `REAR_MULTIPLIER 2`, `REPEL_DIVISOR 10`, `luckMax 9` — the
-last matching AW exactly, since `baseDamage` is a percentage in both schemes.
-
-⚠️ **Measured, not predicted: `cavalry → artillery 60` saturates at the flank.**
-With the multipliers wired, that row reads 16/31/63/100/100/100 head-on,
-63/100/100/… from the flank, and 100% at every health from the rear. So flank and
-rear differ only against a full-health battery, and the rear multiplier does
-nothing in the row it was most meant for. ⚠️ The intent was *60 / 90 /
-automatic* — cavalry into the rear of a battery as the signature moment — and
-what arrived is *automatic / automatic*, because 60 × 1.5 is already 90 and the
-health scale only runs to 100.
-
-**Three ways out, none taken yet, because nothing has been played:** lower the
-base so the multipliers have room (40 gives roughly 3 / 22 / 63 at full health);
-or accept that closing with a battery is simply decisive from any side and let
-the *threat* be the mechanic rather than the angle; or cap the effective
-threshold below 100 so a charge is never automatic, which would also touch the
-signature moment deliberately rather than by accident. ⚠️ The same shape is worth
-checking in `infantry → artillery 45`, which saturates one column later.
-
-⚠️ **The triangle closes in the charge table, not the damage one.** Cavalry
-loses the shooting exchange with artillery (55 out against 75 back), so it has
-to close; `cavalry→artillery 60` then runs 60 / 90 / automatic across head-on,
-flank and rear, which keeps all three directions meaningful. Against infantry it
-runs 25 / 37 / 50 — a frontal charge needs a nearly-dead target, which is what
-"infantry beats cavalry by not breaking" has to mean numerically.
-
-⚠️ `infantry→cavalry 15` is the lowest number in either table on purpose:
-charging cavalry on foot is the one attack that should almost never be the right
-call, and it is cheaper to say so with a number than with a rule forbidding it.
-
-**One of those has no reference behaviour at all** — charge, which facing is now part of rather than a second mechanic beside. ⚠️ That is what binding them bought: there is one thing to tune here, not two that interact. Still **in sequence, never together**: the matchup table against AW's numbers first, then charge head-on, then the directional adjustment. Each stage leaves exactly one unknown to move against an observation.
-
-⚠️ **Plains is not neutral ground.** It carries one defence star, so a table
-value only appears raw on road or bridge. Worth knowing before reading a printed
-number as a bug.
-
-##### ⚠️ What terrain is actually worth, measured
-
-⚠️ **Measured at 10% a star, so it predates the weighting drafted above** — the
-finding it records is what *prompted* that change and the figures are the old
-ones. The doc long carried a worry that `mountain: 4` — then a 40% reduction —
-might make a unit parked on a peak *unkillable* with eight units and no
-reinforcements. It does not. Hits-to-kill, defender on the peak against defender
-on a road:
-
-| | road | mountain |
-|---|---|---|
-| infantry → infantry | 4 | 5 |
-| cavalry → infantry | 5 | **7** |
-| artillery → infantry | 2 | **2** |
-
-**A peak buys one or two blows against small arms, and nothing at all against
-guns.** ⚠️ Which is the finding worth keeping: the heaviest attack in the game
-ignores the heaviest cover, because 60% of 75 still kills in two. Terrain is a
-defence against infantry and cavalry and is simply not a defence against
-artillery — so the answer to a unit on a mountain is to shell it, and holding
-high ground is a decision about *who* is shooting at you. That reads as correct
-rather than as a bug, but it was never chosen, and it is the kind of thing that
-should be re-read once charge exists and a peak can be stormed.
-
-**The harnesses exist** — `packages/shared/scripts/matchups.ts` and `charges.ts`, run with `bun`. It prints hits-to-kill across every matchup and terrain, which is the artefact worth tuning against; a raw damage number is not. They have already earned themselves three times: the first killed a table where everything died in two hits and settled the mountain question above, and the second found cavalry-into-artillery saturating at the flank on its opening run. ⚠️ Its details belong to [`architecture.md`](architecture.md) now, not here.
-
-*Sources: [Wars World News — Battle Mechanics](https://www.warsworldnews.com/wp/aw/game-aw/battle-mechanics/) · [AWBW Wiki — Damage Formula](https://awbw.fandom.com/wiki/Damage_Formula) · [Advance Wars Wiki — Luck](https://advancewars.fandom.com/wiki/Luck) · [AWBW Wiki — Terrain](https://awbw.fandom.com/wiki/Terrain) · [Advance Wars Wiki — Indirect Combat](https://advancewars.fandom.com/wiki/Indirect_Combat)*
+⚠️ **A star is worth a percentage and hits-to-kill is an integer**, so most
+single-star changes sit below the resolution of the system and read as no change
+at all. This has fooled the document twice. Print the grid.
 
 ### 11 — Presentation
 

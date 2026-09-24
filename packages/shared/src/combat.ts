@@ -99,6 +99,11 @@ export function band(health: number): number {
  *   (HP 1-10), which is what the rescale note above is about.
  * - https://www.warsworldnews.com/wp/aw/game-aw/battle-mechanics/ -- terrain
  *   stars and the exchange model.
+ * - https://advancewars.fandom.com/wiki/Luck -- luck as a flat additive band.
+ * - https://awbw.fandom.com/wiki/Terrain -- the terrain stars these are scaled
+ *   against.
+ * - https://advancewars.fandom.com/wiki/Indirect_Combat -- minimum range, and
+ *   why an indirect unit is not answered at all.
  * - https://warswiki.org/wiki/Damage/Advance_Wars_2_chart -- the base damage
  *   matrix the spread of `BASE_DAMAGE` was taken from.
  */
