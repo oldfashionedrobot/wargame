@@ -2,6 +2,7 @@ import { attackSide, isWithinGrid, tileDistance } from './coordinate';
 import { terrainAdmits } from './movement';
 import {
   BASE_DAMAGE,
+  TERRAIN_WEIGHT,
   CHARGE_HALF_LIFE,
   CHARGE_REPEL,
   CHARGE_THRESHOLD,
@@ -113,10 +114,16 @@ export function computeDamage(
   const base = BASE_DAMAGE[attacker.unitTypeId][defender.unitTypeId];
 
   const { defense } = getTerrain(state.grid[defender.position.row][defender.position.col]);
-  // Cover is worth less the less there is left to cover. Bounded well under 100
-  // -- the stoutest ground is 4 stars against 10 bands -- so the factor below
-  // cannot go negative and no clamp is needed to stop terrain healing anyone.
-  const cover = defense * band(defender.health);
+  // Cover is worth less the less there is left to cover, and a star is worth
+  // more than it reads -- see `TERRAIN_WEIGHT`.
+  //
+  // ⚠️ **No clamp is needed, and what guarantees that is now two constants
+  // rather than one column.** The bound is `maxStars × TERRAIN_WEIGHT < 10`:
+  // at 4 stars and 1.5 the worst case is 60 against 10 bands, so the factor
+  // below cannot go negative and terrain cannot heal anyone. Raise either past
+  // the line and it can. ⚠️ An odd star count leaves `cover` on a half-point,
+  // which the final floor absorbs; nothing here needs to round it.
+  const cover = defense * band(defender.health) * TERRAIN_WEIGHT;
 
   // ⚠️ Floored in sequence rather than folded: `floor(a × b × c)` and
   // `floor(floor(a × b) × c)` are different numbers, and the second is AW's.

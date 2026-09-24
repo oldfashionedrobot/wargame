@@ -71,8 +71,9 @@ describe('computeDamage', () => {
 
     expect(defended).toBeGreaterThan(0);
     expect(defended).toBeLessThan(computeDamage(open.state, open.a, open.d, 0));
-    // Four stars against a full-health defender is a 40% reduction.
-    expect(defended).toBe(Math.floor((BASE_DAMAGE.infantry.infantry * 60) / 100));
+    // Four stars against a full-health defender is a 60% reduction: the stars
+    // are weighted, so a peak takes more off than its column reads.
+    expect(defended).toBe(Math.floor((BASE_DAMAGE.infantry.infantry * 40) / 100));
   });
 
   // Cover scales by *defender* health, which is what stops a damaged unit

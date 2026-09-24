@@ -15,10 +15,14 @@ export interface Terrain {
    */
   char: string;
   /**
-   * Stars of cover: each is a 10% damage reduction at full defender HP.
-   * Unread until phase 9 -- it lives here now so that adding a terrain type
-   * stays one edit rather than two, and so a matchup table is never tuned
-   * against defence stubbed to zero.
+   * Stars of cover, read by `computeDamage` and scaled there by
+   * `TERRAIN_WEIGHT` -- a star is worth 15% at full defender HP, not 10%, and
+   * this column deliberately does not know that.
+   *
+   * ⚠️ **No terrain sits at 1 star, and that is a rule rather than a gap.** A
+   * single star moves the hit count in two matchups of nine, so it draws a `★`
+   * in the cutaway that the arithmetic cannot pay out. Cover starts at 2; 3 and
+   * 5 are free for ground that does not exist yet.
    */
   defense: number;
   /**
@@ -37,7 +41,11 @@ export const TERRAIN: Record<TileType, Terrain> = {
   // 1 on road is the whole of "artillery prefers roads".
   road: { char: '-', defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
   bridge: { char: '=', defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
-  plains: { char: '.', defense: 1, cost: { foot: 1, horse: 1, wheels: 2 } },
+  // ⚠️ Open ground carries **no** cover, the same as road and bridge. A star
+  // here gave an open field the protection of a wood, and it was what made the
+  // forest column of the hits-to-kill table identical to the plains column in
+  // all nine matchups -- a wood cost movement and bought nothing.
+  plains: { char: '.', defense: 0, cost: { foot: 1, horse: 1, wheels: 2 } },
   forest: { char: 'f', defense: 2, cost: { foot: 1, horse: 2, wheels: 3 } },
   // Rough ground, and the best cover on the board. A man climbs it at a price
   // and a horse can be led up it -- but 4 against cavalry's range of 5 means

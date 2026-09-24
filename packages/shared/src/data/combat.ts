@@ -70,6 +70,29 @@ export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
 };
 
 /**
+ * What a star of cover is multiplied by before it is taken off a hit: 15% at
+ * full defender health rather than the 10% the raw column reads as.
+ *
+ * ⚠️ **It exists because a star was below the resolution of the system.** Hits
+ * to kill is an integer, so most single-star changes moved nothing at all: at
+ * 10% the step from 1 star to 2 moved **0 cells of 9**, and 3 to 4 moved 1. At
+ * 15% the same steps move 5 and 6. Weighting the term and emptying the 1-star
+ * slot are two halves of one change -- either alone leaves cover decorative.
+ *
+ * ⚠️ **The invariant is `maxStars × TERRAIN_WEIGHT < 10`**, which is what keeps
+ * `computeDamage` from needing a clamp. At 1.5 that caps terrain at **6 stars**;
+ * the table's stoutest ground is 4. Past the line, cover exceeds 100% and
+ * terrain starts healing the unit standing on it.
+ *
+ * ⚠️ **And a second, softer ceiling at 1.667**, where `cavalry → infantry` on a
+ * mountain rounds to zero and the *no living attacker is harmless* sweep in
+ * `combat.test.ts` fires. That guard is one point of base damage away from
+ * binding either way, so this constant and `BASE_DAMAGE` have to move together
+ * downward, though never upward.
+ */
+export const TERRAIN_WEIGHT = 1.5;
+
+/**
  * The widest the luck bonus ever gets, matching AW exactly.
  *
  * ⚠️ **Additive, never multiplicative, and applied last** -- see `computeDamage`,

@@ -289,7 +289,13 @@ rock-paper-scissors, since any `f(attack, defence)` is transitive. `road` and
 indistinguishable to every rule that reads them.
 
 **`terrain.ts`** — `{ char, defense, cost }` per terrain. `char` is the symbol a
-map is drawn with; `defense` is stars of cover, read by `computeDamage`; `cost` is
+map is drawn with; `defense` is stars of cover, read by `computeDamage` and
+scaled there by `TERRAIN_WEIGHT` — a star is worth 15% at full defender health,
+and the column itself does not know that. ⚠️ **Open ground carries none**: road,
+bridge, plains and river are all 0, cover starts at `forest` 2 and tops out at
+`mountain` 4, and **no terrain sits at 1 star** — a single star moves the hit
+count in two matchups of nine, so it would draw a `★` the arithmetic cannot pay
+out. `cost` is
 movement points to *enter*, one per movement type, with `null` for impassable —
 which makes a river a wall to wheels, a toll to boots, and most of a turn to a
 horse. Costly and impassable are different answers: a mountain is expensive for
@@ -547,7 +553,7 @@ All three are pure and take the roll as an **input**.
 ```
 band(hp) = ceil(hp / 10)                    // 1..10, never 0 while alive
 damage   = floor(floor(base × band(attackerHP) / 10)
-                 × (100 − stars × band(defenderHP)) / 100)
+                 × (100 − stars × band(defenderHP) × TERRAIN_WEIGHT) / 100)
            + luck                           // last, flat, unscaled
 ```
 
@@ -563,6 +569,14 @@ the banding is what stands in for one. The cost: a unit at 91 health and one at
 the weaker the attacker is — nine points on a crippled shot of 18 is half again
 as much of it. A dead attacker is guarded explicitly, because `band(0)` zeroes
 the base but luck would sail past it and land 9.
+
+⚠️ **No clamp stops cover exceeding 100%, and two constants are what guarantee
+it never does.** The bound is `maxStars × TERRAIN_WEIGHT < 10` — at 4 stars and
+1.5 the worst case is 60 — and past that line terrain would heal the unit
+standing on it. A second, tighter ceiling sits at 1.667, where the weakest
+matchup on a mountain rounds to zero and the *no living attacker is harmless*
+sweep in `combat.test.ts` fires. Both are tested rather than merely written
+down.
 
 Three behaviours fall out rather than being rules: a wounded attacker hits
 softer, a wounded defender loses its cover (the terrain term scales by *defender*

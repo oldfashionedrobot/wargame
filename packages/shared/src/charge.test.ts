@@ -31,12 +31,13 @@ describe('chargeThreshold, which is also the capability rule', () => {
 });
 
 describe('chargeChance', () => {
+  // ⚠️ The contrast used to be plains, which no longer carries cover -- open
+  // ground is 0 stars now, so only a wood or a peak pushes this under certain.
   it('is certain at or below the threshold', () => {
-    const state = contact(25);
-    // ⚠️ On *road*, so terrain adds nothing -- plains would push it over.
     const flat = contact(25, ['.......', '.-.....', '.-.....', '.......']);
+    const wood = contact(25, ['.......', '.-.....', '.f.....', '.......']);
     expect(chargeChance(flat, unit(flat, 'b1'), unit(flat, 'r1'))).toBe(100);
-    expect(chargeChance(state, unit(state, 'b1'), unit(state, 'r1'))).toBeLessThan(100);
+    expect(chargeChance(wood, unit(wood, 'b1'), unit(wood, 'r1'))).toBeLessThan(100);
   });
 
   // ⚠️ The shape, stated as the dial it is: every CHARGE_HALF_LIFE points of

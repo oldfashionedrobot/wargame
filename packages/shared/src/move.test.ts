@@ -285,16 +285,20 @@ describe('resolveMove', () => {
   // ⚠️ **The defender's starting health is chosen, not incidental.** The reply
   // is scaled by `band()`, so a luckier blow only softens it when the extra
   // damage pushes the defender across a *band boundary* -- inside one band the
-  // counter is identical and this asserts nothing. At 65 the luck spread lands
-  // the defender between 24 and 15, which straddles one. ⚠️ Retuning
-  // `BASE_DAMAGE` moves where that happens, and this test is how you find out:
-  // it failed on the jump from 30 to 45, where rolls 0 and 9 both left the
-  // defender in band 6.
+  // counter is identical and this asserts nothing. At 70 the luck spread lands
+  // the defender between 25 and 16, which straddles one.
+  //
+  // ⚠️ **Anything that moves damage moves where that happens, and this test is
+  // how you find out.** It has now failed twice for that reason: on the jump in
+  // `BASE_DAMAGE` from 30 to 45, where rolls 0 and 9 both left the defender in
+  // band 6, and again when plains lost its star -- the board here is open
+  // ground, so dropping that star raised every blow by four and closed the gap
+  // at the 65 this used to use.
   it('counters on post-damage health, so striking first compounds', () => {
     const board = () =>
       makeState(8, [
         { id: 'b1', col: 0, row: 0 },
-        { id: 'r1', col: 0, row: 2, owner: 'red', health: 65 },
+        { id: 'r1', col: 0, row: 2, owner: 'red', health: 70 },
       ]);
     const command = move('b1', at(0, 0), at(0, 0), 'r1');
 
