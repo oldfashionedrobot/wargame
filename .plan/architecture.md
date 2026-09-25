@@ -109,7 +109,8 @@ Run from the repo root. All exit non-zero on failure.
 | `bun run build` | `tsc -b`, then bundle and compress the client |
 | `bun run format` / `format:check` | Prettier (Markdown and exported glTF are excluded) |
 | `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
-| `bun packages/shared/scripts/matchups.ts` | The tuning harness: hits-to-kill for every matchup on every terrain. No server, no browser |
+| `bun packages/shared/scripts/matchups.ts` | Tuning harness: hits-to-kill for every matchup on every terrain |
+| `bun packages/shared/scripts/charges.ts` | Tuning harness: charge odds for all three approaches on every depth of cover, and what failing costs |
 | `bun run preview` | `vite preview` — the built client with no `/api` proxy, so it reaches no match |
 | `bun run --filter '@vod/server' start` | The production shape: one process serving the API and `dist` together |
 
@@ -281,12 +282,19 @@ nothing varies it, so a per-instance copy would be one number written once per
 unit. ⚠️ It lives here so that the day some unit is tougher than another, it
 becomes a column of `UnitType` and the edit is local.
 
-**`combat.ts`** — `BASE_DAMAGE`, a nested `Record` of attacker → defender as a
-percentage of a full-health target, and `LUCK_MAX`. A matrix rather than an
-attack stat and a defence stat: no pair of scalars can express
-rock-paper-scissors, since any `f(attack, defence)` is transitive. `road` and
-`bridge` are identical in both their columns, so two of the terrains are
-indistinguishable to every rule that reads them.
+**`combat.ts`** — every number combat reads, and nothing else. Three tables:
+`BASE_DAMAGE` (attacker → defender, as a percentage of a full-health target),
+`CHARGE_THRESHOLD` (a `Partial`, where the *missing* artillery row is how
+"artillery cannot charge" is said) and `CHARGE_REPEL` (keyed by who is being
+charged). Then the scalars, each explained where it is used rather than here:
+`TERRAIN_WEIGHT` and `LUCK_MAX` in *Combat*; `CHARGE_HALF_LIFE`,
+`FRONTAL_FLOOR`, `FLOOR_PER_STAR` and `REPEL_DIVISOR` in *Charge*;
+`FLANK_MULTIPLIER` and `REAR_MULTIPLIER` in *Charge*, and
+`FLANK_COUNTER_SHARE` in *A shot from behind*.
+
+⚠️ `BASE_DAMAGE` is a matrix rather than an attack stat and a defence stat: no
+pair of scalars can express rock-paper-scissors, since any `f(attack, defence)`
+is transitive.
 
 **`terrain.ts`** — `{ char, defense, cost }` per terrain. `char` is the symbol a
 map is drawn with; `defense` is stars of cover, read by `computeDamage` and
@@ -300,6 +308,11 @@ movement points to *enter*, one per movement type, with `null` for impassable �
 which makes a river a wall to wheels, a toll to boots, and most of a turn to a
 horse. Costly and impassable are different answers: a mountain is expensive for
 horse and `null` for wheels.
+
+⚠️ **`road` and `bridge` are identical in *both* columns**, so they are
+indistinguishable to every rule that reads them — the split exists only so the
+renderer can draw a crossing over water. Plains and river match them on
+`defense` alone and differ on `cost`.
 
 `getUnitType` and `getTerrain` throw on an unknown id.
 
@@ -1242,8 +1255,19 @@ setStepTiles(overlay | null, tiles)   // 'attack' | 'charge' | 'facing'
 anchorTo(element | null, coordinate | null)
 playEvents(events): Promise<void>
 syncUnits(state)          previewMove(unitId, path): Promise<void>
+onCutaway(handler)        dismissCutaway()
+lastDrawn(): GameState
 cancelPreview()           toggleInspector()          dispose()
 ```
+
+⚠️ **`onCutaway` and `dismissCutaway` are the staged close-up's half of the
+seam** — the renderer raises the views and hands the caller what it would
+otherwise re-derive, because the readout is text and layout and belongs in the
+DOM. See *The combat cutaway*. `dismissCutaway` is a no-op when nothing is
+waiting, so a late click from a cutaway that already closed needs no guard.
+⚠️ **`lastDrawn` is a record of what was drawn, not a second source of truth.**
+`syncUnits` remains the only thing that moves it, and anything wanting authority
+reads `server.getState()`.
 
 ⚠️ **Coordinates, never a `Movement`.** The renderer is told what to light, not
 handed a search to query — presentation gets facts, the rulebook stays upstream.
