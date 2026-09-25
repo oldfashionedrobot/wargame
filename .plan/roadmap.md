@@ -22,15 +22,16 @@ number**. Reordering is editing one row of this table and nothing else.
 |---|---|---|
 | 1 | **Tuning and gameplay tweaks** | Iterate on how it actually plays, before anything is built on top of it |
 | 2 | **Presentation** (11) | The 3D look first, then animation, sound and UI |
-| 3 | **Multiplayer** (12) | Identity, and two clients in one match |
-| 4 | **A hosted build** (13) | itch.io — the client and server deploy apart |
+| 3 | **A hosted build** (13) | itch.io — hot-seat, in front of real players |
+| 4 | **Multiplayer** (12) | Identity, and two clients in one match |
 | 5 | **Content** (14) | More units, maps in a table, an editor |
 | 6 | **Platforms** (15) | The portals that gate, review, or supply accounts |
 
-⚠️ **Only one ordering constraint is real**: *Multiplayer* → *A hosted build* →
-*Platforms*. Nothing outward-facing happens without a build, and the portal step
-needs both the build and whatever provides identity. Everything else is a
-preference, and preferences have already changed three times.
+⚠️ **Two ordering constraints are real, and they both end at *Platforms***:
+*A hosted build* → *Platforms*, because nothing outward-facing happens without a
+build; and *Multiplayer* → *Platforms*, because the portals that supply their
+own accounts need somewhere to put them. Everything else is a preference, and
+preferences have already changed four times.
 
 ⚠️ **Cross-references name an epic rather than number it.** The rule has been
 earned twice — inserting a phase once turned six pointers in *Known compromises*
@@ -62,7 +63,7 @@ Deliberate limits of the current design, and what each would take to lift. Disti
 | | Current state | What it needs eventually |
 |---|---|---|
 | **Session identity** | Opaque id in an httpOnly cookie; the server trusts it on sight | *Multiplayer and auth* — a real session record behind whatever provides identity. Same cookie, real meaning. No passwords at any point |
-| **`actor` under hot-seat** | Server stamps `currentTurn` on its one connection | *Multiplayer and auth* — session→player map established at join |
+| **`actor` under hot-seat** | Server stamps `currentTurn` on its one connection | ⚠️ **Not lifted — joined.** Hot-seat is a kept mode, so this stays as one branch and *Multiplayer* adds the other: a session→player map established at join. The cost is that `resolveActor` gains a per-match mode |
 | **Matches are unowned and unbounded** | Anyone can create any number; no delete, no expiry. `list()` is capped at 50 newest — a bound, not pagination | *Multiplayer and auth* — scope listing to the player, and add deletion. Until identity exists there's nothing to scope by |
 | **Async play** | Works already — a returning client fetches current state and resumes. What's missing is knowing a match is waiting on you | *Multiplayer and auth* — match lifecycle and, eventually, notification. Not new mechanics |
 | **Ruleset versioning**, and with it **old matches are expendable** | None. ⚠️ `current_state` and `initial_state` are JSON columns with `.$type<GameState>()`, which is a **compile-time cast and no runtime check** — so a match stored before a field existed reads back missing it while the types insist otherwise. A shape change therefore does not migrate rows; it abandons them, and that is **accepted policy until a ruleset id exists** rather than an oversight. The dev database is gitignored scratch: delete it. ⚠️ The failure is silent where it matters — a `Unit` with no `health` is `undefined`, and `undefined` arithmetic is `NaN`, so the first symptom is a damage number rather than an error | Stamp a ruleset id on the match so old logs replay under the rules they were played with. That is also what retires the policy above: a match that knows its ruleset can be refused rather than quietly misread |
@@ -144,16 +145,29 @@ is self-contained; read the one you are about to work on.
 **short**, and how long a match runs is content. Co-presence puts two people at
 the board at the same time; only *Content* makes that a single sitting.
 
-⚠️ **Multiplayer comes before deploying, and that is a product decision rather
-than a technical one.** A hosted build could ship the day the asset paths are
-fixed, and for a while this file said it should. It should not: hot-seat was
-scaffolding for building the game, not a way to play it, and putting a
-two-people-one-keyboard turn-based strategy game in front of a portal audience
-is shipping the wrong product and learning nothing true from what it does.
-⚠️ The cost of the order is that ***Multiplayer* has to take *A hosted build*'s
-constraint as an input** — identity gets designed knowing the client will later
-be served from another origin, rather than having that discovered afterwards.
-That constraint is written into *Multiplayer* below, where the decision is made.
+⚠️ **Deploying comes before multiplayer, and the reversal rests on hot-seat
+being a real mode.** This file argued the other way for a while, on the grounds
+that hot-seat was scaffolding and shipping it would teach nothing true. That
+premise is withdrawn: **two people sharing one device is a way to play**, kept
+alongside matchmaking rather than replaced by it, and a turn-based game is the
+genre where it survives. What follows is that a build can go in front of real
+players long before identity exists — and *Tuning* says play is the authority
+over both the tables and the harness, so the sooner someone who is not us plays
+it, the sooner that epic has anything to go on.
+
+✅ **The old cost disappears and a better position replaces it.** *Multiplayer*
+used to have to take *A hosted build*'s constraint as a **prediction** —
+designing identity for an origin split that had not happened. It now inherits
+that split as a **fact**, already deployed and already exercised. Designing a
+session against a second origin you can see is strictly easier than designing
+one against a second origin you are anticipating.
+
+⚠️ **The new cost is a public server with no identity on it.** *Known
+compromises* records that matches are unowned and unbounded and that
+`resolveActor` ignores the session it is handed — accepted limits while the only
+audience was us. In front of a portal audience they are an abuse surface rather
+than a shortcut, and *A hosted build* has to say what it does about that before
+the first upload. It is the one thing the old ordering got for free.
 
 ⚠️ **Platform mechanics are not written down here.** They are per-platform,
 dated, and change — see *Victory or Death — Publishing Pipeline* in Drive, which
@@ -297,11 +311,17 @@ result below, which came back green. ⚠️ Frictionless to first move is the re
 worth stating as one: on a portal, a sign-in wall in front of a free game is
 the funnel.
 
-⚠️ **Hot-seat is removed, not kept.** It was scaffolding, and two browser tabs
-are two players — which is cheaper than the per-match mode on `resolveActor`
-that keeping it would cost, and that function is the most security-sensitive one
-here. ⚠️ Every test and manual check in the repo is written in hot-seat, so
-this is a real edit to the suites rather than a deletion.
+✅ **Hot-seat is kept, not removed.** This section argued the other way — that
+it was scaffolding and two browser tabs are two players. It is a way to play:
+two people at one device, shipped in *A hosted build* and still wanted after
+this epic lands. ⚠️ **The cost that argument named is now simply the price**: a
+per-match mode on `resolveActor`, in the most security-sensitive function here.
+It is paid deliberately, and the seam below is where — hot-seat was already
+listed as one of the three providers, so the machinery is the machinery.
+
+✅ **One thing gets cheaper.** Every test and manual check in the repo is
+written in hot-seat. Removing it was a real edit to the suites; keeping it means
+they go on describing a mode that still exists.
 
 ⚠️ **This section was written assuming we own identity, and two target
 platforms forbid that.** CrazyGames requires progress tied to a CrazyGames
@@ -641,11 +661,22 @@ integrate — so it is the one portal where "does this deploy at all" can be
 answered without also answering anything else. Everything below is what itch
 specifically requires; the other portals want a superset.
 
-The smallest remaining phase, and no new mechanics: it is the deploy story.
-⚠️ **It could have gone first and deliberately does not** — see the top of
-*Remaining phases* for why, and note that the one decision it would otherwise
-own, whether identity rides a cookie across origins, is taken in *Multiplayer*
-instead, because that is where the sessions get built.
+**What ships is hot-seat**, which is a mode rather than a placeholder — two
+people at one device, and a turn-based game is the genre where that survives.
+No new mechanics: it is the deploy story, and it is the smallest epic here.
+
+✅ **It goes before *Multiplayer*, and that makes it smaller rather than
+larger.** The decision it would otherwise have had to borrow — how identity
+crosses an origin — does not arise, because there is no session yet. It needs
+plain CORS and an API base, not CORS with credentials. *Multiplayer* then builds
+its session against an origin split that is already deployed and already
+exercised, instead of one it has to anticipate.
+
+⬜ **What it does have to answer is the one thing the old ordering got for
+free**: matches are unowned and unbounded and `resolveActor` ignores the session
+it is handed. Fine while the audience was us; in front of a portal audience that
+is an abuse surface. A cap, an expiry, or a rate limit — decided before the
+first upload, not after.
 
 - ⚠️ **Asset paths are absolute and itch serves from a subdirectory.** Verified,
   not anticipated: the build emits `src="/assets/…"` and `href="/favicon.svg"`,
@@ -661,12 +692,11 @@ instead, because that is where the sessions get built.
   that works in dev (Vite proxies) and in production (the server serves the
   bundle). itch hosts the zip on its HTML5 CDN and says the backend must live
   elsewhere and accept cross-origin requests; every other portal says the same
-  in its own words. So the client needs an API base and the server needs CORS
-  with credentials — carrying whatever 11 decided identity travels as.
-- ⚠️ **The sharp edge is the session, not CORS** — and it is 11's to resolve,
-  which is the whole reason that constraint is written into 11. What is left
-  here is carrying the decision out to a second origin and finding out whether
-  it was right.
+  in its own words. So the client needs an API base and the server needs CORS.
+- ⚠️ **Plain CORS, not CORS with credentials**, because there is nothing to
+  credential yet. The sharp edge was always the session rather than the headers,
+  and going first is what defers it: *Multiplayer* resolves it later, against a
+  second origin that by then is a fact rather than a forecast.
 - **Two deploy targets, one repo.** The client is static files; the server is a
   process with a database. They version together and ship apart, which is the
   first time `seq` and the ruleset-versioning compromise have teeth.
