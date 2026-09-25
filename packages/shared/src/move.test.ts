@@ -282,6 +282,36 @@ describe('resolveMove', () => {
     expect(shot('east').attacker.health).toBeGreaterThan(shot('south').attacker.health);
   });
 
+  // ⚠️ **The one hole in *no living attacker is harmless*, pinned so it cannot
+  // be closed by accident.** That sweep guarantees `computeDamage` never
+  // returns 0 for a living attacker; a flanked counter is then scaled by
+  // `FLANK_COUNTER_SHARE` *after* the fact, and two-thirds of 1 is 0. It needs
+  // the corner it sounds like -- a defender beaten into the lowest band,
+  // answering an attacker who is standing in the heaviest cover there is.
+  //
+  // `battleResolved` already says `answered: true` with the attacker's health
+  // unchanged is a real outcome. This is where that stops being hypothetical.
+  it('lets a flanked counter land nothing at all, and still count as answered', () => {
+    // Infantry on a peak shoots an adjacent cavalry on its flank; 50 damage
+    // leaves the cavalry on 5, and its reply is 1 head-on and 0 from there.
+    const peak = (facing: 'south' | 'west') =>
+      makeState(
+        ['^.', '..'],
+        [
+          { id: 'b1', col: 0, row: 0 },
+          { id: 'r1', col: 1, row: 0, owner: 'red', unitTypeId: 'cavalry', health: 55, facing },
+        ],
+      );
+    const fight = (facing: 'south' | 'west') => {
+      const [, battle] = resolved(peak(facing), move('b1', at(0, 0), at(0, 0), 'r1'));
+      if (battle.type !== 'battleResolved') throw new Error('expected a battle');
+      return battle;
+    };
+    expect(fight('west').attacker.health).toBe(MAX_HEALTH - 1); // head-on: a single point
+    expect(fight('south').answered).toBe(true);
+    expect(fight('south').attacker.health).toBe(MAX_HEALTH); // flanked: nothing at all
+  });
+
   // `hasActed` stops a unit *acting* twice in its own turn; answering an attack
   // is not acting, and the predicate is purely geometric so it never asks.
   it('is answered by a defender that has already acted', () => {

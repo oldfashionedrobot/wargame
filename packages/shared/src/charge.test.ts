@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import { chargeChance, chargeThreshold, refuseCharge, resolveCharge } from './combat';
-import { CHARGE_HALF_LIFE, CHARGE_REPEL, CHARGE_THRESHOLD, REPEL_DIVISOR } from './data/combat';
+import {
+  CHARGE_HALF_LIFE,
+  CHARGE_REPEL,
+  CHARGE_THRESHOLD,
+  REAR_MULTIPLIER,
+  REPEL_DIVISOR,
+} from './data/combat';
+import { MAX_HEALTH } from './data/unitTypes';
 import { at, makeState } from './testing';
 import type { GameState, Unit } from './types';
 
@@ -27,6 +34,22 @@ describe('chargeThreshold, which is also the capability rule', () => {
 
   it('lets artillery be charged, which is a different question', () => {
     expect(chargeThreshold('cavalry', 'artillery')).not.toBeNull();
+  });
+
+  // ⚠️ **The ceiling on every entry, and the reason the artillery column came
+  // down.** A rear charge multiplies the threshold by `REAR_MULTIPLIER`; once
+  // that product reaches `MAX_HEALTH` the margin can never be positive, so a
+  // rear charge is automatically certain against a *full-health* defender. That
+  // is a dead dial rather than a signature moment -- the rear stops being
+  // distinguishable from anything else in the row -- and it is invisible in a
+  // head-on column, which is how it survived one tuning pass already.
+  it('keeps every entry clear of saturating at full health from the rear', () => {
+    const saturating = Object.entries(CHARGE_THRESHOLD).flatMap(([charger, row]) =>
+      Object.entries(row)
+        .filter(([, threshold]) => threshold * REAR_MULTIPLIER >= MAX_HEALTH)
+        .map(([target, threshold]) => `${charger}→${target} at ${threshold}`),
+    );
+    expect(saturating).toEqual([]);
   });
 });
 

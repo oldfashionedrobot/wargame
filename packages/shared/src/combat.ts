@@ -451,8 +451,8 @@ export function chargeChance(state: GameState, attacker: Unit, defender: Unit): 
   // thing, and stop mattering to one that was hopeless anyway. 100% now needs
   // position *and* open ground.
   const { defense } = getTerrain(state.grid[defender.position.row][defender.position.col]);
-  const floor = (side === 'front' ? FRONTAL_FLOOR : 0) + defense * FLOOR_PER_STAR;
-  const margin = Math.max(floor, defender.health - Math.floor(threshold * directional));
+  const marginFloor = (side === 'front' ? FRONTAL_FLOOR : 0) + defense * FLOOR_PER_STAR;
+  const margin = Math.max(marginFloor, defender.health - Math.floor(threshold * directional));
   return Math.max(1, Math.round(100 * 0.5 ** (margin / CHARGE_HALF_LIFE)));
 }
 
