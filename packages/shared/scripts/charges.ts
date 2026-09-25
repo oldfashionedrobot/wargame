@@ -72,7 +72,22 @@ const COVER = [...new Set(Object.values(TERRAIN).map((g) => g.defense))]
     return { stars, char: sharing[0][1].char, names: sharing.map(([name]) => name).join(', ') };
   });
 
-console.log(`odds to break.  repel is flat + overshoot/${REPEL_DIVISOR}`);
+// ⚠️ **What failing costs, read at the row's *best* odds** -- the health you
+// would actually take the gamble at. It is not a constant: the overshoot can
+// only reach `99 - chance`, so better odds leave a narrower window to fail
+// into. This column printed `flat..flat+9` for every row until the floor
+// landed, which hid the second-order effect the floor introduced -- deeper
+// cover lowers the odds, and lower odds widen the beating for failing.
+const failureBand = (defender: UnitTypeId, chances: number[]) => {
+  const flat = CHARGE_REPEL[defender];
+  const best = Math.max(...chances);
+  if (best >= 100) return `${flat}+, if it could`;
+  return `${flat}–${flat + Math.floor((99 - best) / REPEL_DIVISOR)}`;
+};
+
+console.log(
+  `odds to break.  failing costs flat + overshoot/${REPEL_DIVISOR}, at the best odds in the row\n`,
+);
 
 for (const { stars, char, names } of COVER) {
   console.log(`\n${stars} ${stars === 1 ? 'star' : 'stars'} — ${names}`);
@@ -84,13 +99,13 @@ for (const { stars, char, names } of COVER) {
     for (const attacker of CHARGERS) {
       for (const defender of TARGETS) {
         if (chargeThreshold(attacker, defender) === null) continue;
-        const odds = HEALTHS.map((health) => {
+        const chances = HEALTHS.map((health) => {
           const state = board(attacker, defender, health, facing, char);
-          return `${chargeChance(state, state.units[0], state.units[1])!}%`.padStart(7);
+          return chargeChance(state, state.units[0], state.units[1])!;
         });
-        const repel = CHARGE_REPEL[defender];
+        const odds = chances.map((chance) => `${chance}%`.padStart(7));
         console.log(
-          `${`${attacker} → ${defender}`.padEnd(24)}${odds.join('')}   ${repel}–${repel + 9}`,
+          `${`${attacker} → ${defender}`.padEnd(24)}${odds.join('')}   ${failureBand(defender, chances)}`,
         );
       }
     }

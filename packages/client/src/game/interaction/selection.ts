@@ -660,7 +660,11 @@ export function attackForecast(state: GameState, selection: TargetPinned): Forec
       kind: 'charge',
       chance,
       repelLow: flat,
-      repelHigh: flat + Math.floor((99 - chance) / REPEL_DIVISOR),
+      // ⚠️ **Clamped, because at `chance` 100 there are no failing rolls and
+      // `99 - chance` goes negative** -- which made `repelHigh` one *below*
+      // `repelLow`, an incoherent band that only stayed invisible because the
+      // panel hides the range when it does not widen.
+      repelHigh: Math.max(flat, flat + Math.floor((99 - chance) / REPEL_DIVISOR)),
     };
   }
 
