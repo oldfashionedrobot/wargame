@@ -1,9 +1,9 @@
 ---
 name: run-app
-description: Launch Victory or Death's dev servers and drive the game in a headless browser — create a match, click tiles, screenshot the board. Use when asked to run the app or verify a change works for real.
+description: Launch the game's dev servers and drive the game in a headless browser — create a match, click tiles, screenshot the board. Use when asked to run the app or verify a change works for real.
 ---
 
-# Running Victory or Death
+# Running the app
 
 Two processes in dev: Vite on **5173** (the app) and the bun server on
 **3001**. The Vite proxy forwards `/api` to the server, so everything goes
@@ -33,7 +33,7 @@ must stay out of the workspaces); the browser binary caches durably in
 `~/Library/Caches/ms-playwright`, so the download is one-time:
 
 ```sh
-mkdir -p /tmp/vod-browser && cd /tmp/vod-browser
+mkdir -p /tmp/wargame-browser && cd /tmp/wargame-browser
 npm init -y && npm install playwright
 npx playwright install chromium   # ~95MB, cached across runs
 ```

@@ -1,4 +1,4 @@
-# Victory or Death — Roadmap and design
+# Wargame — Roadmap and design
 
 Forward-looking only: what is designed but not built. Order is the table
 below. What the code does *today* is in
@@ -50,7 +50,8 @@ somebody has to remember to recount, and nobody does.
 
   The fix is small and already half-built: `anchorTo` projects a tile to screen
   pixels every frame. Exposing that in dev — a `tileToScreen` on the renderer, or
-  a `window.__vod` handle behind `import.meta.env.DEV` — turns every future check
+  a `window.__board` handle behind `import.meta.env.DEV` — named for what it
+  exposes rather than for the product, so a rename never reaches it — turns every future check
   from *guess a pixel* into *address a tile*. ⚠️ It is test-only surface on a
   production object, which is the reason to think before building it rather than
   the reason not to. *Presentation* is where it would pay for itself fastest.

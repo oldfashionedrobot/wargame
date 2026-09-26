@@ -98,7 +98,7 @@ the client's overlay and the server's check cannot disagree.
   nothing in it knows how URLs dispatch.
 - **Tests must not touch the real dev database.** Server suites use `:memory:`;
   `db.test.ts` uses a temp directory. A relative `file:` URL resolves against
-  the repo root, so a careless one opens `packages/server/vod.db`.
+  the repo root, so a careless one opens `packages/server/wargame.db`.
 - **`http.test.ts` serves a fixture dist, never the real build.** `dist/` is
   gitignored and `bun run test` does not build it, so tests written against it
   quietly change meaning depending on whether someone ran a build.

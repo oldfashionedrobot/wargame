@@ -1,4 +1,4 @@
-# Victory or Death — Architecture
+# Wargame — Architecture
 
 Turn-based strategy game, American Revolutionary War theme. React + TypeScript
 + Babylon.js, built with bun.
@@ -1619,7 +1619,7 @@ apply. `.env.example` is committed.
 | | |
 |---|---|
 | `PORT` | server port, default 3001 |
-| `DATABASE_URL` | `file:./packages/server/vod.db` locally, a `libsql://…` URL on Turso |
+| `DATABASE_URL` | `file:./packages/server/wargame.db` locally, a `libsql://…` URL on Turso |
 
 The client has no configuration.
 

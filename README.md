@@ -1,4 +1,4 @@
-# Victory or Death
+# Wargame
 
 A turn-based strategy game with an American Revolutionary War theme — infantry,
 cavalry, and artillery rather than tanks and jets. React + TypeScript +

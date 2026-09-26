@@ -58,7 +58,7 @@ export function StartScreen() {
 
   return (
     <div style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif' }}>
-      <h1>Victory or Death</h1>
+      <h1>Wargame</h1>
 
       <p>
         <button type="button" onClick={onCreate} disabled={creating}>
