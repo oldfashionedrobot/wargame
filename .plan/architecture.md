@@ -18,8 +18,8 @@ listing only the ones it can actually do and skipping itself when that leaves
 one — after which a held unit is pointed somewhere, since facing decides whether
 a shot is answered. A shot or a charge
 cuts away to the two units and plays the exchange. Every unit acts once and the
-turn ends after one action, play alternating on every command; when a player
-has nothing left, the match is over and says so.
+turn ends when the last of them has gone; when a player has nothing left, the
+match is over and says so.
 
 Two players, a rank of eight each — two guns, two horse, four foot — on a map
 chosen when the match is created. `/maps` shows the boards without starting
@@ -211,20 +211,20 @@ ErrorResponse     { error }                          // the body of every non-2x
 ```
 
 **A turn is a budget of actions**, `ACTIONS_PER_TURN` in `turns.ts`, and the
-turn ends itself once the budget is spent. It is **`1`** — one unit, one
-command, and play alternates on every action. `null` means no cap instead:
-every unit acts once, the player picks the order, and the turn ends when the
-last of them has gone.
+turn ends itself once the budget is spent. It is **`null`** — no cap: every
+unit acts once, the player picks the order, and the turn ends when the last of
+them has gone. A number caps it instead.
 
-⚠️ **Nothing forces rotation.** `turnEnded` refreshes `hasActed` for the
-incoming player's whole roster, so at a budget of one the same unit may act on
-consecutive turns indefinitely while the rest never move. That is the chess
-reading — you pick a piece, not a piece that is owed a move — and it is a
-property of the budget rather than a separate rule.
+⚠️ **Under a cap, nothing forces rotation.** `turnEnded` refreshes `hasActed`
+for the incoming player's whole roster, so at a budget of one the same unit may
+act on consecutive turns indefinitely while the rest never move. Uncapped this
+is invisible — the roster *is* the budget, so everyone acts once by
+construction. It is a property of the budget rather than a separate rule, and
+it is what a cap has to reckon with.
 
 ⚠️ **The budget is reachable as an argument**, on `actionsAllowed`,
 `actionEndsTurn` and `resolveAction`, each defaulting to the constant. Tests
-pass it explicitly and cover both regimes, so tuning this line moves the game
+pass it explicitly and cover both regimes, so moving this line moves the game
 without moving the suite.
 
 `null` rather than `Infinity`, because `Infinity` does not survive

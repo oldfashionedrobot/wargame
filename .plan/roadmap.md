@@ -214,6 +214,29 @@ epic that cannot be done at a terminal.
   health is what healing decides.
 - ⬜ **Capture points**, sketched and parked: presence is possession, so a point
   is held by standing on it and there is no capture meter to build.
+- ⬜ **How much lands before the other player answers.** Uncapped, a whole army
+  can fall on one unit before it gets a reply. ⚠️ **That is how the tabletop
+  games this is modelled on work**, so it is a dislike rather than a defect —
+  worth naming because it is the thing most likely to pull the turn structure
+  around later.
+
+  ⚠️ **One action a turn was tried and reverted**, recorded so it is not
+  re-litigated from the pace alone. The pace was *good*. What broke it was
+  artillery, and structurally rather than numerically: the approach costs a
+  roster's worth of actions while the rate of fire is unchanged, so closing on
+  a gun went from about eight units advancing per shot taken to one. Indirect
+  fire gets a roster-sized buff for free, and nothing in `BASE_DAMAGE` or the
+  range bands is the cause of it.
+
+  ⚠️ **Two findings to start from if it is reopened.** Nothing forces rotation
+  — `turnEnded` refreshes the incoming player's whole roster — so under a cap
+  one unit may act every turn while the rest never move, which is what let the
+  guns fire every turn and compounds the above. Making `hasActed` persist until
+  the roster is spent would give one-at-a-time pacing *and* everyone-acts-once,
+  which is a different game from either endpoint and is untried. ⬜ So is the
+  **middle of the dial**: `ACTIONS_PER_TURN` takes any number, both ends have
+  now been played, and something like three would blunt the alpha strike
+  without dividing the approach by eight.
 
 #### The dials
 

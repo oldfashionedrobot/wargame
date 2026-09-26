@@ -26,7 +26,7 @@ import type { GameState, PlayerId } from './types';
  * happened to hold -- and the case that matters most, a roster shorter than the
  * cap, is invisible without one.
  */
-export const ACTIONS_PER_TURN: number | null = 1;
+export const ACTIONS_PER_TURN: number | null = null;
 
 function ownUnits(state: GameState) {
   return state.units.filter((unit) => unit.owner === state.currentTurn);
