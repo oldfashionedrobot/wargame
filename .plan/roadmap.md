@@ -217,26 +217,68 @@ epic that cannot be done at a terminal.
 - ⬜ **How much lands before the other player answers.** Uncapped, a whole army
   can fall on one unit before it gets a reply. ⚠️ **That is how the tabletop
   games this is modelled on work**, so it is a dislike rather than a defect —
-  worth naming because it is the thing most likely to pull the turn structure
-  around later.
+  but it is the strongest open question about the turn structure.
 
-  ⚠️ **One action a turn was tried and reverted**, recorded so it is not
-  re-litigated from the pace alone. The pace was *good*. What broke it was
-  artillery, and structurally rather than numerically: the approach costs a
-  roster's worth of actions while the rate of fire is unchanged, so closing on
-  a gun went from about eight units advancing per shot taken to one. Indirect
-  fire gets a roster-sized buff for free, and nothing in `BASE_DAMAGE` or the
-  range bands is the cause of it.
+  ✅ **`ACTIONS_PER_TURN` is settled at `null`, and it was measured rather than
+  argued.** One action a turn was played and reverted — the pace was good, and
+  artillery ruined it — and the whole dial was then swept with
+  `scripts/simulate.ts`. Opener's win share on `classic`, 500 games a cell:
 
-  ⚠️ **Two findings to start from if it is reopened.** Nothing forces rotation
-  — `turnEnded` refreshes the incoming player's whole roster — so under a cap
-  one unit may act every turn while the rest never move, which is what let the
-  guns fire every turn and compounds the above. Making `hasActed` persist until
-  the roster is spent would give one-at-a-time pacing *and* everyone-acts-once,
-  which is a different game from either endpoint and is untried. ⬜ So is the
-  **middle of the dial**: `ACTIONS_PER_TURN` takes any number, both ends have
-  now been played, and something like three would blunt the alpha strike
-  without dividing the approach by eight.
+  | budget | opener wins |
+  |---|---|
+  | all units | 100% |
+  | 3 actions | 91.6% |
+  | 2 actions | 91.4% |
+  | 1 action | 76.4% |
+
+  ⚠️ **Two and three are the same number**, inside the noise at that sample, and
+  both are barely nine points off uncapped. The whole movement in the dial is
+  between two and one, and even one leaves a twenty-six point first-mover edge.
+  There is no setting that buys real counterplay.
+
+  ⚠️ **And capping makes artillery deadlier at *every* level**, which is the
+  finding that settles it. Artillery's share of kills over 300 games: **8.9%**
+  uncapped, then 20.4%, 17.7% and 21.8% at three, two and one. What was felt at
+  a budget of one is a property of *capping*, not of one — a rationed army
+  cannot screen or withdraw a wounded unit, so the guns choose freely.
+
+  ⬜ **So the budget is the wrong lever for this, and a *reactive* mechanic is
+  the candidate.** See *Overwatch* below. The same sweep also says a cautious
+  bot would show less first-mover advantage than a greedy one does, which is
+  itself a hint that punishing the advance is aimed at the right thing.
+
+  ⬜ Still untried, and the one idea the sweep did not cover: making `hasActed`
+  persist until the roster is spent, which gives one-at-a-time pacing *and*
+  everyone-acts-once. Bolt Action's order dice are that design, and its units
+  have exactly one die each — which is the artillery problem solved at the
+  structural level rather than tuned around.
+
+- ⬜ **Overwatch — spend the attack to watch instead.** A unit forgoes its shot
+  and names a direction to watch; an enemy entering that arc is fired on before
+  it acts. XCOM's shape rather than 40k's, and it composes with facing, which
+  already exists and already decides whether a shot is answered.
+
+  ⚠️ **`slow` excludes artillery from it for free.** A gun may move or attack
+  but never both, and never answers a shot — so the two arms that can overwatch
+  are precisely the two the budget sweep kept buffing guns against. The
+  counterweight costs no new rule.
+
+  ⬜ **Three decisions, cheapest first.** Whether it consumes the action — it
+  should, or it is a passive buff rather than a trade. Whether it watches a
+  named arc or the whole range band, where the band is free because
+  `tilesInRange` already honours artillery's minimum, so enemies can walk
+  *under* the guns. And whether it triggers on the destination or anywhere
+  along the path: the destination is one more battle in the same command, while
+  *through* means walking the path step by step and deciding whether the mover
+  stops, which touches `validatePath` and the one-event-carries-a-path design.
+  Prove it on the destination first.
+
+  ⚠️ **The sharp edge is randomness, not the rule.** `rollLuck` reads the
+  *command* and never the rules, deliberately — so the number of draws cannot
+  depend on whether a path crossed a watched tile. The existing precedent is to
+  draw for the worst case: a counter roll is already drawn whether or not it is
+  used. It also needs watching state on `Unit`, which is a `GameState` shape
+  change and abandons stored matches under the ruleset compromise.
 
 #### The dials
 
@@ -247,12 +289,25 @@ beside them are `TERRAIN_WEIGHT`, `FRONTAL_FLOOR`, `FLOOR_PER_STAR`,
 a dial too, and turned out to be the one carrying the most weight.
 
 **Tune against the harnesses, never against a damage number.**
-`scripts/matchups.ts` prints hits-to-kill across every matchup and terrain, and
+`scripts/matchups.ts` prints hits-to-kill across every matchup and terrain,
 `charges.ts` prints charge odds for all three approaches on every depth of
-cover. ⚠️ **Both have earned themselves more than once** — one killed a table
+cover, and `server/scripts/simulate.ts` plays the game against itself and
+reports outcomes, match length, damage and kills by unit type, and whether each
+mechanic fired. ⚠️ **All three have earned themselves** — one killed a table
 where everything died in two hits, another found cavalry-into-artillery
-saturating at the flank on its opening run, and the hits-to-kill grid is what
-showed that a wood was worth literally nothing.
+saturating at the flank on its opening run, the hits-to-kill grid showed that a
+wood was worth literally nothing, and the simulator settled the turn budget in
+an afternoon.
+
+⚠️ **Read the simulator's mechanic counts before its win rates.** A bot
+confirms whatever it is scored on: the greedy one subtracts the expected
+riposte from its own score, so it reports counters landing in a tenth of
+exchanges, which is the bot avoiding them rather than a fact about counters.
+⚠️ **Its terrain numbers are worthless** and will stay so until a bot values
+ground — it fights in the open, so under one percent of hits land on cover.
+⚠️ **What it says robustly is asymmetry**: both sides run the identical policy,
+so any departure from an even split is the map or the deployment rather than
+the bot.
 
 ⚠️ **A star is worth a percentage and hits-to-kill is an integer**, so most
 single-star changes sit below the resolution of the system and read as no change
@@ -784,6 +839,14 @@ argument live; this is the phase that keeps changing them.
   `Partial` so artillery can have no row — a new unit silently gets no charge.
 - **Whatever play says next.** Three things have already moved this way, and two
   of the three turned out to be rules rather than dials.
+- ⬜ **The maps are not balanced, and this is now measured rather than
+  suspected.** Running `simulate.ts` with the same policy on both sides — so
+  any departure from even is the board — the opener wins essentially every game
+  on `classic`, `crossroads` and `common`, and *loses* about three quarters on
+  `meadow` and `two-bridges`. `lakeland` favours red whoever opens, and at a
+  capped budget it does not resolve at all. ⚠️ **A map is a balance surface,
+  not just content**, which is the argument for the editor rather than against
+  it: the fastest way to fix a board is to be able to change it and re-run.
 - **Maps into a table, and an editor over it.** Settled in *Maps in a table*
   above. The storage half is a migration and a foreign key; the editor is the
   half that makes it worth doing, and it is the first tool in this repo written
