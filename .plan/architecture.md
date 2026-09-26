@@ -111,6 +111,7 @@ Run from the repo root. All exit non-zero on failure.
 | `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
 | `bun packages/shared/scripts/matchups.ts` | Tuning harness: hits-to-kill for every matchup on every terrain |
 | `bun packages/shared/scripts/charges.ts` | Tuning harness: charge odds for all three approaches on every depth of cover, and what failing costs |
+| `bun packages/server/scripts/simulate.ts [games] [map] [opener]` | Plays the game against itself with a greedy bot and reports outcomes, match length, damage by unit type, and whether each mechanic fired |
 | `bun run preview` | `vite preview` — the built client with no `/api` proxy, so it reaches no match |
 | `bun run --filter '@wargame/server' start` | The production shape: one process serving the API and `dist` together |
 
