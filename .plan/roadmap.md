@@ -21,11 +21,12 @@ number**. Reordering is editing one row of this table and nothing else.
 | Order | Epic | |
 |---|---|---|
 | 1 | **Tuning and gameplay tweaks** | Iterate on how it actually plays, before anything is built on top of it |
-| 2 | **Presentation** (11) | The 3D look first, then animation, sound and UI |
-| 3 | **A hosted build** (13) | itch.io — hot-seat, in front of real players |
-| 4 | **Multiplayer** (12) | Identity, and two clients in one match |
-| 5 | **Content** (14) | More units, maps in a table, an editor |
-| 6 | **Platforms** (15) | The portals that gate, review, or supply accounts |
+| 2 | **UI and interaction** | The chrome, and how it feels to give an order |
+| 3 | **Presentation** (11) | The 3D look, then animation and sound |
+| 4 | **A hosted build** (13) | itch.io — hot-seat, in front of real players |
+| 5 | **Multiplayer** (12) | Identity, and two clients in one match |
+| 6 | **Content** (14) | More units, maps in a table, an editor |
+| 7 | **Platforms** (15) | The portals that gate, review, or supply accounts |
 
 ⚠️ **Two ordering constraints are real, and they both end at *Platforms***:
 *A hosted build* → *Platforms*, because nothing outward-facing happens without a
@@ -54,7 +55,7 @@ somebody has to remember to recount, and nobody does.
   exposes rather than for the product, so a rename never reaches it — turns every future check
   from *guess a pixel* into *address a tile*. ⚠️ It is test-only surface on a
   production object, which is the reason to think before building it rather than
-  the reason not to. *Presentation* is where it would pay for itself fastest.
+  the reason not to. *UI and interaction* is where it would pay for itself fastest.
 
 
 ## Known compromises
@@ -129,7 +130,6 @@ option, and both cost a few lines against a table's seeding machinery.
   an absent event to desync.
 - **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
 - **Buildings / capture points.** A terrain type with attached `{ owner, captureProgress }`, not a separate object layered on a tile.
-- **Graying out acted units.** The mechanical restriction is built; the visual is not. ⚠️ *Multiplayer* wants a "your units that can still act" indicator, which is the same thing under another name — whichever draws it, it should be one treatment rather than two.
 - **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — `mountain` is `defense: 4` and costs a horse 4, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
 
   ⚠️ Two findings worth keeping if it is ever reopened. `entryCost` takes a *destination*; height would make it take a **step**, which is a real signature change but a contained one — `exploreMovement` and `validatePath` are its only callers, and invariant 10 is what guarantees that. And if height ever did enter combat, the door is an **attack** bonus for striking downhill rather than a defence bonus for standing high, because terrain does not express the former and already expresses the latter.
@@ -235,10 +235,42 @@ showed that a wood was worth literally nothing.
 single-star changes sit below the resolution of the system and read as no change
 at all. This has fooled the document twice. Print the grid.
 
+### UI and interaction
+
+**The chrome, and how it feels to give an order.** Split out of *Presentation*
+and put in front of it: models and audio are a different job from the surface a
+player actually operates, and this is the one they meet first. ⚠️ **Named, not
+numbered**, per the rule at the top of this file.
+
+⬜ **The scope is half-known.** What follows is the part already identified; the
+interaction half is meant to be filled from **playing**, not from reasoning at a
+terminal, and it is deliberately short until then.
+
+- **A UI pass.** The board's chrome reads `--board-*` tokens, so this is editing
+  a palette rather than hunting literals. ⚠️ The *page's* own tokens exist and
+  are used by nothing — a second set that never got adopted, which is either a
+  job to finish or a thing to delete.
+- **Graying out acted units.** ⚠️ **Moved here out of *Out of scope for v1***,
+  where it no longer belongs: the mechanical restriction is built and only the
+  visual is missing, which is precisely this epic. *Multiplayer* separately
+  wants a "your units that can still act" indicator — the same thing under
+  another name, so it should be **one** treatment rather than two.
+- ⚠️ **The dev handle from *Open questions* belongs here**, and this is now the
+  first epic where it pays. Every visual change is verified by screenshotting
+  and guessing a pixel; a `tileToScreen` behind `import.meta.env.DEV` turns that
+  into addressing a tile. It has cost real time more than once, including a
+  check abandoned rather than finished.
+
+⚠️ **Interaction is where play is the authority, the same as tuning.** The
+usability work already done was found by reading the code; what is left will be
+found by someone using it, which is why this epic sits behind *Tuning* and in
+front of everything that adds surface.
+
 ### 11 — Presentation
 
 A track, pulled to the front because a graphics pass is wanted before the
 plumbing. Nothing in the queue depends on it and it depends on nothing.
+⚠️ **UI left this epic** — see *UI and interaction*, which runs before it.
 
 **Split in two, and 11a comes first on its own.**
 
@@ -271,19 +303,16 @@ Three facts about the current setup that constrain whatever is chosen:
 the cutaway was built to branch on it and does not, so a volley and a charge
 currently play the same absence of an animation.
 
-#### 11b — Animation, sound, UI
+#### 11b — Animation and sound
 
 - **Model animation in the cutaway**, which the cutaway was built to branch on
   and does not.
 - **Sound.** Nothing in the codebase makes any and there is no audio path at
   all — a new capability rather than a pass over an existing one.
-- **A UI pass.** The board's chrome reads `--board-*` tokens, so this is editing
-  a palette rather than hunting literals. The page's own tokens exist and are
-  used by nothing.
-- ⚠️ **The dev handle from *Open questions* belongs here or before it.** Every
-  visual change is verified by screenshotting and guessing a pixel, and a
-  `tileToScreen` behind `import.meta.env.DEV` turns that into addressing a tile.
-  It cost real time twice in one session.
+
+⚠️ **The UI pass that used to live here is its own epic now**, and it runs
+first. Chrome and the feel of giving an order are a different job from models
+and audio, and the one that a player meets before either.
 
 ### 12 — Multiplayer: identity, and two clients in one match
 
@@ -611,7 +640,7 @@ that re-hardcodes two — for no less work.
 
 ⚠️ **`owner_id` lands on a table full of unowned rows.** Nullable column, backfill to a sentinel, or wipe — dev-only data, so wiping is almost certainly right, but it is a step to write down rather than hit.
 
-⚠️ **Hot-seat stops working by construction** the moment `actor` comes from the session — every match ever played here has been two players sharing one browser. It was scaffolding, so it is not a *shipped* mode (see the top of this phase), but that leaves the narrower question of whether it survives as a **dev affordance**, and the cost is the same either way: a per-match mode on `resolveActor` is a second path through the most security-sensitive function here. ⚠️ The thing not to do is discover the answer while writing the auth code.
+⚠️ **Hot-seat stops working by construction** the moment `actor` comes from the session — every match ever played here has been two players sharing one browser. ⚠️ **And it is a shipped mode**, sent out in *A hosted build* before this epic starts, so it cannot simply lapse: `resolveActor` gains a per-match mode, which is a second path through the most security-sensitive function here. That cost is decided rather than open — see the top of this epic — and the thing not to do is discover the shape of it while writing the auth code.
 
 Schema work: `owner_id` on `matches`, a lobby `status` column, and a `sessions` table — three migrations, generated from `schema.ts`. Also **removes a read**: `http.ts` currently loads the match twice per command because `resolveActor` needs state to stamp `actor = currentTurn` while `submit` owns the read. A session lookup needs no state, so the extra read goes with it.
 
