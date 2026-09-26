@@ -10,9 +10,11 @@ const PLAYERS: Player[] = [
 ];
 
 /**
- * The one army both sides field, hardcoded beside `PLAYERS` and for the same
- * reason -- nothing chooses between armies yet, and when something does this
- * becomes an argument rather than a rewrite.
+ * The default army both sides field, hardcoded beside `PLAYERS` and for the
+ * same reason: nothing *chooses* an army yet. It is a default rather than a
+ * constant -- `createMatchState` takes the formation as an argument, which is
+ * the seam player-chosen deployment will arrive through, and which keeps the
+ * suite from pinning whatever this happens to say today.
  *
  * Artillery anchors both ends, cavalry takes the wings and four infantry hold
  * the centre. That is the period's own deployment, and it happens to put each
@@ -25,7 +27,7 @@ const PLAYERS: Player[] = [
  * catches it, and it checks every map against this army rather than against
  * placements of its own.
  */
-const ARMY: string[] = ['aciiiica'];
+const ARMY: string[] = ['ciiaaiic'];
 
 /**
  * Instantiates a map into the state a match starts from.
@@ -35,23 +37,23 @@ const ARMY: string[] = ['aciiiica'];
  * to the reader: `initial_state` plus the log has to replay identically, which
  * a generated or random id would break.
  */
-export function createMatchState(map: GameMap): GameState {
+export function createMatchState(map: GameMap, army: string[] = ARMY): GameState {
   const grid = parseTerrainGrid(map.rows);
   const height = grid.length;
   const width = grid[0]?.length ?? 0;
 
   // Centred, so an army of eight on a board of ten leaves a column each side.
-  const margin = Math.floor((width - armyWidth(ARMY)) / 2);
-  const placements = parseArmyGrid(ARMY);
+  const margin = Math.floor((width - armyWidth(army)) / 2);
+  const placements = parseArmyGrid(army);
 
   // ⚠️ Refused rather than clamped. A board narrower or shallower than the army
   // gives a negative margin, which silently deploys units off the edge at
   // negative coordinates -- a state that parses, stores and replays, and is
   // wrong from the first frame. Cheaper to refuse the board.
-  if (margin < 0 || ARMY.length * 2 > height) {
+  if (margin < 0 || army.length * 2 > height) {
     throw new Error(
-      `map ${map.id} is ${width}x${height}, too small for an army ${armyWidth(ARMY)} wide ` +
-        `and ${ARMY.length} deep on each side`,
+      `map ${map.id} is ${width}x${height}, too small for an army ${armyWidth(army)} wide ` +
+        `and ${army.length} deep on each side`,
     );
   }
 

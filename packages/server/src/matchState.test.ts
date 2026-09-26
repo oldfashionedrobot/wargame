@@ -7,6 +7,16 @@ const classic = getMap('classic');
 
 const board = (rows: string[]): GameMap => ({ id: 'fixture', name: 'Fixture', rows });
 
+// ⚠️ **Every test that pins a *position* supplies its own formation.** The
+// default is a tuning dial -- it has already been rewritten once mid-playtest,
+// and it becomes a player's choice eventually -- so a suite that reads it is a
+// suite that breaks every time the game is tuned. Only the army-agnostic
+// properties below use the default.
+const EIGHT_WIDE = ['iiiiiiii'];
+/** Two units, different types, so a rotation shows up as a mirror. */
+const ASYMMETRIC = ['ac'];
+const TEN_BY_SIX = () => board(Array.from({ length: 6 }, () => '..........'));
+
 describe('createMatchState', () => {
   it('instantiates the map into a board', () => {
     const state = createMatchState(classic);
@@ -27,7 +37,7 @@ describe('createMatchState', () => {
 
   it('centres the rank and puts each army on its own edge', () => {
     // Ten wide, eight in the rank: a column spare each side.
-    const state = createMatchState(board(Array.from({ length: 6 }, () => '..........')));
+    const state = createMatchState(TEN_BY_SIX(), EIGHT_WIDE);
     const blue = state.units.filter((unit) => unit.owner === 'player-blue');
     const red = state.units.filter((unit) => unit.owner === 'player-red');
 
@@ -38,19 +48,22 @@ describe('createMatchState', () => {
     expect(new Set(red.map((unit) => unit.position.row))).toEqual(new Set([5]));
   });
 
+  // ⚠️ A rotation, not a translation. Copy the rank across and both lines run
+  // the same way down the board; turn it, and each player's line is drawn from
+  // its own left -- so the two armies mirror through the centre. A two-unit
+  // formation of *different* types is the smallest thing that can tell those
+  // two apart; a symmetric one passes either way.
   it('rotates the second army rather than copying it', () => {
-    // ⚠️ A rotation, not a translation. Copy the rank across and both lines run
-    // the same way down the board; turn it, and each player's line is drawn
-    // from its own left -- so the two armies mirror through the centre.
-    const state = createMatchState(board(Array.from({ length: 6 }, () => '..........')));
+    const state = createMatchState(TEN_BY_SIX(), ASYMMETRIC);
     const typeAt = (col: number, row: number) =>
       state.units.find((unit) => unit.position.col === col && unit.position.row === row)
         ?.unitTypeId;
 
-    expect(typeAt(1, 0)).toBe('artillery');
-    expect(typeAt(8, 5)).toBe('artillery');
-    expect(typeAt(2, 0)).toBe('cavalry');
-    expect(typeAt(7, 5)).toBe('cavalry');
+    // Blue lays 'ac' down from its own left; red's is mirrored through centre.
+    expect(typeAt(4, 0)).toBe('artillery');
+    expect(typeAt(5, 0)).toBe('cavalry');
+    expect(typeAt(5, 5)).toBe('artillery');
+    expect(typeAt(4, 5)).toBe('cavalry');
   });
 
   it('faces each army at the other', () => {
@@ -63,7 +76,7 @@ describe('createMatchState', () => {
   // Ids have to be reproducible: initial_state plus the log must replay to the
   // same board, and a generated or random id breaks that.
   it('numbers units per owner in army scan order', () => {
-    const state = createMatchState(board(Array.from({ length: 6 }, () => '..........')));
+    const state = createMatchState(TEN_BY_SIX(), EIGHT_WIDE);
     const blue = state.units.filter((unit) => unit.owner === 'player-blue');
 
     expect(blue.map((unit) => unit.id)).toEqual([
@@ -89,7 +102,7 @@ describe('createMatchState', () => {
     // ⚠️ Refused rather than clamped: a negative margin deploys units at
     // negative columns, which parses, stores and replays perfectly while being
     // wrong from the first frame.
-    expect(() => createMatchState(board(['....', '....', '....', '....']))).toThrow(
+    expect(() => createMatchState(board(['....', '....', '....', '....']), EIGHT_WIDE)).toThrow(
       /too small for an army/,
     );
   });

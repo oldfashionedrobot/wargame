@@ -301,7 +301,10 @@ describe('storage guarantees', () => {
   // beginning, which is what makes the fold meaningful.
   it('still holds when the log ends in a gameEnded', async () => {
     const { id } = await store.create();
-    const base = createMatchState(getMap('classic'));
+    // ⚠️ A formation of one gun, so this test owns the unit it is about. It
+    // needs blue-1 to be artillery -- range 3..5 -- and the default formation
+    // is a tuning dial that has already moved the guns once.
+    const base = createMatchState(getMap('classic'), ['a']);
     const lastStand = {
       ...base,
       units: [
@@ -318,8 +321,8 @@ describe('storage guarantees', () => {
       args: [JSON.stringify(lastStand), JSON.stringify(lastStand), id],
     });
 
-    // blue-1 is the artillery on the flank: range 3..5, so it kills from three
-    // tiles off without moving, and a one-health defender does not survive it.
+    // blue-1 is artillery: range 3..5, so it kills from three tiles off without
+    // moving, and a one-health defender does not survive it.
     const result = await store.submit(
       id,
       {
