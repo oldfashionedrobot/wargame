@@ -424,7 +424,7 @@ describe('the client build', () => {
 
 // Hardcoded rather than imported: this is the wire contract, and a test that
 // read the constant from http.ts would pass no matter what it was renamed to.
-const SESSION_COOKIE = 'vod_session';
+const SESSION_COOKIE = 'wargame_session';
 
 describe('session cookie', () => {
   it('issues one on first contact', async () => {
@@ -438,7 +438,7 @@ describe('session cookie', () => {
   });
 
   // An empty value is trivially sendable and useless as an id. Treating it as
-  // "present" would hand the handler an empty session and echo `vod_session=`
+  // "present" would hand the handler an empty session and echo `wargame_session=`
   // back forever -- which is exactly what `??` instead of `||` produced.
   it('mints a real one when the cookie is present but empty', async () => {
     const response = await get('/api/matches', {

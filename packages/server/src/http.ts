@@ -251,7 +251,7 @@ function withSession<T extends string>(
   handler: (request: BunRequest<T>, session: string) => Promise<Response>,
 ): (request: BunRequest<T>) => Promise<Response> {
   return async (request) => {
-    // `||`, not `??`: `vod_session=` parses to '' and must mint like a missing
+    // `||`, not `??`: `wargame_session=` parses to '' and must mint like a missing
     // cookie. `??` would pass the empty string down as the session.
     const existing = request.cookies.get(SESSION_COOKIE);
     const session = existing || crypto.randomUUID();
