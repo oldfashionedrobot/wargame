@@ -142,18 +142,25 @@ describe('snapshot', () => {
 });
 
 describe('since', () => {
+  // ⚠️ **Whose turn it is after the move is `ACTIONS_PER_TURN`'s business, not
+  // this test's** -- at a budget of one the move ends the turn by itself, and at
+  // no cap it does not. So the second command is addressed to whoever is
+  // actually up. This test is about the cursor and the state riding along with
+  // the events; asserting a turn rule here would only make it break when the
+  // game is tuned.
   it('returns everything after the cursor, with the current state', async () => {
-    // ⚠️ Two commands. With no cap, one move of eight leaves blue's turn very
-    // much alive, so ending it is something blue still has to ask for -- which
-    // is the whole job End Turn keeps.
     const { id } = await store.create();
     await store.submit(id, move('blue-1', BLUE_STEP, START.blue1), BLUE);
-    await store.submit(id, { type: 'endTurn' }, BLUE);
+    const mid = await store.snapshot(id);
+    await store.submit(id, { type: 'endTurn' }, mid!.state.currentTurn);
 
     const all = await store.since(id, 0);
     expect(all?.seq).toBe(2);
-    expect(all?.events.map((e) => e.type)).toEqual(['unitMoved', 'turnEnded']);
-    expect(all?.state?.currentTurn).toBe(RED);
+    expect(all?.events[0].type).toBe('unitMoved');
+    expect(all?.events.at(-1)?.type).toBe('turnEnded');
+    // The state travels with the events and is the one they produced: an
+    // explicit endTurn always hands play to somebody else.
+    expect(all?.state?.currentTurn).not.toBe(mid!.state.currentTurn);
   });
 
   it('returns nothing new when the caller is already current', async () => {
@@ -179,7 +186,9 @@ describe('submit', () => {
     expect(result?.ok).toBe(true);
     if (!result?.ok) return;
     expect(result.seq).toBe(1);
-    expect(result.events).toHaveLength(1); // the move; blue's turn is not over
+    // The move landed. Whether a `turnEnded` follows it is the turn budget's
+    // business -- see `ACTIONS_PER_TURN` -- and not what this test is about.
+    expect(result.events[0].type).toBe('unitMoved');
     expect(result.state.units.find((u) => u.id === 'blue-1')?.position).toEqual({
       col: BLUE_STEP[0],
       row: BLUE_STEP[1],

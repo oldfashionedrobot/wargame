@@ -264,10 +264,11 @@ describe('GET /api/matches/:id/events', () => {
 
     const body = (await (await get(`/api/matches/${id}/events?since=0`)).json()) as EventsResponse;
     expect(body.seq).toBe(1);
-    expect(body.events).toHaveLength(1); // the move; blue's turn is not over
-    // Events never travel without the state they produced -- and the state
-    // is the *post*-move one. currentTurn alone would not show that: a move
-    // does not end a turn, so the pre-move snapshot has the same value.
+    // The move landed; a trailing `turnEnded` depends on `ACTIONS_PER_TURN`.
+    expect(body.events[0].type).toBe('unitMoved');
+    // Events never travel without the state they produced -- and the state is
+    // the *post*-move one, which the unit's position is what shows. currentTurn
+    // could not show it: whether a move ends a turn is the budget's business.
     expect(body.state?.units.find((unit) => unit.id === 'blue-1')?.position).toEqual({
       col: BLUE_1_STEP.col,
       row: BLUE_1_STEP.row,
@@ -304,7 +305,8 @@ describe('POST /api/matches/:id/commands', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.seq).toBe(1);
-    expect(result.events).toHaveLength(1); // the move; blue's turn is not over
+    // The move landed; a trailing `turnEnded` depends on `ACTIONS_PER_TURN`.
+    expect(result.events[0].type).toBe('unitMoved');
     expect(result.state.units.find((unit) => unit.id === 'blue-1')?.position).toEqual({
       col: BLUE_1_STEP.col,
       row: BLUE_1_STEP.row,

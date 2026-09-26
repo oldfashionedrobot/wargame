@@ -16,10 +16,11 @@ const PLAYERS: Player[] = [
  * the seam player-chosen deployment will arrive through, and which keeps the
  * suite from pinning whatever this happens to say today.
  *
- * Artillery anchors both ends, cavalry takes the wings and four infantry hold
- * the centre. That is the period's own deployment, and it happens to put each
- * arm where its movement type wants to be: the guns on the open flanks they
- * need roads to leave, the horse where there is room to ride.
+ * Cavalry on the ends, infantry on the wings, the two guns together in the
+ * centre. ⚠️ **A tuning dial rather than a doctrine** -- it was the other way
+ * round until a playtest turned it, and the arrangement is the thing most
+ * likely to move again. What is *not* arbitrary is the composition: two guns,
+ * two horse and four foot is what every map is validated against.
  *
  * ⚠️ **A map may not put water or rock under this.** `wheels` cannot enter
  * river or mountain at any price, so a board that draws either into a

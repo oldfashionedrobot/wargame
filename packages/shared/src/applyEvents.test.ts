@@ -246,48 +246,86 @@ describe('order still matters', () => {
  * way through, which is why every step asserts acceptance.
  */
 describe('a full turn cycle validates, resolves and folds', () => {
-  it('over a multi-turn script', () => {
-    const initial = makeState(8, [
+  const twoEach = () =>
+    makeState(8, [
       { id: 'b1', col: 0, row: 0 },
       { id: 'b2', col: 1, row: 0 },
       { id: 'r1', col: 7, row: 7, owner: 'red' },
       { id: 'r2', col: 6, row: 7, owner: 'red' },
     ]);
 
-    // Commands plus the actor the server would stamp. Tests cannot build an
-    // Action directly -- that is the brand doing its job.
-    // ⚠️ Written to cross both ways a turn can end. Blue's two moves spend its
-    // whole roster, so the second carries a `turnEnded` with it and no button
-    // is needed. Red moves once and then stops with r2 still able to act, which
-    // only an explicit `endTurn` can do -- the one job the button keeps.
-    const script: [Command, PlayerId][] = [
-      [move('b1', pos(0, 0), pos(1, 2)), 'blue'],
-      [move('b2', pos(1, 0), pos(2, 2)), 'blue'], // spends blue's last action
-      [move('r1', pos(7, 7), pos(6, 5)), 'red'],
-      [{ type: 'endTurn' }, 'red'], // early, with r2 unmoved
-      [move('b1', pos(1, 2), pos(2, 4)), 'blue'],
-      [{ type: 'endTurn' }, 'blue'],
-    ];
-
-    // Play it exactly the way the server does: validate, resolve, fold.
+  /**
+   * Plays a script exactly the way the server does -- validate, resolve, fold
+   * -- at an explicit budget.
+   *
+   * ⚠️ **The budget is passed, never inherited.** `ACTIONS_PER_TURN` is a dial;
+   * a script that reads it is a script that stops validating the day it moves,
+   * and it would fail as a *rejected command* rather than as a wrong answer,
+   * which is the confusing way round.
+   */
+  const play = (initial: GameState, script: [Command, PlayerId][], budget: number | null) => {
     let live: GameState = initial;
     const log: GameEvent[] = [];
     for (const [command, actor] of script) {
       const validation = validateCommand(live, command, actor);
       expect(validation.ok).toBe(true);
-      if (!validation.ok) return;
-      // ⚠️ The roll matters to nothing in this script -- it is all moves and
-      // end-turns -- but leaving it off compiled anyway, because `shared/`'s
+      if (!validation.ok) return { live, log };
+      // ⚠️ The roll matters to nothing in these scripts -- they are all moves
+      // and end-turns -- but leaving it off compiled anyway, because `shared/`'s
       // test files are not typechecked, and would have been NaN damage the
-      // first time this script grew an attack.
-      const events = resolveAction(live, validation.action, { attack: 0, counter: 0 });
+      // first time one grew an attack.
+      const events = resolveAction(live, validation.action, { attack: 0, counter: 0 }, budget);
       log.push(...events);
       live = applyEvents(live, events);
     }
+    return { live, log };
+  };
+
+  // ⚠️ Written to cross both ways a turn can end. Blue's two moves spend its
+  // whole roster, so the second carries a `turnEnded` with it and no button is
+  // needed. Red moves once and then stops with r2 still able to act, which only
+  // an explicit `endTurn` can do -- the one job the button keeps.
+  it('over a multi-turn script, with the whole roster each turn', () => {
+    const initial = twoEach();
+    const { live, log } = play(
+      initial,
+      [
+        [move('b1', pos(0, 0), pos(1, 2)), 'blue'],
+        [move('b2', pos(1, 0), pos(2, 2)), 'blue'], // spends blue's last action
+        [move('r1', pos(7, 7), pos(6, 5)), 'red'],
+        [{ type: 'endTurn' }, 'red'], // early, with r2 unmoved
+        [move('b1', pos(1, 2), pos(2, 4)), 'blue'],
+        [{ type: 'endTurn' }, 'blue'],
+      ],
+      null,
+    );
 
     // Six commands, seven events: five of them produce one apiece, and blue's
     // second move produces two by finishing the turn as it goes.
     expect(log).toHaveLength(7);
+    expect(applyEvents(initial, log)).toEqual(live);
+  });
+
+  // ⚠️ The other regime, and the shape is inverted: *every* move carries a
+  // `turnEnded`, so play alternates on each action and the button is the only
+  // way to pass without moving. Same three properties -- every command
+  // validates, resolution is pure, the fold agrees.
+  it('over a multi-turn script, one action a turn', () => {
+    const initial = twoEach();
+    const { live, log } = play(
+      initial,
+      [
+        [move('b1', pos(0, 0), pos(1, 2)), 'blue'], // ends blue's turn by itself
+        [move('r1', pos(7, 7), pos(6, 5)), 'red'],
+        [move('b1', pos(1, 2), pos(2, 4)), 'blue'], // the same unit, twice running
+        [{ type: 'endTurn' }, 'red'], // passing without moving still needs the button
+      ],
+      1,
+    );
+
+    // Three moves at two events apiece, and the lone `endTurn` at one.
+    expect(log).toHaveLength(7);
+    expect(log.filter((event) => event.type === 'turnEnded')).toHaveLength(4);
     expect(applyEvents(initial, log)).toEqual(live);
   });
 

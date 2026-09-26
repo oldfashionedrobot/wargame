@@ -26,6 +26,10 @@ describe('actionsAllowed', () => {
   // The default, and the only genuinely new behaviour: no cap at all, so the
   // roster is the budget. ⚠️ `null` rather than `Infinity` so it survives JSON
   // the day a match records the rules it was played under.
+  // ⚠️ **Both regimes, each named.** Nothing here reads `ACTIONS_PER_TURN`:
+  // asserting what the default happens to be today is the one thing guaranteed
+  // to go red the next time the game is tuned, and it proves nothing about the
+  // rule either way.
   it('is the whole roster when there is no cap', () => {
     const state = makeState(8, [
       { id: 'b1', col: 0, row: 0 },
@@ -33,7 +37,15 @@ describe('actionsAllowed', () => {
       { id: 'b3', col: 2, row: 0 },
     ]);
     expect(actionsAllowed(state, null)).toBe(3);
-    expect(actionsAllowed(state)).toBe(3); // and that is the default
+  });
+
+  it('is one when the budget is one, however many units there are', () => {
+    const state = makeState(8, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'b2', col: 1, row: 0 },
+      { id: 'b3', col: 2, row: 0 },
+    ]);
+    expect(actionsAllowed(state, 1)).toBe(1);
   });
 
   it('is nothing at all for a player with no units left', () => {
@@ -129,10 +141,19 @@ describe('the budget when a unit dies on its own turn', () => {
   it('reaches the same verdict whether or not the actor survived', () => {
     // Eight units, three spent. The fourth acts and dies: seven remain, three
     // still marked spent -- and the turn must not end early because of it.
+    // ⚠️ Uncapped explicitly: the point is the *roster* moving under the `min`,
+    // which a budget of one would hide by ending the turn on any action at all.
     const survived = roster(4, 8);
     const died = roster(3, 7);
-    expect(actionEndsTurn(survived)).toBe(actionEndsTurn(died));
-    expect(actionEndsTurn(died)).toBe(false);
+    expect(actionEndsTurn(survived, null)).toBe(actionEndsTurn(died, null));
+    expect(actionEndsTurn(died, null)).toBe(false);
+  });
+
+  // The same board under the other regime: at a budget of one, the first
+  // action ends the turn no matter how much roster is left behind it.
+  it('ends the turn on any action at all when the budget is one', () => {
+    expect(actionEndsTurn(roster(0, 8), 1)).toBe(true);
+    expect(actionEndsTurn(roster(3, 8), 1)).toBe(true);
   });
 
   it('still ends the turn on the last unit, having lost one on the way', () => {

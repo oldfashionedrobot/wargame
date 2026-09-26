@@ -18,8 +18,8 @@ listing only the ones it can actually do and skipping itself when that leaves
 one — after which a held unit is pointed somewhere, since facing decides whether
 a shot is answered. A shot or a charge
 cuts away to the two units and plays the exchange. Every unit acts once and the
-turn ends when the last of them has gone; when a player has nothing left, the
-match is over and says so.
+turn ends after one action, play alternating on every command; when a player
+has nothing left, the match is over and says so.
 
 Two players, a rank of eight each — two guns, two horse, four foot — on a map
 chosen when the match is created. `/maps` shows the boards without starting
@@ -211,9 +211,21 @@ ErrorResponse     { error }                          // the body of every non-2x
 ```
 
 **A turn is a budget of actions**, `ACTIONS_PER_TURN` in `turns.ts`, and the
-turn ends itself once the budget is spent. It is **`null`** — no cap: every unit
-acts once, the player picks the order, and the turn ends when the last of them
-has gone. A number caps it instead.
+turn ends itself once the budget is spent. It is **`1`** — one unit, one
+command, and play alternates on every action. `null` means no cap instead:
+every unit acts once, the player picks the order, and the turn ends when the
+last of them has gone.
+
+⚠️ **Nothing forces rotation.** `turnEnded` refreshes `hasActed` for the
+incoming player's whole roster, so at a budget of one the same unit may act on
+consecutive turns indefinitely while the rest never move. That is the chess
+reading — you pick a piece, not a piece that is owed a move — and it is a
+property of the budget rather than a separate rule.
+
+⚠️ **The budget is reachable as an argument**, on `actionsAllowed`,
+`actionEndsTurn` and `resolveAction`, each defaulting to the constant. Tests
+pass it explicitly and cover both regimes, so tuning this line moves the game
+without moving the suite.
 
 `null` rather than `Infinity`, because `Infinity` does not survive
 `JSON.stringify`. The branch tests `=== null`, not `== null` — the loose form
@@ -337,8 +349,14 @@ interface GameMap {
 `PLAYERS` and for the same reason — nothing chooses between armies yet.
 
 ```
-'aciiiica'      // artillery on the ends, cavalry on the wings, infantry between
+'ciiaaiic'      // cavalry on the ends, infantry on the wings, both guns centre
 ```
+
+⚠️ **The arrangement is a tuning dial and has already moved once**; the
+composition — two guns, two horse, four foot — is what maps are validated
+against. `createMatchState` takes the formation as an **argument** defaulting to
+this, which is the seam player-chosen deployment arrives through and the reason
+no test reads it.
 
 Parsed by `parseArmyGrid` over a `char` column on `UnitType`, the same shape
 terrain has. ⚠️ `.` means *empty* in an army and *plains* in a map — one

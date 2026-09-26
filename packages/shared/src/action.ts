@@ -1,6 +1,6 @@
 import { applyEvents } from './applyEvents';
 import { resolveEndTurn, validateEndTurn } from './endTurn';
-import { actionEndsTurn } from './turns';
+import { ACTIONS_PER_TURN, actionEndsTurn } from './turns';
 import { resolveMove, validateMove } from './move';
 import { isOver, soleSurvivor } from './victory';
 import type { Rolls } from './combat';
@@ -97,7 +97,19 @@ function refuse(state: GameState, command: Command): string | null {
  * the maximum anything needs -- see `combat.ts` for why it is not a
  * discriminated union yet.
  */
-export function resolveAction(state: GameState, action: Action, rolls: Rolls): GameEvent[] {
+/**
+ * ⚠️ **`budget` is a default argument for the same reason `turns.ts` makes it
+ * one**: the rules around it have to stay reachable from a test at any value.
+ * `ACTIONS_PER_TURN` is a dial -- it has already been moved once -- and a suite
+ * that inherits it is a suite that goes red when the game is tuned rather than
+ * when it breaks. The server passes nothing and gets the configured rules.
+ */
+export function resolveAction(
+  state: GameState,
+  action: Action,
+  rolls: Rolls,
+  budget: number | null = ACTIONS_PER_TURN,
+): GameEvent[] {
   switch (action.type) {
     case 'move': {
       const events = resolveMove(state, action, rolls);
@@ -133,7 +145,7 @@ export function resolveAction(state: GameState, action: Action, rolls: Rolls): G
         events.push({ type: 'gameEnded', winner });
         return events;
       }
-      if (actionEndsTurn(state)) events.push(...resolveEndTurn(state));
+      if (actionEndsTurn(state, budget)) events.push(...resolveEndTurn(state));
       return events;
     }
     case 'endTurn':
