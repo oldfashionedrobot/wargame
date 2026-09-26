@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 const tempDir = (): string => {
-  const dir = mkdtempSync(join(tmpdir(), 'vod-db-'));
+  const dir = mkdtempSync(join(tmpdir(), 'wargame-db-'));
   scratch.push(dir);
   return dir;
 };

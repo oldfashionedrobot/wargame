@@ -171,7 +171,7 @@ than a shortcut, and *A hosted build* has to say what it does about that before
 the first upload. It is the one thing the old ordering got for free.
 
 ⚠️ **Platform mechanics are not written down here.** They are per-platform,
-dated, and change — see *Victory or Death — Publishing Pipeline* in Drive, which
+dated, and change — see the *Publishing Pipeline* doc in Drive, which
 carries the gate, exclusivity, identity and size rules for each portal with the
 date each was verified. Anything copied into this file is a second copy to keep
 in step, and the last audit of this document was mostly about exactly that.

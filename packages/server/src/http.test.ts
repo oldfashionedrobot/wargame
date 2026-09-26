@@ -38,7 +38,7 @@ beforeAll(async () => {
   // no dist the '/*' route answers "client not built" for everything, which
   // made the routing tests below pass even with the '/api/*' route deleted --
   // measured, not supposed.
-  dist = mkdtempSync(join(tmpdir(), 'vod-dist-'));
+  dist = mkdtempSync(join(tmpdir(), 'wargame-dist-'));
   mkdirSync(join(dist, 'assets'));
   writeFileSync(join(dist, 'index.html'), '<!doctype html><h1>fixture index</h1>');
   writeFileSync(join(dist, 'assets', 'app-abc123.js'), 'const artifact = "raw";');
