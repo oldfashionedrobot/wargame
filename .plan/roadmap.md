@@ -703,10 +703,23 @@ its session against an origin split that is already deployed and already
 exercised, instead of one it has to anticipate.
 
 ⬜ **What it does have to answer is the one thing the old ordering got for
-free**: matches are unowned and unbounded and `resolveActor` ignores the session
-it is handed. Fine while the audience was us; in front of a portal audience that
-is an abuse surface. A cap, an expiry, or a rate limit — decided before the
-first upload, not after.
+free**, and a review sharpened it into two items rather than one.
+
+1. ⚠️ **There is no authorization, and `GET /api/matches` is its index.**
+   `resolveActor` returns `state.currentTurn` whoever asks, so any client can
+   play **both sides** of any match — and the list endpoint hands out every
+   match id unauthenticated, so nothing has to be guessed. A uuid v4 would be
+   unfindable on its own; the list is what makes this trivial rather than
+   theoretical. The cheapest fix that changes the shape is scoping the list to
+   the caller's session, which needs sessions to mean something — so it is
+   really the question of how much of *Multiplayer*'s identity work has to
+   come early.
+2. ⚠️ **Nothing bounds creation.** `POST /api/matches` has no rate limit, cap,
+   expiry or delete, and each match stores a whole `GameState`; the event log
+   grows per command with no ceiling either. A loop fills the disk, and SQLite
+   on a small persistent volume is the failure mode.
+
+⬜ Decided before the first upload, not after.
 
 - ⚠️ **Asset paths are absolute and itch serves from a subdirectory.** Verified,
   not anticipated: the build emits `src="/assets/…"` and `href="/favicon.svg"`,
