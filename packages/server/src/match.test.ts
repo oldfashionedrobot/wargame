@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
-import { route } from '@vod/shared/testing';
-import type { Command } from '@vod/shared';
-import { LUCK_MAX } from '@vod/shared';
+import { route } from '@wargame/shared/testing';
+import type { Command } from '@wargame/shared';
+import { LUCK_MAX } from '@wargame/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore, rollLuck } from './match';
 import type { MatchStore } from './match';
@@ -279,7 +279,7 @@ describe('storage guarantees', () => {
     await store.submit(id, { type: 'endTurn' }, BLUE);
     await store.submit(id, move('red-1', RED_STEP, START.red1), RED);
 
-    const { applyEvents } = await import('@vod/shared');
+    const { applyEvents } = await import('@wargame/shared');
     const { rows } = await sql.execute({
       sql: 'SELECT initial_state, current_state FROM matches WHERE id = ?',
       args: [id],
@@ -340,7 +340,7 @@ describe('storage guarantees', () => {
       'gameEnded',
     ]);
 
-    const { applyEvents } = await import('@vod/shared');
+    const { applyEvents } = await import('@wargame/shared');
     const { rows } = await sql.execute({
       sql: 'SELECT initial_state, current_state FROM matches WHERE id = ?',
       args: [id],

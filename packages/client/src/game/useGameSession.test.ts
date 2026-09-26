@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { at, makeState, route } from '@vod/shared/testing';
+import { at, makeState, route } from '@wargame/shared/testing';
 import type {
   Command,
   CommandResult,
@@ -8,7 +8,7 @@ import type {
   GameServer,
   GameState,
   UpdateListener,
-} from '@vod/shared';
+} from '@wargame/shared';
 import { isTargetPinned } from './interaction/selection';
 import { useGameSession } from './useGameSession';
 import type { GameSessionCallbacks } from './useGameSession';

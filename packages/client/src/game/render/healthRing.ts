@@ -4,7 +4,7 @@ import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Scene } from '@babylonjs/core/scene';
-import { band, BANDS } from '@vod/shared';
+import { band, BANDS } from '@wargame/shared';
 
 // How hurt a unit is, read at a glance: a ring of ten segments at its base,
 // extinguishing as it weakens and absent entirely at full strength.

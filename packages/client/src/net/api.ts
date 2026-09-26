@@ -1,4 +1,4 @@
-import type { ErrorResponse, MapPreview, MapSummary, MatchSummary } from '@vod/shared';
+import type { ErrorResponse, MapPreview, MapSummary, MatchSummary } from '@wargame/shared';
 
 // Same-origin: in dev Vite proxies /api to the server, in production the
 // server serves this bundle itself. Either way there's no base URL to

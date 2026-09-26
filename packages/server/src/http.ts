@@ -1,8 +1,8 @@
 import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { BunRequest } from 'bun';
-import { parseCommand } from '@vod/shared';
-import type { ErrorResponse, GameState, MapPreview, PlayerId } from '@vod/shared';
+import { parseCommand } from '@wargame/shared';
+import type { ErrorResponse, GameState, MapPreview, PlayerId } from '@wargame/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore } from './match';
 import { createMatchState } from './matchState';

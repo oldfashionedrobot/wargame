@@ -32,9 +32,9 @@ hoisted, so a package can only import what it declares.
 
 | Package | Depends on | Holds |
 |---|---|---|
-| `@vod/shared` | nothing | The rulebook: types, content tables, queries, movement, validation, resolution, the event fold, and the wire protocol. No I/O, no RNG, no React, no Babylon, no `Date.now()`. |
-| `@vod/server` | `shared` | The authority: the database, the event log, match construction, and the HTTP surface. |
-| `@vod/client` | `shared` | Presentation: Babylon rendering and glTF loading, input, React, and the HTTP `GameServer`. |
+| `@wargame/shared` | nothing | The rulebook: types, content tables, queries, movement, validation, resolution, the event fold, and the wire protocol. No I/O, no RNG, no React, no Babylon, no `Date.now()`. |
+| `@wargame/server` | `shared` | The authority: the database, the event log, match construction, and the HTTP surface. |
+| `@wargame/client` | `shared` | Presentation: Babylon rendering and glTF loading, input, React, and the HTTP `GameServer`. |
 
 `shared` has two entry points, no build script, and emits nothing — `exports`
 point at TypeScript source, which bun runs natively and Vite compiles:
@@ -112,7 +112,7 @@ Run from the repo root. All exit non-zero on failure.
 | `bun packages/shared/scripts/matchups.ts` | Tuning harness: hits-to-kill for every matchup on every terrain |
 | `bun packages/shared/scripts/charges.ts` | Tuning harness: charge odds for all three approaches on every depth of cover, and what failing costs |
 | `bun run preview` | `vite preview` — the built client with no `/api` proxy, so it reaches no match |
-| `bun run --filter '@vod/server' start` | The production shape: one process serving the API and `dist` together |
+| `bun run --filter '@wargame/server' start` | The production shape: one process serving the API and `dist` together |
 
 Single test file: `bun test packages/server/src/match.test.ts` (`-t 'name'` to
 filter); client: `cd packages/client && bunx vitest run src/net/gameServer.test.ts`.
@@ -1671,7 +1671,7 @@ is what pulls its tests and scripts into a program, and the root references it.
 See below for why that config exists and why it does not weaken invariant 2.
 
 **Typechecking** reads `shared`'s source directly: `server` and `client` resolve
-`@vod/shared` through its `exports` and pull that source into their own
+`@wargame/shared` through its `exports` and pull that source into their own
 programs. `shared` emits nothing. `strict`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`,
 `erasableSyntaxOnly` and `verbatimModuleSyntax` are on in every tsconfig.
 `shared` has no program of its own for `src`, and its `tsconfig.json` does two

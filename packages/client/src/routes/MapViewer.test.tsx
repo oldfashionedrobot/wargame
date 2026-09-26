@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import type { MapPreview, MapSummary } from '@vod/shared';
-import { makeState } from '@vod/shared/testing';
+import type { MapPreview, MapSummary } from '@wargame/shared';
+import { makeState } from '@wargame/shared/testing';
 import type { GameRenderer } from '../game/render/renderer';
 import { MapViewer } from './MapViewer';
 

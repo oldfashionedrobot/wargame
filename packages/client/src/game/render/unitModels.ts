@@ -6,7 +6,7 @@ import { LoadAssetContainerAsync } from '@babylonjs/core/Loading/sceneLoader';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { AssetContainer } from '@babylonjs/core/assetContainer';
 import type { Scene } from '@babylonjs/core/scene';
-import type { UnitTypeId } from '@vod/shared';
+import type { UnitTypeId } from '@wargame/shared';
 
 // Served from `public/`, so these are absolute paths in dev and in the built
 // client alike. A Record over UnitTypeId, like every other content table: a new

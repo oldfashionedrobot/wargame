@@ -3,7 +3,7 @@ import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder';
 import type { Color3 } from '@babylonjs/core/Maths/math.color';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { Scene } from '@babylonjs/core/scene';
-import type { Coordinate } from '@vod/shared';
+import type { Coordinate } from '@wargame/shared';
 import { TILE_SIZE, tileToWorld } from './coordinates';
 
 export function createTileHighlight(

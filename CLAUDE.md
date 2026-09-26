@@ -60,7 +60,7 @@ rulebook (zero deps — no I/O, no RNG, no React/Babylon, no `Date.now()`),
 rolls when combat lands),
 `client/` is presentation. Installs are isolated, so a stray `import 'react'`
 in server code is a resolution error, not a review catch. Cross-package imports
-go through `@vod/shared`'s `exports` map — `.` is the rulebook barrel, and
+go through `@wargame/shared`'s `exports` map — `.` is the rulebook barrel, and
 `./testing` is fixtures for tests. `server/` is an app, not a library: no
 barrel, `http.ts` is the entry point.
 

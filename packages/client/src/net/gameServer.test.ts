@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeState } from '@vod/shared/testing';
+import { makeState } from '@wargame/shared/testing';
 import type {
   CommandResult,
   EventsResponse,
   GameEvent,
   GameServer,
   StateResponse,
-} from '@vod/shared';
+} from '@wargame/shared';
 import { connectGameServer } from './gameServer';
 
 // The most intricate code in the client. fetch and timers are faked; the DOM

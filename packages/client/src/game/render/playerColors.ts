@@ -1,5 +1,5 @@
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import type { PlayerColor } from '@vod/shared';
+import type { PlayerColor } from '@wargame/shared';
 
 /**
  * What a player's colour is, once.

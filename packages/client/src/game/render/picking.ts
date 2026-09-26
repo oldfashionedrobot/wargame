@@ -4,8 +4,8 @@ import '@babylonjs/core/Culling/ray';
 import { Matrix } from '@babylonjs/core/Maths/math.vector';
 import type { Camera } from '@babylonjs/core/Cameras/camera';
 import type { Scene } from '@babylonjs/core/scene';
-import { isWithinGrid } from '@vod/shared';
-import type { Coordinate } from '@vod/shared';
+import { isWithinGrid } from '@wargame/shared';
+import type { Coordinate } from '@wargame/shared';
 
 import { worldToTile } from './coordinates';
 

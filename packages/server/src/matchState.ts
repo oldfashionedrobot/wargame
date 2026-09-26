@@ -1,5 +1,5 @@
-import { armyWidth, MAX_HEALTH, parseArmyGrid, parseTerrainGrid } from '@vod/shared';
-import type { GameState, Player, Unit } from '@vod/shared';
+import { armyWidth, MAX_HEALTH, parseArmyGrid, parseTerrainGrid } from '@wargame/shared';
+import type { GameState, Player, Unit } from '@wargame/shared';
 import type { GameMap } from './maps';
 
 // The two players every match is between. Hardcoded until there is a lobby to

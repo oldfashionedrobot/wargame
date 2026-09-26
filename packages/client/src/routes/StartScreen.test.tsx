@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import type { MapSummary, MatchSummary } from '@vod/shared';
+import type { MapSummary, MatchSummary } from '@wargame/shared';
 import { StartScreen } from './StartScreen';
 
 // The api module is the seam: StartScreen's whole job is turning what it

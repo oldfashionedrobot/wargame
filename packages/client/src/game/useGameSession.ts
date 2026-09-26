@@ -6,8 +6,8 @@ import type {
   GameEvent,
   GameServer,
   GameState,
-} from '@vod/shared';
-import { coordinatesEqual, isOver } from '@vod/shared';
+} from '@wargame/shared';
+import { coordinatesEqual, isOver } from '@wargame/shared';
 import {
   enterMode,
   chooseTarget,

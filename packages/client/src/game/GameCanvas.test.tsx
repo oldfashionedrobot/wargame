@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
+import type { Coordinate, GameEvent, GameServer, GameState } from '@wargame/shared';
 import type { ConnectionStatus } from '../net/gameServer';
-import { makeState } from '@vod/shared/testing';
+import { makeState } from '@wargame/shared/testing';
 import { GameCanvas } from './GameCanvas';
 import type { CutawayScene, GameRenderer } from './render/renderer';
 

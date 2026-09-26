@@ -6,9 +6,9 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Scene } from '@babylonjs/core/scene';
-import { directionBetween } from '@vod/shared';
+import { directionBetween } from '@wargame/shared';
 import { PLAYER_COLORS } from './playerColors';
-import type { Coordinate, Facing, PlayerColor, Unit, UnitTypeId } from '@vod/shared';
+import type { Coordinate, Facing, PlayerColor, Unit, UnitTypeId } from '@wargame/shared';
 import { tileToWorld } from './coordinates';
 import type { UnitModels } from './unitModels';
 

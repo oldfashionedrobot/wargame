@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { at, makeState, route, unitAt } from '@vod/shared/testing';
-import { chargeChance, LUCK_MAX } from '@vod/shared';
-import type { Coordinate, GameState } from '@vod/shared';
+import { at, makeState, route, unitAt } from '@wargame/shared/testing';
+import { chargeChance, LUCK_MAX } from '@wargame/shared';
+import type { Coordinate, GameState } from '@wargame/shared';
 import {
   attackForecast,
   availableActions,

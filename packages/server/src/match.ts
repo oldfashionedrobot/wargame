@@ -1,8 +1,8 @@
 import type { InStatement, InValue } from '@libsql/client';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import type { Query } from 'drizzle-orm';
-import { applyEvents, LUCK_MAX, resolveAction, validateCommand } from '@vod/shared';
-import type { Rolls } from '@vod/shared';
+import { applyEvents, LUCK_MAX, resolveAction, validateCommand } from '@wargame/shared';
+import type { Rolls } from '@wargame/shared';
 import type {
   Command,
   CommandResult,
@@ -10,7 +10,7 @@ import type {
   MatchSummary,
   PlayerId,
   StateResponse,
-} from '@vod/shared';
+} from '@wargame/shared';
 import type { Database } from './db';
 import { getMap, DEFAULT_MAP_ID } from './maps';
 import { createMatchState } from './matchState';

@@ -19,8 +19,8 @@ import type {
   GameState,
   PlayerColor,
   UnitTypeId,
-} from '@vod/shared';
-import { getTerrain } from '@vod/shared';
+} from '@wargame/shared';
+import { getTerrain } from '@wargame/shared';
 import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
 import { createCutaway } from './cutaway';

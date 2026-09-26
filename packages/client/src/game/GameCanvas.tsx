@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { getCurrentPlayer, isOver } from '@vod/shared';
-import type { Coordinate, GameEvent, GameServer, GameState } from '@vod/shared';
+import { getCurrentPlayer, isOver } from '@wargame/shared';
+import type { Coordinate, GameEvent, GameServer, GameState } from '@wargame/shared';
 import { useGameSession } from './useGameSession';
 import {
   attackForecast,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import type { MapSummary } from '@vod/shared';
+import type { MapSummary } from '@wargame/shared';
 import { api } from '../net/api';
 import { createGameRenderer } from '../game/render/renderer';
 import type { GameRenderer } from '../game/render/renderer';

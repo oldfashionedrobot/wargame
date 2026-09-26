@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import type { GameServer } from '@vod/shared';
-import { makeState } from '@vod/shared/testing';
+import type { GameServer } from '@wargame/shared';
+import { makeState } from '@wargame/shared/testing';
 import { MatchRoute } from './MatchRoute';
 
 // Two seams: the connection, and the canvas. GameCanvas is replaced because it

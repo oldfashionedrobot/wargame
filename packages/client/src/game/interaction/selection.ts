@@ -18,7 +18,7 @@ import {
   getUnitType,
   isWithinGrid,
   orthogonalNeighbours,
-} from '@vod/shared';
+} from '@wargame/shared';
 import type {
   AttackKind,
   Command,
@@ -27,7 +27,7 @@ import type {
   GameState,
   Movement,
   Unit,
-} from '@vod/shared';
+} from '@wargame/shared';
 
 // A discriminated union rather than nullable fields: "reachable tiles with no
 // selected unit" was representable and meaningless. Phase 9 adds an attack

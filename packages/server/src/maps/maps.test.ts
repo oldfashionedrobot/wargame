@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { getTerrain, getUnitType, MAX_HEALTH, parseTerrainGrid } from '@vod/shared';
+import { getTerrain, getUnitType, MAX_HEALTH, parseTerrainGrid } from '@wargame/shared';
 import { createMatchState } from '../matchState';
 import { DEFAULT_MAP_ID, getMap, listMaps } from './index';
 

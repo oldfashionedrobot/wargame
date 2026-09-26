@@ -1,5 +1,5 @@
-import { orthogonalNeighbours } from '@vod/shared';
-import type { Coordinate, TileType } from '@vod/shared';
+import { orthogonalNeighbours } from '@wargame/shared';
+import type { Coordinate, TileType } from '@wargame/shared';
 import type { TerrainModel } from './terrainModels';
 
 /** A quarter turn about y — the increment every ground model is turned by. */

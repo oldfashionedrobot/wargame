@@ -1,5 +1,5 @@
 {
-  "name": "@vod/server",
+  "name": "@wargame/server",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,7 +9,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@vod/shared": "workspace:*",
+    "@wargame/shared": "workspace:*",
     "@libsql/client": "^0.17.4",
     "drizzle-orm": "0.45.2"
   },

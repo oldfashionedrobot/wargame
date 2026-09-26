@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTerrainGrid } from '@vod/shared';
+import { parseTerrainGrid } from '@wargame/shared';
 import {
   DOODAD_MAX_REACH,
   DOODAD_OVERHANG,

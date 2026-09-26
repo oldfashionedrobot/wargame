@@ -6,7 +6,7 @@ import type {
   GameState,
   StateResponse,
   UpdateListener,
-} from '@vod/shared';
+} from '@wargame/shared';
 import { getJson, HttpError, postJson, RejectedError } from './api';
 import type { FailureKind } from './api';
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { MapSummary, MatchSummary } from '@vod/shared';
+import type { MapSummary, MatchSummary } from '@wargame/shared';
 import { api } from '../net/api';
 
 interface MatchData {

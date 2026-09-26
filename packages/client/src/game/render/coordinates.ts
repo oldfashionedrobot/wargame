@@ -1,5 +1,5 @@
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
-import type { Coordinate } from '@vod/shared';
+import type { Coordinate } from '@wargame/shared';
 
 export const TILE_SIZE = 1;
 

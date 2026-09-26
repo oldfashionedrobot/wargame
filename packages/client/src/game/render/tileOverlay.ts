@@ -3,7 +3,7 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import type { Scene } from '@babylonjs/core/scene';
-import type { Coordinate } from '@vod/shared';
+import type { Coordinate } from '@wargame/shared';
 import { TILE_SIZE, tileToWorld } from './coordinates';
 
 // One flat quad per tile in a single mesh, rebuilt when the set changes. Two

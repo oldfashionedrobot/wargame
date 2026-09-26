@@ -11,8 +11,8 @@ import type {
   MapPreview,
   MatchSummary,
   StateResponse,
-} from '@vod/shared';
-import { route } from '@vod/shared/testing';
+} from '@wargame/shared';
+import { route } from '@wargame/shared/testing';
 import { getMap } from './maps';
 import { createMatchState } from './matchState';
 import { createServer } from './http';

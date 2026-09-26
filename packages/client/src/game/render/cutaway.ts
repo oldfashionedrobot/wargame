@@ -8,7 +8,7 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Viewport } from '@babylonjs/core/Maths/math.viewport';
 import type { Scene } from '@babylonjs/core/scene';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import type { Facing, PlayerColor, Unit } from '@vod/shared';
+import type { Facing, PlayerColor, Unit } from '@wargame/shared';
 
 import type { TerrainCell } from './composeTerrain';
 import { createTerrainMesh } from './terrain';

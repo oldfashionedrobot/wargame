@@ -1,5 +1,5 @@
 {
-  "name": "@vod/shared",
+  "name": "@wargame/shared",
   "private": true,
   "version": "0.0.0",
   "type": "module",
