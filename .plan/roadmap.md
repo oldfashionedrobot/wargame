@@ -847,6 +847,39 @@ argument live; this is the phase that keeps changing them.
   capped budget it does not resolve at all. ⚠️ **A map is a balance surface,
   not just content**, which is the argument for the editor rather than against
   it: the fastest way to fix a board is to be able to change it and re-run.
+- ⬜ **An army budget, and players choosing their own.** Every unit type gets a
+  cost; a player spends a fixed budget on what they field and where it stands.
+  ⚠️ **Warhammer's answer rather than Advance Wars'** — points spent *before*
+  the match, not income earned during it — which is the far cheaper half: no
+  bases, no capture economy, no production queue, and nothing new during play.
+
+  ⚠️ **It is the lever Advance Wars uses on indirect fire and this game does
+  not have.** AW prices its 3–5 range weapon at fifteen infantry; here two of
+  eight units are that weapon, free, every game. Cost is what makes fielding a
+  second gun a decision instead of a default.
+
+  ✅ **The seam exists.** `createMatchState(map, army)` already takes the
+  formation as an argument, and an army is a character grid that encodes *what*
+  and *where* together — so composition and deployment are one input, not two
+  features.
+
+  ⬜ **What it needs.** A cost column beside the catalog, a budget constant to
+  tune like any other dial, and validation: the list fits the budget, fits the
+  map's deployment width, and puts nothing where it cannot stand. It also
+  becomes match data, so it lands with the ruleset-versioning question rather
+  than before it. The builder itself is UI and belongs with *UI and
+  interaction*.
+
+  ⚠️ **One consequence worth having.** `maps.test.ts` validates every board
+  against *the* army. Once the army is chosen, that check has to become "can
+  the most restricted movement type deploy and move here" — which is a simpler
+  and stronger property than the one it replaces, and it stops a new map being
+  validated against a formation nobody fields.
+
+  ⬜ And it makes composition a **measurable** balance surface: the simulator
+  takes a formation, so sweeping armies against each other is a run rather than
+  a build.
+
 - **Maps into a table, and an editor over it.** Settled in *Maps in a table*
   above. The storage half is a migration and a foreign key; the editor is the
   half that makes it worth doing, and it is the first tool in this repo written
