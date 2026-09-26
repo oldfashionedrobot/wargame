@@ -162,6 +162,7 @@ interface Stats {
   wins: Record<string, number>;
   unfinished: number;
   turns: number[];
+  actions: number[];
   damageBy: Record<string, number>;
   killsBy: Record<string, number>;
   shots: number;
@@ -172,7 +173,14 @@ interface Stats {
   hitsTotal: number;
 }
 
-function playOne(mapId: string, seed: number, stats: Stats, turnCap: number, first: string): void {
+function playOne(
+  mapId: string,
+  seed: number,
+  stats: Stats,
+  actionCap: number,
+  first: string,
+  budget: number | null,
+): void {
   const random = rng(seed);
   const base = createMatchState(getMap(mapId));
   // ⚠️ Who moves first is a *balance* question, not a fixture detail -- a whole
@@ -180,8 +188,13 @@ function playOne(mapId: string, seed: number, stats: Stats, turnCap: number, fir
   // roadmap flags. Switchable so the two can be compared.
   let state: GameState = { ...base, currentTurn: first };
   let turns = 0;
+  let actions = 0;
 
-  while (!isOver(state) && turns < turnCap) {
+  // ⚠️ **Capped on *actions*, not turns, and that is what makes two budgets
+  // comparable.** A turn is a whole roster at one budget and a single command
+  // at another, so a turn limit would give one regime eight times the play of
+  // the other and then report the difference as a result.
+  while (!isOver(state) && actions < actionCap) {
     const options = candidates(state);
     // ⚠️ Ties broken at random, not by enumeration order. Without it both sides
     // play one fixed line and the only variation between games is the dice,
@@ -210,14 +223,16 @@ function playOne(mapId: string, seed: number, stats: Stats, turnCap: number, fir
           };
 
     const before = state;
-    const events: GameEvent[] = resolveAction(state, validation.action, rolls);
+    const events: GameEvent[] = resolveAction(state, validation.action, rolls, budget);
     record(before, command, events, stats);
     state = applyEvents(state, events);
+    actions++;
     if (events.some((e) => e.type === 'turnEnded')) turns++;
   }
 
   stats.games++;
   stats.turns.push(turns);
+  stats.actions.push(actions);
   const winner = state.winner;
   if (winner === null) stats.unfinished++;
   else stats.wins[winner] = (stats.wins[winner] ?? 0) + 1;
@@ -256,13 +271,14 @@ function record(before: GameState, command: Command, events: GameEvent[], stats:
 
 const games = Number(process.argv[2] ?? 200);
 const mapId = process.argv[3] ?? 'classic';
-const TURN_CAP = 60;
+const ACTION_CAP = 480; // 60 turns of a full eight-unit roster
 
 const stats: Stats = {
   games: 0,
   wins: {},
   unfinished: 0,
   turns: [],
+  actions: [],
   damageBy: {},
   killsBy: {},
   shots: 0,
@@ -274,8 +290,14 @@ const stats: Stats = {
 };
 
 const first = process.argv[4] ?? 'player-blue';
+// ⚠️ **The turn budget is passed, not inherited.** `resolveAction` takes it as
+// an argument for the tests' sake; the same seam lets a whole regime be
+// compared here without editing `turns.ts` and rebuilding an opinion from
+// memory. `all` means the whole roster, which is `ACTIONS_PER_TURN`'s `null`.
+const budgetArg = process.argv[5] ?? 'all';
+const budget: number | null = budgetArg === 'all' ? null : Number(budgetArg);
 const started = Date.now();
-for (let i = 0; i < games; i++) playOne(mapId, i + 1, stats, TURN_CAP, first);
+for (let i = 0; i < games; i++) playOne(mapId, i + 1, stats, ACTION_CAP, first, budget);
 const elapsed = Date.now() - started;
 
 const pct = (n: number, d: number) => (d === 0 ? '  —  ' : `${((100 * n) / d).toFixed(1)}%`);
@@ -283,7 +305,7 @@ const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / (xs.length || 1);
 const sorted = [...stats.turns].sort((a, b) => a - b);
 
 console.log(
-  `\n${stats.games} games on ${mapId}, greedy both sides, ${first} opens, ${elapsed} ms\n`,
+  `\n${stats.games} games on ${mapId}, greedy both sides, ${first} opens, ${budgetArg} per turn, ${elapsed} ms\n`,
 );
 
 console.log('outcome');
@@ -291,12 +313,16 @@ for (const [player, n] of Object.entries(stats.wins)) {
   console.log(`  ${player.padEnd(14)} ${String(n).padStart(5)}  ${pct(n, stats.games)}`);
 }
 console.log(
-  `  ${'unfinished'.padEnd(14)} ${String(stats.unfinished).padStart(5)}  ${pct(stats.unfinished, stats.games)}  (hit the ${TURN_CAP}-turn cap)`,
+  `  ${'unfinished'.padEnd(14)} ${String(stats.unfinished).padStart(5)}  ${pct(stats.unfinished, stats.games)}  (hit the ${ACTION_CAP}-action cap)`,
 );
 
-console.log('\nmatch length, in turns');
+const sortedActions = [...stats.actions].sort((a, b) => a - b);
+console.log('\nmatch length');
 console.log(
-  `  mean ${mean(stats.turns).toFixed(1)}   median ${sorted[Math.floor(sorted.length / 2)]}   min ${sorted[0]}   max ${sorted[sorted.length - 1]}`,
+  `  turns    mean ${mean(stats.turns).toFixed(1)}   median ${sorted[Math.floor(sorted.length / 2)]}   min ${sorted[0]}   max ${sorted[sorted.length - 1]}`,
+);
+console.log(
+  `  actions  mean ${mean(stats.actions).toFixed(1)}   median ${sortedActions[Math.floor(sortedActions.length / 2)]}   min ${sortedActions[0]}   max ${sortedActions[sortedActions.length - 1]}`,
 );
 
 console.log('\ndamage and kills, by who dealt it');
