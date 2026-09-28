@@ -23,13 +23,17 @@ Configuration is one optional `.env` at the repo root (`PORT`,
 
 ## What plays
 
-Hot-seat against a real server. Select a unit, see the tiles it can reach across
-terrain, hover to preview the route it would take, click to move it there, end
-turn. Two players with an infantry, a cavalry and an artillery each, on a map
-split by a river with a single bridge — infantry can ford it, the other two
-must take the bridge.
+Hot-seat against a real server — two people at one device — from the opening
+move to a winner. Select a unit and see the tiles it can reach across terrain;
+click a destination to pin the route there, and click it again to send the unit
+walking. Where it arrives a panel asks what it is doing: hold, fire or charge.
+A shot or a charge cuts away to the two units and plays the exchange. Every
+unit acts once, the turn ends when the last of them has gone, and a player with
+nothing left has lost.
 
-Terrain, pathfinding and path validation are built; combat is not.
+Two players, a rank of eight each — two guns, two horse, four foot — on one of
+six maps, chosen when the match is created. `/maps` shows the boards without
+starting one.
 
 ## Layout
 
