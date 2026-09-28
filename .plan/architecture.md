@@ -111,7 +111,7 @@ Run from the repo root. All exit non-zero on failure.
 | `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
 | `bun packages/shared/scripts/matchups.ts` | Tuning harness: hits-to-kill for every matchup on every terrain |
 | `bun packages/shared/scripts/charges.ts` | Tuning harness: charge odds for all three approaches on every depth of cover, and what failing costs |
-| `bun packages/server/scripts/simulate.ts [games] [map] [opener]` | Plays the game against itself with a greedy bot and reports outcomes, match length, damage by unit type, and whether each mechanic fired |
+| `bun packages/server/scripts/simulate.ts [games] [map] [opener] [budget] [blueArmy] [redArmy]` | Plays the game against itself with a greedy bot and reports outcomes, match length, damage by unit type, and whether each mechanic fired. An army is comma-separated rows; omitted, both sides take the default deployment |
 | `bun run preview` | `vite preview` — the built client with no `/api` proxy, so it reaches no match |
 | `bun run --filter '@wargame/server' start` | The production shape: one process serving the API and `dist` together |
 
@@ -346,38 +346,69 @@ interface GameMap {
 ```
 
 **A map is terrain and nothing else.** Units are deployed onto it by
-`createMatchState` from `ARMY`, one hardcoded rank beside the hardcoded
-`PLAYERS` and for the same reason — nothing chooses between armies yet.
+`createMatchState`, which takes a **`Deployment` per player** — that player and
+the army they field — defaulting to one hardcoded pair beside the hardcoded
+`PLAYERS`, because nothing *chooses* an army yet.
+
+```ts
+interface Deployment { player: Player; army: string[] }
+interface DeploymentZone { width: number; depth: number }
+```
+
+⚠️ **The army binds to the player; the seat stays positional.** Pairing the two
+is what stops a second array agreeing with `PLAYERS` by index — but the *edge*
+is still read off list order: first deploys on the near edge looking north,
+second on the far edge looking south. **The two sides need not match**, in
+composition or in count.
+
+⚠️ **An army is not on `Player`, and what decides that is who reads it.**
+`Player` lives in `GameState`, which is JSON in two columns on every write, and
+no rule reads an army — once units carry `owner` it has done its job and is
+derivable by grouping them.
+
+**Units are placed in a `DeploymentZone`**, `DEPLOYMENT_ZONE` in `matchState.ts`:
+a rectangle on the player's own edge, centred on the board's width. ⚠️ **An army
+grid is exactly the zone's size, not merely bounded by it** — padded with
+empties, which is what makes an *offset* deployment expressible at all:
 
 ```
-'ciiaaiic'      // cavalry on the ends, infantry on the wings, both guns centre
+'iiii......'    // four foot on the player's own left
+'...iiii...'    // the same four, centred
 ```
 
-⚠️ **The arrangement is a tuning dial and has already moved once**; the
-composition — two guns, two horse, four foot — is what maps are validated
-against. `createMatchState` takes the formation as an **argument** defaulting to
-this, which is the seam player-chosen deployment arrives through and the reason
-no test reads it.
+⚠️ **The margin is therefore a property of the zone and not of the army.**
+Nothing about centring varies with what is fielded, so `armyWidth` is read as a
+*check* — is this grid the zone's width — rather than as an input to the sum. A
+grid of the wrong size is refused, naming the player whose army it is.
+
+⚠️ **The zone is assumed, not declared by the map.** Every board is 12×12, so the
+rows nearest each edge are simply taken. **Reachable as an argument**, the shape
+`ACTIONS_PER_TURN` has and for the same reason: the suite deploys onto boards
+this game never ships.
 
 Parsed by `parseArmyGrid` over a `char` column on `UnitType`, the same shape
 terrain has. ⚠️ `.` means *empty* in an army and *plains* in a map — one
 character, two grids, and no row is ever parsed as both.
 
-The rank is **centred** on the board's width, sits on row 0 for the first player
-and is placed for the second by a **180° rotation about the board's centre** —
-not a copy, which would run both lines the same way down the board. Facing is
-toward the enemy: north for the first player, south for the second. Unit ids are
-`${colour}-${n}` in **army scan order**, row then column, and are deterministic
-because `initial_state` plus the log must replay identically.
+Each army is laid from its own edge, and the second is placed by a **180°
+rotation about the board's centre** — not a copy, which would run both lines the
+same way down the board. Facing is toward the enemy: north for the first player,
+south for the second. Unit ids are `${colour}-${n}` in **army scan order**, row
+then column, **within that player's own army** — so each side numbers from 1
+whatever the other fields — and are deterministic because `initial_state` plus
+the log must replay identically.
 
-**A board too small for the army is refused, not clamped.** ⚠️ A negative
+**A board too small for the zones is refused, not clamped.** ⚠️ A negative
 centring margin would deploy units at negative coordinates — a state that
-parses, stores and replays while being wrong from the first frame.
+parses, stores and replays while being wrong from the first frame. The depth
+check sums the zones rather than doubling one.
 
-**What a map owes the army is a deployment zone it can stand in.** `wheels`
-cannot enter river or mountain at any price, so a board that draws either under
-the rank strands a gun where it starts. `maps.test.ts` checks every board
-against the real army rather than against placements of its own.
+**What a map owes a player is a zone they can fill.** `wheels` cannot enter river
+or mountain at any price, so a board that draws either inside a zone strands
+whatever gun is put there. ⚠️ **`maps.test.ts` checks every square of both
+zones, for every movement type the terrain table prices** — not the squares one
+army happens to occupy. That is the stronger property, and it caught a pond
+inside a zone on `lakeland` that the army-based check could not see.
 
 ⚠️ **Map ids are immutable.** A match records the id it was built from, so
 changing a map's terrain under its id retroactively changes what every existing
@@ -388,23 +419,24 @@ camera** — row index increases north, so a map written out top-down is upside
 down in the source.
 
 **Every map is 12×12.** Nothing in the code requires it — `createMatchState`
-centres the rank on whatever width it is handed — but `maps.test.ts` asserts it,
-so it is a constraint rather than a coincidence. The rank spans eight columns,
-leaving two spare a side.
+centres the zone on whatever width it is handed — but `maps.test.ts` asserts it,
+so it is a constraint rather than a coincidence. The zone spans ten columns,
+leaving one spare a side.
 
 | | |
 |---|---|
 | `classic` | A river across the middle with one bridge, woods on the near approach and high ground on the far one. Infantry ford anywhere; cavalry and artillery must take the crossing, which is the whole board |
 | `crossroads` | A road network closed into a figure of eight. No water and no high ground, so nothing is impassable and cost is the only thing shaping a move — which makes it the board artillery likes |
 | `two-bridges` | One river bent through a right angle with a crossing on each arm. ⚠️ The only board carrying **both deck orientations**, so it is the only one that exercises all of `bridgeTurns` |
-| `lakeland` | A lake ringing an island, plus a pond. The island is where the water's *price* shows: infantry wades across in one turn, cavalry needs two and spends the night between them in open water at zero defence, and artillery never arrives at all |
+| `lakeland` | A lake ringing an island, plus a pond clear of both deployment zones. The island is where the water's *price* shows: infantry wades across in one turn, cavalry needs two and spends the night between them in open water at zero defence, and artillery never arrives at all |
 | `meadow` | Open field, a **lateral** road straight across and one rise in the middle. A road across rather than along helps you redeploy along your own line more than it helps you advance |
 | `common` | Open field with the opposite road — up the middle, the fast way *at* the enemy — and hills on both flanks: 4 stars of cover apiece and shut to wheels, so a strong position no gun can ever hold |
 
-⚠️ **A river may only leave the board where the army does not stand.** The rank
-is centred on the middle eight columns of the first and last row, and `wheels`
-cannot enter water or rock, so neither may be drawn there. `two-bridges` shows
-it: its north–south arm stops one row short of the edge.
+⚠️ **A river may only leave the board where a deployment zone is not.** The
+zones are the middle ten columns of the two rows at each end, and `wheels` cannot
+enter water or rock, so neither may be drawn there. `two-bridges` shows it: its
+north–south arm stops one row short of the edge. ⚠️ This is now **checked rather
+than kept by hand** — see `maps.test.ts` above.
 
 `StartScreen` picks between them and `POST /api/matches` carries the choice;
 omitting it takes `DEFAULT_MAP_ID`.

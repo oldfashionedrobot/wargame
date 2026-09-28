@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { route } from '@wargame/shared/testing';
-import type { Command } from '@wargame/shared';
-import { LUCK_MAX } from '@wargame/shared';
+import type { Command, Coordinate } from '@wargame/shared';
+import { exploreMovement, getUnitType, LUCK_MAX } from '@wargame/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore, rollLuck } from './match';
 import type { MatchStore } from './match';
 import { getMap } from './maps';
-import { createMatchState } from './matchState';
+import { createMatchState, PLAYERS } from './matchState';
 
 // Each test gets its own in-memory database: real queries, real migrations, no
 // files to clean up, and no way for one test to see another's rows.
@@ -32,32 +32,41 @@ const move = (unitId: string, to: [number, number], from: [number, number]): Com
 });
 
 /**
- * Where the two units these tests drive actually start, asked rather than
- * written down.
+/**
+ * A unit that can legally step one tile toward the enemy, and where that step
+ * lands -- asked of the rulebook rather than assumed.
  *
- * ⚠️ **Hardcoding this has broken twice**: once when the army left the maps,
- * and once when the boards were resized -- because a rank of eight centred on a
- * board of ten begins at column one, and on a board of any other width it does
- * not. Asking `createMatchState` costs nothing and cannot go stale.
+ * ⚠️ **Hardcoding this has now broken three times**: once when the army left
+ * the maps, once when the boards were resized, and once when a formation grew
+ * a second rank and put a friend on the square the back rank would have walked
+ * into. Which unit sits on the end, and whether anything stands behind it, are
+ * both properties of a dial that becomes a player's choice -- so the only
+ * durable question is *who can move one tile forward*, and `exploreMovement` is
+ * what answers it.
+ *
+ * ⚠️ One tile rather than a unit's whole range, deliberately: these are tests
+ * about the store, and a route costing more than a gun carriage has would be a
+ * movement test failing in the wrong file.
  */
-const START = (() => {
-  const { units } = createMatchState(getMap('classic'));
-  const at = (id: string): [number, number] => {
-    const unit = units.find((candidate) => candidate.id === id);
-    if (!unit) throw new Error(`no ${id} on the starting board`);
-    return [unit.position.col, unit.position.row];
-  };
-  return { blue1: at('blue-1'), red1: at('red-1') };
-})();
+const stepper = (owner: string, forward: 1 | -1) => {
+  const state = createMatchState(getMap('classic'));
+  for (const unit of state.units) {
+    if (unit.owner !== owner) continue;
+    const { movementRange, movementType } = getUnitType(unit.unitTypeId);
+    const { reachable } = exploreMovement(state, unit, movementRange, movementType);
+    const to: Coordinate = { col: unit.position.col, row: unit.position.row + forward };
+    if (!reachable.some((tile) => tile.col === to.col && tile.row === to.row)) continue;
+    return {
+      id: unit.id,
+      from: [unit.position.col, unit.position.row] as [number, number],
+      to: [to.col, to.row] as [number, number],
+    };
+  }
+  throw new Error(`no ${owner} unit can step one tile forward on the starting board`);
+};
 
-// One square forward, toward the other side.
-//
-// ⚠️ blue-1 is the **artillery** on the rank's left end -- wheels, which pay 2
-// to cross plains against a range of 4 -- so a legal move here is one tile and
-// not three. These are tests about the store: a route costing more than a gun
-// carriage has is a movement test failing in the wrong file.
-const BLUE_STEP: [number, number] = [START.blue1[0], START.blue1[1] + 1];
-const RED_STEP: [number, number] = [START.red1[0], START.red1[1] - 1];
+const BLUE_MOVER = stepper('player-blue', 1);
+const RED_MOVER = stepper('player-red', -1);
 const BLUE = 'player-blue';
 const RED = 'player-red';
 
@@ -150,7 +159,7 @@ describe('since', () => {
   // game is tuned.
   it('returns everything after the cursor, with the current state', async () => {
     const { id } = await store.create();
-    await store.submit(id, move('blue-1', BLUE_STEP, START.blue1), BLUE);
+    await store.submit(id, move(BLUE_MOVER.id, BLUE_MOVER.to, BLUE_MOVER.from), BLUE);
     const mid = await store.snapshot(id);
     await store.submit(id, { type: 'endTurn' }, mid!.state.currentTurn);
 
@@ -182,22 +191,30 @@ describe('since', () => {
 describe('submit', () => {
   it('advances seq and returns the resulting state', async () => {
     const { id } = await store.create();
-    const result = await store.submit(id, move('blue-1', BLUE_STEP, START.blue1), BLUE);
+    const result = await store.submit(
+      id,
+      move(BLUE_MOVER.id, BLUE_MOVER.to, BLUE_MOVER.from),
+      BLUE,
+    );
     expect(result?.ok).toBe(true);
     if (!result?.ok) return;
     expect(result.seq).toBe(1);
     // The move landed. Whether a `turnEnded` follows it is the turn budget's
     // business -- see `ACTIONS_PER_TURN` -- and not what this test is about.
     expect(result.events[0].type).toBe('unitMoved');
-    expect(result.state.units.find((u) => u.id === 'blue-1')?.position).toEqual({
-      col: BLUE_STEP[0],
-      row: BLUE_STEP[1],
+    expect(result.state.units.find((u) => u.id === BLUE_MOVER.id)?.position).toEqual({
+      col: BLUE_MOVER.to[0],
+      row: BLUE_MOVER.to[1],
     });
   });
 
   it('refuses a command the rulebook rejects, and writes nothing', async () => {
     const { id } = await store.create();
-    const result = await store.submit(id, move('blue-1', START.red1, START.blue1), BLUE);
+    const result = await store.submit(
+      id,
+      move(BLUE_MOVER.id, RED_MOVER.from, BLUE_MOVER.from),
+      BLUE,
+    );
     // The refusal, not its wording: the reason belongs to shared/'s rulebook
     // and changes when the rules get more specific, which says nothing about
     // whether the store wrote anything.
@@ -218,7 +235,7 @@ describe('submit', () => {
     // Deliberately malformed: a client cannot construct this, which is the
     // point -- `actor` exists only on Action. Cast through unknown to build it.
     const smuggled = {
-      ...move('blue-1', BLUE_STEP, START.blue1),
+      ...move(BLUE_MOVER.id, BLUE_MOVER.to, BLUE_MOVER.from),
       actor: RED,
     } as unknown as Command;
     expect((await store.submit(id, smuggled, BLUE))?.ok).toBe(true);
@@ -236,7 +253,7 @@ describe('storage guarantees', () => {
   // and impossible conditions should be loud rather than silently overwrite.
   it('refuses two resolutions claiming the same seq', async () => {
     const { id } = await store.create();
-    await store.submit(id, move('blue-1', BLUE_STEP, START.blue1), BLUE);
+    await store.submit(id, move(BLUE_MOVER.id, BLUE_MOVER.to, BLUE_MOVER.from), BLUE);
     const duplicate = sql.execute({
       sql: `INSERT INTO resolutions (match_id, seq, actor, action, events, created_at)
             VALUES (?, 1, ?, '{}', '[]', 0)`,
@@ -284,9 +301,9 @@ describe('storage guarantees', () => {
 
   it('keeps current_state equal to folding the log from initial_state', async () => {
     const { id } = await store.create();
-    await store.submit(id, move('blue-1', BLUE_STEP, START.blue1), BLUE);
+    await store.submit(id, move(BLUE_MOVER.id, BLUE_MOVER.to, BLUE_MOVER.from), BLUE);
     await store.submit(id, { type: 'endTurn' }, BLUE);
-    await store.submit(id, move('red-1', RED_STEP, START.red1), RED);
+    await store.submit(id, move(RED_MOVER.id, RED_MOVER.to, RED_MOVER.from), RED);
 
     const { applyEvents } = await import('@wargame/shared');
     const { rows } = await sql.execute({
@@ -313,7 +330,11 @@ describe('storage guarantees', () => {
     // ⚠️ A formation of one gun, so this test owns the unit it is about. It
     // needs blue-1 to be artillery -- range 3..5 -- and the default formation
     // is a tuning dial that has already moved the guns once.
-    const base = createMatchState(getMap('classic'), ['a']);
+    const base = createMatchState(
+      getMap('classic'),
+      PLAYERS.map((player) => ({ player, army: ['a'] })),
+      { width: 1, depth: 1 },
+    );
     const lastStand = {
       ...base,
       units: [

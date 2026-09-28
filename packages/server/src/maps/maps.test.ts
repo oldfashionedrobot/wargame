@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { getTerrain, getUnitType, MAX_HEALTH, parseTerrainGrid } from '@wargame/shared';
-import { createMatchState } from '../matchState';
+import { createMatchState, DEPLOYMENT_ZONE } from '../matchState';
 import { DEFAULT_MAP_ID, getMap, listMaps } from './index';
 
 // A map is content the compiler cannot check: it is characters, and every way
@@ -74,11 +74,45 @@ describe('every map', () => {
         expect(new Set(keys).size).toBe(keys.length);
       });
 
-      it('gives every player the same number of units', () => {
+      it('gives every player a roster to play with', () => {
         const perOwner = new Map<string, number>();
         for (const { owner } of units) perOwner.set(owner, (perOwner.get(owner) ?? 0) + 1);
         expect(perOwner.size).toBeGreaterThan(1); // somebody to play against
-        expect(new Set(perOwner.values()).size).toBe(1); // and an even start
+        for (const count of perOwner.values()) expect(count).toBeGreaterThan(0);
+      });
+
+      // ⚠️ **The zone, not the army** -- and that is the stronger property. A
+      // board validated against one formation is a board validated against a
+      // formation nobody may field once composition is a choice; a board whose
+      // deployment zones are standable throughout is one where *every* legal
+      // army deploys. It is also what makes an existing convention checkable:
+      // a river may only leave the board where an army does not stand.
+      it('leaves both deployment zones standable by every movement type', () => {
+        const { width: zoneWidth, depth } = DEPLOYMENT_ZONE;
+        const margin = Math.floor((width - zoneWidth) / 2);
+        expect(margin).toBeGreaterThanOrEqual(0);
+        expect(depth * 2).toBeLessThanOrEqual(height);
+
+        const rows = [
+          ...Array.from({ length: depth }, (_, i) => i),
+          ...Array.from({ length: depth }, (_, i) => height - 1 - i),
+        ];
+        for (const row of rows) {
+          for (let col = margin; col < margin + zoneWidth; col++) {
+            const terrain = getTerrain(grid[row][col]);
+            // ⚠️ **Read off the cost table, not the unit catalog.** Every
+            // movement type terrain knows how to price is one a unit could
+            // arrive on, including one no unit uses yet -- which is the case a
+            // list taken from today's roster would quietly stop covering.
+            for (const [movementType, cost] of Object.entries(terrain.cost)) {
+              // The whole square in the assertion, so a failure names the tile
+              // and the movement type rather than just a line number.
+              expect(`${col},${row} for ${movementType}: ${cost === null ? 'barred' : 'ok'}`).toBe(
+                `${col},${row} for ${movementType}: ok`,
+              );
+            }
+          }
+        }
       });
 
       it('points each army at the other rather than off its own edge', () => {
@@ -87,11 +121,17 @@ describe('every map', () => {
         // exchange's counter to whoever moved second. Row index increases north,
         // and that is the sign worth stating -- it is the one thing here that
         // can be backwards while every individual value still looks reasonable.
-        const northmost = Math.max(...units.map((unit) => unit.position.row));
+        //
+        // ⚠️ **Asked of the owner, not of the row.** This found the northmost
+        // row and expected everything else to face north, which holds only
+        // while an army is one rank deep -- a two-rank formation put a player's
+        // own back rank on the wrong side of the comparison. Facing is a
+        // property of whose army it is.
+        const [near, far] = [...new Set(units.map((unit) => unit.owner))];
         for (const unit of units) {
-          const atBack = unit.position.row === northmost;
-          expect(unit.facing).toBe(atBack ? 'south' : 'north');
+          expect(unit.facing).toBe(unit.owner === near ? 'north' : 'south');
         }
+        expect(far).toBeDefined();
       });
 
       // The board has to be crossable by everything on it, or a unit is stranded

@@ -6,12 +6,14 @@ import { brotliCompressSync, gzipSync } from 'node:zlib';
 import type {
   Command,
   CommandResult,
+  Coordinate,
   ErrorResponse,
   EventsResponse,
   MapPreview,
   MatchSummary,
   StateResponse,
 } from '@wargame/shared';
+import { exploreMovement, getUnitType } from '@wargame/shared';
 import { route } from '@wargame/shared/testing';
 import { getMap } from './maps';
 import { createMatchState } from './matchState';
@@ -77,30 +79,40 @@ async function newMatch(): Promise<MatchSummary> {
 }
 
 /**
- * Where blue's left-end gun starts, asked rather than written down.
+ * A unit that can legally step one tile forward, and the command that does it --
+ * asked of the rulebook rather than assumed.
  *
- * ⚠️ **Hardcoding it has broken twice** -- once when the army left the maps and
- * once when the boards were resized -- because a rank of eight centred on a
- * board of ten begins at column one and on any other width does not.
+ * ⚠️ **Hardcoding it has now broken three times** -- once when the army left the
+ * maps, once when the boards were resized, and once when a formation grew a
+ * second rank and put a friend on the square the front unit would have stepped
+ * into. The army is a dial and becomes a player's choice, so the durable
+ * question is *who can move one tile*, which `exploreMovement` answers.
+ *
+ * ⚠️ One square, not a unit's whole range: these are tests about the HTTP
+ * surface, and a route a gun carriage cannot afford would fail them for the
+ * wrong reason.
+ *
+ * The path is a walkable route rather than two endpoints, which is what a
+ * client actually sends -- validatePath walks every step in 6c.
  */
-const BLUE_1 = (() => {
-  const unit = createMatchState(getMap('classic')).units.find(({ id }) => id === 'blue-1');
-  if (!unit) throw new Error('no blue-1 on the starting board');
-  return unit.position;
+const MOVER = (() => {
+  const state = createMatchState(getMap('classic'));
+  for (const unit of state.units) {
+    if (unit.owner !== state.currentTurn) continue;
+    const { movementRange, movementType } = getUnitType(unit.unitTypeId);
+    const { reachable } = exploreMovement(state, unit, movementRange, movementType);
+    const to: Coordinate = { col: unit.position.col, row: unit.position.row + 1 };
+    if (!reachable.some((tile) => tile.col === to.col && tile.row === to.row)) continue;
+    return { id: unit.id, from: unit.position, to };
+  }
+  throw new Error('no opening unit can step one tile forward on the starting board');
 })();
-const BLUE_1_STEP = { col: BLUE_1.col, row: BLUE_1.row + 1 };
 
-// ⚠️ One square, because blue-1 is artillery: wheels pay 2 to cross plains
-// against a range of 4. These are tests about the HTTP surface, and a route a
-// gun cannot afford would fail them for the wrong reason.
-//
-// The path is a walkable route rather than two endpoints, which is what a
-// client actually sends -- validatePath walks every step in 6c.
 const legalMove: Command = {
   type: 'move',
   facing: 'north',
-  unitId: 'blue-1',
-  path: route(BLUE_1, BLUE_1_STEP),
+  unitId: MOVER.id,
+  path: route(MOVER.from, MOVER.to),
 };
 
 describe('GET /api/matches', () => {
@@ -269,10 +281,7 @@ describe('GET /api/matches/:id/events', () => {
     // Events never travel without the state they produced -- and the state is
     // the *post*-move one, which the unit's position is what shows. currentTurn
     // could not show it: whether a move ends a turn is the budget's business.
-    expect(body.state?.units.find((unit) => unit.id === 'blue-1')?.position).toEqual({
-      col: BLUE_1_STEP.col,
-      row: BLUE_1_STEP.row,
-    });
+    expect(body.state?.units.find((unit) => unit.id === MOVER.id)?.position).toEqual(MOVER.to);
 
     // Asking from the current seq is the steady-state poll: nothing new, and
     // therefore no board either.
@@ -307,10 +316,7 @@ describe('POST /api/matches/:id/commands', () => {
     expect(result.seq).toBe(1);
     // The move landed; a trailing `turnEnded` depends on `ACTIONS_PER_TURN`.
     expect(result.events[0].type).toBe('unitMoved');
-    expect(result.state.units.find((unit) => unit.id === 'blue-1')?.position).toEqual({
-      col: BLUE_1_STEP.col,
-      row: BLUE_1_STEP.row,
-    });
+    expect(result.state.units.find((unit) => unit.id === MOVER.id)?.position).toEqual(MOVER.to);
   });
 
   // 422, not 200: well-formed, and refused on its merits. Distinct from the
@@ -322,8 +328,8 @@ describe('POST /api/matches/:id/commands', () => {
     const outOfRange: Command = {
       type: 'move',
       facing: 'north',
-      unitId: 'blue-1',
-      path: route(BLUE_1, { col: BLUE_1.col + 7, row: BLUE_1.row + 9 }),
+      unitId: MOVER.id,
+      path: route(MOVER.from, { col: MOVER.from.col + 7, row: MOVER.from.row + 9 }),
     };
 
     const response = await postJson(`/api/matches/${id}/commands`, outOfRange);

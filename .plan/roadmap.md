@@ -280,6 +280,45 @@ epic that cannot be done at a terminal.
   used. It also needs watching state on `Unit`, which is a `GameState` shape
   change and abandons stored matches under the ruleset compromise.
 
+#### Armies, and where they deploy
+
+✅ **The mechanism is built.** An army per player, bound to the player rather than
+to an index; a fixed ten-by-two deployment zone with empty squares placing units
+inside it; boards validated against the *zone* rather than against one formation;
+and the harness taking an army a side. What it does now is in
+[`architecture.md`](architecture.md) — what is left is below.
+
+⬜ **Find out whether composition creates playstyles.** This is the question the
+mechanism was built for, and it is answered by playing and by sweeping rather
+than by reasoning. ⚠️ **One result already, and it says more about the bot than
+about cavalry**: eight horse against the default army loses 200 of 200 on
+`classic` *while moving first*. Both sides run the identical policy, so the
+asymmetry is real — but a greedy bot never screens, and screening is the
+manoeuvre horse needs. Read it as the sweep working, not as a verdict.
+
+⬜ **A zone declared by the map.** `DEPLOYMENT_ZONE` is a constant and every board
+is 12×12, so the rows nearest each edge are assumed. The day a map carries its
+own, the check in `maps.test.ts` reads it instead of the constant — and the
+*shape* of a deployment area becomes a board's design rather than a global. That
+belongs with *Content*, where maps become data.
+
+⬜ **Validation that answers rather than throws.** `createMatchState` throws on an
+army that is not the zone's size and `parseArmyGrid` throws on an unknown
+character, which is right for a server-side constant and wrong for a
+*client-supplied* army — it would be a 500. The `{ ok, reason }` shape
+`validateCommand` already uses is what `POST /api/matches` needs before it can
+accept one, along with a column if an army is ever worth displaying.
+
+⬜ **The builder is UI**, and belongs with *UI and interaction*. Until it exists an
+army is an argument, which is enough for the harness and for a hot-seat match
+started from a constant.
+
+⚠️ **It made roster size a variable**, which *Match length* above names as one of
+its three dials. The two want reading together now that the two sides can differ.
+
+⚠️ **The pricing half is *Content*'s** — a cost column, a budget constant, and one
+more clause in the validation above.
+
 #### The dials
 
 The tables are `BASE_DAMAGE`, `CHARGE_THRESHOLD` and `CHARGE_REPEL`; the scalars
@@ -847,38 +886,28 @@ argument live; this is the phase that keeps changing them.
   capped budget it does not resolve at all. ⚠️ **A map is a balance surface,
   not just content**, which is the argument for the editor rather than against
   it: the fastest way to fix a board is to be able to change it and re-run.
-- ⬜ **An army budget, and players choosing their own.** Every unit type gets a
-  cost; a player spends a fixed budget on what they field and where it stands.
-  ⚠️ **Warhammer's answer rather than Advance Wars'** — points spent *before*
-  the match, not income earned during it — which is the far cheaper half: no
-  bases, no capture economy, no production queue, and nothing new during play.
+- ⬜ **An army budget.** Every unit type gets a cost; a player spends a fixed
+  budget on what they field. ⚠️ **Warhammer's answer rather than Advance Wars'**
+  — points spent *before* the match, not income earned during it — which is the
+  far cheaper half: no bases, no capture economy, no production queue, and
+  nothing new during play.
 
   ⚠️ **It is the lever Advance Wars uses on indirect fire and this game does
   not have.** AW prices its 3–5 range weapon at fifteen infantry; here two of
   eight units are that weapon, free, every game. Cost is what makes fielding a
   second gun a decision instead of a default.
 
-  ✅ **The seam exists.** `createMatchState(map, army)` already takes the
-  formation as an argument, and an army is a character grid that encodes *what*
-  and *where* together — so composition and deployment are one input, not two
-  features.
+  ✅ **The mechanism is not this epic's.** Per-player armies, the deployment
+  zone, and the validation that reads them are in *Tuning and gameplay tweaks*,
+  because composition is a playstyle question before it is an economy. What is
+  left here is the pricing: a cost column beside the catalog, a budget constant
+  to tune like any other dial, and one more clause in the validation that epic
+  builds.
 
-  ⬜ **What it needs.** A cost column beside the catalog, a budget constant to
-  tune like any other dial, and validation: the list fits the budget, fits the
-  map's deployment width, and puts nothing where it cannot stand. It also
-  becomes match data, so it lands with the ruleset-versioning question rather
-  than before it. The builder itself is UI and belongs with *UI and
-  interaction*.
-
-  ⚠️ **One consequence worth having.** `maps.test.ts` validates every board
-  against *the* army. Once the army is chosen, that check has to become "can
-  the most restricted movement type deploy and move here" — which is a simpler
-  and stronger property than the one it replaces, and it stops a new map being
-  validated against a formation nobody fields.
-
-  ⬜ And it makes composition a **measurable** balance surface: the simulator
-  takes a formation, so sweeping armies against each other is a run rather than
-  a build.
+  ⬜ It also becomes match data, so it lands with the ruleset-versioning
+  question rather than before it. The builder itself is UI and belongs with
+  *UI and interaction*, and the sweep that prices it needs the simulator to
+  take an army first — see *Armies, and where they deploy*, which owns that.
 
 - **Maps into a table, and an editor over it.** Settled in *Maps in a table*
   above. The storage half is a migration and a foreign key; the editor is the
