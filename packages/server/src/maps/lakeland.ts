@@ -18,6 +18,14 @@ import type { GameMap } from './types';
  *
  * Everything else goes round. The lake leaves a lane down each flank, which is
  * what keeps the board crossable for wheels without a bridge on it anywhere.
+ *
+ * ⚠️ **The pond sits clear of both deployment zones, and has to.** It was one
+ * row further out, inside the far player's, where `wheels` cannot enter at any
+ * price -- so an army that put a gun on that square stranded it before the
+ * first turn. Nothing caught it while boards were validated against a single
+ * formation, because the one army in existence happened not to stand there;
+ * `maps.test.ts` now checks every square a player may fill. Row 8 is not an
+ * alternative: it touches the lake and would be absorbed into it.
  */
 export const lakeland: GameMap = {
   id: 'lakeland',
@@ -34,8 +42,8 @@ export const lakeland: GameMap = {
     '..~~~~~~~~..',
     '...~~~~~~...',
     '............',
-    '..^......^..',
-    '.....~......',
+    '..^..~...^..',
+    '............',
     '............',
   ],
 };
