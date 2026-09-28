@@ -876,7 +876,7 @@ log query.
 runtime and rebuilds a fresh object, so extra properties are dropped.
 
 **Session:** `withSession` wraps every route entry and mints an opaque id into a
-`vod_session` cookie — `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` one
+`wargame_session` cookie — `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` one
 year, and `Secure` in production. Nothing reads it: `resolveActor` returns `state.currentTurn`, so any
 client can act as whoever's turn it is.
 

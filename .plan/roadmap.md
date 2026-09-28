@@ -670,7 +670,7 @@ things and all three come back usable:
 - **Drizzle with `provider: 'sqlite'`** is first-class, which is the client
   already in use.
 - **The cookie question changed shape** rather than being answered: it is not
-  "does its cookie replace `vod_session`" but "can its cookie carry the
+  "does its cookie replace `wargame_session`" but "can its cookie carry the
   attributes we need" — and once *How identity travels* settled on a bearer
   token, on **its bearer plugin instead**. Its docs caution that the plugin is
   for APIs which cannot use cookies. We are one, for a reason outside our
