@@ -1,7 +1,11 @@
 /**
  * Plays the game against itself, many times, and reports what happened.
  *
- *     bun packages/server/scripts/simulate.ts [games] [mapId]
+ *     bun packages/server/scripts/simulate.ts [games] [mapId] [opener] [budget]
+ *                                              [blueArmy] [redArmy]
+ *
+ * An army is comma-separated rows, e.g. `caac......,iiii......`. Omitted, both
+ * sides take the default deployment.
  *
  * ⚠️ **A prototype, built to answer whether this is worth building properly.**
  * The bot is one-ply greedy: it scores every legal command by what it gains
@@ -38,7 +42,8 @@ import {
 } from '@wargame/shared';
 import type { Command, Coordinate, GameEvent, GameState, Unit, UnitTypeId } from '@wargame/shared';
 import { getMap } from '../src/maps';
-import { createMatchState } from '../src/matchState';
+import { createMatchState, PLAYERS } from '../src/matchState';
+import type { Deployment } from '../src/matchState';
 
 // mulberry32: small, fast, and good enough for tuning statistics.
 function rng(seed: number): () => number {
@@ -180,9 +185,10 @@ function playOne(
   actionCap: number,
   first: string,
   budget: number | null,
+  deployments: Deployment[] | undefined,
 ): void {
   const random = rng(seed);
-  const base = createMatchState(getMap(mapId));
+  const base = createMatchState(getMap(mapId), deployments);
   // ⚠️ Who moves first is a *balance* question, not a fixture detail -- a whole
   // army acts before the other answers, so the opening is the alpha strike the
   // roadmap flags. Switchable so the two can be compared.
@@ -271,6 +277,28 @@ function record(before: GameState, command: Command, events: GameEvent[], stats:
 
 const games = Number(process.argv[2] ?? 200);
 const mapId = process.argv[3] ?? 'classic';
+
+/**
+ * An army per side, as comma-separated rows -- `caac......,iiii......`.
+ *
+ * ⚠️ **Composition is the point of passing them, not deployment.** Both sides
+ * run the identical policy, so any departure from an even split is the map, the
+ * deployment, or the *armies* rather than the bot -- which is what makes an
+ * asymmetric pair the one case these win rates are trustworthy for.
+ *
+ * Omit both and the default deployment applies, so the existing invocations
+ * mean exactly what they meant before.
+ */
+const parseArmy = (arg: string | undefined) => arg?.split(',');
+const blueArmy = parseArmy(process.argv[6]);
+const redArmy = parseArmy(process.argv[7]) ?? blueArmy;
+const deployments: Deployment[] | undefined =
+  blueArmy && redArmy
+    ? [
+        { player: PLAYERS[0], army: blueArmy },
+        { player: PLAYERS[1], army: redArmy },
+      ]
+    : undefined;
 const ACTION_CAP = 480; // 60 turns of a full eight-unit roster
 
 const stats: Stats = {
@@ -297,7 +325,8 @@ const first = process.argv[4] ?? 'player-blue';
 const budgetArg = process.argv[5] ?? 'all';
 const budget: number | null = budgetArg === 'all' ? null : Number(budgetArg);
 const started = Date.now();
-for (let i = 0; i < games; i++) playOne(mapId, i + 1, stats, ACTION_CAP, first, budget);
+for (let i = 0; i < games; i++)
+  playOne(mapId, i + 1, stats, ACTION_CAP, first, budget, deployments);
 const elapsed = Date.now() - started;
 
 const pct = (n: number, d: number) => (d === 0 ? '  —  ' : `${((100 * n) / d).toFixed(1)}%`);
@@ -305,7 +334,11 @@ const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / (xs.length || 1);
 const sorted = [...stats.turns].sort((a, b) => a - b);
 
 console.log(
-  `\n${stats.games} games on ${mapId}, greedy both sides, ${first} opens, ${budgetArg} per turn, ${elapsed} ms\n`,
+  `\n${stats.games} games on ${mapId}, greedy both sides, ${first} opens, ` +
+    `${budgetArg} per turn, ${elapsed} ms\n` +
+    (deployments
+      ? `  blue ${deployments[0].army.join(',')}   red ${deployments[1].army.join(',')}\n`
+      : ''),
 );
 
 console.log('outcome');
