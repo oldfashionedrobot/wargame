@@ -54,7 +54,11 @@ export function createTerrainMesh(
       // rather than sunk into it.
       cell.props.forEach((prop, i) => {
         const node = models.instantiate(prop.model, `prop-${col}-${row}-${i}`);
-        node.position.set(center.x + prop.x, models.topOf(cell.ground), center.z + prop.z);
+        node.position.set(
+          center.x + prop.x,
+          models.topOf(cell.ground) + (prop.lift ?? 0),
+          center.z + prop.z,
+        );
         node.rotation.y = prop.rotation;
         // ⚠️ Local z, so it is applied before `rotation.y` and squeezes the
         // prop across its own width rather than across the board's.

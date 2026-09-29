@@ -198,7 +198,10 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
  */
 const FOLIAGE = { name: 'foliage', color: new Color3(0.63, 0.97, 0.5) };
 
-const RECOLOUR: Record<string, Record<string, { name: string; color: Color3 }>> = {
+const RECOLOUR: Record<
+  string,
+  Record<string, { name: string; color: Color3; doubleSided?: boolean }>
+> = {
   rock_: {
     dirt: { name: 'mesaStone', color: new Color3(0.58, 0.64, 0.66) },
   },
@@ -215,6 +218,23 @@ const RECOLOUR: Record<string, Record<string, { name: string; color: Color3 }>> 
   // which is what a bridge is. Sharing the name also costs no extra draw call.
   bridge_: {
     stone: { name: 'roadSurface', color: new Color3(0.62, 0.62, 0.6) },
+    // ⚠️ **The post tops are wound inward and the model has always been that
+    // way** -- the file is byte-identical to the day it landed. Each post caps
+    // in two pieces: a small boss at 0.40 facing up, and the rim of the post's
+    // own walls at 0.35, whose eight faces per post point *down*. Culled, the
+    // rim is not drawn and you look through it into the post.
+    // ⚠️ **It only became visible when crossings went to one lane.** The model
+    // is 1.04 across a 1.00 tile, so a two-lane crossing overlapped two of them
+    // and each plugged the other's posts; a single lane leaves all four open.
+    // ⚠️ Drawing both sides also exposes the model's full-tile base plate, which
+    // is what `BRIDGE_LIFT` is for -- the two go together and neither works
+    // alone. A name of its own keeps the trees, which are wound correctly, on a
+    // single-sided material.
+    woodBark: {
+      name: 'bridgeTimber',
+      color: new Color3(0.8862745, 0.5137255, 0.34117648),
+      doubleSided: true,
+    },
   },
   // ⚠️ Safe as prefixes only because no *ground* model begins with any of
   // them -- the board's own grass is `ground_grass`.
@@ -272,6 +292,8 @@ function shareMaterial(
     override?.color ??
     (source instanceof PBRMaterial ? source.albedoColor.clone() : new Color3(1, 1, 1));
   flat.specularColor = new Color3(0, 0, 0);
+  // Only ever set by an override, for a model with faces wound the wrong way.
+  if (override?.doubleSided) flat.backFaceCulling = false;
   // Says so rather than rendering a mystery. Nothing in this kit is textured,
   // so reaching here means a model arrived that does not belong to it.
   if (source instanceof PBRMaterial && source.albedoTexture && !override) {
