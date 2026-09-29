@@ -26,6 +26,15 @@ export interface Prop {
   rotation: number;
   /** Uniform scale. */
   scale: number;
+  /**
+   * A further squeeze across the model's own **z**, applied before its
+   * rotation so it follows the prop rather than the board. 1 leaves it alone.
+   *
+   * ⚠️ Not a second uniform scale and not a Vector3: the one thing that has
+   * ever needed it is a footprint that must agree with something else drawn
+   * beside it, which is a width and never a height.
+   */
+  squeeze?: number;
 }
 
 /**
@@ -476,6 +485,19 @@ function waterCell(grid: TileType[][], col: number, row: number): TerrainCell {
  * *strictly* road neighbours ignores the lane next door and answers correctly
  * however wide the crossing is.
  */
+/**
+ * How much narrower the crossing is drawn than the model ships.
+ *
+ * ⚠️ **A width agreement, not a taste.** `bridge_wood` is 1.04 across where the
+ * road it carries is 0.82, so a crossing drawn at model scale is visibly wider
+ * than the road running into it on both banks -- the one place on the board
+ * where two pieces of the same route meet and disagree. This brings the deck
+ * most of the way onto the road's own width while leaving the slight overhang
+ * the model is built with: a deck rests *on* its banks, which is why the
+ * footprint is over a tile wide in the first place.
+ */
+const BRIDGE_SQUEEZE = 0.88;
+
 function bridgeTurns(grid: TileType[][], col: number, row: number): number {
   const road = (c: number, r: number): boolean => at(grid, c, r) === 'road';
   const northSouth = road(col, row + 1) || road(col, row - 1);
@@ -566,6 +588,7 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
             z: 0,
             rotation: bridgeTurns(grid, col, row) * QUARTER_TURN,
             scale: 1,
+            squeeze: BRIDGE_SQUEEZE,
           },
         ],
         // The deck, not the railings. The model's own top is the handrail, and

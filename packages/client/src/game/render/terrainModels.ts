@@ -198,7 +198,10 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
  */
 const FOLIAGE = { name: 'foliage', color: new Color3(0.63, 0.97, 0.5) };
 
-const RECOLOUR: Record<string, Record<string, { name: string; color: Color3 }>> = {
+const RECOLOUR: Record<
+  string,
+  Record<string, { name: string; color: Color3; doubleSided?: boolean }>
+> = {
   rock_: {
     dirt: { name: 'mesaStone', color: new Color3(0.58, 0.64, 0.66) },
   },
@@ -215,6 +218,21 @@ const RECOLOUR: Record<string, Record<string, { name: string; color: Color3 }>> 
   // which is what a bridge is. Sharing the name also costs no extra draw call.
   bridge_: {
     stone: { name: 'roadSurface', color: new Color3(0.62, 0.62, 0.6) },
+    // ⚠️ **The post tops are wound the wrong way round.** Thirty-two triangles
+    // at the top of the timber carry normals pointing *down*, so with culling
+    // on they are not drawn and you see into the posts from above -- the
+    // faces are there, they simply face the floor. Nothing in the renderer can
+    // tell a deliberate inward face from a mistaken one, so the fix is to draw
+    // both sides of this timber and let the geometry be wrong quietly.
+    // ⚠️ It takes a **name of its own** rather than sharing `woodBark` with the
+    // trees, which are wound correctly and should not pay for this. The price
+    // is one more draw call, which is the palette cost this module already
+    // budgets for.
+    woodBark: {
+      name: 'bridgeTimber',
+      color: new Color3(0.8862745, 0.5137255, 0.34117648),
+      doubleSided: true,
+    },
   },
   // ⚠️ Safe as prefixes only because no *ground* model begins with any of
   // them -- the board's own grass is `ground_grass`.
@@ -272,6 +290,8 @@ function shareMaterial(
     override?.color ??
     (source instanceof PBRMaterial ? source.albedoColor.clone() : new Color3(1, 1, 1));
   flat.specularColor = new Color3(0, 0, 0);
+  // Only ever turned on by an override, for a model whose own winding is wrong.
+  if (override?.doubleSided) flat.backFaceCulling = false;
   // Says so rather than rendering a mystery. Nothing in this kit is textured,
   // so reaching here means a model arrived that does not belong to it.
   if (source instanceof PBRMaterial && source.albedoTexture && !override) {

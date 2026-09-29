@@ -163,8 +163,21 @@ describe('bridges', () => {
     expect(cellAt(northSouth, 2, 1).ground).toBe('ground_riverStraight');
     expect(cellAt(northSouth, 2, 1).props).toEqual([
       // The deck is drawn spanning east to west, so a north-south road turns it.
-      { model: 'bridge_wood', x: 0, z: 0, rotation: QUARTER_TURN, scale: 1 },
+      // ⚠️ `squeeze` is under 1 because the model is wider than the road it
+      // carries -- asserted as *narrower than the model ships* rather than as a
+      // figure, so tuning the width does not land here.
+      {
+        model: 'bridge_wood',
+        x: 0,
+        z: 0,
+        rotation: QUARTER_TURN,
+        scale: 1,
+        squeeze: expect.any(Number) as number,
+      },
     ]);
+    const { squeeze } = cellAt(northSouth, 2, 1).props[0];
+    expect(squeeze).toBeGreaterThan(0);
+    expect(squeeze).toBeLessThan(1);
 
     const eastWest = compose('..~..', '.-=-.', '..~..');
     expect(cellAt(eastWest, 2, 1).props[0]).toMatchObject({

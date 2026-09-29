@@ -56,7 +56,9 @@ export function createTerrainMesh(
         const node = models.instantiate(prop.model, `prop-${col}-${row}-${i}`);
         node.position.set(center.x + prop.x, models.topOf(cell.ground), center.z + prop.z);
         node.rotation.y = prop.rotation;
-        node.scaling.setAll(prop.scale);
+        // ⚠️ Local z, so it is applied before `rotation.y` and squeezes the
+        // prop across its own width rather than across the board's.
+        node.scaling.set(prop.scale, prop.scale, prop.scale * (prop.squeeze ?? 1));
         built.push(...node.getChildMeshes());
       });
     }
