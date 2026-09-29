@@ -173,18 +173,11 @@ describe('bridges', () => {
         rotation: QUARTER_TURN,
         scale: 1,
         squeeze: expect.any(Number) as number,
-        lift: expect.any(Number) as number,
       },
     ]);
-    // ⚠️ Both asserted as *properties* rather than as figures, so tuning the
-    // width or the clearance does not land here: the deck is narrower than the
-    // model ships, and the crossing is lifted clear of the water it stands on
-    // without being lifted so far it reads as floating.
-    const { squeeze, lift } = cellAt(northSouth, 2, 1).props[0];
+    const { squeeze } = cellAt(northSouth, 2, 1).props[0];
     expect(squeeze).toBeGreaterThan(0);
     expect(squeeze).toBeLessThan(1);
-    expect(lift).toBeGreaterThan(0);
-    expect(lift).toBeLessThan(0.05);
 
     const eastWest = compose('..~..', '.-=-.', '..~..');
     expect(cellAt(eastWest, 2, 1).props[0]).toMatchObject({

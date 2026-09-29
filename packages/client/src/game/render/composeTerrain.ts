@@ -35,8 +35,6 @@ export interface Prop {
    * beside it, which is a width and never a height.
    */
   squeeze?: number;
-  /** Raised this far above the ground it stands on. Almost always 0. */
-  lift?: number;
 }
 
 /**
@@ -94,26 +92,11 @@ export interface TerrainCell {
 export const MAX_STAND_HEIGHT = 0.5;
 
 /**
- * How far the whole crossing is raised off the water it stands on.
- *
- * ⚠️ **Only needed because the deck is drawn double-sided.** The model carries a
- * full-tile plate at its own base, and the bridge is placed at `topOf(river)` --
- * which puts that plate on exactly the plane the water surface is on. Culled it
- * never mattered; drawn, it is a depth fight over the river around the deck's
- * edges. A hair of clearance settles it, the same trick the board slab uses
- * against the ground plane.
- *
- * ⚠️ `BRIDGE_DECK` carries it too, or a unit stands this far *inside* the deck
- * it is on. The two move together and are written together for that reason.
- */
-const BRIDGE_LIFT = 0.01;
-
-/**
  * Where a bridge's planking sits, measured up from the ground it stands on --
  * the same frame `standOn` is in. The model's railings reach 0.35 in that
  * frame, which is why its own top is no use as a standing height.
  */
-const BRIDGE_DECK = 0.15 + BRIDGE_LIFT;
+const BRIDGE_DECK = 0.15;
 
 // --- woodland ---------------------------------------------------------------
 
@@ -606,7 +589,6 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
             rotation: bridgeTurns(grid, col, row) * QUARTER_TURN,
             scale: 1,
             squeeze: BRIDGE_SQUEEZE,
-            lift: BRIDGE_LIFT,
           },
         ],
         // The deck, not the railings. The model's own top is the handrail, and
