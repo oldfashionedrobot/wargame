@@ -172,8 +172,9 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
 /**
  * Repaints, by the prefix of the models they apply to and the material they
  * replace. The kit reuses a handful of materials across everything it ships,
- * which twice now has made two kinds of tile the same object on the board.
- * Recolouring is the answer both times: the *shapes* were never the problem.
+ * which three times now has made two kinds of tile the same object on the
+ * board. Recolouring is the answer every time: the *shapes* were never the
+ * problem, and in each case the model was doing exactly what it was built to.
  *
  * ⚠️ An entry supplies a **name** as well as a colour, because merging groups
  * meshes by material name. Two colours sharing one name would merge into
@@ -204,6 +205,16 @@ const RECOLOUR: Record<string, Record<string, { name: string; color: Color3 }>> 
   ground_path: {
     dirt: { name: 'roadSurface', color: new Color3(0.62, 0.62, 0.6) },
     dirtDark: { name: 'roadEdge', color: new Color3(0.47, 0.47, 0.46) },
+  },
+  // ⚠️ **A bridge's deck ships the same pale blue as river water** -- (184, 226,
+  // 232) against water's (176, 244, 255) -- so a crossing rendered as a wooden
+  // frame with the river apparently running straight through it. Opaque the
+  // whole time; it simply matched what was underneath. ⚠️ It takes the *road's*
+  // name rather than a bridge one of its own, so the deck is the same object as
+  // the road either side and the surface visibly continues over the water --
+  // which is what a bridge is. Sharing the name also costs no extra draw call.
+  bridge_: {
+    stone: { name: 'roadSurface', color: new Color3(0.62, 0.62, 0.6) },
   },
   // ⚠️ Safe as prefixes only because no *ground* model begins with any of
   // them -- the board's own grass is `ground_grass`.
