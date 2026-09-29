@@ -1,33 +1,36 @@
 import type { GameMap } from './types';
 
 /**
- * A river splits the board and one bridge crosses it, with woods on the near
- * approach and high ground on the far one.
+ * A river across the middle with a single crossing, and one strongpoint on each
+ * approach to it.
  *
- * The terrain is doing work rather than decorating: infantry fords the river
- * anywhere cheaply, cavalry can wade it but pays most of a turn to do so, and
- * artillery cannot cross at all -- so the bridge is the whole board for the
- * guns and a shortcut worth guarding for everyone else. The road down the
- * middle is the only ground artillery moves over cheaply, and it runs straight
- * through that crossing.
+ * The bridge is the whole board. Infantry fords the river anywhere at 2 and
+ * cavalry at 3, but `wheels` cannot enter water at any price -- so artillery has
+ * exactly one way across and both players know where it is.
+ *
+ * ⚠️ **The two approaches are not the same ground, deliberately.** A wood stands
+ * beside the road on the near bank and a rise beside it on the far one: two
+ * stars of cover anything can walk into, against four that no gun can hold.
+ * Whoever crosses first does it past the other's strongpoint, and which kind of
+ * strongpoint that is depends on which side of the river you started.
  */
 export const classic: GameMap = {
   id: 'classic',
-  name: 'Bridgehead',
+  name: 'Classic',
 
   // . plains   - road   = bridge   ~ river   ^ mountain   f forest
   rows: [
-    '.....--.....',
-    '..f..--..f..',
-    '..f..--..f..',
-    '.....--.....',
-    '.....--.....',
-    '~~~~~==~~~~~',
-    '.....--.....',
-    '..^..--..^..',
-    '..^..--..^..',
-    '.....--.....',
-    '....f--f....',
-    '.....--.....',
+    '.....-......',
+    '.....-......',
+    '.....-......',
+    '...ff-......',
+    '...ff-......',
+    '~~~~~=~~~~~~',
+    '.....-..^^..',
+    '.....-..^^..',
+    '.....-......',
+    '.....-......',
+    '.....-......',
+    '.....-......',
   ],
 };

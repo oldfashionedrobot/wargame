@@ -342,8 +342,15 @@ an afternoon.
 confirms whatever it is scored on: the greedy one subtracts the expected
 riposte from its own score, so it reports counters landing in a tenth of
 exchanges, which is the bot avoiding them rather than a fact about counters.
-⚠️ **Its terrain numbers are worthless** and will stay so until a bot values
-ground — it fights in the open, so under one percent of hits land on cover.
+⚠️ **It cannot say whether cover is well placed**, and will not until a bot
+values ground: it never *chooses* terrain, so what it reports is where fights
+happened to land rather than what either side thought ground was worth.
+⚠️ **What it will say is whether cover is anywhere near the fighting**, and that
+turned out to be worth having — moving the boards' broken ground off the
+deployment edges and into the contested middle took hits landing on cover from
+under one percent to **9% on `common` and 16% on `lakeland`**, with no change to
+the bot at all. A number that low is a board nobody fights over; it is a
+geometry check, not a verdict on the terrain.
 ⚠️ **What it says robustly is asymmetry**: both sides run the identical policy,
 so any departure from an even split is the map or the deployment rather than
 the bot.
@@ -878,14 +885,48 @@ argument live; this is the phase that keeps changing them.
   `Partial` so artillery can have no row — a new unit silently gets no charge.
 - **Whatever play says next.** Three things have already moved this way, and two
   of the three turned out to be rules rather than dials.
-- ⬜ **The maps are not balanced, and this is now measured rather than
-  suspected.** Running `simulate.ts` with the same policy on both sides — so
-  any departure from even is the board — the opener wins essentially every game
-  on `classic`, `crossroads` and `common`, and *loses* about three quarters on
-  `meadow` and `two-bridges`. `lakeland` favours red whoever opens, and at a
-  capped budget it does not resolve at all. ⚠️ **A map is a balance surface,
-  not just content**, which is the argument for the editor rather than against
-  it: the fastest way to fix a board is to be able to change it and re-run.
+- ⬜ **Artillery's `movementRange` moves board balance more than the boards do.**
+  Running `simulate.ts` with the same policy on both sides — so any departure
+  from even is the board — and playing every map from both openings, 300 games
+  a cell. At the catalog's **4**, the mover who goes *second* wins nearly
+  everything:
+
+  | map | blue opens | red opens | reads as |
+  |---|---|---|---|
+  | `crossroads` | 94% red | 95% blue | second mover, overwhelming |
+  | `meadow` | 94% red | 93% blue | second mover, overwhelming |
+  | `two-bridges` | 89% red | 88% blue | second mover |
+  | `common` | 71% red | 54% blue | second mover |
+  | `classic` | 58% red | 62% blue | second mover, mild |
+  | `lakeland` | 65% red | 67% red | a red board |
+
+  ⚠️ **That is a reversal, and the boards caused it.** The previous set handed
+  the *opener* essentially every game; these hand it to whoever replies. A road
+  network lets guns reposition faster than a line can close, so committing first
+  is what gets you shot — which is a more interesting failure than the one it
+  replaced, and still a failure.
+
+  ⚠️ **Drop the gun to 3 and most of it goes away.** `wheels` pays 2 for plains
+  and 1 for road, so a range of 3 buys one tile across country against three
+  along a road, where 4 buys two against four. The same six boards then run
+  between 52% and 81% rather than 54% and 95%, and the second-mover effect
+  stops dominating. ⚠️ **So the gun's mobility is the dial these boards are most
+  sensitive to**, and it should be settled before any map is redrawn to chase a
+  number.
+
+  ⚠️ **Read the pair, not either column.** A fair board gives the opener the same
+  edge from both ends; one colour winning *both* columns is the board talking,
+  and by that test only `lakeland` is biased rather than order-sensitive.
+
+  ⚠️ **Do not tune these against the bot.** It is greedy, it never screens, and
+  it does not value terrain — so chasing an even split optimises the board for a
+  player nobody is. The numbers are a floor: a board where one side wins 100% is
+  broken, and none of these is that.
+
+  ⚠️ **A map is a balance surface, not just content**, which is the argument for
+  the editor rather than against it: the fastest way to fix a board is to be able
+  to change it and re-run.
+
 - ⬜ **An army budget.** Every unit type gets a cost; a player spends a fixed
   budget on what they field. ⚠️ **Warhammer's answer rather than Advance Wars'**
   — points spent *before* the match, not income earned during it — which is the

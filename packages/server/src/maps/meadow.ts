@@ -1,17 +1,22 @@
 import type { GameMap } from './types';
 
 /**
- * Open ground with a road straight across it and a single rise in the middle.
+ * Open field with one road straight across it, and a spur down to that road
+ * from each player's own ground.
  *
- * The set had nothing that played as a field: every other board is cut up by
- * water or funnelled by road, so every fight on them happens at a crossing.
- * Here there is nowhere to funnel anyone, and the only cover is two woods and
- * the hill -- which makes it the board for finding out what the units do when
- * the terrain stops doing it for them.
+ * ⚠️ **A road across rather than along** helps you redeploy down your own line
+ * far more than it helps you advance, which is the whole character of the
+ * board: taking the lateral gains you speed *sideways*, and the enemy is not
+ * sideways.
  *
- * ⚠️ The road is across rather than along, so it is a **lateral** road: it
- * helps you redeploy along your own line far more than it helps you advance.
- * That is what stops open ground simply favouring whoever charges first.
+ * ⚠️ **The two spurs do not line up**, one west and one east, so neither player
+ * has a straight run at the other -- reaching the lateral is a turn of its own
+ * whichever side you are, and what you do with it afterwards is the decision.
+ *
+ * ⚠️ **One wood and one rise, both off the road and on opposite sides of it.**
+ * The wood is cover anything can occupy; the rise is four stars that no gun can
+ * climb. Each sits nearer one player than the other, so the pair are worth
+ * taking for different reasons and at different moments.
  */
 export const meadow: GameMap = {
   id: 'meadow',
@@ -19,17 +24,17 @@ export const meadow: GameMap = {
 
   // . plains   - road   = bridge   ~ river   ^ mountain   f forest
   rows: [
-    '............',
-    '..ff........',
-    '..ff........',
-    '............',
-    '............',
+    '..-.........',
+    '..-.........',
+    '..-.........',
+    '..-..ff.....',
+    '..-..ff.....',
     '------------',
-    '....^^^^....',
-    '.....^^.....',
-    '............',
-    '........ff..',
-    '........ff..',
-    '............',
+    '.........-..',
+    '...^^....-..',
+    '...^^....-..',
+    '.........-..',
+    '.........-..',
+    '.........-..',
   ],
 };

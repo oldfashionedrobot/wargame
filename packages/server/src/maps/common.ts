@@ -1,34 +1,37 @@
 import type { GameMap } from './types';
 
 /**
- * A road up the middle, high ground on both flanks, and open field everywhere
- * else.
+ * Open field with the road up the middle -- the fast way *at* the enemy -- and a
+ * rise on one flank of each approach.
  *
- * The other open board with the opposite road: this one runs the length of the
- * play, so it is the fast way *at* the enemy rather than the fast way across
- * your own line. Artillery that takes it arrives first and arrives exposed.
+ * ⚠️ **The two rises are diagonally opposed**, west on the near approach and
+ * east on the far one, so the board is not a mirror and the same plan does not
+ * work from both ends. Four stars of cover apiece and shut to `wheels`: a
+ * strong position no gun can ever hold, which is what stops either being simply
+ * the best place to be.
  *
- * The flanking hills are 4 stars of cover apiece and shut to wheels outright,
- * so each is a strong position that no gun can ever hold -- which is the trade
- * the terrain table exists to make, stated four times on one board.
+ * ⚠️ **A wood sits beside the road at the centre**, which is the tile both
+ * players actually want. It is the only cover on the board anything can occupy,
+ * it overlooks the one fast route, and it is equally far from both -- so it is
+ * the first argument of the game rather than a position either side inherits.
  */
 export const common: GameMap = {
   id: 'common',
-  name: 'The Common',
+  name: 'Common',
 
   // . plains   - road   = bridge   ~ river   ^ mountain   f forest
   rows: [
-    '.....--.....',
-    '..ff.--.ff..',
-    '.....--.....',
-    '^^...--...^^',
-    '^^...--...^^',
-    '.....--.....',
-    '.....--.....',
-    '^^...--...^^',
-    '^^...--...^^',
-    '.....--.....',
-    '..ff.--.ff..',
-    '.....--.....',
+    '.....-......',
+    '.....-......',
+    '.....-......',
+    '^^...-......',
+    '^^...-......',
+    '.....-.ff...',
+    '.....-.ff...',
+    '.....-...^^.',
+    '.....-...^^.',
+    '.....-......',
+    '.....-......',
+    '.....-......',
   ],
 };

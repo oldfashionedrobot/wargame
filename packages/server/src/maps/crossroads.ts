@@ -1,13 +1,19 @@
 import type { GameMap } from './types';
 
 /**
- * A road network closed into a figure of eight. No water and no high ground:
- * every tile is passable to everything, so the only thing shaping a move is
- * what it costs.
+ * A road network closed into a figure of eight, with a wood inside two of its
+ * cells.
  *
- * Which makes this the board artillery actually likes. A gun pays 2 to cross
- * plains and 1 on a road, so the rungs are worth going out of your way for --
- * and the blocks they enclose are what stop that being a straight line.
+ * No water and no high ground, so nothing here is impassable and cost is the
+ * only thing shaping a move -- which is what makes it the board artillery
+ * likes. `wheels` pays 1 for road against 2 for the field beside it, so the
+ * network multiplies a gun's reach and is worth more to that arm than to
+ * either other.
+ *
+ * ⚠️ **The two woods are diagonally opposite**, one in the near-west cell and
+ * one in the far-east. Each player has a strongpoint to take and a matching one
+ * to shell, and neither sits on the way to the other -- so taking yours is a
+ * decision rather than something that happens on the way past.
  */
 export const crossroads: GameMap = {
   id: 'crossroads',
@@ -15,17 +21,17 @@ export const crossroads: GameMap = {
 
   // . plains   - road   = bridge   ~ river   ^ mountain   f forest
   rows: [
-    '.....--.....',
-    '..f..--..f..',
-    '------------',
-    '.....--.....',
-    '.....--.....',
-    '------------',
-    '.....--.....',
-    '.....--.....',
-    '------------',
-    '..f..--..f..',
-    '.....--.....',
-    '.....--.....',
+    '..-......-..',
+    '..-......-..',
+    '..--------..',
+    '..-.ff...-..',
+    '..-.ff...-..',
+    '..--------..',
+    '..-...ff.-..',
+    '..-...ff.-..',
+    '..--------..',
+    '..-......-..',
+    '..-......-..',
+    '..-......-..',
   ],
 };

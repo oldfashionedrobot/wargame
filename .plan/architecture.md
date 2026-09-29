@@ -423,14 +423,35 @@ centres the zone on whatever width it is handed — but `maps.test.ts` asserts i
 so it is a constraint rather than a coincidence. The zone spans ten columns,
 leaving one spare a side.
 
+**Four rules hold across every board**, and they are design rather than code —
+nothing enforces the last two but the eye:
+
+- **Deployment zones carry nothing but plains and road.** Cover at the start is
+  cover nobody fought for, and `maps.test.ts` refuses ground a unit cannot stand
+  on there.
+- ⚠️ **Roads are one tile wide, everywhere.** A two-lane road was never a wider
+  road — it was two roads — and it doubled the width of every corridor it drew.
+  The renderer does not care: `bridgeTurns` reads *strictly* road neighbours and
+  so answers correctly at any width.
+- **Every board has road reaching into both zones.** `wheels` pays 1 to enter
+  road and 2 to enter plains, so a road multiplies a gun's reach for the turn —
+  which makes where the road goes the same question as where artillery can be,
+  and a board with no road one that arm cannot play. ⚠️ **The multiplier is not
+  a fixed number**: it falls out of `movementRange` against those costs, so
+  retuning the gun moves it.
+- ⚠️ **Broken ground belongs in the middle rows, and in pieces.** Cover beside a
+  deployment zone decorates a start; cover in the contested middle is a position
+  somebody has to take. Discrete masses rather than a blanket, so one side can
+  hold one and the other has to answer it at range.
+
 | | |
 |---|---|
-| `classic` | A river across the middle with one bridge, woods on the near approach and high ground on the far one. Infantry ford anywhere; cavalry and artillery must take the crossing, which is the whole board |
-| `crossroads` | A road network closed into a figure of eight. No water and no high ground, so nothing is impassable and cost is the only thing shaping a move — which makes it the board artillery likes |
-| `two-bridges` | One river bent through a right angle with a crossing on each arm. ⚠️ The only board carrying **both deck orientations**, so it is the only one that exercises all of `bridgeTurns` |
-| `lakeland` | A lake ringing an island, plus a pond clear of both deployment zones. The island is where the water's *price* shows: infantry wades across in one turn, cavalry needs two and spends the night between them in open water at zero defence, and artillery never arrives at all |
-| `meadow` | Open field, a **lateral** road straight across and one rise in the middle. A road across rather than along helps you redeploy along your own line more than it helps you advance |
-| `common` | Open field with the opposite road — up the middle, the fast way *at* the enemy — and hills on both flanks: 4 stars of cover apiece and shut to wheels, so a strong position no gun can ever hold |
+| `classic` | A river across the middle with a single crossing. Infantry ford anywhere, cavalry at a price, and `wheels` not at all — so the bridge is the whole board. ⚠️ **The approaches are different ground**: a wood beside the road on the near bank, a rise beside it on the far one |
+| `crossroads` | A road network closed into a figure of eight, with a wood in two of its cells. No water and no high ground, so nothing is impassable and cost is the only thing shaping a move — which makes it the board artillery likes. The woods sit diagonally opposite, one per player |
+| `two-bridges` | One river bent through a right angle with a crossing on each arm. ⚠️ The only board carrying **both deck orientations**, so it is the only one that exercises all of `bridgeTurns`. Broken ground is all on the east side, leaving the west a road corridor |
+| `lakeland` | A lake ringing a **wooded** island, and a road down the west shore. The island is where the water's price shows: infantry wades across in one turn, cavalry needs two and spends the night in open water at zero defence, and artillery never arrives at all — so it is two stars of cover no gun can ever take, only shell |
+| `meadow` | Open field with one **lateral** road straight across and a spur down to it from each side. A road across rather than along helps you redeploy along your own line more than it helps you advance, and ⚠️ **the two spurs do not line up**, so neither player has a straight run at the other |
+| `common` | Open field with the road up the middle — the fast way *at* the enemy — and a rise on one flank of each approach, ⚠️ **diagonally opposed** so the same plan does not work from both ends. A wood beside the road at the centre is the only cover anything can occupy, and it is equally far from both |
 
 ⚠️ **A river may only leave the board where a deployment zone is not.** The
 zones are the middle ten columns of the two rows at each end, and `wheels` cannot
