@@ -37,23 +37,25 @@ export interface Terrain {
 // than a tile that silently costs undefined.
 export const TERRAIN: Record<TileType, Terrain> = {
   // Roads and bridges are mechanically identical; the split exists so the
-  // renderer can draw a crossing over water. `wheels` paying 2 on plains and
-  // 1 on road is the whole of "artillery prefers roads".
+  // renderer can draw a crossing over water. `wheels` paying 1.5 on plains
+  // against 1 on road is the whole of "artillery prefers roads" -- a ratio
+  // rather than a tile count, because how many tiles that buys is a property of
+  // `movementRange` and moves when the gun is tuned.
   road: { char: '-', defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
   bridge: { char: '=', defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
   // ⚠️ Open ground carries **no** cover, the same as road and bridge. A star
   // here gave an open field the protection of a wood, and it was what made the
   // forest column of the hits-to-kill table identical to the plains column in
   // all nine matchups -- a wood cost movement and bought nothing.
-  plains: { char: '.', defense: 0, cost: { foot: 1, horse: 1, wheels: 2 } },
-  forest: { char: 'f', defense: 2, cost: { foot: 1, horse: 2, wheels: 3 } },
+  plains: { char: '.', defense: 0, cost: { foot: 1, horse: 1, wheels: 1.5 } },
+  forest: { char: 'f', defense: 2, cost: { foot: 1.5, horse: 2, wheels: 3 } },
   // Rough ground, and the best cover on the board. A man climbs it at a price
-  // and a horse can be led up it -- but 4 against cavalry's range of 5 means
-  // the climb is four fifths of a turn. A cavalry reaches a peak only from
+  // and a horse can be led up it -- but 3 against cavalry's range of 4 means
+  // the climb is three quarters of a turn. A cavalry reaches a peak only from
   // close by, at most one step of approach, and never takes one in passing.
   // That is the shape of the decision: cavalry is fast *in the open*, not fast
   // everywhere. A gun carriage does not go up a rock face at any price.
-  mountain: { char: '^', defense: 4, cost: { foot: 2, horse: 4, wheels: null } },
+  mountain: { char: '^', defense: 4, cost: { foot: 2, horse: 3, wheels: null } },
   river: { char: '~', defense: 0, cost: { foot: 2, horse: 3, wheels: null } },
 };
 

@@ -137,7 +137,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     name: 'Artillery',
     char: 'a',
     movementType: 'wheels',
-    movementRange: 4,
+    movementRange: 3,
     // ⚠️ `min: 3` is the unit's defining weakness and the reason cavalry has a
     // job: a gun cannot fire at anything that has closed with it. ⚠️ **Three
     // rather than two, from play**: at two the dead zone was one tile deep and

@@ -885,38 +885,39 @@ argument live; this is the phase that keeps changing them.
   `Partial` so artillery can have no row — a new unit silently gets no charge.
 - **Whatever play says next.** Three things have already moved this way, and two
   of the three turned out to be rules rather than dials.
-- ⬜ **Artillery's `movementRange` moves board balance more than the boards do.**
-  Running `simulate.ts` with the same policy on both sides — so any departure
-  from even is the board — and playing every map from both openings, 300 games
-  a cell. At the catalog's **4**, the mover who goes *second* wins nearly
-  everything:
+- ⬜ **The boards still lean, and the gun's mobility moves them more than they
+  do.** Running `simulate.ts` with the same policy on both sides — so any
+  departure from even is the board — and playing every map from both openings,
+  300 games a cell:
 
   | map | blue opens | red opens | reads as |
   |---|---|---|---|
-  | `crossroads` | 94% red | 95% blue | second mover, overwhelming |
-  | `meadow` | 94% red | 93% blue | second mover, overwhelming |
-  | `two-bridges` | 89% red | 88% blue | second mover |
-  | `common` | 71% red | 54% blue | second mover |
-  | `classic` | 58% red | 62% blue | second mover, mild |
-  | `lakeland` | 65% red | 67% red | a red board |
-
-  ⚠️ **That is a reversal, and the boards caused it.** The previous set handed
-  the *opener* essentially every game; these hand it to whoever replies. A road
-  network lets guns reposition faster than a line can close, so committing first
-  is what gets you shot — which is a more interesting failure than the one it
-  replaced, and still a failure.
-
-  ⚠️ **Drop the gun to 3 and most of it goes away.** `wheels` pays 2 for plains
-  and 1 for road, so a range of 3 buys one tile across country against three
-  along a road, where 4 buys two against four. The same six boards then run
-  between 52% and 81% rather than 54% and 95%, and the second-mover effect
-  stops dominating. ⚠️ **So the gun's mobility is the dial these boards are most
-  sensitive to**, and it should be settled before any map is redrawn to chase a
-  number.
+  | `crossroads` | 52% blue | 50% blue | even |
+  | `common` | 51% blue | 56% blue | near even |
+  | `meadow` | 67% blue | 53% blue | leans blue |
+  | `classic` | 59% blue | 69% blue | a blue board |
+  | `two-bridges` | 68% red | 73% blue | whoever moves **second** |
+  | `lakeland` | 54% red | 57% red | a red board, 16% unresolved |
 
   ⚠️ **Read the pair, not either column.** A fair board gives the opener the same
-  edge from both ends; one colour winning *both* columns is the board talking,
-  and by that test only `lakeland` is biased rather than order-sensitive.
+  edge from both ends; one colour winning *both* columns is the board talking.
+  By that test `crossroads` and `common` are sound, `classic` and `lakeland` are
+  biased, and `two-bridges` is order-sensitive rather than biased — it rewards
+  replying, from either side, which is a property of its chokepoints.
+
+  ⚠️ **`lakeland` does not finish a sixth of its games**, which is worth more
+  attention than its bias: a board that cannot resolve is a worse failure than
+  one that favours a colour, and the lake is the obvious suspect.
+
+  ⚠️ **Artillery's `movementRange` was the biggest single lever on all of this**,
+  and it is measured rather than argued. At **4** the same six boards handed the
+  game to whoever moved *second* — 94% on `crossroads` and `meadow`, 89% on
+  `two-bridges`, a spread of 54% to 95%. At **3** the spread is 50% to 73% and
+  the second-mover effect survives only on `two-bridges`. `wheels` pays 1.5 for
+  plains against 1 for road, so the gun's budget decides how much board it
+  covers between replies, and a road network amplifies whatever that number is.
+  ⚠️ **So settle the gun before redrawing a board to chase a number** — the
+  terrain is downstream of it.
 
   ⚠️ **Do not tune these against the bot.** It is greedy, it never screens, and
   it does not value terrain — so chasing an even split optimises the board for a

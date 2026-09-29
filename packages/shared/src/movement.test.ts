@@ -192,7 +192,11 @@ describe('exploreMovement: terrain costs', () => {
   // that difference is tuned. Written against cavalry's real range, because
   // what decides anything is the ratio of the climb to the budget, not the 4.
   it('lets a horse onto a mountain, but only from close by', () => {
-    const HORSE_RANGE = 5;
+    // ⚠️ Cavalry's real budget, and it said 5 while the catalog said 4 -- a
+    // number that had drifted and was being read as the thing under test. The
+    // ford test beside this one had it right, which is what made the pair
+    // disagree about a property they both describe.
+    const HORSE_RANGE = 4;
     // One peak on an open row, approached from the west end. Only its distance
     // changes between the cases.
     const climbs = (row: string) => {
@@ -200,9 +204,9 @@ describe('exploreMovement: terrain costs', () => {
       return has(explore(state, 'b1', HORSE_RANGE, 'horse').reachable, row.indexOf('^'), 0);
     };
 
-    expect(climbs('.^..')).toBe(true); // alongside already: the climb is 4 of 5
-    expect(climbs('..^.')).toBe(true); // one step of approach: 1 + 4 exactly
-    expect(climbs('...^')).toBe(false); // two steps: 2 + 4 is over the budget
+    expect(climbs('.^..')).toBe(true); // alongside already: the climb is 3 of 4
+    expect(climbs('..^.')).toBe(true); // one step of approach: 1 + 3 exactly
+    expect(climbs('...^')).toBe(false); // two steps: 2 + 3 is over the budget
 
     // Wheels are still refused outright, at any distance and any budget --
     // costly and impassable did not collapse into the same thing.
