@@ -454,6 +454,109 @@ describe('validateMove, a slow unit', () => {
   });
 });
 
+// ⚠️ **A unit that starts in contact moves or attacks, not both** -- the same
+// refusal `slow` lives under, with a second cause. Blue foot at (1,1), red
+// foot beside it at (1,2), a second red at (4,1).
+describe('validateMove, a unit in contact', () => {
+  const engaged = (unitTypeId: 'infantry' | 'cavalry' = 'infantry') =>
+    makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+      { id: 'r2', col: 4, row: 1, owner: 'red' },
+    ]);
+  const order = (
+    path: [number, number][],
+    extra: Partial<MoveCommand> = {},
+    unitTypeId?: 'infantry' | 'cavalry',
+  ) =>
+    validateMove(engaged(unitTypeId), {
+      type: 'move',
+      unitId: 'b1',
+      path: path.map(([col, row]) => at(col, row)),
+      facing: 'north',
+      ...extra,
+    });
+
+  it('may attack from where it stands', () => {
+    expect(order([[1, 1]], { targetUnitId: 'r1' })).toBeNull();
+  });
+
+  it('may turn on the spot and attack', () => {
+    expect(order([[1, 1]], { targetUnitId: 'r1', facing: 'south' })).toBeNull();
+  });
+
+  it('may not move and then attack', () => {
+    expect(
+      order(
+        [
+          [1, 1],
+          [0, 1],
+        ],
+        { targetUnitId: 'r1' },
+      ),
+    ).toBe('a unit that starts in contact can move or attack, not both');
+  });
+
+  it('may move away, so long as that is all it does', () => {
+    expect(
+      order([
+        [1, 1],
+        [1, 0],
+      ]),
+    ).toBeNull();
+  });
+
+  // Allowed rather than forbidden: ending beside a different enemy is already a
+  // poor move, and needs no rule to say so.
+  it('may withdraw into contact with another enemy', () => {
+    expect(
+      order([
+        [1, 1],
+        [2, 1],
+        [3, 1],
+      ]),
+    ).toBeNull();
+  });
+
+  // A cavalry left in contact after a failed charge may charge again: that is
+  // attacking from where it stands.
+  it('may charge again from where it stands', () => {
+    expect(order([[1, 1]], { targetUnitId: 'r1', attackKind: 'charge' }, 'cavalry')).toBeNull();
+  });
+
+  it('may not move and then charge', () => {
+    expect(
+      order(
+        [
+          [1, 1],
+          [0, 1],
+          [0, 2],
+        ],
+        { targetUnitId: 'r1', attackKind: 'charge' },
+        'cavalry',
+      ),
+    ).toBe('a unit that starts in contact can move or attack, not both');
+  });
+
+  // The other side of the rule: a unit that starts in the open moves *into*
+  // contact and attacks on arrival, which is how contact is ever made.
+  it('does not stop a unit that starts in the open', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 0 },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+    ]);
+    expect(
+      validateMove(state, {
+        type: 'move',
+        unitId: 'b1',
+        path: [at(1, 0), at(1, 1)],
+        facing: 'north',
+        targetUnitId: 'r1',
+      }),
+    ).toBeNull();
+  });
+});
+
 describe('resolveMove, charging', () => {
   const at_ = (col: number, row: number) => ({ col, row });
   const field = (health: number, rows?: string[]) =>

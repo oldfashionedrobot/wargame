@@ -163,6 +163,68 @@ describe('exploreMovement: unit collision', () => {
   });
 });
 
+// ⚠️ **Contact ends a move.** A tile beside an enemy may be entered but not
+// passed through, so getting past or round the enemy takes a berth wide enough
+// to stay out of contact. A blue foot on an open 7x5, a red unit at (3,2).
+describe('exploreMovement: contact', () => {
+  const field = (redType: 'infantry' | 'cavalry' | 'artillery' = 'infantry', blueAt = at(0, 2)) =>
+    makeState({ cols: 7, rows: 5 }, [
+      { id: 'b1', ...blueAt },
+      { id: 'r1', col: 3, row: 2, owner: 'red', unitTypeId: redType },
+    ]);
+
+  it('lets a unit stop beside the enemy', () => {
+    expect(has(reachable(field(), 'b1', 6), 2, 2)).toBe(true);
+  });
+
+  // The far side of the enemy is a contact tile itself, and every short way to
+  // it runs through another; only a berth round the diagonals gets there.
+  it('makes the long way round the only way round', () => {
+    const state = field();
+    expect(explore(state, 'b1', 6).pathTo(at(4, 2))).toBeNull();
+    const wide = explore(state, 'b1', 8).pathTo(at(4, 2));
+    expect(wide).not.toBeNull();
+    // ...and that route never sets foot in contact before its last step.
+    const touching = (c: Coordinate) => Math.abs(c.col - 3) + Math.abs(c.row - 2) === 1;
+    expect(wide!.slice(0, -1).some(touching)).toBe(false);
+  });
+
+  it('is made by every unit, guns included', () => {
+    expect(has(reachable(field('cavalry'), 'b1', 6), 4, 2)).toBe(false);
+    expect(has(reachable(field('artillery'), 'b1', 6), 4, 2)).toBe(false);
+  });
+
+  // ⚠️ The origin is exempt: a unit that starts in contact may walk out of it.
+  it('lets a unit that starts in contact walk away', () => {
+    expect(has(reachable(field('infantry', at(2, 2)), 'b1', 1), 1, 2)).toBe(true);
+  });
+
+  // A friend standing in contact is a dead end: entering it ends the move, and
+  // a move cannot end on a friend.
+  it('will not let a unit pass through a friend who is in contact', () => {
+    const state = makeState({ cols: 7, rows: 5 }, [
+      { id: 'b1', col: 2, row: 1 },
+      { id: 'f1', col: 2, row: 2 },
+      { id: 'r1', col: 3, row: 2, owner: 'red' },
+    ]);
+    const route = explore(state, 'b1', 6).pathTo(at(2, 3));
+    expect(route).not.toBeNull();
+    expect(route!.some((c) => c.col === 2 && c.row === 2)).toBe(false);
+  });
+
+  it('keeps settled exactly the set pathTo answers for, with contact in play', () => {
+    const state = field();
+    const movement = explore(state, 'b1', 6);
+    const key = (c: Coordinate) => `${c.col},${c.row}`;
+    const inSettled = new Set(movement.settled.map(key));
+    for (let col = 0; col < 7; col++) {
+      for (let row = 0; row < 5; row++) {
+        expect(movement.pathTo(at(col, row)) !== null).toBe(inSettled.has(key(at(col, row))));
+      }
+    }
+  });
+});
+
 describe('exploreMovement: terrain costs', () => {
   // Row 0 is all road, row 1 all forest. Foot pays 1 either way, wheels pay 1
   // on road and 3 in forest -- so the same budget buys very different ground.
@@ -312,6 +374,18 @@ describe('exploreMovement: pathTo', () => {
 // client picking destinations from `reachable` and paths from `pathTo`
 // cannot trip them.
 describe('validatePath', () => {
+  // ⚠️ Contact is checked on the walk as it is in the search: a route may end in
+  // contact, and may not pass through it.
+  it('refuses a route through a tile in contact with the enemy', () => {
+    const state = makeState({ cols: 7, rows: 5 }, [
+      { id: 'b1', col: 0, row: 2 },
+      { id: 'r1', col: 3, row: 2, owner: 'red' },
+    ]);
+    const through = [at(0, 2), at(1, 2), at(2, 2), at(2, 3)];
+    expect(validatePath(state, unitAt(state, 'b1'), through, 6, 'foot')).toMatch(/contact/);
+    expect(validatePath(state, unitAt(state, 'b1'), through.slice(0, 3), 6, 'foot')).toBeNull();
+  });
+
   const board = (map: Parameters<typeof makeState>[0], units: UnitSpec[]) => {
     const state = makeState(map, units);
     return (path: Coordinate[], range = 3, type: MovementType = 'foot') =>

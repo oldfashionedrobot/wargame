@@ -15,7 +15,7 @@ import {
 } from './data/combat';
 import { clampHealth, getUnitType } from './data/unitTypes';
 import type { UnitTypeId } from './data/unitTypes';
-import { getTileAt, getUnit } from './queries';
+import { getTileAt, getUnit, inContact } from './queries';
 import { getTerrain } from './data/terrain';
 import type { BattleResolvedEvent, Coordinate, GameState, Unit } from './types';
 
@@ -156,12 +156,26 @@ export function computeDamage(
  * sides of the wire: `validateMove` refuses the command with it, and the panel
  * asks it before offering a row. A rule about a turn cannot be derived from a
  * distance, so it cannot live in `outsideRange` with the rest.
+ *
+ * ⚠️ **Two causes, one consequence: move or attack, not both.** A `slow` unit
+ * is always under it. Any other unit is under it when it *starts* in contact --
+ * asked of the path's first tile, because where a unit ended up does not say
+ * where it began. A unit that starts in the open moves and attacks as it always
+ * has, including moving *into* contact and attacking on arrival.
+ *
+ * ⚠️ **Turning is not moving.** A single-element path is a turn in place, so a
+ * gun may pivot onto a target and fire, and a unit in contact may turn to face
+ * whoever it is fighting and strike.
  */
-function refuseSlowAttack(attacker: Unit, path: Coordinate[]): string | null {
-  const moved = path.length > 1;
-  return moved && getUnitType(attacker.unitTypeId).slow
-    ? `${attacker.unitTypeId} cannot move and attack in one turn`
-    : null;
+function refuseMovingAttack(state: GameState, attacker: Unit, path: Coordinate[]): string | null {
+  if (path.length <= 1) return null;
+  if (getUnitType(attacker.unitTypeId).slow) {
+    return `${attacker.unitTypeId} cannot move and attack in one turn`;
+  }
+  if (inContact(state, attacker, path[0])) {
+    return 'a unit that starts in contact can move or attack, not both';
+  }
+  return null;
 }
 
 export function refuseAttack(
@@ -176,7 +190,7 @@ export function refuseAttack(
   if (target.id === attacker.id) return 'a unit cannot attack itself';
   if (target.owner === attacker.owner) return 'that unit is yours';
 
-  const halted = refuseSlowAttack(attacker, path);
+  const halted = refuseMovingAttack(state, attacker, path);
   if (halted) return halted;
 
   const off = outsideRange(attacker, from, target.position);
@@ -480,7 +494,7 @@ export function refuseCharge(
   // ⚠️ Asked here too, although nothing slow can charge today -- artillery has
   // no threshold row. A future slow charger would otherwise silently keep the
   // one privilege the flag exists to remove.
-  const halted = refuseSlowAttack(attacker, path);
+  const halted = refuseMovingAttack(state, attacker, path);
   if (halted) return halted;
   if (chargeThreshold(attacker.unitTypeId, target.unitTypeId) === null) {
     return `${attacker.unitTypeId} cannot charge`;

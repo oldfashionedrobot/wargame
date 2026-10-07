@@ -16,8 +16,10 @@ click a destination to pin the route there and click it again to send the unit
 walking. Where it arrives a panel asks what it is doing — hold, fire or charge,
 listing only the ones it can actually do and skipping itself when that leaves
 one — after which a held unit is pointed somewhere, since facing decides whether
-a shot is answered. A shot or a charge
-cuts away to the two units and plays the exchange. Every unit acts once and the
+a shot is answered. A unit beside an enemy is **in contact**: moving into
+contact ends the move, and a unit that starts its action in contact may move or
+attack, not both. A shot or a charge cuts away to the two units and plays the
+exchange. Every unit acts once and the
 turn ends when the last of them has gone; when a player has nothing left, the
 match is over and says so.
 
@@ -492,7 +494,7 @@ out longhand, because there the order *is* the meaning — they pack into bits
 
 `reachable` and `settled` are different sets, and they answer different
 questions. A friendly unit's tile is settled and walkable-through but is not a
-destination, so `pathTo` answers for a larger set than `reachable` lists. The
+destination — unless it stands in contact, which makes it a dead end — so `pathTo` answers for a larger set than `reachable` lists. The
 unit's own tile stays in the map — every path chain terminates there — and
 `pathTo(unit.position)` is `[position]`.
 
@@ -505,18 +507,29 @@ selects it instead.
 
 An enemy blocks the tile *and* the route; a friend blocks only the tile.
 
+**Contact ends a move.** A unit is in contact on any of the four tiles
+orthogonally beside an enemy — any enemy, guns included — which `inContact` in
+`queries.ts` decides. Such a tile may be entered but not passed through, so
+getting past or round the enemy takes a berth wide enough to stay out of
+contact. ⚠️ **The origin is exempt**: a unit that starts in contact may walk out
+of it, which is why `stops` is recorded per tile entered rather than asked of
+wherever the search happens to be. ⚠️ **No catalog field and no marker** — being
+beside the enemy is the whole of it.
+
 ```ts
 validatePath(state, unit, path, movementRange, movementType) → string | null
 ```
 
 Walks a client-supplied route: starts at the unit, every step orthogonally
-adjacent, no tile twice, nothing impassable or enemy-held, total within budget,
-and a destination unoccupied by anyone but the moving unit. A single-element
+adjacent, no tile twice, nothing impassable or enemy-held, no tile in contact
+before the last, total within budget, and a destination unoccupied by anyone but
+the moving unit. A single-element
 path is legal and costs 0. The server never derives a route.
 
 Both the search and the walk call `entryCost(state, unit, coordinate,
-movementType)`, which returns `{ ok: true, cost }` or `{ ok: false, reason }` —
-the one place that decides whether a tile can be entered and what it costs.
+movementType)`, which returns `{ ok: true, cost, stops }` or `{ ok: false,
+reason }` — the one place that decides whether a tile can be entered, what it
+costs, and whether entering it ends the move.
 
 ## Combat
 
@@ -567,6 +580,23 @@ Both refusals take the whole `path` rather than the destination, because where a
 unit ends up does not say whether it travelled.
 
 Moving alone is legal. The flag forbids the pair, not the movement.
+
+### Contact
+
+The same refusal has a second cause. **A unit that starts its action in contact
+may move or attack, not both** — attack from where it stands, turn in place and
+attack, or move and then not attack. `refuseMovingAttack` is the one place the
+turn rule lives: `slow` puts a unit under it always, and starting in contact
+puts any unit under it, asked of `path[0]` because where a unit ended up does not
+say where it began.
+
+A unit that starts in the open moves and attacks as it always has, including
+moving *into* contact and attacking on arrival, which is how contact is made. A
+withdrawal may end in contact with another enemy. A cavalry in contact may
+charge again without moving, since that is attacking from where it stands.
+
+⚠️ **Mutual.** A unit that rides into contact is in contact itself, and is
+committed the same way on its next action.
 
 ### Facing
 
@@ -1130,9 +1160,10 @@ rules, one per level.
 `tilesInRange`. The band is *reach*: it knows nothing about ownership, a minimum
 range, or a unit targeting itself, so a panel built on it would offer Fire for a
 friend two tiles off and the click would then be refused. One rule asked twice
-cannot disagree with itself — and it is what makes `slow` free on the client:
-Fire simply stops being offered to a gun that has already moved, because the
-refusal it asks reads the path. It walks every unit rather than the band, which is
+cannot disagree with itself — and it is what makes `slow` and contact free on
+the client: Fire and Charge simply stop being offered to a gun that has moved, or
+to any unit that moved out of contact, because the refusal they ask reads the
+path. It walks every unit rather than the band, which is
 sixteen against up to sixty and needs no grid bounds. ⚠️ **Unavailable actions
 are omitted, not greyed**, following AW — the cost is that *nothing in range* and
 *I misread the menu* look alike, and the menu changes height between units.

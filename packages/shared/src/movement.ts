@@ -2,30 +2,13 @@ import { coordinatesEqual, coordinateKey, orthogonalNeighbours } from './coordin
 import { getTerrain } from './data/terrain';
 import type { MovementType } from './data/unitTypes';
 import type { TileType } from './data/terrain';
-import { getTileAt, getUnitAt } from './queries';
+import { getTileAt, getUnitAt, inContact } from './queries';
 import type { Coordinate, GameState, Unit } from './types';
 
-type Entry = { ok: true; cost: number } | { ok: false; reason: string };
+type Entry = { ok: true; cost: number; stops: boolean } | { ok: false; reason: string };
 
 const nameOf = (coordinate: Coordinate) => `(${coordinate.col},${coordinate.row})`;
 
-/**
- * May this unit step onto this tile, and what does it cost?
- *
- * **The one place that question is answered**, called by both consumers: the
- * search below explores with it, and `validatePath` walks with it. That is
- * what makes "client and server share a cost model" structural rather than a
- * rule two implementations have to keep. See the invariant in Terrain.
- *
- * It deliberately does not decide whether a unit may *stop* here. Entering
- * and stopping are different questions -- a friendly unit's tile is
- * enterable and not stoppable -- which is the same line `settled` and
- * `reachable` draw, so the destination check belongs to `validatePath`.
- *
- * Off the board is a refusal rather than a separate bounds check: `getTileAt`
- * already answers `undefined` there, so asking for the terrain and asking
- * whether the tile exists are one question.
- */
 /**
  * May this movement type be on this terrain at all, at any price?
  *
@@ -40,6 +23,27 @@ export function terrainAdmits(tile: TileType, movementType: MovementType): boole
   return getTerrain(tile).cost[movementType] !== null;
 }
 
+/**
+ * May this unit step onto this tile, what does it cost, and does stepping onto
+ * it end the move?
+ *
+ * **The one place those questions are answered**, called by both consumers: the
+ * search below explores with it, and `validatePath` walks with it. That is
+ * what makes "client and server share a cost model" structural rather than a
+ * rule two implementations have to keep. See the invariant in Terrain.
+ *
+ * ⚠️ **`stops` is contact.** A tile beside an enemy may be entered but not
+ * passed through: the move ends there. That is a different question from
+ * whether the unit may *stop* here at all -- a friendly unit's tile is
+ * enterable and not stoppable -- which is the same line `settled` and
+ * `reachable` draw, so the destination check belongs to `validatePath`. A
+ * friend standing in contact is therefore a dead end: entering it ends the
+ * move, and the move cannot end on a friend.
+ *
+ * Off the board is a refusal rather than a separate bounds check: `getTileAt`
+ * already answers `undefined` there, so asking for the terrain and asking
+ * whether the tile exists are one question.
+ */
 function entryCost(
   state: GameState,
   unit: Unit,
@@ -61,7 +65,11 @@ function entryCost(
     return { ok: false, reason: `${movementType} cannot cross ${tile}` };
   }
 
-  return { ok: true, cost: getTerrain(tile).cost[movementType]! };
+  return {
+    ok: true,
+    cost: getTerrain(tile).cost[movementType]!,
+    stops: inContact(state, unit, coordinate),
+  };
 }
 
 export interface Movement {
@@ -105,6 +113,8 @@ interface Settled {
   cost: number;
   /** Key of the tile this was reached from; `null` only for the origin. */
   from: string | null;
+  /** Entered in contact, so the search goes no further from here. */
+  stops: boolean;
 }
 
 /**
@@ -129,6 +139,12 @@ interface Settled {
  *
  * Collision follows Advance Wars: an enemy blocks the tile *and* the route; a
  * friend blocks only the tile, and can be walked through.
+ *
+ * ⚠️ **And contact ends a move.** A tile beside an enemy is reached and never
+ * left in the same move, so getting past or round the enemy takes a berth wide
+ * enough to stay out of contact. The origin is exempt -- a unit that starts in
+ * contact may walk out of it -- which is why `stops` is recorded per tile
+ * entered rather than asked of wherever the search happens to be.
  */
 export function exploreMovement(
   state: GameState,
@@ -141,7 +157,12 @@ export function exploreMovement(
   // derived from it once, at the end. Filtering the map itself instead would
   // make a route *through* a friendly unit unfindable.
   const settled = new Map<string, Settled>();
-  settled.set(coordinateKey(unit.position), { coordinate: unit.position, cost: 0, from: null });
+  settled.set(coordinateKey(unit.position), {
+    coordinate: unit.position,
+    cost: 0,
+    from: null,
+    stops: false,
+  });
   const queue: Coordinate[] = [unit.position];
 
   while (queue.length > 0) {
@@ -150,6 +171,7 @@ export function exploreMovement(
     const currentKey = coordinateKey(current);
     const currentCost = settled.get(currentKey)?.cost ?? 0;
     if (currentCost >= movementRange) continue; // nothing left to spend
+    if (settled.get(currentKey)?.stops) continue; // entered in contact: the move ends here
 
     for (const next of orthogonalNeighbours(current)) {
       // Off the board, impassable, or held by an enemy -- one question, and
@@ -166,7 +188,7 @@ export function exploreMovement(
       const known = settled.get(key);
       if (known !== undefined && known.cost <= nextCost) continue;
 
-      settled.set(key, { coordinate: next, cost: nextCost, from: currentKey });
+      settled.set(key, { coordinate: next, cost: nextCost, from: currentKey, stops: entry.stops });
       queue.push(next);
     }
   }
@@ -247,6 +269,9 @@ export function validatePath(
 
     const entry = entryCost(state, unit, step, movementType);
     if (!entry.ok) return entry.reason;
+    if (entry.stops && i < path.length - 1) {
+      return `${nameOf(step)} is in contact with the enemy, and a move ends there`;
+    }
 
     spent += entry.cost;
     if (spent > movementRange) return 'move exceeds movement range';

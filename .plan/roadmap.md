@@ -394,6 +394,16 @@ Lowering thresholds first is lowering them twice.
 that says so — or, once contact pins a unit, being caught: see *Mobility in
 contact*.
 
+⚠️ **What contact did for the charge.** The charge is modelled on the real
+thing: cavalry cannot walk into musket range and trade blows with formed infantry
+— 30 out against 50 back — so it waits for an opportune moment and charges to
+break the unit outright, and if the line holds the horses are stopped on the
+bayonets. Contact supplies both halves the rules lacked. Opportunity is scarce
+again, because a flank is no longer one move away; and a failed charge leaves the
+cavalry caught — stay and lose the exchange, renew the charge, or withdraw and do
+nothing. That is the *high risk* half arriving without touching `CHARGE_REPEL`,
+and a reason the thresholds may need less lowering than they would on their own.
+
 ⬜ **Parked for a later pass: a charge's odds scaling with the charger's own
 strength.** `chargeChance` reads the defender's health and never the attacker's,
 so a broken squadron breaks a fresh line exactly as often as a fresh one does.
@@ -461,125 +471,14 @@ regardless.
 
 #### Mobility in contact — engagement and overwatch
 
-✅ **Decided and unbuilt — and the change the rest of this pass waits on.**
-Movement was tuned for open ground, and it goes on working the same way once the
-armies meet: a unit already in a fight can still step round to its opponent's
-flank or rear and attack from there, every turn.
+✅ **Contact shipped.** A unit beside an enemy is in contact; moving into contact
+ends the move, and a unit that starts its action in contact moves or attacks, not
+both. What it does is in [`architecture.md`](architecture.md), under *Movement*
+and *Contact*; why, and what it measured, is in the commit that landed it.
 
-⚠️ **The problem is commitment, not access.** Once two units are fighting, the
-fight should pin them, so that *when* and *where* to attack from is decided
-before contact rather than improvised just before each blow. Final Fantasy
-Tactics gets away with free repositioning because its units are people, and a
-person can step round another; a unit here is a formation — `PIECE_SCALE`
-already says as much — and a battalion locked with another does not wheel round
-it.
-
-⚠️ **Engagement and overwatch are one question here, not two.** Both answer
-*moving around near the enemy should cost something*, and differ only in what
-the cost is. A **costlier engagement** makes contact itself limit where a unit
-can go — the zone-of-control family. A **downside to moving near an enemy** lets
-the enemy punish it — overwatch, or a free blow for leaving. They combine as
-readily as they compete: a free blow for leaving a zone is both.
-
-⚠️ **The problem, measured** on open ground under today's rules: of the tiles
-in front of a lone defender, **seven in fifty-five** can put a
-charge into its rear this turn, and a cavalry **already in contact at its front**
-can ride round and charge its rear in the same turn. A line of five foot with
-one-tile gaps does **nothing** for a gun behind it: seven of twenty-two cavalry
-starting in front of the line reach the gun.
-
-✅ **Any zone of control fixes the measured problem.** Under every variant tried,
-rear charges from the front fall to two in fifty-five or fewer, the engaged
-cavalry can no longer get round, and the line becomes a wall — none of the
-twenty-two reach the gun. So the choice between variants was about how each
-*reads*. *Rigid* was taken — entering ends the move — over *semi-rigid*, over
-*fluid* (an extra cost, muddier now costs are fractional, and it let more foot
-through), and over *locking* (no withdrawal at all).
-
-✅ **The rule: contact is adjacency, and every unit makes it.** A unit is *in
-contact* when it stands on one of the four tiles orthogonally beside an enemy —
-any enemy, guns included. Four rather than eight because four already does the
-job, and it is the one notion of adjacency the game has, `orthogonalNeighbours`;
-eight would be the first diagonal anywhere in the rules. Two consequences, and
-nothing else:
-
-- **Moving into contact ends the move.** A tile beside an enemy may be entered
-  but not passed through, so getting past or round the enemy takes a berth wide
-  enough to stay out of contact. That is what shortens a unit's reach near the
-  fight, and the range overlay shows it without being told.
-- **A unit that starts its action in contact may move or attack, not both.** It
-  can attack from where it stands — turning to its target, as now — turn in place
-  to face another side, or move away and then not attack. A unit that starts in
-  the open moves and attacks as it does today. `slow` is untouched; a gun
-  already lives under the stricter half everywhere.
-
-⚠️ **No catalog field, no marker, no new word on the screen**, and that is the
-rule's main virtue: being next to an enemy is visible on the board and explains
-itself in a sentence. An earlier draft gave only foot and horse a zone, through a
-flag on the unit catalog, which then needed an *engaged* marker to explain why
-one unit could not do what its neighbour could. Every unit making contact
-removed the flag, the marker and the exception together. The action panel needs
-nothing either — it omits Fire and Charge after such a move exactly as it does
-for a gun that has moved, because it asks the same rule.
-
-⚠️ **Mutual, deliberately.** Cavalry that rides into contact to pin infantry is
-in contact itself and committed the same way, and a breakthrough that lands
-beside another enemy is in contact with it. That is the play the rule exists to
-create: foot skirmishes from two tiles out and stays free; horse rides in to pin
-it, giving up its own freedom to do so; and horse, which loses a straight
-firefight with foot — 30 out against 50 back — has to use its speed to keep off
-the open middle, where it would be volleyed down.
-
-⚠️ **A withdrawal may end in contact with another enemy.** Allowed rather than
-forbidden: ending a move beside a different enemy is already a poor choice and
-needs no rule to say so. An earlier draft required a withdrawal to break contact
-entirely; the simpler version won.
-
-⚠️ **The charge is the case that shows why.** It is modelled on the real thing:
-cavalry cannot walk into musket range and trade blows with formed infantry — 30
-out against 50 back says as much — so it waits for an opportune moment and
-charges to break the unit outright; if the line holds, the horses are stopped on
-the bayonets and have to pull up, or fall back on their carbines. Today's rules
-fall short of that in two ways, and both are this section's problem. **Every
-moment is opportune** while a flank is always one move away — scarcity of
-opportunity is what engagement restores. And **a failed charge costs only the
-repel**: the cavalry is left beside the infantry it failed to break and rides
-off or round next turn. Engaged, it is caught — stay and lose the exchange, or
-withdraw and do nothing — which is the *high risk* half of the gamble arriving
-without touching `CHARGE_REPEL`, and a reason the thresholds may need less
-lowering than they would on their own.
-
-✅ **A cavalry left in contact after a failed charge may charge again without
-moving** — it is attacking from where it stands. It has already paid the repel
-for the last attempt, and how often renewing it pays is left to play.
-
-✅ **Prototyped and measured**, in a scratch copy rather than the repo. The rules
-come to about twenty-five lines: `entryCost` gains a third answer — *you may
-enter, but you stop* — read by the search, which does not continue from such a
-tile, and by `validatePath`, which refuses one anywhere but the end; plus a
-refusal beside `slow` in `refuseAttack` and `refuseCharge`. **The whole existing
-suite passed against it unchanged**, 452 and 234. In the simulator, 300 games a
-map, blue opening:
-
-| | charges tried | charge success | artillery's share of damage | turns |
-|---|---|---|---|---|
-| `classic` | 1263 → 997 | 81% → 78% | 56% → 59% | 13.4 → 14.7 |
-| `crossroads` | 1531 → 1244 | 77% → 73% | 43% → 49% | 13.0 → 13.6 |
-| `common` | 1450 → 1148 | 78% → 71% | 53% → 57% | 13.3 → 14.0 |
-| `lakeland` | 1185 → 1049 | 72% → 68% | 58% → 58% | 58 → 60 |
-
-Charge opportunities fall by about a fifth. Screens make guns harder to reach, so
-artillery's share of the damage rises — the cut in *The next combat pass* is the
-counterweight, and the two want measuring together. Exempting guns from making
-contact moved none of this by more than a fraction of a point, which is what made
-the simpler rule free. ⚠️ The bot plays legally but never pins or screens on
-purpose, so these are the rule's effect on a player who ignores it.
-
-⚠️ **It costs no state.** Contact is worked out from positions each time, so
-`GameState` does not change and no stored match is abandoned; the bot and the
-client's overlay inherit it through `exploreMovement`. `entryCost` stays the one
-function that decides what a tile costs, so the overlay and the server's check
-cannot disagree.
+⚠️ **Engagement and overwatch were one question**: both answer *moving around
+near the enemy should cost something*. Contact made the fight itself costly to
+manoeuvre in; overwatch would make moving merely *near* the enemy costly.
 
 ⬜ **Overwatch is shelved, as a possible second layer.** Contact covers a unit
 that is in a fight; overwatch would add a cost to moving *near* the enemy without
@@ -617,14 +516,6 @@ change and abandons stored matches under the ruleset compromise.
 out from positions alone, so a scratch search can say what it does; a reaction
 depends on what the other side chose to watch, which nothing can sweep without
 building it.
-
-⚠️ **It reaches everything else in this epic**, which is why it goes first. Rear
-and flank charges fall away on their own — a fifth fewer charges in the
-prototype. Screens become real, so guns get harder to reach, which works against
-the artillery cut — measured, three to six points. Contact slows everything, by
-about a turn a match. And `lakeland`, already unresolved in a sixth of its
-games, is no worse and no better. The charge thresholds are tuned together with
-this.
 
 #### The dials
 
