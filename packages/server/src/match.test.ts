@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { route } from '@wargame/shared/testing';
 import type { Command, Coordinate } from '@wargame/shared';
-import { exploreMovement, getUnitType, LUCK_MAX } from '@wargame/shared';
+import { exploreMovement, facingToward, getUnitType, LUCK_MAX } from '@wargame/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore, rollLuck } from './match';
 import type { MatchStore } from './match';
@@ -230,27 +230,62 @@ describe('submit', () => {
     expect(await store.submit('nope', { type: 'endTurn' }, BLUE)).toBeNull();
   });
 
-  // ⚠️ Luck joins the base before band and cover scale it, so a roll cannot be
-  // read back out of the damage it produced -- the row is where it is kept. On
-  // the row and never in the events, which go to both players.
-  it('records the rolls each resolution was given, and keeps them out of the events', async () => {
-    const { id } = await store.create();
-    const result = await store.submit(
-      id,
-      move(BLUE_MOVER.id, BLUE_MOVER.to, BLUE_MOVER.from),
-      BLUE,
-    );
-    expect(result?.ok).toBe(true);
-    const { rows } = await sql.execute({
-      sql: 'SELECT rolls, events FROM resolutions WHERE match_id = ?',
-      args: [id],
+  // Stored on the row; never sent to either player.
+  describe('the rolls', () => {
+    const attack = async (attackKind: 'fire' | 'charge') => {
+      const { id } = await store.create();
+      const base = createMatchState(
+        getMap('classic'),
+        [
+          { player: PLAYERS[0], army: ['c'] },
+          { player: PLAYERS[1], army: ['i'] },
+        ],
+        { width: 1, depth: 1 },
+      );
+      const blue = { ...base.units.find((u) => u.owner === BLUE)!, position: { col: 5, row: 0 } };
+      const red = { ...base.units.find((u) => u.owner === RED)!, position: { col: 5, row: 1 } };
+      const fight = { ...base, units: [blue, red] };
+      await sql.execute({
+        sql: 'UPDATE matches SET initial_state = ?, current_state = ? WHERE id = ?',
+        args: [JSON.stringify(fight), JSON.stringify(fight), id],
+      });
+      const command: Command = {
+        type: 'move',
+        unitId: blue.id,
+        path: [blue.position],
+        facing: facingToward(blue.position, red.position, blue.facing),
+        targetUnitId: red.id,
+        attackKind,
+      };
+      const result = await store.submit(id, command, BLUE);
+      expect(result?.ok).toBe(true);
+      expect(result?.ok && result.events.map((e) => e.type)).toContain('battleResolved');
+      const { rows } = await sql.execute({
+        sql: 'SELECT rolls FROM resolutions WHERE match_id = ?',
+        args: [id],
+      });
+      const sent = JSON.stringify([result, await store.since(id, 0)]);
+      return { rolls: JSON.parse(rows[0].rolls as string), sent };
+    };
+    const leaked = /"(attack|counter|charge|rolls)":/;
+
+    it('keeps both of a shot’s', async () => {
+      const { rolls, sent } = await attack('fire');
+      expect(Object.keys(rolls).sort()).toEqual(['attack', 'counter']);
+      for (const roll of [rolls.attack, rolls.counter]) {
+        expect(roll).toBeGreaterThanOrEqual(0);
+        expect(roll).toBeLessThanOrEqual(LUCK_MAX);
+      }
+      expect(sent).not.toMatch(leaked);
     });
-    const rolls = JSON.parse(rows[0].rolls as string) as { attack: number; counter: number };
-    for (const roll of [rolls.attack, rolls.counter]) {
-      expect(roll).toBeGreaterThanOrEqual(0);
-      expect(roll).toBeLessThanOrEqual(LUCK_MAX);
-    }
-    expect(rows[0].events as string).not.toContain('"attack":');
+
+    it('keeps a charge’s one', async () => {
+      const { rolls, sent } = await attack('charge');
+      expect(Object.keys(rolls)).toEqual(['charge']);
+      expect(rolls.charge).toBeGreaterThanOrEqual(0);
+      expect(rolls.charge).toBeLessThanOrEqual(99);
+      expect(sent).not.toMatch(leaked);
+    });
   });
 
   it('stamps the actor it was given, ignoring any the client supplied', async () => {

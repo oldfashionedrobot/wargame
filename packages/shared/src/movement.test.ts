@@ -212,15 +212,13 @@ describe('exploreMovement: contact', () => {
     expect(route!.some((c) => c.col === 2 && c.row === 2)).toBe(false);
   });
 
-  it('keeps settled exactly the set pathTo answers for, with contact in play', () => {
+  it('offers no route that validatePath refuses', () => {
     const state = field();
-    const movement = explore(state, 'b1', 6);
-    const key = (c: Coordinate) => `${c.col},${c.row}`;
-    const inSettled = new Set(movement.settled.map(key));
-    for (let col = 0; col < 7; col++) {
-      for (let row = 0; row < 5; row++) {
-        expect(movement.pathTo(at(col, row)) !== null).toBe(inSettled.has(key(at(col, row))));
-      }
+    const movement = explore(state, 'b1', 8);
+    for (const tile of movement.reachable) {
+      expect(
+        validatePath(state, unitAt(state, 'b1'), movement.pathTo(tile)!, 8, 'foot'),
+      ).toBeNull();
     }
   });
 });

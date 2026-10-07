@@ -95,12 +95,13 @@ describe('chargeChance', () => {
     expect(b / a).toBeCloseTo(0.5, 1);
   });
 
-  // ⚠️ Stated rather than emergent: integer rounding would silently produce 0%,
-  // and a silent zero makes a charge impossible rather than improbable. It is also
-  // what makes `chance` safe to divide by in the repel.
+  // Infantry into fresh cavalry is under half a percent, which rounds to zero.
   it('never reaches zero, however hopeless', () => {
-    const state = contact(100);
-    expect(chargeChance(state, unit(state, 'b1'), unit(state, 'r1'))).toBeGreaterThanOrEqual(1);
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 2, owner: 'red', unitTypeId: 'cavalry' },
+    ]);
+    expect(chargeChance(state, unit(state, 'b1'), unit(state, 'r1'))).toBe(1);
   });
 
   it('is null for a unit that cannot charge', () => {
@@ -126,8 +127,8 @@ describe('chargeChance', () => {
   // ⚠️ The stated cost of concentrating terrain where it is felt: a charge that
   // was hopeless stays exactly as hopeless in a wood as in the open.
   it('leaves a long shot alone, wherever the target is standing', () => {
-    const wood = contact(100, ['.......', '.-.....', '.f.....', '.......']);
-    expect(oddsOf(wood)).toBe(oddsOf(road(100)));
+    const wood = contact(55, ['.......', '.-.....', '.f.....', '.......']);
+    expect(oddsOf(wood)).toBe(oddsOf(road(55)));
   });
 
   // The attacker's own ground is irrelevant: cover protects whoever is in it.
