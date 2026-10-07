@@ -301,26 +301,86 @@ more clause in the validation above.
 
 #### The next combat pass
 
-**Landed, all but the charge thresholds.** The pass went at one finding. Per hit,
-this game was *not* more lethal than Advance Wars: on open ground the median kill
-took three hits here against AW's two, and in cover each star is worth half again
+**Landed, all but the charge.** The pass went at one finding. Per hit, this game
+was *not* more lethal than Advance Wars: on open ground the median kill took
+three hits here against AW's two, and in cover each star is worth half again
 what it is there. It *played* far more lethal for three reasons the damage table
 was not one of — artillery dealt over half of all damage and was never answered,
-only one shot in ten drew a reply, and charges finished whatever had been wounded.
-Contact, luck scaled in with its rolls recorded, the flank counter cut and
-artillery's new row are all in [`architecture.md`](architecture.md); what is left
-here is tuning the charge against them.
+only one shot in ten drew a reply, and charges finished whatever had been
+wounded. Contact, luck scaled in with its rolls recorded, the flank counter cut
+and artillery's new row are all in [`architecture.md`](architecture.md); what is
+left here is tuning the charge against them.
 
-⬜ **The charge as a gamble or a finisher, not a routine.** Lower
-`CHARGE_THRESHOLD`, so a charge is either a long shot at a healthy unit or close
-to certain against a broken one, and seldom anything between. A candidate, with
-every entry down by about a third, on open ground:
+✅ **Measured on main**, against the rules before the pass, every map, 300 games
+a cell, blue opening:
 
-| | at 70 health | at 50 | at 30 |
-|---|---|---|---|
-| cavalry → infantry, head-on | 13% → 8% | 31% → 20% | 79% → 50% |
-| cavalry → infantry, flank | 22% → 11% | 55% → 27% | 100% → 69% |
-| cavalry → infantry, rear | 40% → 16% | 100% → 40% | 100% → 100% |
+| | artillery's share of damage | charge success | charges a game | shots answered |
+|---|---|---|---|---|
+| `classic` | 56% → 47% | 81% → 72% | 4.2 → 3.6 | 10% → 11% |
+| `crossroads` | 43% → 35% | 77% → 70% | 5.1 → 4.1 | 10% → 13% |
+| `two-bridges` | 48% → 40% | 78% → 71% | 4.7 → 4.0 | 9% → 11% |
+| `lakeland` | 58% → 48% | 72% → 62% | 4.0 → 4.4 | 11% → 14% |
+| `meadow` | 48% → 34% | 79% → 72% | 5.0 → 4.2 | 9% → 12% |
+| `common` | 53% → 40% | 78% → 70% | 4.8 → 3.7 | 10% → 12% |
+
+The four maps the prototype measured came out identical, to the decimal.
+
+⚠️ **One shot in eight is answered now, and the pass could only ever move it a
+little.** The flank counter was cut, not refused, so it was never among the
+unanswered. Across all twelve cells, a shot goes unanswered because it killed
+(35%), because the target cannot reach back — a gun at three to five, or
+infantry at two against cavalry (33%) — or because the target is a gun (17%).
+Shots from the rear fell from 7% to 3%, which is contact's doing, and those are
+the ones that moved into the answered column. What is left is the range design
+and the kill, not a rule.
+
+⬜ **The charge as a gamble or a finisher, not a routine — and the threshold is
+not the dial for it.** The pass alone took charges from 4.6 a game to 4.0,
+success from 78% to 69%, and rear charges from 29% of all charges to 13%.
+Lowering `CHARGE_THRESHOLD` from there makes charges rarer, but not more
+decisive: the in-between odds *grow*. Every map from both openings, 3,600 games
+a row:
+
+| | charges a game | success | taken at certain odds | at 25–74% | share of all kills |
+|---|---|---|---|---|---|
+| before the pass | 4.6 | 78% | 50% | 34% | 28% |
+| landed | 4.0 | 69% | 30% | 42% | 21% |
+| thresholds ×0.8 | 3.3 | 65% | 30% | 46% | 17% |
+| thresholds ×0.6 | 2.5 | 61% | 29% | 48% | 12% |
+| half-life 10 | 3.3 | 75% | 42% | 35% | 19% |
+| half-life 10, thresholds ×0.8 | 2.6 | 73% | 44% | 35% | 15% |
+| half-life 7.5 | 2.9 | 79% | 50% | 28% | 18% |
+
+⚠️ **The threshold says *where* the odds fall; `CHARGE_HALF_LIFE` says how
+*wide* the fall is.** Between 75% and 25% lies 1.6 half-lives of health — 24
+points at 15, 16 at 10 — and a charge in that band is neither a gamble nor a
+finisher. Lowering the threshold slides the band down the health scale without
+narrowing it. The half-life rows scale `FRONTAL_FLOOR` and `FLOOR_PER_STAR` with
+it, 3 → 2 at 10, so every ceiling stays where it is: head-on in the open still
+tops out at 87%. Win rates did not move under any row.
+
+⚠️ **What a sharper curve costs is the long shot.** Cavalry into infantry in the
+open, by the defender's health:
+
+| | | 85 | 70 | 55 | 40 | 25 |
+|---|---|---|---|---|---|---|
+| landed | head-on | 6% | 13% | 25% | 50% | 87% |
+| | flank | 11% | 22% | 44% | 87% | 100% |
+| thresholds ×0.6 | head-on | 4% | 8% | 16% | 31% | 63% |
+| | flank | 5% | 11% | 22% | 44% | 87% |
+| half-life 10 | head-on | 2% | 4% | 13% | 35% | 87% |
+| | flank | 4% | 10% | 29% | 81% | 100% |
+| half-life 10, ×0.8 | head-on | 1% | 3% | 9% | 25% | 71% |
+| | flank | 2% | 6% | 18% | 50% | 100% |
+
+A healthy line becomes close to a wall, which the half-life's own comment says it
+should not be. If the long shot matters, it wants a floor of its own — the `1` in
+`Math.max(1, …)` raised — which is a rule rather than a dial.
+
+⬜ **Awaiting a choice** between leaving the table as the pass left it, the
+threshold cut, a shorter half-life, or both. Whichever lands, the tests that pin
+charge odds move with it and `scripts/charges.ts` is the artefact to read it
+against.
 
 ✅ **Tuned after contact, not ahead of it.** The charges that succeeded were
 mostly from the flank and rear — a rear charge on a half-strength line is
@@ -340,47 +400,28 @@ break the unit outright, and if the line holds the horses are stopped on the
 bayonets. Contact supplies both halves the rules lacked. Opportunity is scarce
 again, because a flank is no longer one move away; and a failed charge leaves the
 cavalry caught — stay and lose the exchange, renew the charge, or withdraw and do
-nothing. That is the *high risk* half arriving without touching `CHARGE_REPEL`,
-and a reason the thresholds may need less lowering than they would on their own.
+nothing. That is the *high risk* half arriving without touching `CHARGE_REPEL`.
 
 ⬜ **Parked for a later pass: a charge's odds scaling with the charger's own
 strength.** `chargeChance` reads the defender's health and never the attacker's,
 so a broken squadron breaks a fresh line exactly as often as a fresh one does.
 Not this iteration.
 
-✅ **The whole pass, prototyped and measured together** in a scratch copy:
-contact, scaled luck, the artillery row, the flank removal and the rolls column.
-The migration it generates is one additive line, `ALTER TABLE resolutions ADD
-rolls text`. Exactly three existing tests fail, all three the ones this plan
-retires — the flat luck spread and the two flanked counters. Against today, 300
-games a map, blue opening:
-
-| | artillery's share of damage | charge success | shots answered |
-|---|---|---|---|
-| `classic` | 56% → 47% | 81% → 72% | 10% → 11% |
-| `crossroads` | 43% → 35% | 77% → 70% | 10% → 13% |
-| `common` | 53% → 40% | 78% → 70% | 10% → 12% |
-| `lakeland` | 58% → 48% | 72% → 62% | 11% → 14% |
-
-The artillery cut more than pays back what contact pushes the other way, and
-charge success falls ten points before a single threshold moves — so the
-thresholds likely need less lowering than first assumed.
-
 ⚠️ **Contact looks like it rewards moving second.** On `common` the second mover
-wins from both openings — 63% when blue opens, 67% when red does — where today
-it is near even; `classic` and `crossroads` lean the same way, mildly. The
-likely reason is the rule doing what it says: whoever advances into contact
-first is pinned and answered first. The bot always advances, which a human need
-not, so this is a thing to watch in play rather than a verdict. ✅ **Accepted
-for now**: the first mover still gets its volley off before contact is made, and
-tuning options wait on how it plays.
+wins from both openings — 63% when blue opens, 67% when red does — where before
+the pass it was near even, and `classic` turned the same way (53% and 62%).
+`two-bridges` always rewarded replying; `crossroads` is still even. The likely
+reason is the rule doing what it says: whoever advances into contact first is
+pinned and answered first. The bot always advances, which a human need not, so
+this is a thing to watch in play rather than a verdict. ✅ **Accepted for now**:
+the first mover still gets its volley off before contact is made, and tuning
+options wait on how it plays.
 
 ⚠️ **`lakeland`'s stalls are not this pass's doing.** It leaves exactly 16.3% of
-games unfinished under today's rules, under contact alone, and under the whole
-pass — the same 49 of 300. A count that survives every combat rule changing
-belongs to the board or its movement costs, and wants looking at on its own.
-**Not pursued**: `lakeland` is not a good board, and the maps are due a redesign
-regardless.
+games unfinished when blue opens, before the pass and after it — the same 49 of
+300. A count that survives every combat rule changing belongs to the board or its
+movement costs. **Not pursued**: `lakeland` is not a good board, and the maps are
+due a redesign regardless.
 
 #### Mobility in contact — engagement and overwatch
 
@@ -1003,18 +1044,19 @@ argument live; this is the phase that keeps changing them.
 
   | map | blue opens | red opens | reads as |
   |---|---|---|---|
-  | `crossroads` | 52% blue | 50% blue | even |
-  | `common` | 51% blue | 56% blue | near even |
-  | `meadow` | 67% blue | 53% blue | leans blue |
-  | `classic` | 59% blue | 69% blue | a blue board |
-  | `two-bridges` | 68% red | 73% blue | whoever moves **second** |
-  | `lakeland` | 54% red | 57% red | a red board, 16% unresolved |
+  | `crossroads` | 54% red | 53% red | near even |
+  | `meadow` | 63% blue | 65% blue | a blue board |
+  | `lakeland` | 47% red | 63% red | a red board, 12–16% unresolved |
+  | `classic` | 53% red | 62% blue | whoever moves **second** |
+  | `common` | 63% red | 67% blue | whoever moves **second** |
+  | `two-bridges` | 61% red | 74% blue | whoever moves **second** |
 
   ⚠️ **Read the pair, not either column.** A fair board gives the opener the same
   edge from both ends; one colour winning *both* columns is the board talking.
-  By that test `crossroads` and `common` are sound, `classic` and `lakeland` are
-  biased, and `two-bridges` is order-sensitive rather than biased — it rewards
-  replying, from either side, which is a property of its chokepoints.
+  By that test `crossroads` is sound, `meadow` and `lakeland` are biased, and the
+  other three are order-sensitive rather than biased — they reward replying,
+  from either side. `two-bridges` always did, a property of its chokepoints;
+  `classic` and `common` joined it with contact — see *The next combat pass*.
 
   ⚠️ **`lakeland` does not finish a sixth of its games**, which is worth more
   attention than its bias: a board that cannot resolve is a worse failure than
@@ -1023,8 +1065,8 @@ argument live; this is the phase that keeps changing them.
   ⚠️ **Artillery's `movementRange` was the biggest single lever on all of this**,
   and it is measured rather than argued. At **4** the same six boards handed the
   game to whoever moved *second* — 94% on `crossroads` and `meadow`, 89% on
-  `two-bridges`, a spread of 54% to 95%. At **3** the spread is 50% to 73% and
-  the second-mover effect survives only on `two-bridges`. `wheels` pays 1.5 for
+  `two-bridges`, a spread of 54% to 95%. At **3**, before contact, the spread was 50%
+  to 73% and the second-mover effect survived only on `two-bridges`. `wheels` pays 1.5 for
   plains against 1 for road, so the gun's budget decides how much board it
   covers between replies, and a road network amplifies whatever that number is.
   ⚠️ **So settle the gun before redrawing a board to chase a number** — the
