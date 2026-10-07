@@ -97,12 +97,11 @@ describe('computeDamage', () => {
     expect(computeDamage(state, a, d, LUCK_MAX)).toBe(floorValue + LUCK_MAX);
   });
 
-  // ⚠️ The spread does *not* narrow with the attacker's health, and an earlier
-  // version of this suite asserted that it did. Luck is added after every
-  // multiplication, so it is the same flat band however weak the attacker is --
-  // which makes it worth proportionally *more* the worse shape they are in.
-  // A ROM-derived reconstruction of the GBA engine is the source; wikis that
-  // describe luck as scaling with HP disagree with it.
+  // ⚠️ The spread does *not* narrow with the attacker's health here. Luck is
+  // added after every multiplication, so it is the same flat band however weak
+  // the attacker is -- which makes it worth proportionally *more* the worse
+  // shape they are in. Advance Wars narrows it instead, and moving to that is
+  // planned, at which point this test inverts.
   it('keeps the luck spread flat however weak the attacker is', () => {
     const spread = (health: number): number => {
       const { state, a, d } = fight(ROAD, { health });

@@ -66,14 +66,12 @@ export function band(health: number): number {
  * full target in both schemes -- which is what lets AW's matchup numbers
  * transfer unchanged.
  *
- * ⚠️ **Luck is added last, flat, and is not scaled by anything.** This file
- * twice had it folded into the base *before* the health multiplier, which reads
- * naturally and is wrong: a ROM-derived reconstruction of the GBA engine finds
- * luck applied after every multiplication and truncation, as a plain addition of
- * true hitpoints. The difference is not cosmetic -- folded in, a weak attacker's
- * luck shrinks with it; added last, **luck is worth proportionally more the
- * weaker the attacker is**, and a nearly-dead unit's best roll is its only real
- * threat. Sources that describe luck as scaling with HP disagree with the ROM.
+ * ⚠️ **Luck is added last, flat, and is not scaled by anything -- which is not
+ * how Advance Wars does it.** Every AW game adds luck to the attack value
+ * *before* the attacker's HP multiplier, so a wounded unit's luck shrinks with
+ * it. Added last instead, **luck is worth proportionally more the weaker the
+ * attacker is**, and a nearly-dead unit's best roll is its only real threat.
+ * Moving it in is planned: see *The next combat pass* in the roadmap.
  *
  * Three behaviours fall out rather than needing rules:
  *
@@ -87,19 +85,17 @@ export function band(health: number): number {
  * Pure, and the roll is an input, which is what lets the tuning harness run the
  * whole matchup grid with no server and no browser.
  *
- * **Where this comes from.** AW's own formula, its luck behaviour, and the three
- * truncation points are documented across these; where they disagree, the
- * ROM-derived one wins, because it was measured against the engine rather than
- * described from play:
+ * **Where this comes from.** AW's own formula, its luck behaviour, and its
+ * truncation points are documented across these:
  *
- * - https://github.com/geno55/advance-wars-advisor -- ROM-derived damage engine.
- *   The authority for *ordering*: luck last, truncation after the HP multiply
- *   and again after defence.
+ * - https://advancewars.fandom.com/wiki/Damage_Formula -- the formula per game,
+ *   AW1 through Days of Ruin, each adding luck before the HP multiply.
  * - https://awbw.fandom.com/wiki/Damage_Formula -- the formula in AW's own units
  *   (HP 1-10), which is what the rescale note above is about.
  * - https://www.warsworldnews.com/wp/aw/game-aw/battle-mechanics/ -- terrain
  *   stars and the exchange model.
- * - https://advancewars.fandom.com/wiki/Luck -- luck as a flat additive band.
+ * - https://advancewars.fandom.com/wiki/Luck -- luck added before the HP
+ *   multiply, and the range shrinking by a point for every HP lost.
  * - https://awbw.fandom.com/wiki/Terrain -- the terrain stars these are scaled
  *   against.
  * - https://advancewars.fandom.com/wiki/Indirect_Combat -- minimum range, and

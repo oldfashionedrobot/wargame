@@ -93,11 +93,11 @@ export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
 export const TERRAIN_WEIGHT = 1.5;
 
 /**
- * The widest the luck bonus ever gets, matching AW exactly.
+ * The widest the luck bonus ever gets: AW's standard range, from AW1 through
+ * Dual Strike. Days of Ruin widened it to 0-10.
  *
- * ⚠️ **Additive, never multiplicative, and applied last** -- see `computeDamage`,
- * where getting this wrong twice is documented. It makes weak attacks the swingy
- * ones: 9 points on a shot of 18 is +50%, the same 9 on artillery's 67 is
+ * ⚠️ **Added last and flat here, which AW does not do** -- see `computeDamage`.
+ * It makes weak attacks the swingy ones: 9 points on a shot of 18 is +50%, the same 9 on artillery's 67 is
  * +13%. A crippled unit's best roll is most of its remaining threat.
  *
  * ⚠️ **Never negative.** Base AW luck is a bonus only -- "bad luck" belongs to
