@@ -55,7 +55,7 @@ export function band(health: number): number {
  * What `attacker` takes off `defender`, given a luck roll in `[0, LUCK_MAX]`.
  *
  * ```
- * damage = floor(floor(base × attackerBand/10) × (100 − stars×defenderBand)/100) + luck
+ * damage = floor(floor((base + luck) × attackerBand/10) × (100 − stars×defenderBand)/100)
  * ```
  *
  * ⚠️ **Both HP terms read the band, never the raw value.** One rule rather than
@@ -65,12 +65,13 @@ export function band(health: number): number {
  * full target in both schemes -- which is what lets AW's matchup numbers
  * transfer unchanged.
  *
- * ⚠️ **Luck is added last, flat, and is not scaled by anything -- which is not
- * how Advance Wars does it.** Every AW game adds luck to the attack value
- * *before* the attacker's HP multiplier, so a wounded unit's luck shrinks with
- * it. Added last instead, **luck is worth proportionally more the weaker the
- * attacker is**, and a nearly-dead unit's best roll is its only real threat.
- * Moving it in is planned: see *The next combat pass* in the roadmap.
+ * ⚠️ **Luck joins the base before anything scales it**, which is Advance Wars'
+ * order in every game in the series: luck is added to the attack value, and
+ * that is then multiplied by the attacker's band and cut by the defender's
+ * cover. So **a wounded unit's luck shrinks with it** -- one on its last band
+ * cannot luck its way into an extra tenth -- and cover takes its share of luck
+ * the way it takes its share of everything else. The full band of luck belongs
+ * to a full-strength unit firing into the open.
  *
  * Three behaviours fall out rather than needing rules:
  *
@@ -108,12 +109,6 @@ export function computeDamage(
   defender: Unit,
   roll: number,
 ): number {
-  // ⚠️ A dead attacker deals nothing, including no luck. `band(0)` is 0, which
-  // zeroes the base -- but luck is added *after* everything and would sail past
-  // it, so a corpse would land 9. Nothing should be calling this with one; the
-  // same is true of `getUnitType`, which throws rather than trust that.
-  if (attacker.health <= 0) return 0;
-
   const base = BASE_DAMAGE[attacker.unitTypeId][defender.unitTypeId];
 
   const { defense } = getTerrain(state.grid[defender.position.row][defender.position.col]);
@@ -128,10 +123,15 @@ export function computeDamage(
   // which the final floor absorbs; nothing here needs to round it.
   const cover = defense * band(defender.health) * TERRAIN_WEIGHT;
 
+  // ⚠️ **Luck goes in with the base**, so the attacker's band and the
+  // defender's cover scale it like the rest -- AW's order. That also makes a
+  // dead attacker harmless with no guard of its own: `band(0)` is 0, and zeroes
+  // the luck along with everything else.
+  //
   // ⚠️ Floored in sequence rather than folded: `floor(a × b × c)` and
   // `floor(floor(a × b) × c)` are different numbers, and the second is AW's.
-  const scaled = Math.floor((base * band(attacker.health)) / BANDS);
-  return Math.floor((scaled * (100 - cover)) / 100) + roll;
+  const scaled = Math.floor(((base + roll) * band(attacker.health)) / BANDS);
+  return Math.floor((scaled * (100 - cover)) / 100);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import type { Action, GameEvent, GameState, PlayerId } from '@wargame/shared';
+import type { Action, GameEvent, GameState, PlayerId, Rolls } from '@wargame/shared';
 
 export const Matches = sqliteTable('matches', {
   id: text('id').primaryKey(),
@@ -53,6 +53,13 @@ export const Resolutions = sqliteTable(
     // was proven against the state at the time, which is not this one.
     action: text('action', { mode: 'json' }).$type<Action>().notNull(),
     events: text('events', { mode: 'json' }).$type<GameEvent[]>().notNull(),
+    // The rolls resolution was handed, written and not read -- the same as
+    // action. Luck joins the base before the attacker's band and the defender's
+    // cover scale it, so most rolls cannot be recovered from the damage they
+    // produced; this is what keeps the record. ⚠️ Nullable, so rows from before it
+    // existed stay valid. ⚠️ On the row and never in an event: events go to both
+    // players, and a client is told an outcome and never its roll.
+    rolls: text('rolls', { mode: 'json' }).$type<Rolls>(),
     createdAt: integer('created_at').notNull(),
   },
   (t) => [primaryKey({ columns: [t.matchId, t.seq] })],

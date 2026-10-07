@@ -31,9 +31,11 @@ const LIST_LIMIT = 50;
  * -- there is nothing to reproduce. Most games need a seeded generator, a stored
  * seed and a determinism story; this design bought its way out of all three.
  *
- * ⚠️ **And no `rolls` column either.** Luck is added last and flat, so the roll
- * is recoverable from the log as `actualDamage − computeDamage(preState, …, 0)`
- * -- storing it would be storing something the log already contains.
+ * ⚠️ **But the rolls are recorded**, on the resolution row beside its events.
+ * Luck joins the base before the attacker's band and the defender's cover scale
+ * it, so two floors sit between a roll and the damage it produced, and most rolls
+ * cannot be read back out of the log. Replay never needs them -- it reads
+ * outcomes -- so they are kept as a record, written and not read, like `action`.
  *
  * Exported only so it can be tested. `Math.random() * LUCK_MAX` instead of
  * `* (LUCK_MAX + 1)` is a one-character bug that means **the best roll never
@@ -178,7 +180,8 @@ export function createMatchStore({ db }: Database): MatchStore {
       const validation = validateCommand(match.state, command, actor);
       if (!validation.ok) return { ok: false, reason: validation.reason };
 
-      const events = resolveAction(match.state, validation.action, rollLuck(command));
+      const rolls = rollLuck(command);
+      const events = resolveAction(match.state, validation.action, rolls);
 
       // Reducers return events, not state. Folding them here is the only way a
       // new state is ever produced, so what gets stored and what a replay of
@@ -209,6 +212,7 @@ export function createMatchStore({ db }: Database): MatchStore {
             actor,
             action: validation.action,
             events,
+            rolls,
             createdAt: Date.now(),
           }),
           db

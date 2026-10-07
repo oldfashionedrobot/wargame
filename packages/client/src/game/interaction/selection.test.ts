@@ -464,8 +464,9 @@ describe('the panel, and what it is told', () => {
     ]);
   const panel = (state: GameState) => withB1Targeting(state, at(1, 1), 'r1');
 
-  // ⚠️ An exact range, not an estimate: luck is added last and flat, so the
-  // zero-roll result is the true floor and the spread is exactly LUCK_MAX.
+  // ⚠️ An exact range, not an estimate: damage only rises with the roll, so the
+  // zero-roll result is the floor. A full-strength attacker into the open is the
+  // one case where nothing scales luck, so there the width is exactly LUCK_MAX.
   it('forecasts a range whose width is the luck band', () => {
     const state = field();
     const forecast = fireForecast(state, panel(state));

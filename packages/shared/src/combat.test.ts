@@ -86,7 +86,9 @@ describe('computeDamage', () => {
     );
   });
 
-  it('adds luck last, flat, and never subtracts', () => {
+  // At full strength into the open there is nothing to scale luck by, so the
+  // whole band lands -- and no roll ever does worse than no luck at all.
+  it('adds the whole luck band at full strength in the open, and never subtracts', () => {
     const { state, a, d } = fight(ROAD);
     const floorValue = computeDamage(state, a, d, 0);
     for (let roll = 0; roll <= LUCK_MAX; roll++) {
@@ -97,29 +99,27 @@ describe('computeDamage', () => {
     expect(computeDamage(state, a, d, LUCK_MAX)).toBe(floorValue + LUCK_MAX);
   });
 
-  // ⚠️ The spread does *not* narrow with the attacker's health here. Luck is
-  // added after every multiplication, so it is the same flat band however weak
-  // the attacker is -- which makes it worth proportionally *more* the worse
-  // shape they are in. Advance Wars narrows it instead, and moving to that is
-  // planned, at which point this test inverts.
-  it('keeps the luck spread flat however weak the attacker is', () => {
+  // ⚠️ **The spread narrows as the attacker weakens**, which is Advance Wars'
+  // behaviour in every game: luck joins the base, and the attacker's band then
+  // scales both. A unit on its last band cannot luck its way into an extra tenth.
+  it('narrows the luck spread as the attacker weakens', () => {
     const spread = (health: number): number => {
       const { state, a, d } = fight(ROAD, { health });
       return computeDamage(state, a, d, LUCK_MAX) - computeDamage(state, a, d, 0);
     };
     expect(spread(MAX_HEALTH)).toBe(LUCK_MAX);
-    expect(spread(50)).toBe(LUCK_MAX);
-    expect(spread(1)).toBe(LUCK_MAX);
+    expect(spread(50)).toBeLessThan(LUCK_MAX);
+    expect(spread(50)).toBeGreaterThan(0);
+    expect(spread(1)).toBeLessThanOrEqual(1);
   });
 
-  // The consequence worth stating separately: for a nearly-dead attacker the
-  // roll stops being a modifier and becomes most of the attack.
-  it('makes luck matter more, not less, to a weakened attacker', () => {
-    const share = (health: number): number => {
-      const { state, a, d } = fight(ROAD, { health });
-      return LUCK_MAX / computeDamage(state, a, d, LUCK_MAX);
+  // The same scaling from the other side: cover cuts luck as it cuts the rest.
+  it('lets cover take its share of luck', () => {
+    const spread = (rows: string[]): number => {
+      const { state, a, d } = fight(rows);
+      return computeDamage(state, a, d, LUCK_MAX) - computeDamage(state, a, d, 0);
     };
-    expect(share(1)).toBeGreaterThan(share(MAX_HEALTH));
+    expect(spread(MOUNTAIN)).toBeLessThan(spread(ROAD));
   });
 
   // ⚠️ **The clamp that is not there.** `computeDamage` subtracts cover from
@@ -188,8 +188,7 @@ describe('computeDamage', () => {
     }
   });
 
-  // ⚠️ Luck is added after every other step, so it sails past a zeroed base
-  // unless something stops it: without the guard a unit at 0 health lands 9.
+  // No guard does this: luck joins the base, and `band(0)` zeroes both.
   it('lets a dead attacker deal nothing, luck included', () => {
     const { state, a, d } = fight(ROAD, { health: 0 });
     expect(computeDamage(state, a, d, 0)).toBe(0);

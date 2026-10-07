@@ -647,8 +647,10 @@ unit still counters. **A charge never asks the counter rule at all.**
 paints its overlay from it.
 
 **The client previews the same formula.** `attackForecast` runs `computeDamage`
-at roll 0 and at `LUCK_MAX`, which is an **exact range**: luck is added last and
-flat, so those are the true floor and ceiling. The counter's *magnitude* is
+at roll 0 and at `LUCK_MAX`, which is an **exact range**: damage only ever rises
+with the roll, so those are the true floor and ceiling. ⚠️ The width is
+`LUCK_MAX` only for a full-strength attacker into the open; a weakened attacker
+or a defender in cover narrows it. The counter's *magnitude* is
 absent — it is computed on the defender's post-damage health, so it depends on
 how the attack roll lands. `answered` is read at the **worst** roll, so it means
 *they will fire back unless you kill them*.
@@ -670,9 +672,8 @@ All three are pure and take the roll as an **input**.
 
 ```
 band(hp) = ceil(hp / 10)                    // 1..10, never 0 while alive
-damage   = floor(floor(base × band(attackerHP) / 10)
+damage   = floor(floor((base + luck) × band(attackerHP) / 10)
                  × (100 − stars × band(defenderHP) × TERRAIN_WEIGHT) / 100)
-           + luck                           // last, flat, unscaled
 ```
 
 **Health is stored and shown 0–100.**
@@ -683,10 +684,11 @@ value.** Feeding raw health in makes a unit on one point attack at 1% instead of
 the banding is what stands in for one. The cost: a unit at 91 health and one at
 100 fight identically.
 
-⚠️ **Luck is added last and flat.** It is therefore worth proportionally *more*
-the weaker the attacker is — nine points on a crippled shot of 18 is half again
-as much of it. A dead attacker is guarded explicitly, because `band(0)` zeroes
-the base but luck would sail past it and land 9.
+⚠️ **Luck joins the base before anything scales it** — Advance Wars' order in
+every game in the series. The attacker's band and the defender's cover then scale
+luck with the rest, so a wounded unit's luck shrinks with it and a unit on its
+last band cannot luck its way into an extra tenth. A dead attacker needs no guard:
+`band(0)` zeroes the luck along with the base.
 
 ⚠️ **No clamp stops cover exceeding 100%, and two constants are what guarantee
 it never does.** The bound is `maxStars × TERRAIN_WEIGHT < 10` — at 4 stars and
@@ -721,9 +723,11 @@ it is handled. The throw stays, because events arrive as JSON.
 
 **Randomness lives in `server/match.ts`**, in `rollLuck` — the only
 `Math.random()` in the codebase. No seed is stored: events carry resulting
-values rather than inputs. No `rolls` column either — luck is added last and
-flat, so a roll is recoverable as
-`actualDamage − computeDamage(preState, …, 0)`.
+values rather than inputs. ⚠️ **The rolls are recorded** in `resolutions.rolls`,
+because luck joins the base before two floors and so cannot be read back out of
+the damage it produced. Replay never needs them — it reads outcomes — and they
+never go in an event, since events reach both players and a client is told an
+outcome and never its roll.
 
 ### Charge
 
@@ -974,7 +978,7 @@ between a local file and hosted Turso.
 ```sql
 matches      (id, created_at, initial_state JSON, current_state JSON,
               current_seq, current_turn, map_id, winner, PRIMARY KEY (id))
-resolutions  (match_id, seq, actor, action JSON, events JSON, created_at,
+resolutions  (match_id, seq, actor, action JSON, events JSON, rolls JSON, created_at,
               PRIMARY KEY (match_id, seq),
               FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE)
 ```
@@ -983,7 +987,8 @@ resolutions  (match_id, seq, actor, action JSON, events JSON, created_at,
 events are authoritative. `current_turn` is denormalised so listing matches
 parses no boards. `map_id` is read only to label a match in the list — replay
 never needs it, because `initial_state` already holds the instantiated board.
-`action` is written and never read.
+`action` and `rolls` are written and never read; `rolls` is nullable, so rows from
+before it existed stay valid.
 
 `winner` is denormalised for the same reason as `current_turn`, and is
 **nullable** where `map_id` took a default: null means *still being played*. It
@@ -1252,8 +1257,7 @@ single place that builds the command, rather than branched on through the
 dispatch.
 
 ⚠️ **`Forecast` is a union, because the two attacks are knowable to different
-degrees.** A shot's damage is a *range* — luck is added last and the roll is
-unknown. A charge's odds are **exact**, `chance` being a pure function of state
+degrees.** A shot's damage is a *range* — the roll is unknown. A charge's odds are **exact**, `chance` being a pure function of state
 with no roll in it, and it is the *repel* that comes as a band. Flattening both
 into one shape would force the charge to present its certainty as an estimate.
 ⚠️ That band narrows on its own as the odds improve — a likely charge leaves a

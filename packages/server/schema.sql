@@ -15,6 +15,7 @@ CREATE TABLE `resolutions` (
 	`actor` text NOT NULL,
 	`action` text NOT NULL,
 	`events` text NOT NULL,
+	`rolls` text,
 	`created_at` integer NOT NULL,
 	PRIMARY KEY(`match_id`, `seq`),
 	FOREIGN KEY (`match_id`) REFERENCES `matches`(`id`) ON UPDATE no action ON DELETE cascade

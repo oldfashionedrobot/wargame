@@ -230,6 +230,29 @@ describe('submit', () => {
     expect(await store.submit('nope', { type: 'endTurn' }, BLUE)).toBeNull();
   });
 
+  // ⚠️ Luck joins the base before band and cover scale it, so a roll cannot be
+  // read back out of the damage it produced -- the row is where it is kept. On
+  // the row and never in the events, which go to both players.
+  it('records the rolls each resolution was given, and keeps them out of the events', async () => {
+    const { id } = await store.create();
+    const result = await store.submit(
+      id,
+      move(BLUE_MOVER.id, BLUE_MOVER.to, BLUE_MOVER.from),
+      BLUE,
+    );
+    expect(result?.ok).toBe(true);
+    const { rows } = await sql.execute({
+      sql: 'SELECT rolls, events FROM resolutions WHERE match_id = ?',
+      args: [id],
+    });
+    const rolls = JSON.parse(rows[0].rolls as string) as { attack: number; counter: number };
+    for (const roll of [rolls.attack, rolls.counter]) {
+      expect(roll).toBeGreaterThanOrEqual(0);
+      expect(roll).toBeLessThanOrEqual(LUCK_MAX);
+    }
+    expect(rows[0].events as string).not.toContain('"attack":');
+  });
+
   it('stamps the actor it was given, ignoring any the client supplied', async () => {
     const { id } = await store.create();
     // Deliberately malformed: a client cannot construct this, which is the

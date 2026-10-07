@@ -189,11 +189,11 @@ than from measuring, and more than one of those turned out to be a *rule*
 rather than a dial — which is the shape to expect from this epic too.
 
 ⚠️ **The first pass is shipped and the numbers in it are first cuts.** Terrain
-weighting, the charge floor, the artillery charge row and the flank counter are
-all in `architecture.md` now, at values chosen by printing grids rather than by
+weighting, the charge floor and the artillery charge row are all in
+`architecture.md` now, at values chosen by printing grids rather than by
 playing. ⬜ **They want a pass against real games**, which is the part of this
 epic that cannot be done at a terminal. ⚠️ That pass has started returning
-verdicts, and the flank counter has had one — see *The next combat pass*.
+verdicts — the flank counter had one and is gone — see *The next combat pass*.
 
 ⬜ **What else goes in this epic is not settled.**
 
@@ -301,79 +301,15 @@ more clause in the validation above.
 
 #### The next combat pass
 
-**A pass of changes, landing one at a time**, all aimed at one finding.
-Per hit, this game is *not* more lethal than Advance Wars: on open ground the
-median kill takes three hits here against AW's two, and in cover each star is
-worth half again what it is there. It *plays* far more lethal for three reasons
-the damage table is not one of — artillery deals over half of all damage and is
-never answered, only one shot in ten draws a reply, and charges finish whatever
-has been wounded. These go at those, not at the table as a whole. ✅ **Landed so
-far**: contact (see *Mobility in contact*), and the flank counter cut — front and
-flank now draw a full reply, and only the rear refuses one; and artillery's row,
-cut to 55 / 40 / 40.
-
-✅ **Replay is untouched by all of it, and by the contact rule below.** What the
-log promises is that `initial_state` folded with the events reaches the state at
-any point — outcomes as they were resolved, not the rules or the commands that
-produced them. `applyEvents` imports nothing but types and consults no rule, so
-changing how an outcome is *decided* cannot change what a logged one *means*, and
-none of these changes alters an event's shape. Checked rather than argued: 48
-whole games through the real match store under the contact prototype — 21,050
-events, 1,857 battles — rebuilt exactly from their rows, at every prefix.
-
-✅ **Luck scaled in, Advance Wars' way, rather than added flat at the end** —
-decided twice, the second time on sources checked rather than summarised.
-⚠️ **Every Advance Wars game scales luck with the attacker's health, and this
-code is the departure.** AW1, AW2 and Dual Strike, and Days of Ruin all add luck
-to the attack value *before* the attacker's HP multiplier, per the AW wiki's
-per-game formulas; Days of Ruin widens the roll to 0–10 but keeps the order.
-Advance Wars By Web, built on AW2's formula, does the same, and Re-Boot Camp is
-reported to have kept the GBA mechanics. The AW wiki tabulates the consequence:
-the luck range shrinks by a point for every HP lost, so a 1 HP unit cannot luck
-its way into a whole extra HP of damage. The only formula found that adds luck
-*after* the HP multiplier is *Super Famicom Wars*', the Japanese predecessor.
-
-⚠️ **`e35849f` went the other way, and its evidence does not hold up.** It moved
-luck out of the base on the strength of a "ROM-derived reconstruction of the GBA
-engine" at `geno55/advance-wars-advisor`, a repository that does not exist
-publicly, and it cites the AW wiki's Luck page as describing "luck as a flat
-additive band", which that page contradicts. The likeliest source of the misread
-is AWBW's own wording — *luck is a flat value* — which means flat against
-**base damage**, not against health. Whatever is decided here, the comments
-beside `computeDamage` and in `combat.test.ts` asserted something untrue about
-AW; that claim and the non-existent source are gone, and what is left describes
-the code as it stands until this lands.
-
-What scaling it in would do:
-
-```
-now:      floor(floor(base × band(atk) / 10) × (100 − cover) / 100) + luck
-planned:  floor(floor((base + luck) × band(atk) / 10) × (100 − cover) / 100)
-```
-
-Identical at full health in the open. A cavalry at 60 health gets +5 rather than
-+9, at 30 it gets +2, at 10 nothing. Best-case hits-to-kill moves by one in a
-handful of cells, all in cover — a variance change, not a rebalance.
-
-⚠️ **It reaches the counter as well.** A reply is computed on the defender's
-*post-damage* health, so a wounded defender loses most of its luck — a small
-shift toward the attacker, which the flank change below more than pays back.
-
-⚠️ **What it costs is the log.** A roll is recoverable today as
-`actualDamage − computeDamage(…, 0)`; scaled in, two floors sit between the roll
-and the result, and from a wounded attacker or into cover most rolls stop being
-distinguishable. Nothing reads a roll back today, so this is a property given up
-rather than a feature broken. ✅ **So the rolls get stored**, on the resolution
-row beside its events — written and not read, the same as `action`. Additive, so
-no stored row is abandoned; the claim in `architecture.md` and beside `rollLuck`
-changes from *recoverable* to *recorded*. ⚠️ **On the row, never in an event**:
-events are broadcast to both players, and a client is told the shape of an
-outcome and never the roll.
-
-Two things fall out for free: the explicit dead-attacker guard in
-`computeDamage` becomes redundant, because `band(0)` now zeroes the luck along
-with everything else; and the *no living attacker is harmless* sweep is
-untouched, because it runs at roll 0, where the two formulas agree.
+**Landed, all but the charge thresholds.** The pass went at one finding. Per hit,
+this game was *not* more lethal than Advance Wars: on open ground the median kill
+took three hits here against AW's two, and in cover each star is worth half again
+what it is there. It *played* far more lethal for three reasons the damage table
+was not one of — artillery dealt over half of all damage and was never answered,
+only one shot in ten drew a reply, and charges finished whatever had been wounded.
+Contact, luck scaled in with its rolls recorded, the flank counter cut and
+artillery's new row are all in [`architecture.md`](architecture.md); what is left
+here is tuning the charge against them.
 
 ⬜ **The charge as a gamble or a finisher, not a routine.** Lower
 `CHARGE_THRESHOLD`, so a charge is either a long shot at a healthy unit or close
@@ -386,16 +322,16 @@ every entry down by about a third, on open ground:
 | cavalry → infantry, flank | 22% → 11% | 55% → 27% | 100% → 69% |
 | cavalry → infantry, rear | 40% → 16% | 100% → 40% | 100% → 100% |
 
-✅ **Tuned together with *Mobility in contact*, not ahead of it.** The charges that succeed are
-mostly from the flank and rear — a rear charge on a half-strength line is certain
-today — and any zone of control removes most of those approaches on its own.
-Lowering thresholds first is lowering them twice.
+✅ **Tuned after contact, not ahead of it.** The charges that succeeded were
+mostly from the flank and rear — a rear charge on a half-strength line is
+certain — and contact removes most of those approaches on its own. Lowering the
+thresholds first would have been lowering them twice.
 
 ⚠️ **"High risk" lives in the other table.** A failed charge costs
 `CHARGE_REPEL` plus up to 9: between 5 and 19 points. The threshold says how
 *likely* a charge is; if a failed gamble should hurt, the repel is the number
-that says so — or, once contact pins a unit, being caught: see *Mobility in
-contact*.
+that says so — or being caught, now that contact pins the charger where it
+stopped.
 
 ⚠️ **What contact did for the charge.** The charge is modelled on the real
 thing: cavalry cannot walk into musket range and trade blows with formed infantry

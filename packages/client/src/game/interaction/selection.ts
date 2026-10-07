@@ -595,7 +595,7 @@ export function readAimClick(
  * What the panel promises before you commit.
  *
  * ⚠️ **A union, because the two attacks are knowable to different degrees.** A
- * shot's damage is a *range*, since luck is added last and the roll is unknown;
+ * shot's damage is a *range*, since the roll is unknown;
  * a charge's odds are an **exact** figure, because `chance` is a pure function of
  * state with no roll in it. Flattening both into one shape would force the
  * charge to pretend its certainty is an estimate.
@@ -628,8 +628,11 @@ export type Forecast =
 /**
  * The numbers on the panel, run through the same formula the server will.
  *
- * ⚠️ **An exact range, not an estimate.** Luck is added last and flat, so the
- * zero-roll result is the true floor and `+ LUCK_MAX` the true ceiling. The
+ * ⚠️ **An exact range, not an estimate.** Damage only ever rises with the roll
+ * -- luck joins the base, and every step after it multiplies by something
+ * positive and floors -- so the zero-roll result is the true floor and the
+ * `LUCK_MAX` result the true ceiling. ⚠️ The width is *not* `LUCK_MAX` in
+ * general: a weakened attacker or a defender in cover narrows it. The
  * client is told the *shape* of the outcome and never which of the ten it will
  * be -- previewing the formula rather than the dice.
  *
