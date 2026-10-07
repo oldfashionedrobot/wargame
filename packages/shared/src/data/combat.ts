@@ -142,8 +142,8 @@ export const LUCK_MAX = 9;
  * *full-health* defender -- a dead dial rather than a signature moment. At
  * `REAR_MULTIPLIER` 2 that means every entry under 50. The artillery column was
  * the only one near the line and came down to clear it: 60 → 45 and 45 → 35,
- * which took a full-health battery charged from behind on a road from 100% to
- * 63%.
+ * so a full-health battery charged from behind on a road is 50% rather than
+ * certain.
  *
  * ⚠️ **The constraint only guards the full-health case, and a band survives on
  * the flank.** `floor(45 × 1.5)` is 67, so a flank charge on a battery is still
@@ -152,8 +152,8 @@ export const LUCK_MAX = 9;
  * it. The levers if play disagrees are another cut to the row or
  * `FLANK_MULTIPLIER`.
  *
- * ⚠️ **Lowering was not free.** The same number sets the head-on odds, so a
- * frontal charge on a full-health battery fell from 16% to 8%.
+ * ⚠️ **Lowering was not free.** The same number sets the head-on odds, and a
+ * frontal charge on a full-health battery is down to 2%.
  *
  * ⚠️ `infantry → cavalry 15` is the lowest number in either table on purpose.
  * Charging cavalry on foot should almost never be the right call, and a number
@@ -199,10 +199,20 @@ export const CHARGE_REPEL: Record<UnitTypeId, number> = {
  *
  * ⚠️ **Exponential decay, and the shape is the point** -- one dial with a
  * sentence you can say out loud. At or below the threshold a charge is certain;
- * above it the curve falls away but never reaches zero, so cavalry into a
- * full-health line is a long shot rather than a wall.
+ * above it the curve falls away but never reaches zero.
+ *
+ * ⚠️ **This sets how wide the in-between is; `CHARGE_THRESHOLD` sets where it
+ * sits.** From 75% down to 25% is 1.6 half-lives of health -- 16 points at ten,
+ * where fifteen made it 24 -- and a charge in that band is neither a gamble nor
+ * a finisher. Lowering the thresholds instead slides the band down the health
+ * scale without narrowing it, which the simulator bore out: charges got rarer
+ * and the in-between share grew.
+ *
+ * ⚠️ **The cost is the long shot.** Cavalry into a full-health line head-on is
+ * 1%, and into one at 70 health 4% -- close to a wall. If play wants that gamble
+ * back, it is a floor of its own, the `1` in `chargeChance` raised, not this.
  */
-export const CHARGE_HALF_LIFE = 15;
+export const CHARGE_HALF_LIFE = 10;
 
 /**
  * A floor under the charge margin, which is a **ceiling on the odds**: the
@@ -215,6 +225,10 @@ export const CHARGE_HALF_LIFE = 15;
  * same thing whoever is charging whom. What differs between matchups is how
  * easily each *reaches* the ceiling, and `CHARGE_THRESHOLD` already says that:
  * the ceiling arrives at exactly the threshold.
+ *
+ * ⚠️ **Read against `CHARGE_HALF_LIFE`, never alone.** The ceiling is set by
+ * `floor / half-life`, so retuning the half-life moves every ceiling unless
+ * these follow it. 2 against ten is exactly where 3 against fifteen was.
  *
  * ⚠️ **`FRONTAL_FLOOR` equals `FLOOR_PER_STAR` on purpose** -- facing a unit
  * head-on is worth one star of terrain to it. Nothing depends on the two being
@@ -231,8 +245,8 @@ export const CHARGE_HALF_LIFE = 15;
  * guaranteed kill at no cost -- the one move in the game with no downside.
  * Head-on is capped at 87% on open ground and 50% on a peak.
  */
-export const FRONTAL_FLOOR = 3;
-export const FLOOR_PER_STAR = 3;
+export const FRONTAL_FLOOR = 2;
+export const FLOOR_PER_STAR = 2;
 
 /**
  * What a failed charge's overshoot is divided by before being added to the flat

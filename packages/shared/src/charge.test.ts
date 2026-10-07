@@ -66,6 +66,14 @@ describe('chargeChance', () => {
     expect(oddsOf(road(1))).toBe(oddsOf(road(25)));
   });
 
+  // ⚠️ A ceiling is `floor / half-life`, so the floors are tuned against
+  // CHARGE_HALF_LIFE rather than alone. Moving one without the other moves every
+  // ceiling, and this is what notices.
+  it('caps head-on at 87% in the open and an even chance on a mountain', () => {
+    expect(oddsOf(road(1))).toBe(87);
+    expect(oddsOf(contact(1, ['.......', '.-.....', '.^.....', '.......']))).toBe(50);
+  });
+
   // The other half of the sentence: **position *and* open ground**, not either.
   it('is certain from behind, but only on open ground', () => {
     const behind = (rows: string[]) =>
@@ -88,7 +96,7 @@ describe('chargeChance', () => {
   });
 
   // ⚠️ Stated rather than emergent: integer rounding would silently produce 0%,
-  // and a silent zero contradicts "a long shot rather than a wall". It is also
+  // and a silent zero makes a charge impossible rather than improbable. It is also
   // what makes `chance` safe to divide by in the repel.
   it('never reaches zero, however hopeless', () => {
     const state = contact(100);
@@ -103,9 +111,8 @@ describe('chargeChance', () => {
     expect(chargeChance(guns, unit(guns, 'b1'), unit(guns, 'r1'))).toBeNull();
   });
 
-  // ⚠️ Terrain adds to the target's *health*, not to the threshold -- so cover
-  // finishes the sentence the formula already asks rather than adding a second
-  // mechanism beside it.
+  // ⚠️ Terrain sets a floor under the margin, which caps the odds a charge can
+  // reach rather than adding a second mechanism beside the formula.
   // ⚠️ **Aimed at a target near the threshold, and that is not incidental.**
   // Cover is a ceiling rather than a nudge, so it changes nothing about a
   // charge that was already a long shot -- at 55 health the margin is 30 and no

@@ -752,6 +752,11 @@ Both therefore matter exactly where a charge was about to become a sure thing,
 and not at all to one that was already a long shot. Head-on caps at 87% on open
 ground and 50% on a peak; **100% needs position *and* open ground**.
 
+**The threshold says where the odds fall, the half-life how steeply.** From 75%
+down to 25% is 1.6 half-lives of health, and moving a threshold slides that band
+along the health scale without narrowing it. ⚠️ A ceiling is `floor / half-life`,
+so the floors are read against `CHARGE_HALF_LIFE` and move with it.
+
 ⚠️ **The floor is shared across the sides, so cover compresses position.** As
 it rises the gap between a head-on charge and one from behind closes on its
 own — 87% against 100% in the open, 50% against 57% on a mountain. *Taking

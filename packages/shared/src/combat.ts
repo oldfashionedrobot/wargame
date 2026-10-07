@@ -403,8 +403,10 @@ export function chargeThreshold(attacker: UnitTypeId, defender: UnitTypeId): num
  * The odds a charge breaks the target, as a whole percentage.
  *
  * ```
- * margin = max(0, targetHealth + terrainDefense - threshold)
- * chance = max(1, round(100 * 0.5 ^ (margin / CHARGE_HALF_LIFE)))
+ * threshold = floor(CHARGE_THRESHOLD[attacker][defender] * directional)
+ * floor     = (head-on ? FRONTAL_FLOOR : 0) + terrainDefense * FLOOR_PER_STAR
+ * margin    = max(floor, targetHealth - threshold)
+ * chance    = max(1, round(100 * 0.5 ^ (margin / CHARGE_HALF_LIFE)))
  * ```
  *
  * ⚠️ **Raw health, deliberately not banded**, and this was measured rather than
@@ -413,19 +415,15 @@ export function chargeThreshold(attacker: UnitTypeId, defender: UnitTypeId): num
  * multiplier under 1.4 vanishes outright, because `band(25)` and `band(28)` are
  * both 3; banding the target but not the threshold makes the table lie, since
  * `ceil` rounds up and a unit sitting exactly on a stated threshold of 25 shows
- * 79%.
+ * 71%.
  *
- * ⚠️ **Terrain adds to the target's health rather than moving the threshold.**
- * The expression already asks *how far is health above the threshold*, so cover
- * finishes that sentence instead of introducing a second mechanism beside it.
- * Forest costs an attacker 2-7 points, a mountain 4-13, and plains needs no
- * special case: one defence star against a half-life of fifteen is a ~4% relative
- * change that rounds away at most healths.
+ * ⚠️ **Terrain sets a floor under the margin; it does not add to it.** Cover
+ * once added its stars to the target's health, a few percent of a half-life
+ * that rounded away at most healths. See `FRONTAL_FLOOR`.
  *
  * ⚠️ **The 1% floor is stated, not emergent.** Exponential decay never reaches
  * zero mathematically, but integer percentages do, and a silent 0% would
- * contradict the design -- cavalry into a full-health line is a long shot, not a
- * wall. That floor also makes `chance` safe to divide by, which the repel does.
+ * make a charge impossible where the design says only improbable. That floor also makes `chance` safe to divide by, which the repel does.
  *
  * ⚠️ **The directional term shipped separately from the rest of this**, and the
  * reason is worth keeping: charge and facing were the two mechanics with no
