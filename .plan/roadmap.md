@@ -309,7 +309,8 @@ the damage table is not one of — artillery deals over half of all damage and i
 never answered, only one shot in ten draws a reply, and charges finish whatever
 has been wounded. These go at those, not at the table as a whole. ✅ **Landed so
 far**: contact (see *Mobility in contact*), and the flank counter cut — front and
-flank now draw a full reply, and only the rear refuses one.
+flank now draw a full reply, and only the rear refuses one; and artillery's row,
+cut to 55 / 40 / 40.
 
 ✅ **Replay is untouched by all of it, and by the contact rule below.** What the
 log promises is that `initial_state` folded with the events reaches the state at
@@ -410,20 +411,6 @@ and a reason the thresholds may need less lowering than they would on their own.
 strength.** `chargeChance` reads the defender's health and never the attacker's,
 so a broken squadron breaks a fresh line exactly as often as a fresh one does.
 Not this iteration.
-
-⬜ **Artillery's row, 75 / 60 / 40 → 55 / 40 / 40.** A gun needs one more hit on
-cavalry on every ground — three rather than two in the open — and three on
-infantry in a wood rather than two. ✅ **On open ground it still kills infantry in two shots, and that is
-accepted** — 55 twice is 110. What changes is the unit *between* the shots: at 75
-the first leaves infantry on 25, at 55 it leaves it on 45. Band 5 rather than
-band 3 hits back two-thirds again as hard and keeps more of its cover, and it
-moves a head-on cavalry charge from 87% down to 40%. The 75 shot was setting up a
-near-certain finisher; the 55 shot does not.
-
-⚠️ Infantry → artillery, at 60, now out-hits the reverse. The gun's advantage
-becomes its range and the absence of any reply rather than the blow, which is
-what a battery is. All three entries stay above the 30 the harmless-attacker
-sweep pins the table's floor at.
 
 ✅ **The whole pass, prototyped and measured together** in a scratch copy:
 contact, scaled luck, the artillery row, the flank removal and the rolls column.

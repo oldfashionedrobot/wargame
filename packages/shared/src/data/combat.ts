@@ -38,10 +38,13 @@ import type { UnitTypeId } from './unitTypes';
  * rather than merely stated.
  *
  * ⚠️ **Raised fifteen points for infantry and cavalry, to widen the
- * *first-strike* advantage. Artillery's row was left alone**, and the harness is
- * why: at 75 a gun already killed infantry in two hits, so raising it bought
- * lethality in matchups that were already decided rather than in the flat ones
- * this was for. It costs the table's top ratio -- 2.48 rather than 3.45 -- and
+ * *first-strike* advantage. Artillery's row went the other way**, from 75 / 60 /
+ * 40 to 55 / 40 / 40: guns were dealing over half of all damage in the
+ * simulator, unanswered. ⚠️ **A gun still kills infantry in the open in two
+ * shots** -- 55 twice is 110 -- and that is accepted. What the cut changes is the
+ * unit *between* the shots: left on 45 rather than 25, it hits back two-thirds
+ * again as hard, keeps more of its cover, and is no longer a near-certain charge.
+ * In a wood it now takes three shots, and cavalry takes one more on any ground. It costs the table's top ratio -- 2.48 rather than 3.45 -- and
  * that number was largely academic, since a defender dying to the first blow
  * never answers at all.
  *
@@ -66,7 +69,7 @@ import type { UnitTypeId } from './unitTypes';
 export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
   infantry: { infantry: 45, cavalry: 50, artillery: 60 },
   cavalry: { infantry: 30, cavalry: 35, artillery: 40 },
-  artillery: { infantry: 75, cavalry: 60, artillery: 40 },
+  artillery: { infantry: 55, cavalry: 40, artillery: 40 },
 };
 
 /**
@@ -124,9 +127,11 @@ export const LUCK_MAX = 9;
  * unit catalog saying the same thing a second time, where the two could drift.
  * Any unit can still be a *target*.
  *
- * ⚠️ **The triangle closes here, not in `BASE_DAMAGE`.** Cavalry loses the
- * shooting exchange with artillery -- 30 out against 60 back -- so it has to
- * close, and `cavalry → artillery` is what makes closing pay. Against infantry
+ * ⚠️ **The triangle closes here, not in `BASE_DAMAGE`.** A gun reaches cavalry
+ * from three to five tiles and cavalry reaches a gun only from one, so cavalry
+ * spends its approach under fire whatever it means to do on arrival -- and
+ * `cavalry → artillery` is what makes arriving pay. ⚠️ Argued from *range*
+ * rather than from the two damage figures, which are the part that gets tuned. Against infantry
  * it is 25: a frontal charge needs a nearly-dead target, which is what
  * "infantry beats cavalry by not breaking" has to mean numerically.
  *
