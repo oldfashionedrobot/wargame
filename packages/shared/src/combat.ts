@@ -135,20 +135,6 @@ export function computeDamage(
 }
 
 /**
- * Why this attack is refused, or null if it is legal.
- *
- * ⚠️ **`from` is where the unit *ends up*, not where it stands.** The command is
- * move-then-attack, so a range checked against `attacker.position` would be
- * measuring the wrong tile and would accept shots the unit cannot take. The
- * caller passes the destination deliberately rather than this reaching for a
- * position that is about to be stale.
- *
- * ⚠️ **No category is consulted**, because there is none. `range` is two numbers
- * and a band either contains the distance or it does not -- the same predicate
- * that makes artillery helpless at one tile also makes it deadly at four, with
- * no rule naming either case.
- */
-/**
  * Why a unit may not attack at all from the route it took, or `null`.
  *
  * ⚠️ **The one place the *turn* rule lives**, asked by both attacks and by both
@@ -402,13 +388,6 @@ export function chargeThreshold(attacker: UnitTypeId, defender: UnitTypeId): num
 /**
  * The odds a charge breaks the target, as a whole percentage.
  *
- * ```
- * threshold = floor(CHARGE_THRESHOLD[attacker][defender] * directional)
- * floor     = (head-on ? FRONTAL_FLOOR : 0) + terrainDefense * FLOOR_PER_STAR
- * margin    = max(floor, targetHealth - threshold)
- * chance    = max(1, round(100 * 0.5 ^ (margin / CHARGE_HALF_LIFE)))
- * ```
- *
  * ⚠️ **Raw health, deliberately not banded**, and this was measured rather than
  * assumed. Damage bands because raw health broke it -- a unit at 1% dealt zero.
  * Charge has no such failure, and banding costs two things: fully banded, any
@@ -417,13 +396,8 @@ export function chargeThreshold(attacker: UnitTypeId, defender: UnitTypeId): num
  * `ceil` rounds up and a unit sitting exactly on a stated threshold of 25 shows
  * 71%.
  *
- * ⚠️ **Terrain sets a floor under the margin; it does not add to it.** Cover
- * once added its stars to the target's health, a few percent of a half-life
- * that rounded away at most healths. See `FRONTAL_FLOOR`.
- *
- * ⚠️ **The 1% floor is stated, not emergent.** Exponential decay never reaches
- * zero mathematically, but integer percentages do, and a silent 0% would
- * make a charge impossible where the design says only improbable. That floor also makes `chance` safe to divide by, which the repel does.
+ * ⚠️ **The 1% floor is stated, not emergent**: rounding would otherwise make a
+ * long enough shot impossible rather than improbable.
  *
  * ⚠️ **The directional term shipped separately from the rest of this**, and the
  * reason is worth keeping: charge and facing were the two mechanics with no
@@ -509,11 +483,6 @@ export function refuseCharge(
  * free: a battery answers nothing at all now, so the one unit cavalry exists to
  * punish would be the only one unable to punish back. The
  * repel **is** the defence, and every defender has one.
- *
- * ⚠️ **The repel is flat plus a small term from the overshoot**, the same shape
- * `computeDamage` uses for luck. A roll just over `chance` is a near miss and
- * costs the base; a wild charge leaves a wider window to fail into, so its
- * expected overshoot is larger. One term, both behaviours.
  */
 export function resolveCharge(
   state: GameState,

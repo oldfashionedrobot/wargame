@@ -767,15 +767,14 @@ cover protects your flanks* is the same constant as *cover is hard to charge*.
 has that, from any position.
 
 **The 1% floor is stated rather than emergent**, so integer rounding cannot
-produce a silent 0%. It also makes `chance` safe to divide by. At `chance = 100`
+produce a silent 0%. At `chance = 100`
 there are no failing rolls, since `roll ∈ [0, 99]`.
 
 **Two tables: the threshold says how *likely* a charge is, the repel says what
 *failing* costs.** `CHARGE_REPEL` is keyed by the defender alone.
 
-**Repel is flat plus a small term, never a multiplier** — the same shape
-`computeDamage` uses for luck, so a near miss costs the base and a wild charge
-costs more.
+**Repel is flat plus a small term, never a multiplier**, so a near miss costs
+the base and a wild charge costs more.
 
 **A charge never consults the counter rule**, so `answered` means *repelled*.
 The repel is the defence, and every defender has one.
@@ -1166,7 +1165,7 @@ range, or a unit targeting itself, so a panel built on it would offer Fire for a
 friend two tiles off and the click would then be refused. One rule asked twice
 cannot disagree with itself — and it is what makes `slow` and contact free on
 the client: Fire and Charge simply stop being offered to a gun that has moved, or
-to any unit that moved out of contact, because the refusal they ask reads the
+to any unit that started in contact and moved, because the refusal they ask reads the
 path. It walks every unit rather than the band, which is
 sixteen against up to sixty and needs no grid bounds. ⚠️ **Unavailable actions
 are omitted, not greyed**, following AW — the cost is that *nothing in range* and

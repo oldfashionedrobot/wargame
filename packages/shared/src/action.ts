@@ -92,10 +92,6 @@ function refuse(state: GameState, command: Command): string | null {
  * resolver taking a roll, with the dispatcher pulling the argument apart --
  * spreads the decision over two places to spare one branch an unused parameter.
  * A wart either way, and this is the smaller one.
- *
- * ⚠️ `Rolls` is a named object rather than a tuple, and holds two because two is
- * the maximum anything needs -- see `combat.ts` for why it is not a
- * discriminated union yet.
  */
 /**
  * ⚠️ **`budget` is a default argument for the same reason `turns.ts` makes it

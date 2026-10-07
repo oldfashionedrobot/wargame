@@ -282,14 +282,9 @@ describe('resolveMove', () => {
     expect(shot('east').attacker.health).toBe(shot('south').attacker.health);
   });
 
-  // ⚠️ **The corner where a counter once rounded to nothing.** A flanked reply
-  // used to be cut to two-thirds after the fact, and two-thirds of 1 is 0 -- a
-  // defender beaten into the lowest band, answering an attacker in the heaviest
-  // cover there is, landed nothing while counting as answered. With the flank
-  // answering in full, *no living attacker is harmless* holds for counters too.
+  // *No living attacker is harmless* holds for counters too: a defender in the
+  // lowest band, answering an attacker on a peak, still lands something.
   it('lands something on a flanked counter, even from the lowest band', () => {
-    // Infantry on a peak shoots an adjacent cavalry on its flank; 50 damage
-    // leaves the cavalry on 5, and its reply is 1 head-on and 0 from there.
     const peak = (facing: 'south' | 'west') =>
       makeState(
         ['^.', '..'],

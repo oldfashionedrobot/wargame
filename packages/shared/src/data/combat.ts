@@ -37,34 +37,19 @@ import type { UnitTypeId } from './unitTypes';
  * has no reason to close. Four hits to kill infantry is what makes that true
  * rather than merely stated.
  *
- * ⚠️ **Raised fifteen points for infantry and cavalry, to widen the
- * *first-strike* advantage. Artillery's row went the other way**, from 75 / 60 /
- * 40 to 55 / 40 / 40: guns were dealing over half of all damage in the
- * simulator, unanswered. ⚠️ **A gun still kills infantry in the open in two
- * shots** -- 55 twice is 110 -- and that is accepted. What the cut changes is the
- * unit *between* the shots: left on 45 rather than 25, it hits back two-thirds
- * again as hard, keeps more of its cover, and is no longer a near-certain charge.
- * In a wood it now takes three shots, and cavalry takes one more on any ground. It costs the table's top ratio -- 2.48 rather than 3.45 -- and
- * that number was largely academic, since a defender dying to the first blow
- * never answers at all.
+ * ⚠️ **Artillery's row is kept below what its range would suggest**, because
+ * nothing answers a gun: it fires from beyond every reply and `slow` means it
+ * never counters, so its damage is pure profit.
  *
- * ⚠️ **The rest of the reasoning:** The two sides of an exchange use one formula, so there is no dial
- * for "counters hit softer" and there should not be: the whole asymmetry is that
- * a counter is computed on the defender's **post-damage** health, the same as
- * Advance Wars. That makes the table non-linear in exactly the useful direction
- * -- hit harder and the defender loses more bands before answering, so the
- * counter shrinks while the attack grows, and past a base of about 50 it shrinks
- * in absolute terms.
+ * ⚠️ The two sides of an exchange use one formula, so there is no dial for
+ * "counters hit softer" and there should not be: the whole asymmetry is that a
+ * counter is computed on the defender's **post-damage** health, the same as
+ * Advance Wars. Hit harder and the defender loses more bands before answering,
+ * so the counter shrinks while the attack grows.
  *
- * At 30 an infantry exchange ran 27 against 21, a ratio of 1.29 and barely a
- * first strike at all; at 45 it is 1.67, and the table now spans **1.29 to
- * 2.48** where AW2's own numbers span 1.11 to 5.06.
- *
- * ⚠️ **Not raised to AW's ceiling**, which a further five would have reached,
- * because it costs two other mechanics: terrain stops changing the hit count in
- * four matchups rather than three, and units stop lingering at the health where
- * a charge is a good bet. AW affords a 5:1 top end with far more unit types to
- * spread a triangle across than three.
+ * ⚠️ **Not pushed toward AW's steeper first strikes**, because it costs two
+ * other mechanics: terrain stops changing hit counts, and units stop lingering
+ * at the health where a charge is a good bet.
  */
 export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
   infantry: { infantry: 45, cavalry: 50, artillery: 60 },
@@ -141,9 +126,7 @@ export const LUCK_MAX = 9;
  * can never be positive, and a rear charge is automatically certain against a
  * *full-health* defender -- a dead dial rather than a signature moment. At
  * `REAR_MULTIPLIER` 2 that means every entry under 50. The artillery column was
- * the only one near the line and came down to clear it: 60 → 45 and 45 → 35,
- * so a full-health battery charged from behind on a road is 50% rather than
- * certain.
+ * the only one near the line, and came down to clear it.
  *
  * ⚠️ **The constraint only guards the full-health case, and a band survives on
  * the flank.** `floor(45 × 1.5)` is 67, so a flank charge on a battery is still
@@ -151,9 +134,6 @@ export const LUCK_MAX = 9;
  * riding round a gun crew that has been worked that far down *should* decide
  * it. The levers if play disagrees are another cut to the row or
  * `FLANK_MULTIPLIER`.
- *
- * ⚠️ **Lowering was not free.** The same number sets the head-on odds, and a
- * frontal charge on a full-health battery is down to 2%.
  *
  * ⚠️ `infantry → cavalry 15` is the lowest number in either table on purpose.
  * Charging cavalry on foot should almost never be the right call, and a number
@@ -179,9 +159,8 @@ export const CHARGE_THRESHOLD: Partial<Record<UnitTypeId, Record<UnitTypeId, num
  * the other's job.
  *
  * ⚠️ **Not the defender's own `BASE_DAMAGE` row**, which was considered and
- * refused: artillery's 60 was tuned as *ranged* fire, and borrowing it at contact
- * would assert a battery is as dangerous close as far -- the opposite of what
- * `range.min: 3` exists to say. Hence 8 here against 60 there.
+ * refused: artillery's row is *ranged* fire, and borrowing it at contact would
+ * make a battery as dangerous close as far.
  *
  * ⚠️ **This is not the "defence stat" the damage design refuses.** That refusal
  * is about *damage*, where a scalar defence forces a transitive ordering and
@@ -197,20 +176,10 @@ export const CHARGE_REPEL: Record<UnitTypeId, number> = {
 /**
  * Every this many points of health above the threshold **halves** the odds.
  *
- * ⚠️ **Exponential decay, and the shape is the point** -- one dial with a
- * sentence you can say out loud. At or below the threshold a charge is certain;
- * above it the curve falls away but never reaches zero.
- *
- * ⚠️ **This sets how wide the in-between is; `CHARGE_THRESHOLD` sets where it
- * sits.** From 75% down to 25% is 1.6 half-lives of health -- 16 points at ten,
- * where fifteen made it 24 -- and a charge in that band is neither a gamble nor
- * a finisher. Lowering the thresholds instead slides the band down the health
- * scale without narrowing it, which the simulator bore out: charges got rarer
- * and the in-between share grew.
- *
- * ⚠️ **The cost is the long shot.** Cavalry into a full-health line head-on is
- * 1%, and into one at 70 health 4% -- close to a wall. If play wants that gamble
- * back, it is a floor of its own, the `1` in `chargeChance` raised, not this.
+ * ⚠️ **This sets how wide the in-between odds are; `CHARGE_THRESHOLD` sets
+ * where they sit.** Lowering a threshold slides the band down the health scale
+ * without narrowing it. A shorter half-life narrows it, at the price of the long
+ * shot against a healthy unit.
  */
 export const CHARGE_HALF_LIFE = 10;
 
@@ -226,9 +195,9 @@ export const CHARGE_HALF_LIFE = 10;
  * easily each *reaches* the ceiling, and `CHARGE_THRESHOLD` already says that:
  * the ceiling arrives at exactly the threshold.
  *
- * ⚠️ **Read against `CHARGE_HALF_LIFE`, never alone.** The ceiling is set by
- * `floor / half-life`, so retuning the half-life moves every ceiling unless
- * these follow it. 2 against ten is exactly where 3 against fifteen was.
+ * ⚠️ **Tuned against `CHARGE_HALF_LIFE`, never alone**: a ceiling is
+ * `floor / half-life`, so moving one moves every ceiling unless the other
+ * follows. `charge.test.ts` pins the ceilings.
  *
  * ⚠️ **`FRONTAL_FLOOR` equals `FLOOR_PER_STAR` on purpose** -- facing a unit
  * head-on is worth one star of terrain to it. Nothing depends on the two being
