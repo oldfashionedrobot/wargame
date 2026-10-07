@@ -188,14 +188,14 @@ interesting. Several rules have already moved on evidence from playing rather
 than from measuring, and more than one of those turned out to be a *rule*
 rather than a dial — which is the shape to expect from this epic too.
 
-⚠️ **The first pass is shipped and the numbers in it are first cuts.** Terrain
-weighting, the charge floor and the artillery charge row are all in
-`architecture.md` now, at values chosen by printing grids rather than by
-playing. ⬜ **They want a pass against real games**, which is the part of this
-epic that cannot be done at a terminal. ⚠️ That pass has started returning
-verdicts — the flank counter had one and is gone — see *After the combat pass*.
+⚠️ **It runs in passes: play, then tune.** Two have shipped. The first set
+terrain weighting, the charge floor and the artillery charge row by printing
+grids; the second, the combat pass, came from playing — see *After the combat
+pass*. A pass's changes go to [`architecture.md`](architecture.md) and leave
+only their open questions here.
 
-⬜ **What else goes in this epic is not settled.**
+⬜ **The next pass starts from playtesting notes**, and what goes in it is not
+settled until they are in.
 
 #### Known to want attention
 
