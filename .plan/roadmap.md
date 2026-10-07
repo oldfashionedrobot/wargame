@@ -192,7 +192,8 @@ rather than a dial — which is the shape to expect from this epic too.
 weighting, the charge floor, the artillery charge row and the flank counter are
 all in `architecture.md` now, at values chosen by printing grids rather than by
 playing. ⬜ **They want a pass against real games**, which is the part of this
-epic that cannot be done at a terminal.
+epic that cannot be done at a terminal. ⚠️ That pass has started returning
+verdicts, and the flank counter has had one — see *The next combat pass*.
 
 ⬜ **What else goes in this epic is not settled.**
 
@@ -205,15 +206,19 @@ epic that cannot be done at a terminal.
   be decides where the work lands. ⚠️ **Deeper cover made this worse** — worst
   case went from 5 blows to 6 — and the lever if the two collide is
   `BASE_DAMAGE`, which has room upward and none down: the *no living attacker is
-  harmless* sweep binds one point below the lowest row.
-- ⬜ **Healing**, in some form — parked rather than decided. Nothing recovers
-  health today, so a wounded unit is wounded for the rest of the match. ⚠️ It
+  harmless* sweep binds one point below the lowest row. ✅ **Left uncapped for
+  now**, by decision rather than by default — the dials above are what to reach
+  for if that changes.
+- ⬜ **Healing**, in some form — parked rather than decided, and parked *with*
+  capture points: if either comes back, they come back as one design. Nothing
+  recovers health today, so a wounded unit is wounded for the rest of the match. ⚠️ It
   sits upstream of the numbers above rather than beside them: cover scales with
   the defender's band and the charge floor only bites near the threshold, so
   both mechanics are most active at low health, and how often units *are* at low
   health is what healing decides.
 - ⬜ **Capture points**, sketched and parked: presence is possession, so a point
-  is held by standing on it and there is no capture meter to build.
+  is held by standing on it and there is no capture meter to build. ⚠️ **Tied
+  to healing** — see above — so neither is designed without the other.
 - ⬜ **How much lands before the other player answers.** Uncapped, a whole army
   can fall on one unit before it gets a reply. ⚠️ **That is how the tabletop
   games this is modelled on work**, so it is a dislike rather than a defect —
@@ -243,7 +248,8 @@ epic that cannot be done at a terminal.
   cannot screen or withdraw a wounded unit, so the guns choose freely.
 
   ⬜ **So the budget is the wrong lever for this, and a *reactive* mechanic is
-  the candidate.** See *Overwatch* below. The same sweep also says a cautious
+  the candidate** — which now lives in *Mobility in contact*, below, where
+  overwatch and engagement turned out to be one question. The same sweep also says a cautious
   bot would show less first-mover advantage than a greedy one does, which is
   itself a hint that punishing the advance is aimed at the right thing.
 
@@ -252,33 +258,6 @@ epic that cannot be done at a terminal.
   everyone-acts-once. Bolt Action's order dice are that design, and its units
   have exactly one die each — which is the artillery problem solved at the
   structural level rather than tuned around.
-
-- ⬜ **Overwatch — spend the attack to watch instead.** A unit forgoes its shot
-  and names a direction to watch; an enemy entering that arc is fired on before
-  it acts. XCOM's shape rather than 40k's, and it composes with facing, which
-  already exists and already decides whether a shot is answered.
-
-  ⚠️ **`slow` excludes artillery from it for free.** A gun may move or attack
-  but never both, and never answers a shot — so the two arms that can overwatch
-  are precisely the two the budget sweep kept buffing guns against. The
-  counterweight costs no new rule.
-
-  ⬜ **Three decisions, cheapest first.** Whether it consumes the action — it
-  should, or it is a passive buff rather than a trade. Whether it watches a
-  named arc or the whole range band, where the band is free because
-  `tilesInRange` already honours artillery's minimum, so enemies can walk
-  *under* the guns. And whether it triggers on the destination or anywhere
-  along the path: the destination is one more battle in the same command, while
-  *through* means walking the path step by step and deciding whether the mover
-  stops, which touches `validatePath` and the one-event-carries-a-path design.
-  Prove it on the destination first.
-
-  ⚠️ **The sharp edge is randomness, not the rule.** `rollLuck` reads the
-  *command* and never the rules, deliberately — so the number of draws cannot
-  depend on whether a path crossed a watched tile. The existing precedent is to
-  draw for the worst case: a counter roll is already drawn whether or not it is
-  used. It also needs watching state on `Unit`, which is a `GameState` shape
-  change and abandons stored matches under the ruleset compromise.
 
 #### Armies, and where they deploy
 
@@ -290,7 +269,7 @@ and the harness taking an army a side. What it does now is in
 
 ⬜ **Find out whether composition creates playstyles.** This is the question the
 mechanism was built for, and it is answered by playing and by sweeping rather
-than by reasoning. ⚠️ **One result already, and it says more about the bot than
+than by reasoning — a sweep to run rather than a design question. ⚠️ **One result already, and it says more about the bot than
 about cavalry**: eight horse against the default army loses 200 of 200 on
 `classic` *while moving first*. Both sides run the identical policy, so the
 asymmetry is real — but a greedy bot never screens, and screening is the
@@ -300,24 +279,352 @@ manoeuvre horse needs. Read it as the sweep working, not as a verdict.
 is 12×12, so the rows nearest each edge are assumed. The day a map carries its
 own, the check in `maps.test.ts` reads it instead of the constant — and the
 *shape* of a deployment area becomes a board's design rather than a global. That
-belongs with *Content*, where maps become data.
+belongs with *Content*, where maps become data. **Parked.**
 
 ⬜ **Validation that answers rather than throws.** `createMatchState` throws on an
 army that is not the zone's size and `parseArmyGrid` throws on an unknown
 character, which is right for a server-side constant and wrong for a
 *client-supplied* army — it would be a 500. The `{ ok, reason }` shape
 `validateCommand` already uses is what `POST /api/matches` needs before it can
-accept one, along with a column if an army is ever worth displaying.
+accept one, along with a column if an army is ever worth displaying. **Parked
+with the builder**, which is the only thing that needs it.
 
 ⬜ **The builder is UI**, and belongs with *UI and interaction*. Until it exists an
 army is an argument, which is enough for the harness and for a hot-seat match
-started from a constant.
+started from a constant. **Parked**, and so is the pricing below.
 
 ⚠️ **It made roster size a variable**, which *Match length* above names as one of
 its three dials. The two want reading together now that the two sides can differ.
 
 ⚠️ **The pricing half is *Content*'s** — a cost column, a budget constant, and one
 more clause in the validation above.
+
+#### The next combat pass
+
+**Four changes, decided in principle and unbuilt**, all aimed at one finding.
+Per hit, this game is *not* more lethal than Advance Wars: on open ground the
+median kill takes three hits here against AW's two, and in cover each star is
+worth half again what it is there. It *plays* far more lethal for three reasons
+the damage table is not one of — artillery deals over half of all damage and is
+never answered, only one shot in ten draws a reply, and charges finish whatever
+has been wounded. These go at those, not at the table as a whole.
+
+✅ **Replay is untouched by all of it, and by the contact rule below.** What the
+log promises is that `initial_state` folded with the events reaches the state at
+any point — outcomes as they were resolved, not the rules or the commands that
+produced them. `applyEvents` imports nothing but types and consults no rule, so
+changing how an outcome is *decided* cannot change what a logged one *means*, and
+none of these changes alters an event's shape. Checked rather than argued: 48
+whole games through the real match store under the contact prototype — 21,050
+events, 1,857 battles — rebuilt exactly from their rows, at every prefix.
+
+✅ **Luck scaled in, Advance Wars' way, rather than added flat at the end** —
+decided twice, the second time on sources checked rather than summarised.
+⚠️ **Every Advance Wars game scales luck with the attacker's health, and this
+code is the departure.** AW1, AW2 and Dual Strike, and Days of Ruin all add luck
+to the attack value *before* the attacker's HP multiplier, per the AW wiki's
+per-game formulas; Days of Ruin widens the roll to 0–10 but keeps the order.
+Advance Wars By Web, built on AW2's formula, does the same, and Re-Boot Camp is
+reported to have kept the GBA mechanics. The AW wiki tabulates the consequence:
+the luck range shrinks by a point for every HP lost, so a 1 HP unit cannot luck
+its way into a whole extra HP of damage. The only formula found that adds luck
+*after* the HP multiplier is *Super Famicom Wars*', the Japanese predecessor.
+
+⚠️ **`e35849f` went the other way, and its evidence does not hold up.** It moved
+luck out of the base on the strength of a "ROM-derived reconstruction of the GBA
+engine" at `geno55/advance-wars-advisor`, a repository that does not exist
+publicly, and it cites the AW wiki's Luck page as describing "luck as a flat
+additive band", which that page contradicts. The likeliest source of the misread
+is AWBW's own wording — *luck is a flat value* — which means flat against
+**base damage**, not against health. Whatever is decided here, the comments
+beside `computeDamage` and in `combat.test.ts` asserted something untrue about
+AW; that claim and the non-existent source are gone, and what is left describes
+the code as it stands until this lands.
+
+What scaling it in would do:
+
+```
+now:      floor(floor(base × band(atk) / 10) × (100 − cover) / 100) + luck
+planned:  floor(floor((base + luck) × band(atk) / 10) × (100 − cover) / 100)
+```
+
+Identical at full health in the open. A cavalry at 60 health gets +5 rather than
++9, at 30 it gets +2, at 10 nothing. Best-case hits-to-kill moves by one in a
+handful of cells, all in cover — a variance change, not a rebalance.
+
+⚠️ **It reaches the counter as well.** A reply is computed on the defender's
+*post-damage* health, so a wounded defender loses most of its luck — a small
+shift toward the attacker, which the flank change below more than pays back.
+
+⚠️ **What it costs is the log.** A roll is recoverable today as
+`actualDamage − computeDamage(…, 0)`; scaled in, two floors sit between the roll
+and the result, and from a wounded attacker or into cover most rolls stop being
+distinguishable. Nothing reads a roll back today, so this is a property given up
+rather than a feature broken. ✅ **So the rolls get stored**, on the resolution
+row beside its events — written and not read, the same as `action`. Additive, so
+no stored row is abandoned; the claim in `architecture.md` and beside `rollLuck`
+changes from *recoverable* to *recorded*. ⚠️ **On the row, never in an event**:
+events are broadcast to both players, and a client is told the shape of an
+outcome and never the roll.
+
+Two things fall out for free: the explicit dead-attacker guard in
+`computeDamage` becomes redundant, because `band(0)` now zeroes the luck along
+with everything else; and the *no living attacker is harmless* sweep is
+untouched, because it runs at roll 0, where the two formulas agree.
+
+⬜ **The charge as a gamble or a finisher, not a routine.** Lower
+`CHARGE_THRESHOLD`, so a charge is either a long shot at a healthy unit or close
+to certain against a broken one, and seldom anything between. A candidate, with
+every entry down by about a third, on open ground:
+
+| | at 70 health | at 50 | at 30 |
+|---|---|---|---|
+| cavalry → infantry, head-on | 13% → 8% | 31% → 20% | 79% → 50% |
+| cavalry → infantry, flank | 22% → 11% | 55% → 27% | 100% → 69% |
+| cavalry → infantry, rear | 40% → 16% | 100% → 40% | 100% → 100% |
+
+✅ **Tuned together with *Mobility in contact*, not ahead of it.** The charges that succeed are
+mostly from the flank and rear — a rear charge on a half-strength line is certain
+today — and any zone of control removes most of those approaches on its own.
+Lowering thresholds first is lowering them twice.
+
+⚠️ **"High risk" lives in the other table.** A failed charge costs
+`CHARGE_REPEL` plus up to 9: between 5 and 19 points. The threshold says how
+*likely* a charge is; if a failed gamble should hurt, the repel is the number
+that says so — or, once contact pins a unit, being caught: see *Mobility in
+contact*.
+
+⬜ **Parked for a later pass: a charge's odds scaling with the charger's own
+strength.** `chargeChance` reads the defender's health and never the attacker's,
+so a broken squadron breaks a fresh line exactly as often as a fresh one does.
+Not this iteration.
+
+⬜ **Artillery's row, 75 / 60 / 40 → 55 / 40 / 40.** A gun needs one more hit on
+cavalry on every ground — three rather than two in the open — and three on
+infantry in a wood rather than two. ✅ **On open ground it still kills infantry in two shots, and that is
+accepted** — 55 twice is 110. What changes is the unit *between* the shots: at 75
+the first leaves infantry on 25, at 55 it leaves it on 45. Band 5 rather than
+band 3 hits back two-thirds again as hard and keeps more of its cover, and it
+moves a head-on cavalry charge from 87% down to 40%. The 75 shot was setting up a
+near-certain finisher; the 55 shot does not.
+
+⚠️ Infantry → artillery, at 60, now out-hits the reverse. The gun's advantage
+becomes its range and the absence of any reply rather than the blow, which is
+what a battery is. All three entries stay above the 30 the harmless-attacker
+sweep pins the table's floor at.
+
+⬜ **The flank stops dampening a counter.** `FLANK_COUNTER_SHARE` goes: only a
+shot from directly behind goes unanswered, and front and flank both draw a full
+reply. Shooting then asks facing one question — *was it from behind* — and
+`flank` is read only by the charge again. The forecast stops hiding a rule,
+since *they return fire* was already all it said, and the exception the flank
+share carved out of `rollLuck`'s recoverability goes with it.
+
+⚠️ **More replies is the point.** One shot in ten draws a counter in the
+simulator — partly the bot dodging them, partly rules that refuse a reply in
+more cases than AW does. An attack that costs nothing is a deadlier game than
+any damage figure makes it.
+
+✅ **The whole pass, prototyped and measured together** in a scratch copy:
+contact, scaled luck, the artillery row, the flank removal and the rolls column.
+The migration it generates is one additive line, `ALTER TABLE resolutions ADD
+rolls text`. Exactly three existing tests fail, all three the ones this plan
+retires — the flat luck spread and the two flanked counters. Against today, 300
+games a map, blue opening:
+
+| | artillery's share of damage | charge success | shots answered |
+|---|---|---|---|
+| `classic` | 56% → 47% | 81% → 72% | 10% → 11% |
+| `crossroads` | 43% → 35% | 77% → 70% | 10% → 13% |
+| `common` | 53% → 40% | 78% → 70% | 10% → 12% |
+| `lakeland` | 58% → 48% | 72% → 62% | 11% → 14% |
+
+The artillery cut more than pays back what contact pushes the other way, and
+charge success falls ten points before a single threshold moves — so the
+thresholds likely need less lowering than first assumed.
+
+⚠️ **Contact looks like it rewards moving second.** On `common` the second mover
+wins from both openings — 63% when blue opens, 67% when red does — where today
+it is near even; `classic` and `crossroads` lean the same way, mildly. The
+likely reason is the rule doing what it says: whoever advances into contact
+first is pinned and answered first. The bot always advances, which a human need
+not, so this is a thing to watch in play rather than a verdict. ✅ **Accepted
+for now**: the first mover still gets its volley off before contact is made, and
+tuning options wait on how it plays.
+
+⚠️ **`lakeland`'s stalls are not this pass's doing.** It leaves exactly 16.3% of
+games unfinished under today's rules, under contact alone, and under the whole
+pass — the same 49 of 300. A count that survives every combat rule changing
+belongs to the board or its movement costs, and wants looking at on its own.
+**Not pursued**: `lakeland` is not a good board, and the maps are due a redesign
+regardless.
+
+#### Mobility in contact — engagement and overwatch
+
+✅ **Decided and unbuilt — and the change the rest of this pass waits on.**
+Movement was tuned for open ground, and it goes on working the same way once the
+armies meet: a unit already in a fight can still step round to its opponent's
+flank or rear and attack from there, every turn.
+
+⚠️ **The problem is commitment, not access.** Once two units are fighting, the
+fight should pin them, so that *when* and *where* to attack from is decided
+before contact rather than improvised just before each blow. Final Fantasy
+Tactics gets away with free repositioning because its units are people, and a
+person can step round another; a unit here is a formation — `PIECE_SCALE`
+already says as much — and a battalion locked with another does not wheel round
+it.
+
+⚠️ **Engagement and overwatch are one question here, not two.** Both answer
+*moving around near the enemy should cost something*, and differ only in what
+the cost is. A **costlier engagement** makes contact itself limit where a unit
+can go — the zone-of-control family. A **downside to moving near an enemy** lets
+the enemy punish it — overwatch, or a free blow for leaving. They combine as
+readily as they compete: a free blow for leaving a zone is both.
+
+⚠️ **The problem, measured** on open ground under today's rules: of the tiles
+in front of a lone defender, **seven in fifty-five** can put a
+charge into its rear this turn, and a cavalry **already in contact at its front**
+can ride round and charge its rear in the same turn. A line of five foot with
+one-tile gaps does **nothing** for a gun behind it: seven of twenty-two cavalry
+starting in front of the line reach the gun.
+
+✅ **Any zone of control fixes the measured problem.** Under every variant tried,
+rear charges from the front fall to two in fifty-five or fewer, the engaged
+cavalry can no longer get round, and the line becomes a wall — none of the
+twenty-two reach the gun. So the choice between variants was about how each
+*reads*. *Rigid* was taken — entering ends the move — over *semi-rigid*, over
+*fluid* (an extra cost, muddier now costs are fractional, and it let more foot
+through), and over *locking* (no withdrawal at all).
+
+✅ **The rule: contact is adjacency, and every unit makes it.** A unit is *in
+contact* when it stands on one of the four tiles orthogonally beside an enemy —
+any enemy, guns included. Four rather than eight because four already does the
+job, and it is the one notion of adjacency the game has, `orthogonalNeighbours`;
+eight would be the first diagonal anywhere in the rules. Two consequences, and
+nothing else:
+
+- **Moving into contact ends the move.** A tile beside an enemy may be entered
+  but not passed through, so getting past or round the enemy takes a berth wide
+  enough to stay out of contact. That is what shortens a unit's reach near the
+  fight, and the range overlay shows it without being told.
+- **A unit that starts its action in contact may move or attack, not both.** It
+  can attack from where it stands — turning to its target, as now — turn in place
+  to face another side, or move away and then not attack. A unit that starts in
+  the open moves and attacks as it does today. `slow` is untouched; a gun
+  already lives under the stricter half everywhere.
+
+⚠️ **No catalog field, no marker, no new word on the screen**, and that is the
+rule's main virtue: being next to an enemy is visible on the board and explains
+itself in a sentence. An earlier draft gave only foot and horse a zone, through a
+flag on the unit catalog, which then needed an *engaged* marker to explain why
+one unit could not do what its neighbour could. Every unit making contact
+removed the flag, the marker and the exception together. The action panel needs
+nothing either — it omits Fire and Charge after such a move exactly as it does
+for a gun that has moved, because it asks the same rule.
+
+⚠️ **Mutual, deliberately.** Cavalry that rides into contact to pin infantry is
+in contact itself and committed the same way, and a breakthrough that lands
+beside another enemy is in contact with it. That is the play the rule exists to
+create: foot skirmishes from two tiles out and stays free; horse rides in to pin
+it, giving up its own freedom to do so; and horse, which loses a straight
+firefight with foot — 30 out against 50 back — has to use its speed to keep off
+the open middle, where it would be volleyed down.
+
+⚠️ **A withdrawal may end in contact with another enemy.** Allowed rather than
+forbidden: ending a move beside a different enemy is already a poor choice and
+needs no rule to say so. An earlier draft required a withdrawal to break contact
+entirely; the simpler version won.
+
+⚠️ **The charge is the case that shows why.** It is modelled on the real thing:
+cavalry cannot walk into musket range and trade blows with formed infantry — 30
+out against 50 back says as much — so it waits for an opportune moment and
+charges to break the unit outright; if the line holds, the horses are stopped on
+the bayonets and have to pull up, or fall back on their carbines. Today's rules
+fall short of that in two ways, and both are this section's problem. **Every
+moment is opportune** while a flank is always one move away — scarcity of
+opportunity is what engagement restores. And **a failed charge costs only the
+repel**: the cavalry is left beside the infantry it failed to break and rides
+off or round next turn. Engaged, it is caught — stay and lose the exchange, or
+withdraw and do nothing — which is the *high risk* half of the gamble arriving
+without touching `CHARGE_REPEL`, and a reason the thresholds may need less
+lowering than they would on their own.
+
+✅ **A cavalry left in contact after a failed charge may charge again without
+moving** — it is attacking from where it stands. It has already paid the repel
+for the last attempt, and how often renewing it pays is left to play.
+
+✅ **Prototyped and measured**, in a scratch copy rather than the repo. The rules
+come to about twenty-five lines: `entryCost` gains a third answer — *you may
+enter, but you stop* — read by the search, which does not continue from such a
+tile, and by `validatePath`, which refuses one anywhere but the end; plus a
+refusal beside `slow` in `refuseAttack` and `refuseCharge`. **The whole existing
+suite passed against it unchanged**, 452 and 234. In the simulator, 300 games a
+map, blue opening:
+
+| | charges tried | charge success | artillery's share of damage | turns |
+|---|---|---|---|---|
+| `classic` | 1263 → 997 | 81% → 78% | 56% → 59% | 13.4 → 14.7 |
+| `crossroads` | 1531 → 1244 | 77% → 73% | 43% → 49% | 13.0 → 13.6 |
+| `common` | 1450 → 1148 | 78% → 71% | 53% → 57% | 13.3 → 14.0 |
+| `lakeland` | 1185 → 1049 | 72% → 68% | 58% → 58% | 58 → 60 |
+
+Charge opportunities fall by about a fifth. Screens make guns harder to reach, so
+artillery's share of the damage rises — the cut in *The next combat pass* is the
+counterweight, and the two want measuring together. Exempting guns from making
+contact moved none of this by more than a fraction of a point, which is what made
+the simpler rule free. ⚠️ The bot plays legally but never pins or screens on
+purpose, so these are the rule's effect on a player who ignores it.
+
+⚠️ **It costs no state.** Contact is worked out from positions each time, so
+`GameState` does not change and no stored match is abandoned; the bot and the
+client's overlay inherit it through `exploreMovement`. `entryCost` stays the one
+function that decides what a tile costs, so the overlay and the server's check
+cannot disagree.
+
+⬜ **Overwatch is shelved, as a possible second layer.** Contact covers a unit
+that is in a fight; overwatch would add a cost to moving *near* the enemy without
+contact, which this rule does not ask for, and so would a free blow for leaving.
+Kept as designed, in case play says otherwise:
+
+⬜ **Overwatch — spend the attack to watch instead.** A unit forgoes its shot
+and names a direction to watch; an enemy entering that arc is fired on before
+it acts. XCOM's shape rather than 40k's, and it composes with facing, which
+already exists and already decides whether a shot is answered.
+
+⚠️ **`slow` excludes artillery from it for free.** A gun may move or attack
+but never both, and never answers a shot — so the two arms that can overwatch
+are precisely the two the budget sweep kept buffing guns against. The
+counterweight costs no new rule.
+
+⬜ **Three decisions, cheapest first.** Whether it consumes the action — it
+should, or it is a passive buff rather than a trade. Whether it watches a
+named arc or the whole range band, where the band is free because
+`tilesInRange` already honours artillery's minimum, so enemies can walk
+*under* the guns. And whether it triggers on the destination or anywhere
+along the path: the destination is one more battle in the same command, while
+*through* means walking the path step by step and deciding whether the mover
+stops, which touches `validatePath` and the one-event-carries-a-path design.
+Prove it on the destination first.
+
+⚠️ **The sharp edge is randomness, not the rule.** `rollLuck` reads the
+*command* and never the rules, deliberately — so the number of draws cannot
+depend on whether a path crossed a watched tile. The existing precedent is to
+draw for the worst case: a counter roll is already drawn whether or not it is
+used. It also needs watching state on `Unit`, which is a `GameState` shape
+change and abandons stored matches under the ruleset compromise.
+
+⚠️ **The reactive family is unmeasured, and structurally so.** A zone is worked
+out from positions alone, so a scratch search can say what it does; a reaction
+depends on what the other side chose to watch, which nothing can sweep without
+building it.
+
+⚠️ **It reaches everything else in this epic**, which is why it goes first. Rear
+and flank charges fall away on their own — a fifth fewer charges in the
+prototype. Screens become real, so guns get harder to reach, which works against
+the artillery cut — measured, three to six points. Contact slows everything, by
+about a turn a match. And `lakeland`, already unresolved in a sixth of its
+games, is no worse and no better. The charge thresholds are tuned together with
+this.
 
 #### The dials
 
