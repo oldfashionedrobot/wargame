@@ -304,8 +304,7 @@ becomes a column of `UnitType` and the edit is local.
 charged). Then the scalars, each explained where it is used rather than here:
 `TERRAIN_WEIGHT` and `LUCK_MAX` in *Combat*; `CHARGE_HALF_LIFE`,
 `FRONTAL_FLOOR`, `FLOOR_PER_STAR` and `REPEL_DIVISOR` in *Charge*;
-`FLANK_MULTIPLIER` and `REAR_MULTIPLIER` in *Charge*, and
-`FLANK_COUNTER_SHARE` in *A shot from behind*.
+and `FLANK_MULTIPLIER` and `REAR_MULTIPLIER` in *Charge*.
 
 ⚠️ `BASE_DAMAGE` is a matrix rather than an attack stat and a defence stat: no
 pair of scalars can express rock-paper-scissors, since any `f(attack, defence)`
@@ -600,26 +599,22 @@ committed the same way on its next action.
 
 ### Facing
 
-**Facing does exactly three things**: a shot from directly behind goes
-unanswered, a shot on the flank cuts the counter to `FLANK_COUNTER_SHARE`, and
-it adjusts a charge's threshold. `computeDamage` cannot see facing at all, so
+**Facing does exactly two things**: a shot from directly behind goes
+unanswered, and it adjusts a charge's threshold. `computeDamage` cannot see facing at all, so
 there is no modifier on the *outgoing* shot — position limits the reply, it does
 not sharpen the blow.
 
 A single-element path is a **turn in place** — legal at cost 0, and a real
 defensive action.
 
-### A shot from behind is never answered, and a flanking one is answered softly
+### A shot from behind is never answered
 
-Where facing changes shooting. Position affects *the reply* — who may answer and
-how hard — never what the attacking shot does.
+Where facing changes shooting. Position affects *whether* there is a reply,
+never what the attacking shot does. Front and flank both draw a full counter.
 
-⚠️ **Only the negation is visible before committing.** `attackForecast` reports
-*they return fire* or nothing, so a reduced counter reads the same as a full one
-at the moment of choosing; the cutaway prints both sides' damage afterwards, so
-the flank rule is learned in play. ⚠️ **The scaling is applied after luck**,
-which narrows the luck band on a flanked counter from 0–9 to 0–6 and destroys
-the roll's recoverability from the log — see `rollLuck`.
+⚠️ **The forecast shows the whole rule.** `attackForecast` reports *they return
+fire* or nothing, and since the only thing facing can do to a reply is remove
+it, that is all there is to say.
 
 `wouldCounter` takes no facing argument: a `Unit` carries its own, so both
 callers — `resolveBattle` and the client's `attackForecast` — get the rule
@@ -639,8 +634,7 @@ to its attacker equalling its facing means it is *looking at* the shot, which is
 `front`. Read as the direction the shot travels, every case inverts and no
 individual result looks wrong. Diagonals inherit `facingToward`'s tie-break.
 
-⚠️ **`flank` is returned and read by nothing.** Only `rear` is wired for
-shooting; charge reads all three. There is no flanking damage bonus.
+⚠️ **Shooting reads only `rear`; `flank` is read by the charge alone.** There is no flanking damage bonus.
 
 ⚠️ **The test fixture's `facing` is a rule input.** `makeState` defaults units
 to `south`, which decides whether a counter happens, so anything asserting one

@@ -8,7 +8,6 @@ import {
   FRONTAL_FLOOR,
   CHARGE_REPEL,
   CHARGE_THRESHOLD,
-  FLANK_COUNTER_SHARE,
   FLANK_MULTIPLIER,
   REAR_MULTIPLIER,
   REPEL_DIVISOR,
@@ -300,13 +299,11 @@ export function tilesInRange(
  * its facing, which is why both callers got the rule for free: this one, and the
  * client's `attackForecast`.
  *
- * ⚠️ **The rear negates the counter; the flank shrinks it** -- see
- * `FLANK_COUNTER_SHARE`, which `resolveBattle` applies. Only the negation is
- * visible in the preview, because the counter's *magnitude* is deliberately
- * absent from it: the panel says "they return fire" or nothing, and an absence
- * is the only thing in its vocabulary. The reduction is therefore learned from
- * the cutaway, which prints both sides' damage. A flanking *damage* bonus on
- * the attacking shot is a different thing and was refused on its own terms.
+ * ⚠️ **The rear negates the counter, and nothing else about facing touches a
+ * shot.** Front and flank both draw a full reply, so what the panel says --
+ * "they return fire" or nothing -- is the whole of the rule rather than a
+ * rounding of it. A flanking *damage* bonus on the attacking shot is a different
+ * thing and was refused on its own terms.
  *
  * ⚠️ **In a head-on meeting it changes nothing**, which is the point. Deployment
  * points each army at the other, so the armies arrive front-to-front and the
@@ -376,18 +373,10 @@ export function resolveBattle(
   // exchange calculus for free: striking first compounds, because a wounded
   // defender both hits softer and keeps less of its terrain cover.
   const survivor: Unit = { ...defender, health: defenderHealth };
-  // ⚠️ **A flank shot blunts the reply; the rear still negates it.** Only
-  // `front` and `flank` can reach here at all -- `wouldCounter` has already
-  // refused the rear -- so the two cases are the whole rule. The share is taken
-  // off the finished number, luck included; see `FLANK_COUNTER_SHARE`.
+  // ⚠️ **Front and flank answer in full; only the rear is refused**, and
+  // `wouldCounter` has already done that.
   const answered = wouldCounter(survivor, attacker.position);
-  const share =
-    attackSide(survivor.facing, survivor.position, attacker.position) === 'flank'
-      ? FLANK_COUNTER_SHARE
-      : 1;
-  const riposte = answered
-    ? Math.floor(computeDamage(state, survivor, attacker, rolls.counter) * share)
-    : 0;
+  const riposte = answered ? computeDamage(state, survivor, attacker, rolls.counter) : 0;
 
   return {
     type: 'battleResolved',

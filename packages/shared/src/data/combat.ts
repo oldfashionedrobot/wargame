@@ -262,29 +262,5 @@ export const REPEL_DIVISOR = 10;
  * the rear distinction doing nothing. `scripts/charges.ts` prints all three for
  * exactly that.
  */
-/**
- * What is left of a counter-attack when the shot came in on the defender's
- * flank. Front full, flank two-thirds, rear none.
- *
- * ⚠️ **Applied to the finished number, after luck**, which is the simpler of
- * the two placements and the one chosen. The cost is that it scales the luck
- * band with it -- 0..9 head-on, 0..6 flanked -- against `LUCK_MAX`'s own rule
- * that luck is additive and applied last. Accepted for being one line rather
- * than a split of `computeDamage`. ⚠️ It also costs the roll: see `rollLuck`,
- * where the log's recoverability argument now has an exception.
- *
- * ⚠️ **`answered` stays a boolean**, because a flanked defender still answers.
- * A riposte of 0 is newly reachable -- two-thirds of 1 is 0, which needs a
- * defender at 10 health or less in 4-star cover -- and `battleResolved` already
- * says in as many words that `true` with the attacker's health unchanged is a
- * real outcome.
- *
- * ⚠️ **Invisible in the forecast, and that is the accepted trade.** The panel
- * says *they return fire* or nothing, so a reduced counter reads the same as a
- * full one at the moment of choosing. The cutaway prints both sides' damage
- * afterwards, so the rule is learned in play -- the same way the rear rule is.
- */
-export const FLANK_COUNTER_SHARE = 2 / 3;
-
 export const FLANK_MULTIPLIER = 1.5;
 export const REAR_MULTIPLIER = 2;

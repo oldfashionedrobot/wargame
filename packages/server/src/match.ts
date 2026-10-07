@@ -35,14 +35,6 @@ const LIST_LIMIT = 50;
  * is recoverable from the log as `actualDamage − computeDamage(preState, …, 0)`
  * -- storing it would be storing something the log already contains.
  *
- * ⚠️ **With one exception, and it is a real loss rather than a rewording.** A
- * counter-attack against a *flanked* defender is scaled by
- * `FLANK_COUNTER_SHARE` after luck is added, and `floor((damage + roll) × 2/3)`
- * is not injective in `roll` -- three rolls land on two outcomes, at every
- * damage value a counter can take. That roll is gone, not merely displaced.
- * Accepted because nothing reads it back today; the day something wants to, it
- * is the flanked counter that cannot answer.
- *
  * Exported only so it can be tested. `Math.random() * LUCK_MAX` instead of
  * `* (LUCK_MAX + 1)` is a one-character bug that means **the best roll never
  * happens** -- damage stays in a legal range, nothing throws, and nobody would

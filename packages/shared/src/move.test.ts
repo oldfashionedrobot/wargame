@@ -265,10 +265,10 @@ describe('resolveMove', () => {
     expect(battle.attacker.health).toBeLessThan(MAX_HEALTH);
   });
 
-  // ⚠️ The middle case, and the one the boolean cannot express: a flanked
-  // defender still answers, for two-thirds of what it would have managed
-  // head-on. `answered` is true in both, so the *health* is the only evidence.
-  it('answers a flanking shot, but for less than a head-on one', () => {
+  // ⚠️ Front and flank are the same answer: only the rear is refused, and a
+  // flanked defender replies in full. `answered` is true in both, so the
+  // *health* is the evidence that nothing was taken off.
+  it('answers a flanking shot in full, the same as a head-on one', () => {
     const shot = (look: 'east' | 'south') => {
       const state = makeState(8, [
         { id: 'b1', col: 0, row: 0 },
@@ -279,19 +279,15 @@ describe('resolveMove', () => {
       return battle;
     };
     expect(shot('east').answered).toBe(true);
-    expect(shot('east').attacker.health).toBeGreaterThan(shot('south').attacker.health);
+    expect(shot('east').attacker.health).toBe(shot('south').attacker.health);
   });
 
-  // ⚠️ **The one hole in *no living attacker is harmless*, pinned so it cannot
-  // be closed by accident.** That sweep guarantees `computeDamage` never
-  // returns 0 for a living attacker; a flanked counter is then scaled by
-  // `FLANK_COUNTER_SHARE` *after* the fact, and two-thirds of 1 is 0. It needs
-  // the corner it sounds like -- a defender beaten into the lowest band,
-  // answering an attacker who is standing in the heaviest cover there is.
-  //
-  // `battleResolved` already says `answered: true` with the attacker's health
-  // unchanged is a real outcome. This is where that stops being hypothetical.
-  it('lets a flanked counter land nothing at all, and still count as answered', () => {
+  // ⚠️ **The corner where a counter once rounded to nothing.** A flanked reply
+  // used to be cut to two-thirds after the fact, and two-thirds of 1 is 0 -- a
+  // defender beaten into the lowest band, answering an attacker in the heaviest
+  // cover there is, landed nothing while counting as answered. With the flank
+  // answering in full, *no living attacker is harmless* holds for counters too.
+  it('lands something on a flanked counter, even from the lowest band', () => {
     // Infantry on a peak shoots an adjacent cavalry on its flank; 50 damage
     // leaves the cavalry on 5, and its reply is 1 head-on and 0 from there.
     const peak = (facing: 'south' | 'west') =>
@@ -309,7 +305,7 @@ describe('resolveMove', () => {
     };
     expect(fight('west').attacker.health).toBe(MAX_HEALTH - 1); // head-on: a single point
     expect(fight('south').answered).toBe(true);
-    expect(fight('south').attacker.health).toBe(MAX_HEALTH); // flanked: nothing at all
+    expect(fight('south').attacker.health).toBe(MAX_HEALTH - 1); // flanked: the same point
   });
 
   // `hasActed` stops a unit *acting* twice in its own turn; answering an attack

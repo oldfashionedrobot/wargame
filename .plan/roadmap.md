@@ -301,13 +301,15 @@ more clause in the validation above.
 
 #### The next combat pass
 
-**Four changes, decided in principle and unbuilt**, all aimed at one finding.
+**A pass of changes, landing one at a time**, all aimed at one finding.
 Per hit, this game is *not* more lethal than Advance Wars: on open ground the
 median kill takes three hits here against AW's two, and in cover each star is
 worth half again what it is there. It *plays* far more lethal for three reasons
 the damage table is not one of — artillery deals over half of all damage and is
 never answered, only one shot in ten draws a reply, and charges finish whatever
-has been wounded. These go at those, not at the table as a whole.
+has been wounded. These go at those, not at the table as a whole. ✅ **Landed so
+far**: contact (see *Mobility in contact*), and the flank counter cut — front and
+flank now draw a full reply, and only the rear refuses one.
 
 ✅ **Replay is untouched by all of it, and by the contact rule below.** What the
 log promises is that `initial_state` folded with the events reaches the state at
@@ -423,18 +425,6 @@ becomes its range and the absence of any reply rather than the blow, which is
 what a battery is. All three entries stay above the 30 the harmless-attacker
 sweep pins the table's floor at.
 
-⬜ **The flank stops dampening a counter.** `FLANK_COUNTER_SHARE` goes: only a
-shot from directly behind goes unanswered, and front and flank both draw a full
-reply. Shooting then asks facing one question — *was it from behind* — and
-`flank` is read only by the charge again. The forecast stops hiding a rule,
-since *they return fire* was already all it said, and the exception the flank
-share carved out of `rollLuck`'s recoverability goes with it.
-
-⚠️ **More replies is the point.** One shot in ten draws a counter in the
-simulator — partly the bot dodging them, partly rules that refuse a reply in
-more cases than AW does. An attack that costs nothing is a deadlier game than
-any damage figure makes it.
-
 ✅ **The whole pass, prototyped and measured together** in a scratch copy:
 contact, scaled luck, the artillery row, the flank removal and the rolls column.
 The migration it generates is one additive line, `ALTER TABLE resolutions ADD
@@ -521,7 +511,7 @@ building it.
 
 The tables are `BASE_DAMAGE`, `CHARGE_THRESHOLD` and `CHARGE_REPEL`; the scalars
 beside them are `TERRAIN_WEIGHT`, `FRONTAL_FLOOR`, `FLOOR_PER_STAR`,
-`FLANK_MULTIPLIER`, `REAR_MULTIPLIER`, `FLANK_COUNTER_SHARE`, `LUCK_MAX`,
+`FLANK_MULTIPLIER`, `REAR_MULTIPLIER`, `LUCK_MAX`,
 `CHARGE_HALF_LIFE` and `REPEL_DIVISOR`. The `defense` column of `terrain.ts` is
 a dial too, and turned out to be the one carrying the most weight.
 
