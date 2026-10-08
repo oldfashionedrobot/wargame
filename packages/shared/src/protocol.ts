@@ -71,6 +71,11 @@ export interface MatchSummary {
   winner: PlayerId | null;
 }
 
+/** POST /api/matches -- the body; omit `mapId` to take the default map. */
+export interface CreateMatchRequest {
+  mapId?: string;
+}
+
 /** GET /api/maps -- what a new match can be started on. */
 export interface MapSummary {
   id: string;
@@ -128,13 +133,10 @@ export interface EventsResponse {
 }
 
 /**
- * The body of any non-2xx response.
- *
- * Deliberately not `CommandResult`'s `{ ok: false, reason }`, even though that
- * shape was once used here. The two mean different things: a `CommandResult`
- * says the *rules* refused a well-formed command and arrives with a 200, while
- * this says the *request* never reached them. Sharing a shape invites a client
- * to conflate "your move was illegal" with "that wasn't a command".
+ * The body of every non-2xx response, a rule refusal (422) included; the
+ * status says which kind of failure it is. `CommandResult`'s `{ ok: false }` is
+ * what the client's `submit` resolves a refusal *to*, and never crosses the
+ * wire.
  */
 export interface ErrorResponse {
   error: string;

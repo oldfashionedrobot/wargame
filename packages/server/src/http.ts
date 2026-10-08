@@ -2,7 +2,14 @@ import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { BunRequest } from 'bun';
 import { parseCommand } from '@wargame/shared';
-import type { ErrorResponse, GameState, MapPreview, PlayerId } from '@wargame/shared';
+import type {
+  CreateMatchRequest,
+  ErrorResponse,
+  GameState,
+  MapPreview,
+  MapSummary,
+  PlayerId,
+} from '@wargame/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore } from './match';
 import { createMatchState } from './matchState';
@@ -51,7 +58,7 @@ export async function createServer({ port, databaseUrl, clientDist }: ServerOpti
         GET: withSession(async () =>
           // Ids and names only: the rows are nobody else's business, and a
           // map's terrain reaches the client inside the match state anyway.
-          Response.json(listMaps().map(({ id, name }) => ({ id, name }))),
+          Response.json(listMaps().map(({ id, name }) => ({ id, name })) satisfies MapSummary[]),
         ),
       },
 
@@ -278,7 +285,7 @@ const INVALID = Symbol('unknown map');
 
 function readMapId(body: unknown): string | undefined | typeof INVALID {
   if (typeof body !== 'object' || body === null) return undefined;
-  const { mapId } = body as { mapId?: unknown };
+  const { mapId } = body as { [K in keyof CreateMatchRequest]?: unknown };
   if (mapId === undefined) return undefined;
   if (typeof mapId !== 'string') return INVALID;
   return findMap(mapId)?.id ?? INVALID;

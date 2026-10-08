@@ -73,6 +73,7 @@ export { applyEvents } from './applyEvents';
 
 export type {
   CommandResult,
+  CreateMatchRequest,
   ErrorResponse,
   EventsResponse,
   GameServer,

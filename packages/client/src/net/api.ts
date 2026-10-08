@@ -1,4 +1,10 @@
-import type { ErrorResponse, MapPreview, MapSummary, MatchSummary } from '@wargame/shared';
+import type {
+  CreateMatchRequest,
+  ErrorResponse,
+  MapPreview,
+  MapSummary,
+  MatchSummary,
+} from '@wargame/shared';
 
 // Same-origin: in dev Vite proxies /api to the server, in production the
 // server serves this bundle itself. Either way there's no base URL to
@@ -104,7 +110,8 @@ export const api = {
     },
     /** Omit `mapId` to take the server's default. */
     create(mapId?: string): Promise<MatchSummary> {
-      return postJson<MatchSummary>('/matches', mapId === undefined ? undefined : { mapId });
+      const body: CreateMatchRequest | undefined = mapId === undefined ? undefined : { mapId };
+      return postJson<MatchSummary>('/matches', body);
     },
   },
 };
