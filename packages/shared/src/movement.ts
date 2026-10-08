@@ -1,4 +1,4 @@
-import { coordinatesEqual, coordinateKey, orthogonalNeighbours } from './coordinate';
+import { coordinatesEqual, coordinateKey, orthogonalNeighbours, tileDistance } from './coordinate';
 import { getTerrain } from './data/terrain';
 import type { MovementType } from './data/unitTypes';
 import type { TileType } from './data/terrain';
@@ -260,8 +260,8 @@ export function validatePath(
   for (let i = 1; i < path.length; i++) {
     const step = path[i];
     const previous = path[i - 1];
-    const distance = Math.abs(step.col - previous.col) + Math.abs(step.row - previous.row);
-    if (distance !== 1) return `path jumps from ${nameOf(previous)} to ${nameOf(step)}`;
+    if (tileDistance(previous, step) !== 1)
+      return `path jumps from ${nameOf(previous)} to ${nameOf(step)}`;
 
     const key = coordinateKey(step);
     if (seen.has(key)) return `path revisits ${nameOf(step)}`;

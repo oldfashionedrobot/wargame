@@ -107,7 +107,7 @@ export function isFacing(value: unknown): value is Facing {
 export function directionBetween(from: Coordinate, to: Coordinate): Facing | null {
   const dCol = to.col - from.col;
   const dRow = to.row - from.row;
-  if (Math.abs(dCol) + Math.abs(dRow) !== 1) return null;
+  if (tileDistance(from, to) !== 1) return null;
 
   if (dCol === 1) return 'east';
   if (dCol === -1) return 'west';
