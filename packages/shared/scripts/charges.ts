@@ -23,11 +23,12 @@
  * intended and a dead dial where it is not, and the two look identical in a
  * head-on column.
  */
-import { chargeChance, chargeThreshold } from '../src/combat';
-import { CHARGE_REPEL, REPEL_DIVISOR } from '../src/data/combat';
+import { chargeChance, chargeThreshold, repelDamage } from '../src/combat';
+import { REPEL_DIVISOR } from '../src/data/combat';
 import { TERRAIN } from '../src/data/terrain';
 import { makeState } from '../src/testing';
 import type { UnitTypeId } from '../src/data/unitTypes';
+import type { Unit } from '../src/types';
 
 const CHARGERS: UnitTypeId[] = ['cavalry', 'infantry'];
 const TARGETS: UnitTypeId[] = ['infantry', 'cavalry', 'artillery'];
@@ -78,11 +79,10 @@ const COVER = [...new Set(Object.values(TERRAIN).map((g) => g.defense))]
 // into. This column printed `flat..flat+9` for every row until the floor
 // landed, which hid the second-order effect the floor introduced -- deeper
 // cover lowers the odds, and lower odds widen the beating for failing.
-const failureBand = (defender: UnitTypeId, chances: number[]) => {
-  const flat = CHARGE_REPEL[defender];
-  const best = Math.max(...chances);
-  if (best >= 100) return `${flat}+, if it could`;
-  return `${flat}–${flat + Math.floor((99 - best) / REPEL_DIVISOR)}`;
+const failureBand = (defender: Unit, best: number) => {
+  const low = repelDamage(defender, best, best);
+  if (best >= 100) return `${low}+, if it could`;
+  return `${low}–${repelDamage(defender, best, 99)}`;
 };
 
 console.log(
@@ -99,13 +99,13 @@ for (const { stars, char, names } of COVER) {
     for (const attacker of CHARGERS) {
       for (const defender of TARGETS) {
         if (chargeThreshold(attacker, defender) === null) continue;
-        const chances = HEALTHS.map((health) => {
-          const state = board(attacker, defender, health, facing, char);
-          return chargeChance(state, state.units[0], state.units[1])!;
-        });
+        const boards = HEALTHS.map((health) => board(attacker, defender, health, facing, char));
+        const chances = boards.map((state) => chargeChance(state, state.units[0], state.units[1])!);
+        const best = Math.max(...chances);
+        const target = boards[chances.indexOf(best)].units[1];
         const odds = chances.map((chance) => `${chance}%`.padStart(7));
         console.log(
-          `${`${attacker} → ${defender}`.padEnd(24)}${odds.join('')}   ${failureBand(defender, chances)}`,
+          `${`${attacker} → ${defender}`.padEnd(24)}${odds.join('')}   ${failureBand(target, best)}`,
         );
       }
     }

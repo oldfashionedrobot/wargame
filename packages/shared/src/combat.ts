@@ -470,6 +470,11 @@ export function refuseCharge(
   return null;
 }
 
+/** What a failed charge costs the attacker, for the roll that failed it. */
+export function repelDamage(defender: Unit, chance: number, roll: number): number {
+  return CHARGE_REPEL[defender.unitTypeId] + Math.floor((roll - chance) / REPEL_DIVISOR);
+}
+
 /**
  * One charge, resolved.
  *
@@ -498,9 +503,7 @@ export function resolveCharge(
   }
 
   const broke = rolls.charge < chance;
-  const repel = broke
-    ? 0
-    : CHARGE_REPEL[defender.unitTypeId] + Math.floor((rolls.charge - chance) / REPEL_DIVISOR);
+  const repel = broke ? 0 : repelDamage(defender, chance, rolls.charge);
 
   return {
     type: 'battleResolved',

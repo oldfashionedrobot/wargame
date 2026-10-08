@@ -37,9 +37,9 @@ export type { ArmyPlacement } from './armyGrid';
 export type { UnitTypeId } from './data/unitTypes';
 export { clampHealth, getUnitType, MAX_HEALTH } from './data/unitTypes';
 
-// Combat: the table is out because the tuning harness prints it, and
-// `computeDamage` because the client previews the same number the server rolls.
-export { BASE_DAMAGE, CHARGE_REPEL, LUCK_MAX, REPEL_DIVISOR } from './data/combat';
+// Combat: `LUCK_MAX` and `computeDamage` are out because the client previews
+// the same number the server rolls.
+export { LUCK_MAX } from './data/combat';
 export {
   band,
   BANDS,
