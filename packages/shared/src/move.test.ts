@@ -135,9 +135,7 @@ describe('validateMove, with a target', () => {
     expect(validateMove(state, move('b1', at(0, 0), at(3, 0), 'friend'))).toBe(
       'that unit is yours',
     );
-    expect(validateMove(state, move('b1', at(0, 0), at(0, 0), 'b1'))).toBe(
-      'a unit cannot attack itself',
-    );
+    expect(validateMove(state, move('b1', at(0, 0), at(0, 0), 'b1'))).toBe('that unit is yours');
   });
 
   // The route is checked first, so an illegal walk is reported as such rather

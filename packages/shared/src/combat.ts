@@ -164,22 +164,33 @@ function refuseMovingAttack(state: GameState, attacker: Unit, path: Coordinate[]
   return null;
 }
 
+/**
+ * The checks every attack opens with, shot or charge: the target exists, is an
+ * enemy -- which also refuses a unit itself -- and the turn allows attacking.
+ * Returns the target, or why not.
+ */
+function refuseTarget(
+  state: GameState,
+  attacker: Unit,
+  path: Coordinate[],
+  targetUnitId: string,
+): Unit | string {
+  const target = getUnit(state, targetUnitId);
+  if (!target) return 'target not found';
+  if (target.owner === attacker.owner) return 'that unit is yours';
+  return refuseMovingAttack(state, attacker, path) ?? target;
+}
+
 export function refuseAttack(
   state: GameState,
   attacker: Unit,
   path: Coordinate[],
   targetUnitId: string,
 ): string | null {
-  const from = path[path.length - 1];
-  const target = getUnit(state, targetUnitId);
-  if (!target) return 'target not found';
-  if (target.id === attacker.id) return 'a unit cannot attack itself';
-  if (target.owner === attacker.owner) return 'that unit is yours';
+  const target = refuseTarget(state, attacker, path, targetUnitId);
+  if (typeof target === 'string') return target;
 
-  const halted = refuseMovingAttack(state, attacker, path);
-  if (halted) return halted;
-
-  const off = outsideRange(attacker, from, target.position);
+  const off = outsideRange(attacker, path[path.length - 1], target.position);
   if (off === 'near') return 'target is too close';
   if (off === 'far') return 'target is out of range';
   return null;
@@ -447,21 +458,14 @@ export function refuseCharge(
   path: Coordinate[],
   targetUnitId: string,
 ): string | null {
-  const from = path[path.length - 1];
-  const target = getUnit(state, targetUnitId);
-  if (!target) return 'target not found';
-  if (target.id === attacker.id) return 'a unit cannot charge itself';
-  if (target.owner === attacker.owner) return 'that unit is yours';
-
-  // ⚠️ Asked here too, although nothing slow can charge today -- artillery has
-  // no threshold row. A future slow charger would otherwise silently keep the
-  // one privilege the flag exists to remove.
-  const halted = refuseMovingAttack(state, attacker, path);
-  if (halted) return halted;
+  const target = refuseTarget(state, attacker, path, targetUnitId);
+  if (typeof target === 'string') return target;
   if (chargeThreshold(attacker.unitTypeId, target.unitTypeId) === null) {
     return `${attacker.unitTypeId} cannot charge`;
   }
-  if (tileDistance(from, target.position) !== 1) return 'a charge has to reach them';
+  if (tileDistance(path[path.length - 1], target.position) !== 1) {
+    return 'a charge has to reach them';
+  }
 
   const { movementType } = getUnitType(attacker.unitTypeId);
   const tile = getTileAt(state, target.position);

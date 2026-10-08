@@ -258,9 +258,7 @@ describe('refuseCharge', () => {
       { id: 'b2', col: 1, row: 2 },
     ]);
     expect(refuseCharge(friendly, b1(friendly), [at(1, 1)], 'b2')).toBe('that unit is yours');
-    expect(refuseCharge(friendly, b1(friendly), [at(1, 1)], 'b1')).toBe(
-      'a unit cannot charge itself',
-    );
+    expect(refuseCharge(friendly, b1(friendly), [at(1, 1)], 'b1')).toBe('that unit is yours');
   });
 
   // ⚠️ **The rule `entryCost` could not answer, and it is currently
