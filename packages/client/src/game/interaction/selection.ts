@@ -340,8 +340,9 @@ function canAttack(state: GameState, selection: DestinationChosen, refuse: Refus
 }
 
 /**
- * Which tiles charging mode lights: the neighbours holding something this unit
- * could actually charge.
+ * Which tiles charging mode lights: the units this one could actually charge,
+ * asked of `refuseCharge` -- the same question `canCharge` asks, so the row is
+ * never offered with nothing lit.
  *
  * ⚠️ **Targets, not reach — the opposite of the firing band, and deliberately.**
  * Red means *in range* because reach is the information a shot is planned
@@ -350,10 +351,9 @@ function canAttack(state: GameState, selection: DestinationChosen, refuse: Refus
  * legal set.
  */
 function chargeTilesFor(state: GameState, unit: Unit, path: Coordinate[]): Coordinate[] {
-  return neighboursOf(state, path[path.length - 1]).filter((tile) => {
-    const occupant = getUnitAt(state, tile);
-    return occupant !== undefined && refuseCharge(state, unit, path, occupant.id) === null;
-  });
+  return state.units
+    .filter((target) => refuseCharge(state, unit, path, target.id) === null)
+    .map((target) => target.position);
 }
 
 /** A target is pinned: the forecast opens over it, and nothing is sent yet. */
@@ -385,20 +385,14 @@ function attackTilesFor(state: GameState, unit: Unit, from: Coordinate): Coordin
 /**
  * The four orthogonal neighbours of a tile, clipped to the board.
  *
- * ⚠️ **Named for what it returns, not for who wants it.** It was
- * `facingTilesFor` when facing was the only caller; charge then wanted the same
- * shape for an unrelated reason -- the tiles it might reach -- and a charge
- * asking `facingTilesFor` reads as a mistake. Two callers, one name for the
- * thing itself.
- *
  * ⚠️ **Moved out of the renderer, which used to derive these from a single
  * coordinate.** Which tiles light is a question about the *selection*, not about
  * painting -- the renderer's job is to colour a list. It also made this testable
  * for the first time: the renderer has no unit tests at all, being WebGL, so "a
  * unit on the top row has three choices" was asserted nowhere.
  *
- * Clipping belongs here rather than in a caller, because neither a facing that
- * points off the board nor a charge into it is a choice worth offering.
+ * Clipping belongs here rather than in a caller, because a facing that points
+ * off the board is not a choice worth offering.
  */
 function neighboursOf(state: GameState, around: Coordinate): Coordinate[] {
   const height = state.grid.length;
