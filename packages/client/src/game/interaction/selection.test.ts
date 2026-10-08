@@ -697,33 +697,6 @@ describe('the charge forecast', () => {
   it('gets harder as the target gets healthier', () => {
     expect(aimed(contact(90)).chance).toBeLessThan(aimed(contact(40)).chance);
   });
-
-  // ⚠️ **The end of that narrowing, where it used to run backwards.** A certain
-  // charge has no failing rolls at all, so `99 - chance` goes negative and an
-  // unclamped `repelHigh` came out one *below* `repelLow`. It stayed invisible
-  // because the panel hides a range that does not widen -- the value was wrong
-  // the whole time, not the display.
-  it('never quotes a band that runs backwards, even when the charge cannot fail', () => {
-    const certain = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'r1', col: 1, row: 2, owner: 'red', health: 20, facing: 'north' },
-    ]);
-    const forecast = aimed(certain);
-    expect(forecast.chance).toBe(100);
-    expect(forecast.repelHigh).toBeGreaterThanOrEqual(forecast.repelLow);
-  });
-
-  // ⚠️ The band narrows on its own as the odds improve, because a likely charge
-  // leaves a narrow window to fail into. Nothing states that; it falls out of
-  // `99 - chance`.
-  it('quotes a repel band that narrows with better odds', () => {
-    const longShot = aimed(contact(100));
-    const likely = aimed(contact(40));
-    expect(longShot.repelLow).toBe(likely.repelLow);
-    expect(longShot.repelHigh - longShot.repelLow).toBeGreaterThan(
-      likely.repelHigh - likely.repelLow,
-    );
-  });
 });
 
 // ⚠️ **The panel has to know the turn rule too**, or it offers Fire to a gun

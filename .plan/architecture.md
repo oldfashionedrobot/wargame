@@ -1261,11 +1261,9 @@ single place that builds the command, rather than branched on through the
 dispatch.
 
 ⚠️ **`Forecast` is a union, because the two attacks are knowable to different
-degrees.** A shot's damage is a *range* — the roll is unknown. A charge's odds are **exact**, `chance` being a pure function of state
-with no roll in it, and it is the *repel* that comes as a band. Flattening both
-into one shape would force the charge to present its certainty as an estimate.
-⚠️ That band narrows on its own as the odds improve — a likely charge leaves a
-narrow window to fail into — which falls out of `99 − chance` rather than a rule.
+degrees.** A shot's damage is a *range* — the roll is unknown. A charge shows
+its odds alone, which are **exact**: `chance` is a pure function of state with
+no roll in it. What a failed charge would cost is not previewed.
 
 **The charge overlay lights targets, not reach** — the opposite of the shooting
 band, because a charge is contact-only and has no reach to show.

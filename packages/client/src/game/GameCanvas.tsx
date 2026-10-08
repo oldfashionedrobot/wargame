@@ -486,13 +486,8 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
                 {forecast.answered && ' · they return fire'}
               </span>
             ) : (
-              /* ⚠️ An exact figure where a shot gets a range, because no roll
-                 enters `chance` -- and the cost of failing is the band, which is
-                 the reverse of how a shot reads. */
-              <span>
-                Charge — {forecast.chance}% to break · {forecast.repelLow}
-                {forecast.repelHigh > forecast.repelLow && `–${forecast.repelHigh}`} if it fails
-              </span>
+              /* An exact figure where a shot gets a range: no roll enters `chance`. */
+              <span>Charge — {forecast.chance}% to break</span>
             )}
             <span style={{ opacity: 0.75 }}>Click again to confirm</span>
           </div>

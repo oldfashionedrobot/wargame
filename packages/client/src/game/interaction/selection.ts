@@ -1,9 +1,7 @@
 import {
   canSelectUnit,
   chargeChance,
-  CHARGE_REPEL,
   refuseCharge,
-  REPEL_DIVISOR,
   computeDamage,
   facingToward,
   LUCK_MAX,
@@ -613,16 +611,6 @@ export type Forecast =
       kind: 'charge';
       /** ⚠️ Exact, not an estimate -- no roll enters this. */
       chance: number;
-      /**
-       * What failing costs: the flat repel, up to the flat repel plus whatever
-       * the overshoot can reach from here.
-       *
-       * ⚠️ **The band narrows as the odds improve, and nothing says so** -- a
-       * likely charge leaves a narrow window to fail into, so its overshoot
-       * cannot get far. That falls out of `99 - chance` rather than being a rule.
-       */
-      repelLow: number;
-      repelHigh: number;
     };
 
 /**
@@ -658,17 +646,7 @@ export function attackForecast(state: GameState, selection: TargetPinned): Forec
   if (selection.step.kind === 'charging') {
     const chance = chargeChance(state, moved, target);
     if (chance === null) return null;
-    const flat = CHARGE_REPEL[target.unitTypeId];
-    return {
-      kind: 'charge',
-      chance,
-      repelLow: flat,
-      // ⚠️ **Clamped, because at `chance` 100 there are no failing rolls and
-      // `99 - chance` goes negative** -- which made `repelHigh` one *below*
-      // `repelLow`, an incoherent band that only stayed invisible because the
-      // panel hides the range when it does not widen.
-      repelHigh: Math.max(flat, flat + Math.floor((99 - chance) / REPEL_DIVISOR)),
-    };
+    return { kind: 'charge', chance };
   }
 
   const low = computeDamage(state, moved, target, 0);
