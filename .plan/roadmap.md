@@ -21,12 +21,13 @@ number**. Reordering is editing one row of this table and nothing else.
 | Order | Epic | |
 |---|---|---|
 | 1 | **Tuning and gameplay tweaks** | Iterate on how it actually plays, before anything is built on top of it |
-| 2 | **UI and interaction** | The chrome, and how it feels to give an order |
-| 3 | **Presentation** (11) | The 3D look, then animation and sound |
-| 4 | **A hosted build** (13) | itch.io — hot-seat, in front of real players |
-| 5 | **Multiplayer** (12) | Identity, and two clients in one match |
-| 6 | **Content** (14) | More units, maps in a table, an editor |
-| 7 | **Platforms** (15) | The portals that gate, review, or supply accounts |
+| 2 | **Code health** | One home for every rule, and the package boundaries kept honest |
+| 3 | **UI and interaction** | The chrome, and how it feels to give an order |
+| 4 | **Presentation** (11) | The 3D look, then animation and sound |
+| 5 | **A hosted build** (13) | itch.io — hot-seat, in front of real players |
+| 6 | **Multiplayer** (12) | Identity, and two clients in one match |
+| 7 | **Content** (14) | More units, maps in a table, an editor |
+| 8 | **Platforms** (15) | The portals that gate, review, or supply accounts |
 
 ⚠️ **Two ordering constraints are real, and they both end at *Platforms***:
 *A hosted build* → *Platforms*, because nothing outward-facing happens without a
@@ -433,6 +434,196 @@ the bot.
 ⚠️ **A star is worth a percentage and hits-to-kill is an integer**, so most
 single-star changes sit below the resolution of the system and read as no change
 at all. This has fooled the document twice. Print the grid.
+
+### Code health
+
+**One home for every rule, and the package boundaries kept honest.** From a
+review of duplication and of the `shared`/`server`/`client` split, after the
+charge-repel pass. ⚠️ **DRY and KISS together**: a fix removes a copy or a real
+risk, in the smallest change that does it, and adds no machinery a real problem
+does not need. What the review found and this epic does *not* fix is listed at
+the end, with why. Nothing here is built yet.
+
+✅ **Reviewed against the code.** Every change below was prototyped in two
+scratch copies of the repo: with all of them applied the typecheck and lint
+pass, all 480 rulebook and server tests and 232 client tests pass after the
+updates named under each item, and a seeded simulator run is unchanged. Three
+items from the first draft moved to *left alone* on that evidence.
+
+⚠️ **One commit an item, and two have to wait for others**: item 12 removes the
+`Action` export, which only item 3's column uses, and keeps `getTerrain`'s
+comment, which item 7 makes true. Lint (item 4) goes first, so every later
+change in `shared/src` is checked by it.
+
+#### Wrong today
+
+⬜ **1. The battle close-up stages units as they were before the batch.**
+`playBattle` (`client/src/game/render/renderer.ts`) reads `drawn`, which only
+`syncUnits` advances, after a whole batch has played. A move-then-fire puts the
+approach `unitMoved` ahead of the `battleResolved`, so the close-up shows the
+attacker on the tile it left — that tile's cover stars and its old facing —
+while the counter was computed on the tile it fired from. Two battles in one
+batch also happen: turns are uncapped, two shots are exactly the four events
+animated, and the log merges rows — so focusing fire, the second close-up shows
+health from before the first. **Change:** `playEvents` starts a local copy from
+`drawn` and, at the top of each step, keeps the state before the event and folds
+the event in with `applyEvents`; a battle is staged against the state before it.
+Folding at the top means a previewed approach that is skipped is still folded.
+Folding events is rendering facts, which the client may do; authority still
+arrives whole from the server. `lastDrawn()` has no reader but a test mock, and
+its docs — in the renderer and three places in the architecture doc — claim the
+close-up reads it, so it goes in the same change. **Proof:** the renderer has
+no test coverage (WebGL), so it is checked in the browser: move off a wood onto
+open ground and fire, and the close-up shows no stars.
+
+⬜ **2. An attack can end facing away from its target. Decided: attacking
+always leaves the attacker facing its target.** `validateMove`
+(`shared/src/move.ts`) never reads the command's facing when there is a target;
+only the client's `facingForTarget` and the bot point the attacker at it, so
+another client could fire and face elsewhere. `facingToward` uses its fallback
+only when the two tiles coincide, which an attack never does, so the facing an
+attack must end with is fully determined by the destination and the target.
+**Change:** `validateMove`, once the target is accepted, refuses an attack whose
+facing is not `facingToward(destination, target.position, …)`. It goes there
+and not in `refuseAttack`/`refuseCharge`, which the client and the bot call to
+find targets before any facing exists. The client and the bot already send
+exactly this. A charge's displacement then always faces the command's facing,
+so `move.ts` drops the `directionBetween(...) ?? action.facing` that derived
+it. **Proof:** `move.test.ts` — an attack facing away is refused and a diagonal
+target accepts only the dominant-axis facing. Three tests there send an attack
+with an arbitrary facing and are restated with the target's: *may turn on the
+spot and still fire*, the contact test *may turn on the spot and attack*, and
+*lands something on a flanked counter*.
+
+⬜ **3. A stored command is typed as a validated `Action`.** The `action`
+column (`server/src/schema.ts`) is `$type<Action>()`, so a row read back types
+as something only `validateCommand` may produce — the brand promises reviving
+one from JSON does not compile. Nothing reads the column today. **Change:** type
+it `Command`; an `Action` is assignable to it on the way in, and the column's
+comment says the blob is the accepted command, still carrying its `actor`.
+Type-only: `drizzle-kit` reports no schema change. **Proof:** the typecheck.
+
+⬜ **4. Nothing enforces most of `shared`'s purity.** Invariant 2 says no I/O,
+no RNG and no clock, and the architecture doc says the compiler enforces it. It
+enforces part: `process`, `window`, `document` and `react`/`@babylonjs` imports
+already fail somewhere in the build, but `Math.random`, `Date`, `console`,
+`fetch`, `setTimeout`, `localStorage`, `crypto.randomUUID()`,
+`performance.now()` and `bun`/`node:*` imports all compile. `shared/src` is
+clean today; nothing keeps it so. **Change:** one ESLint block for
+`packages/shared/src/**/*.ts`, tests excluded — `no-restricted-globals` for
+`Date`, `console`, `crypto`, `fetch`, `localStorage`, `performance`, `process`,
+`setInterval` and `setTimeout`; `no-restricted-properties` for `Math.random`;
+`no-restricted-imports` for `bun` and `node:*` — and the architecture doc's two
+claims rewritten to say what the compiler catches and what lint catches.
+**Proof:** lint passes as the code stands, and a scratch violation in
+`shared/src` is caught while the same calls in a shared test and in
+`shared/scripts` are not.
+
+#### One home for each rule
+
+⬜ **5. `refuseAttack` and `refuseCharge` open with the same checks** — target
+exists, is not a friend, and `refuseMovingAttack`. The charge has already met
+the risk once: it carries a comment explaining why it asks `refuseMovingAttack`
+"too". **Change:** a private `refuseTarget(state, attacker, path, targetUnitId)`
+returning the target or the refusal, which both call first and then use the
+target it found. The separate self-target check goes — a unit is its own
+friend, so *that unit is yours* already refuses it. **Proof:** two shared tests
+pin the old self-target wording and are restated; no client or HTTP test does.
+
+⬜ **6. The client finds charge targets two ways.** `canCharge` asks
+`refuseCharge` of every unit; `chargeTilesFor` first filters the four
+neighbours. They agree today, since a charge reaches one tile; if a charge's
+reach ever changed, the panel would offer Charge and light nothing. **Change:**
+`chargeTilesFor` is the positions of the units `refuseCharge` accepts — the same
+tiles light today — and `neighboursOf`'s doc stops naming charge as a caller.
+
+⬜ **7. The cover under a unit is read four ways**, `getTerrain(grid[r][c]).defense`
+in `computeDamage`, `chargeChance`, the close-up's stars and the simulator's
+stats. **Change:** `defenseAt(state, coordinate)` in `queries.ts`, beside
+`getTileAt`, exported and called by all four; `TERRAIN`'s doc says `defense` is
+read through it. Named for the terrain field it reads, not *cover*, which
+`computeDamage` already uses for the percentage that defence takes off.
+
+⬜ **8. Manhattan distance written out by hand.** `validatePath` and
+`directionBetween` compute it where `tileDistance` exists and says it is the
+only one. **Change:** both call `tileDistance`.
+
+⬜ **9. Wire shapes the server does not check.** The `/api/maps` reply is built
+inline without `MapSummary`. The create-match body is untyped on the client and
+read by name on the server, so if the key drifted the server would read it as
+absent and quietly start the default map. And `protocol.ts`'s note on
+`ErrorResponse` has the rationale inverted: a rule refusal *is* sent as an
+`ErrorResponse`, with a 422; `{ ok: false }` is only what the client's
+`submit` resolves to. **Change:** `satisfies MapSummary[]`; a
+`CreateMatchRequest` in `protocol.ts` that the client sends and the server
+reads its body as; the note rewritten to say an `ErrorResponse` is the body of
+every non-2xx, refusals included, and the status tells them apart.
+
+⬜ **10. A test and a harness that restate the engine.** `maps.test.ts` works
+out the deployment zones itself, and gets the far one wrong on an odd-width
+board — the engine *rotates* the zone, so a 13-wide board deploys red in columns
+2–11 while the test checks 1–10. Latent while every board is 12×12, which the
+same file asserts, but it is the test that has to be right the day boards
+change. **Change:** deploy a full zone for both seats through `createMatchState`,
+assert the unit count so an empty deployment cannot pass, and keep checking each
+tile against every movement type terrain prices; the older *deploys every unit
+onto terrain it can stand on* test is then subsumed and goes. In `simulate.ts`,
+the bot's `tilesInRange` check before `refuseAttack` restates the range
+`refuseAttack` already checks, and goes with the locals and import only it used;
+`'player-blue'` becomes `PLAYERS[0].id`.
+
+⬜ **11. The close-up's health bar assumes 100 health and ten bands**
+(`${shown}%`, a 10% stripe), where the board's health ring reads `BANDS`.
+**Change:** scale by `MAX_HEALTH` and stripe by `BANDS`.
+
+⬜ **12. Barrel exports nothing outside `shared` uses.** `ArmyPlacement`,
+`clampHealth`, `wouldCounter` and `soleSurvivor` — the last two appear outside
+only in comments — and, once item 3 lands, `Action`. **Change:** they leave the
+barrel, by its own rule. `getTerrain`'s comment names the server's map
+validation as its reason; after item 7 that is true again, so it stays.
+
+⬜ **13. Comments that are wrong now**, fixed or cut: `applyEvents.ts` and
+`action.ts` describe `unitDied` and `unitAttacked` events that do not exist;
+`protocol.ts` names `/api/state` and `/api/events`; `http.ts` has
+`resolveActor`'s doc above a different function; `useGameSession.ts` has a
+half-deleted paragraph and a stray `///` on `MAX_ANIMATED_EVENTS`;
+`selection.ts` says the renderer clips the facing tiles, and `renderer.ts` says
+the attack band leaves out the neighbours, neither of which is true. Comments
+the items above make wrong go with those items.
+
+#### Examined and left alone
+
+- **`band()` dividing by the number of bands**, a band's width only because
+  `MAX_HEALTH` is 100. Not silent: `combat.test.ts` pins `band(MAX_HEALTH)` to
+  `BANDS`, so changing `MAX_HEALTH` fails the build, and that is when to fix it.
+- **An `ATTACK_KINDS` list for the protocol's `'fire' | 'charge'` check.** A list
+  beside the union would be a second home rather than one, and a new kind
+  already fails loudly, as a 400.
+- **The lobby's `winner === null` rather than `isOver`.** It asks *is there a
+  winner to name*, not *is it over* — after a draw they would differ — and it
+  keeps TypeScript's narrowing of `winner`.
+- **The movement budget, looked up by three callers** (`validateMove`, the
+  overlay, the bot). A catalog lookup rather than a rule; worth one home only if
+  a budget ever comes to depend on state.
+- **The attacker after its move, built by hand five times without its new
+  facing.** One spread; nothing reads an attacker's facing — only a defender's —
+  and item 2 settles what an attack ends facing.
+- **The charge roll's 0–99 written as a literal.** It is the percentage
+  `chance` is expressed in; a constant would only name a hundred.
+- **Adjacency asked as neighbours in one place and as distance 1 in another.**
+  Identical on a square grid by definition; item 6 is about a charge's *reach*.
+- **`hitsToKill` applying damage by hand.** It counts unanswered hits on
+  purpose, and `health − damage ≤ 0` is the whole of the rule it uses.
+- **`health <= 0` in four places.** The plainest statement of one fact; a
+  helper would not be simpler.
+- **`MAX_ANIMATED_EVENTS` derived from what `resolveAction` emits.** A pacing
+  choice, not a rule; a new event type costs at most one snapped animation.
+- **The client's `ok: false` meaning both a refusal and a network failure.**
+  Client-internal, and the panel shows the reason either way.
+- **The menu reading the display copy while the forecast reads the server's.**
+  They cannot differ while the selection resets on every submit.
+- Unfrozen server constants, duplicated test helpers, and the charge harness
+  naming approaches by hand: cosmetic.
 
 ### UI and interaction
 
