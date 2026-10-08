@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { getTerrain, getUnitType, MAX_HEALTH, parseTerrainGrid } from '@wargame/shared';
-import { createMatchState, DEPLOYMENT_ZONE } from '../matchState';
+import { createMatchState, DEPLOYMENT_ZONE, PLAYERS } from '../matchState';
 import { DEFAULT_MAP_ID, getMap, listMaps } from './index';
 
 // A map is content the compiler cannot check: it is characters, and every way
@@ -49,18 +49,6 @@ describe('every map', () => {
         }
       });
 
-      // A unit on ground its own movement type cannot enter is stuck from the
-      // first turn. ⚠️ Artillery is what this really guards: `wheels` is barred
-      // from river and mountain outright, so a board that draws either into a
-      // deployment square strands a gun where it stands.
-      it('deploys every unit onto terrain it can stand on', () => {
-        for (const { position, unitTypeId } of units) {
-          const { movementType } = getUnitType(unitTypeId);
-          const terrain = getTerrain(grid[position.row][position.col]);
-          expect(terrain.cost[movementType]).not.toBeNull();
-        }
-      });
-
       // ⚠️ Cheap, and it guards a failure that is silent rather than loud: a
       // unit deployed without health types as `number` and is `undefined`, and
       // `undefined` arithmetic is `NaN` -- so the first symptom would be a
@@ -87,30 +75,35 @@ describe('every map', () => {
       // deployment zones are standable throughout is one where *every* legal
       // army deploys. It is also what makes an existing convention checkable:
       // a river may only leave the board where an army does not stand.
+      //
+      // ⚠️ **Deployed, not worked out.** The engine places the far zone by
+      // rotating the near one, so a test computing the columns itself checks the
+      // wrong ones on an odd-width board. A full zone for both seats puts a unit
+      // on every square; the count makes sure an empty deployment cannot pass.
       it('leaves both deployment zones standable by every movement type', () => {
-        const { width: zoneWidth, depth } = DEPLOYMENT_ZONE;
-        const margin = Math.floor((width - zoneWidth) / 2);
-        expect(margin).toBeGreaterThanOrEqual(0);
-        expect(depth * 2).toBeLessThanOrEqual(height);
+        const fullZone = Array.from({ length: DEPLOYMENT_ZONE.depth }, () =>
+          'i'.repeat(DEPLOYMENT_ZONE.width),
+        );
+        const everySquare = createMatchState(
+          map,
+          PLAYERS.map((player) => ({ player, army: fullZone })),
+        ).units;
+        expect(everySquare.length).toBe(
+          PLAYERS.length * DEPLOYMENT_ZONE.width * DEPLOYMENT_ZONE.depth,
+        );
 
-        const rows = [
-          ...Array.from({ length: depth }, (_, i) => i),
-          ...Array.from({ length: depth }, (_, i) => height - 1 - i),
-        ];
-        for (const row of rows) {
-          for (let col = margin; col < margin + zoneWidth; col++) {
-            const terrain = getTerrain(grid[row][col]);
-            // ⚠️ **Read off the cost table, not the unit catalog.** Every
-            // movement type terrain knows how to price is one a unit could
-            // arrive on, including one no unit uses yet -- which is the case a
-            // list taken from today's roster would quietly stop covering.
-            for (const [movementType, cost] of Object.entries(terrain.cost)) {
-              // The whole square in the assertion, so a failure names the tile
-              // and the movement type rather than just a line number.
-              expect(`${col},${row} for ${movementType}: ${cost === null ? 'barred' : 'ok'}`).toBe(
-                `${col},${row} for ${movementType}: ok`,
-              );
-            }
+        for (const { position } of everySquare) {
+          const { col, row } = position;
+          // ⚠️ **Read off the cost table, not the unit catalog.** Every movement
+          // type terrain knows how to price is one a unit could arrive on,
+          // including one no unit uses yet -- which is the case a list taken
+          // from today's roster would quietly stop covering.
+          for (const [movementType, cost] of Object.entries(getTerrain(grid[row][col]).cost)) {
+            // The whole square in the assertion, so a failure names the tile
+            // and the movement type rather than just a line number.
+            expect(`${col},${row} for ${movementType}: ${cost === null ? 'barred' : 'ok'}`).toBe(
+              `${col},${row} for ${movementType}: ok`,
+            );
           }
         }
       });

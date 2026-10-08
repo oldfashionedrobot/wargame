@@ -38,7 +38,6 @@ import {
   resolveAction,
   resolveBattle,
   tileDistance,
-  tilesInRange,
   validateCommand,
 } from '@wargame/shared';
 import type { Command, Coordinate, GameEvent, GameState, Unit, UnitTypeId } from '@wargame/shared';
@@ -80,8 +79,6 @@ interface Scored {
  * target; a plain move faces the nearest enemy.
  */
 function candidates(state: GameState): Scored[] {
-  const width = state.grid[0].length;
-  const height = state.grid.length;
   const enemies = state.units.filter((u) => u.owner !== state.currentTurn);
   const out: Scored[] = [];
   if (enemies.length === 0) return out;
@@ -119,12 +116,7 @@ function candidates(state: GameState): Scored[] {
         const facing = facingToward(stop, target.position, unit.facing);
 
         // Shooting: expected damage, less what the reply is expected to cost.
-        if (
-          tilesInRange(moved, stop, width, height).some(
-            (t) => t.col === target.position.col && t.row === target.position.row,
-          ) &&
-          refuseAttack(state, moved, path, target.id) === null
-        ) {
+        if (refuseAttack(state, moved, path, target.id) === null) {
           const mid = Math.floor(LUCK_MAX / 2);
           const battle = resolveBattle(state, moved, target, { attack: mid, counter: mid });
           const dealt = target.health - battle.defender.health;
@@ -315,7 +307,7 @@ const stats: Stats = {
   hitsTotal: 0,
 };
 
-const first = process.argv[4] ?? 'player-blue';
+const first = process.argv[4] ?? PLAYERS[0].id;
 // ⚠️ **The turn budget is passed, not inherited.** `resolveAction` takes it as
 // an argument for the tests' sake; the same seam lets a whole regime be
 // compared here without editing `turns.ts` and rebuilding an opinion from
