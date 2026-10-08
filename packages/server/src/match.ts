@@ -1,8 +1,7 @@
 import type { InStatement, InValue } from '@libsql/client';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import type { Query } from 'drizzle-orm';
-import { applyEvents, LUCK_MAX, resolveAction, validateCommand } from '@wargame/shared';
-import type { Rolls } from '@wargame/shared';
+import { applyEvents, resolveAction, validateCommand } from '@wargame/shared';
 import type {
   Command,
   CommandResult,
@@ -14,6 +13,7 @@ import type {
 import type { Database } from './db';
 import { getMap, DEFAULT_MAP_ID } from './maps';
 import { createMatchState } from './matchState';
+import { rollLuck } from './rollLuck';
 import { Matches, Resolutions } from './schema';
 
 // Nothing deletes or expires matches yet, and anyone can create them, so the
@@ -21,46 +21,6 @@ import { Matches, Resolutions } from './schema';
 // be pagination -- which isn't worth building until matches are owned and
 // there's a reason to look past the newest few.
 const LIST_LIMIT = 50;
-
-/**
- * The only randomness in the codebase, and it is here because `shared/` is not
- * allowed any (invariant 2).
- *
- * ⚠️ **No seed, and that is invariant 9 paying off.** Events carry *resulting*
- * values rather than inputs, so a replay reads what happened and never re-rolls
- * -- there is nothing to reproduce. Most games need a seeded generator, a stored
- * seed and a determinism story; this design bought its way out of all three.
- *
- * ⚠️ **But the rolls are recorded**, on the resolution row beside its events.
- * Luck joins the base before the attacker's band and the defender's cover scale
- * it, so two floors sit between a roll and the damage it produced, and most rolls
- * cannot be read back out of the log. Replay never needs them -- it reads
- * outcomes -- so they are kept as a record, written and not read, like `action`.
- *
- * Exported only so it can be tested. `Math.random() * LUCK_MAX` instead of
- * `* (LUCK_MAX + 1)` is a one-character bug that means **the best roll never
- * happens** -- damage stays in a legal range, nothing throws, and nobody would
- * find it. Three lines are worth four lines of test for that.
- */
-export function rollLuck(command: Command): Rolls {
-  // ⚠️ **Reads the command, never the rules.** The note below forbids letting
-  // the *rules* decide how many draws to make -- which is why a counter is drawn
-  // whether or not it turns out to be used. Asking the command is a different
-  // thing: the client already said which attack it is making, and reading that
-  // is not running a rule.
-  if (command.type === 'move' && command.attackKind === 'charge') {
-    // ⚠️ 0..99, not 0..LUCK_MAX. A charge rolls against a *percentage*, and the
-    // same draw decides success and sizes the repel -- so one number, on the
-    // scale the chance is expressed in.
-    return { charge: Math.floor(Math.random() * 100) };
-  }
-
-  const draw = () => Math.floor(Math.random() * (LUCK_MAX + 1));
-  // ⚠️ Both drawn whether or not both are used. Deciding first and rolling
-  // second would make the *number of draws* depend on the rules, which is the
-  // coupling that keeping randomness out of `shared/` exists to avoid.
-  return { attack: draw(), counter: draw() };
-}
 
 export interface MatchStore {
   /** On `mapId`, or on the default when it is omitted. Throws on an unknown id. */

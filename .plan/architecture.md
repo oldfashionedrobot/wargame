@@ -79,6 +79,7 @@ packages/
     src/
       http.ts         createServer() — Bun.serve routes, /api/* plus the client build
       match.ts        MatchStore — the only reader and writer of matches
+      rollLuck.ts     the dice: the only randomness, taking its source as an argument
       db.ts           libSQL client + Drizzle, pragmas, migrations at boot
       schema.ts       matches · resolutions, typed from shared
       matchState.ts   instantiates a map into the board a match starts from
@@ -721,7 +722,7 @@ the counter predicate against a rebuilt state.
 assigns to `never` before throwing, so a new member is a **compile error** until
 it is handled. The throw stays, because events arrive as JSON.
 
-**Randomness lives in `server/match.ts`**, in `rollLuck` — the only
+**Randomness lives in `server/rollLuck.ts`**, in `rollLuck` — the only
 `Math.random()` in the codebase. No seed is stored: events carry resulting
 values rather than inputs. ⚠️ **The rolls are recorded** in `resolutions.rolls`,
 because luck joins the base before two floors and so cannot be read back out of

@@ -25,7 +25,6 @@ import {
   applyEvents,
   canSelectUnit,
   chargeChance,
-  computeDamage,
   exploreMovement,
   facingToward,
   getTerrain,
@@ -35,14 +34,17 @@ import {
   LUCK_MAX,
   refuseAttack,
   refuseCharge,
+  repelDamage,
   resolveAction,
+  resolveBattle,
+  tileDistance,
   tilesInRange,
   validateCommand,
-  wouldCounter,
 } from '@wargame/shared';
 import type { Command, Coordinate, GameEvent, GameState, Unit, UnitTypeId } from '@wargame/shared';
 import { getMap } from '../src/maps';
 import { createMatchState, PLAYERS } from '../src/matchState';
+import { rollLuck } from '../src/rollLuck';
 import type { Deployment } from '../src/matchState';
 
 // mulberry32: small, fast, and good enough for tuning statistics.
@@ -56,8 +58,13 @@ function rng(seed: number): () => number {
   };
 }
 
-const distance = (a: Coordinate, b: Coordinate) =>
-  Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
+/** What failing this charge costs on average: the repel, over every roll that fails it. */
+function expectedRepel(defender: Unit, chance: number): number {
+  if (chance >= 100) return 0;
+  let total = 0;
+  for (let roll = chance; roll < 100; roll++) total += repelDamage(defender, chance, roll);
+  return total / (100 - chance);
+}
 
 /** A candidate command and what the bot thinks it is worth. */
 interface Scored {
@@ -93,7 +100,7 @@ function candidates(state: GameState): Scored[] {
       if (!path) continue;
       const moved: Unit = { ...unit, position: stop };
       const nearest = enemies.reduce((a, b) =>
-        distance(stop, a.position) <= distance(stop, b.position) ? a : b,
+        tileDistance(stop, a.position) <= tileDistance(stop, b.position) ? a : b,
       );
 
       // A plain reposition. Scored well below any attack, so the bot only
@@ -105,7 +112,7 @@ function candidates(state: GameState): Scored[] {
           path,
           facing: facingToward(stop, nearest.position, unit.facing),
         },
-        score: -distance(stop, nearest.position) * 0.01,
+        score: -tileDistance(stop, nearest.position) * 0.01,
       });
 
       for (const target of enemies) {
@@ -119,12 +126,9 @@ function candidates(state: GameState): Scored[] {
           refuseAttack(state, moved, path, target.id) === null
         ) {
           const mid = Math.floor(LUCK_MAX / 2);
-          const dealt = Math.min(computeDamage(state, moved, target, mid), target.health);
-          const survivor: Unit = { ...target, health: target.health - dealt };
-          const riposte =
-            survivor.health > 0 && wouldCounter(survivor, stop)
-              ? computeDamage(state, survivor, moved, mid)
-              : 0;
+          const battle = resolveBattle(state, moved, target, { attack: mid, counter: mid });
+          const dealt = target.health - battle.defender.health;
+          const riposte = moved.health - battle.attacker.health;
           out.push({
             command: {
               type: 'move',
@@ -134,7 +138,7 @@ function candidates(state: GameState): Scored[] {
               targetUnitId: target.id,
               attackKind: 'fire',
             },
-            score: dealt + (survivor.health <= 0 ? 25 : 0) - riposte,
+            score: dealt + (battle.defender.health <= 0 ? 25 : 0) - riposte,
           });
         }
 
@@ -152,7 +156,7 @@ function candidates(state: GameState): Scored[] {
                 targetUnitId: target.id,
                 attackKind: 'charge',
               },
-              score: p * (target.health + 25) - (1 - p) * 12,
+              score: p * (target.health + 25) - (1 - p) * expectedRepel(target, chance),
             });
           }
         }
@@ -220,13 +224,7 @@ function playOne(
       throw new Error(`bot proposed an illegal command: ${validation.reason}`);
     }
 
-    const rolls =
-      command.type === 'move' && command.attackKind === 'charge'
-        ? { charge: Math.floor(random() * 100) }
-        : {
-            attack: Math.floor(random() * (LUCK_MAX + 1)),
-            counter: Math.floor(random() * (LUCK_MAX + 1)),
-          };
+    const rolls = rollLuck(command, random);
 
     const before = state;
     const events: GameEvent[] = resolveAction(state, validation.action, rolls, budget);

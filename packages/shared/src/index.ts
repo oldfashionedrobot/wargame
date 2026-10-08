@@ -47,6 +47,7 @@ export {
   computeDamage,
   refuseAttack,
   refuseCharge,
+  repelDamage,
   resolveBattle,
   tilesInRange,
   wouldCounter,
@@ -59,6 +60,7 @@ export {
   facingToward,
   isWithinGrid,
   orthogonalNeighbours,
+  tileDistance,
 } from './coordinate';
 export { getCurrentPlayer, getUnit, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';
