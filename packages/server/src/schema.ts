@@ -1,5 +1,5 @@
 import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import type { Action, GameEvent, GameState, PlayerId, Rolls } from '@wargame/shared';
+import type { Command, GameEvent, GameState, PlayerId, Rolls } from '@wargame/shared';
 
 export const Matches = sqliteTable('matches', {
   id: text('id').primaryKey(),
@@ -46,12 +46,11 @@ export const Resolutions = sqliteTable(
     // filtering on, and the only record of who did something once phase 11
     // makes that mean anything.
     actor: text('actor').$type<PlayerId>().notNull(),
-    // An audit record, not something to act on. Events are the business data;
-    // an Action is the intermediate step between a Command and its outcome.
-    // Anything that ever needs to *act* on a stored action should take the
-    // command back out of it and re-validate against current state -- validity
-    // was proven against the state at the time, which is not this one.
-    action: text('action', { mode: 'json' }).$type<Action>().notNull(),
+    // An audit record, not something to act on: the command as accepted, still
+    // carrying its actor. Typed as a Command, not an Action, so reading one back
+    // cannot skip validateCommand -- validity was proven against the state at
+    // the time, which is not this one.
+    action: text('action', { mode: 'json' }).$type<Command>().notNull(),
     events: text('events', { mode: 'json' }).$type<GameEvent[]>().notNull(),
     // The rolls resolution was handed, written and not read -- the same as
     // action. Luck joins the base before the attacker's band and the defender's
