@@ -109,7 +109,9 @@ the client's overlay and the server's check cannot disagree.
   covers the parts nothing imports: `scripts/` and `src/**/*.test.ts`. So every
   file is checked, and giving that config bun types does not weaken invariant 2 —
   the client program checks `src` too and has no bun globals at all, so
-  `process.env` in the rulebook still fails the build.
+  `process.env` in the rulebook still fails the build. The rest of invariant 2
+  — `Math.random`, `Date`, `console`, `fetch`, timers — compiles there, and is
+  refused by a lint block on `packages/shared/src` instead.
   `erasableSyntaxOnly` forbids constructor parameter properties;
   `verbatimModuleSyntax` requires explicit `import type`.
 

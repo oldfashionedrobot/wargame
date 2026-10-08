@@ -23,4 +23,28 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Invariant 2: the rulebook has no I/O, no RNG and no clock. The compiler
+    // catches only some of it here -- the client's DOM lib and the server's bun
+    // types admit the rest -- so lint holds the line. Tests and scripts are dev
+    // tooling and may use them.
+    files: ['packages/shared/src/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        'Date',
+        'console',
+        'crypto',
+        'fetch',
+        'localStorage',
+        'performance',
+        'process',
+        'setInterval',
+        'setTimeout',
+      ],
+      'no-restricted-properties': ['error', { object: 'Math', property: 'random' }],
+      'no-restricted-imports': ['error', { paths: ['bun'], patterns: ['node:*'] }],
+    },
+  },
 ]);

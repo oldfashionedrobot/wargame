@@ -156,9 +156,11 @@ identity, then terminal state, then the per-command check.
 1. **The database is the only mutable state.** No module-level mutable state
    exists in `server/`; every request reads, computes, and writes back.
 2. **`shared/` is pure** — no I/O, no RNG, no Babylon, no React, no `Date.now()`.
-   The compiler enforces it through the client: `shared` has no program of its
-   own, and `client`'s has no node or bun globals, so `process.env` in the
-   rulebook fails the build there.
+   Two checks hold it. The compiler catches `process`, `window`, `document` and
+   React or Babylon imports, since the programs that check `shared/src` lack one
+   or another of them; the rest — `Math.random`, `Date`, `console`, `fetch`,
+   timers, `crypto`, `performance`, `bun` and `node:*` — compile, and a lint
+   block on `packages/shared/src` refuses them. Tests and scripts are exempt.
 3. **`GameServer.submit()` is async.**
 4. **`GameState` is JSON-serializable** — no `Map`, `Set`, class instance,
    `Date`, or function is reachable from it.
@@ -1803,10 +1805,9 @@ its own `types: ["bun"]`, which is what gives the harness `console` and the
 tests `bun:test`.
 
 ⚠️ **Types are per-program, so this does not weaken invariant 2.** `src`'s own
-config is untouched, and purity is enforced by the **client** program, which
-also checks `src` and has no node or bun globals at all. Giving test files bun
-types cannot let `process.env` into the rulebook, because the client still
-rejects it.
+config is untouched, and the **client** program also checks `src` with no node
+or bun globals, so giving test files bun types cannot let `process.env` into
+the rulebook. The rest of invariant 2 is lint's — see the invariant.
 
 ⚠️ An `include` matching an empty directory is `TS18003` and a non-zero exit, so
 this config cannot exist before the directory it names has a file in it.
