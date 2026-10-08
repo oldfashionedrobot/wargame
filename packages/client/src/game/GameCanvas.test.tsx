@@ -60,7 +60,6 @@ beforeEach(() => {
     anchorTo: vi.fn(),
     playEvents: vi.fn(() => Promise.resolve()),
     syncUnits: vi.fn(),
-    lastDrawn: vi.fn(() => board),
     onCutaway: vi.fn(),
     dismissCutaway: vi.fn(),
     previewMove: vi.fn(() => Promise.resolve()),

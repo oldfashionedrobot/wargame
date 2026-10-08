@@ -1373,7 +1373,6 @@ anchorTo(element | null, coordinate | null)
 playEvents(events): Promise<void>
 syncUnits(state)          previewMove(unitId, path): Promise<void>
 onCutaway(handler)        dismissCutaway()
-lastDrawn(): GameState
 cancelPreview()           toggleInspector()          dispose()
 ```
 
@@ -1382,9 +1381,12 @@ seam** — the renderer raises the views and hands the caller what it would
 otherwise re-derive, because the readout is text and layout and belongs in the
 DOM. See *The combat cutaway*. `dismissCutaway` is a no-op when nothing is
 waiting, so a late click from a cutaway that already closed needs no guard.
-⚠️ **`lastDrawn` is a record of what was drawn, not a second source of truth.**
-`syncUnits` remains the only thing that moves it, and anything wanting authority
-reads `server.getState()`.
+⚠️ **A battle is staged against the state just before it.** `playEvents` folds
+the batch's events onto the last-drawn state as it plays them, with the shared
+`applyEvents`, so a move-then-fire stages the attacker where it fired from and a
+second battle in the batch sees the first one's damage. That copy is display
+only: `syncUnits` still sets what was drawn, and authority is read from
+`server.getState()`.
 
 ⚠️ **Coordinates, never a `Movement`.** The renderer is told what to light, not
 handed a search to query — presentation gets facts, the rulebook stays upstream.
@@ -1538,15 +1540,13 @@ unavailable action is omitted — so hover is the only state a row has.
   and west. Water uses the *body* vocabulary and roads the *connector* one,
   since a road is never a body of anything.
 
-- **The renderer records the state it last drew**, and `lastDrawn()` reads it
-  back. ⚠️ **That is the state *before* whatever `playEvents` is animating**,
-  which is the point: the queue awaits `playEvents` and only then calls
-  `syncUnits`, so mid-animation the last sync is still the previous turn. A
-  damage animation needs the health it counts down *from*, and `battleResolved`
-  carries only resulting values (invariant 9), so the before-value exists
-  nowhere else. ⚠️ Not a second source of truth — a record of what was drawn,
-  advanced only by `syncUnits`, with authority still read from
-  `server.getState()`.
+- **The renderer records the state it last drew**, which is the state *before*
+  whatever `playEvents` is animating: the queue awaits `playEvents` and only
+  then calls `syncUnits`. A damage animation needs the health it counts down
+  *from*, and `battleResolved` carries only resulting values (invariant 9), so
+  `playEvents` folds each event onto that record as it goes and stages a battle
+  against the fold so far. ⚠️ Not a second source of truth — a display copy,
+  with authority still read from `server.getState()`.
 
   ⚠️ **Measured off the *loaded* mesh, not the file.** The glTF loader flips z on
   its own `__root__`, which leaves a model's bounding box where the raw

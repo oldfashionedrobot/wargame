@@ -20,7 +20,7 @@ import type {
   PlayerColor,
   UnitTypeId,
 } from '@wargame/shared';
-import { defenseAt } from '@wargame/shared';
+import { applyEvents, defenseAt } from '@wargame/shared';
 import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
 import { createCutaway } from './cutaway';
@@ -165,8 +165,8 @@ const CHARGE_HEIGHT = 0.016;
  *
  * ⚠️ **Both healths, before and after**, because a bar counting down needs the
  * value it counts *from* and `battleResolved` carries only results (invariant
- * 9). The before-value comes from `lastDrawn()` -- the queue animates before it
- * snaps, so mid-cutaway the last sync is still the previous turn.
+ * 9). The before-value is the last-drawn state with the batch's earlier events
+ * folded on, which `playEvents` keeps as it goes.
  */
 export interface CutawaySide {
   unitTypeId: UnitTypeId;
@@ -257,21 +257,6 @@ export interface GameRenderer {
    * ever changes, the other half goes here.
    */
   syncUnits(state: GameState): void;
-  /**
-   * The state this renderer last drew.
-   *
-   * ⚠️ **Which is the state *before* whatever `playEvents` is about to animate**,
-   * and that is the whole reason it exists. The queue awaits `playEvents` and
-   * only then calls `syncUnits`, so during an animation the last sync is still
-   * the previous turn -- which is where a damage animation gets the health it is
-   * counting down *from*. `battleResolved` carries only resulting values
-   * (invariant 9), so the before-value is nowhere else.
-   *
-   * ⚠️ **Not a second source of truth.** It is a record of what was drawn, not an
-   * opinion about what is true; `syncUnits` is still the only thing that moves
-   * it, and every reader wanting authority reads `server.getState()` as before.
-   */
-  lastDrawn(): GameState;
   /**
    * Called when a battle's cutaway opens and closes, with what to print over it.
    *
@@ -727,8 +712,7 @@ export async function createGameRenderer(
    * move whose mesh already stands at its destination -- true of an approach the
    * player previewed -- and a charge's cutaway would be skipped along with it.
    */
-  const playBattle = async (event: BattleResolvedEvent): Promise<void> => {
-    const before = drawn;
+  const playBattle = async (event: BattleResolvedEvent, before: GameState): Promise<void> => {
     const side = (id: string, after: number): CutawaySide | null => {
       const unit = before.units.find((u) => u.id === id);
       const owner = before.players.find((p) => p.id === unit?.owner);
@@ -850,9 +834,16 @@ export async function createGameRenderer(
       releaseCutaway?.();
     },
     async playEvents(events) {
+      // ⚠️ **Each battle is staged against the state just before it**, not the
+      // last sync: a move-then-fire's approach has already moved the attacker,
+      // and an earlier battle in the batch has already hurt its targets. Folded
+      // at the top of the step, so a skipped (previewed) move is folded too.
+      let shown = drawn;
       for (const event of events) {
+        const before = shown;
+        shown = applyEvents(shown, [event]);
         if (event.type === 'battleResolved') {
-          await playBattle(event);
+          await playBattle(event, before);
           continue;
         }
         if (event.type !== 'unitMoved') continue;
@@ -900,9 +891,6 @@ export async function createGameRenderer(
         setUnitFacing(mesh, previewed.facing);
       }
       endPreview();
-    },
-    lastDrawn() {
-      return drawn;
     },
     syncUnits(state) {
       // Recorded before the work, not after: everything below reads `state`
