@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { getCurrentPlayer, isOver } from '@wargame/shared';
+import { BANDS, getCurrentPlayer, isOver, MAX_HEALTH } from '@wargame/shared';
 import type { Coordinate, GameEvent, GameServer, GameState } from '@wargame/shared';
 import { useGameSession } from './useGameSession';
 import {
@@ -112,12 +112,15 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
   renderer.setRoute(isAwaitingConfirm(selection, walking) ? selection.path : []);
 }
 
+/** One health band's width on the close-up's bar. */
+const STRIPE = `${100 / BANDS}%`;
+
 /**
  * One combatant's readout, printed over its staged view.
  *
  * ⚠️ **A full bar showing the true health, with the number beside it**, not the
- * board's ten bands. The ring is banded because it is a *glanceable* element
- * where ten segments stop it over-promising precision the formula lacks; this is
+ * board's bands. The ring is banded because it is a *glanceable* element where
+ * its segments stop it over-promising precision the formula lacks; this is
  * a *focused* view where the exact figure is the point. ⚠️ The band lines are
  * still drawn on the bar, so the structure the formula reads stays visible
  * without the value being rounded to it.
@@ -152,19 +155,18 @@ function CutawaySide({ side, align }: { side: CutawaySideData; align: 'left' | '
       >
         <div
           style={{
-            width: `${shown}%`,
+            width: `${(100 * shown) / MAX_HEALTH}%`,
             height: '100%',
             background: PLAYER_HEX[side.color],
             transition: 'width 700ms ease-out',
           }}
         />
-        {/* The ten bands the damage formula actually reads, drawn over the bar. */}
+        {/* The bands the damage formula actually reads, drawn over the bar. */}
         <div
           style={{
             position: 'absolute',
             inset: 0,
-            backgroundImage:
-              'repeating-linear-gradient(to right, transparent 0 calc(10% - 1px), rgba(0,0,0,0.5) calc(10% - 1px) 10%)',
+            backgroundImage: `repeating-linear-gradient(to right, transparent 0 calc(${STRIPE} - 1px), rgba(0,0,0,0.5) calc(${STRIPE} - 1px) ${STRIPE})`,
           }}
         />
       </div>
