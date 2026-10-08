@@ -30,12 +30,11 @@ export { parseTerrainGrid } from './terrainGrid';
 // into placements. Same split as terrain: the parser is here because what it
 // produces is game state, while the armies themselves are the server's.
 export { armyWidth, parseArmyGrid } from './armyGrid';
-export type { ArmyPlacement } from './armyGrid';
 
 // The unit catalog. `UnitTypeId` is out because an army names the units it
 // places; the rest of the catalog is read through `getUnitType`.
 export type { UnitTypeId } from './data/unitTypes';
-export { clampHealth, getUnitType, MAX_HEALTH } from './data/unitTypes';
+export { getUnitType, MAX_HEALTH } from './data/unitTypes';
 
 // Combat: `LUCK_MAX`, `computeDamage` and `resolveBattle` are out because the
 // client previews what the server resolves, and the bot weighs it.
@@ -50,7 +49,6 @@ export {
   repelDamage,
   resolveBattle,
   tilesInRange,
-  wouldCounter,
 } from './combat';
 export type { Rolls } from './combat';
 
@@ -64,11 +62,10 @@ export {
 } from './coordinate';
 export { defenseAt, getCurrentPlayer, getUnit, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';
-export { isOver, soleSurvivor } from './victory';
+export { isOver } from './victory';
 export { exploreMovement } from './movement';
 export type { Movement } from './movement';
 export { resolveAction, validateCommand } from './action';
-export type { Action } from './action';
 export { applyEvents } from './applyEvents';
 
 export type {
