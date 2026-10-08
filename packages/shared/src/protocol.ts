@@ -106,13 +106,13 @@ export interface MapPreview {
   state: GameState;
 }
 
-/** GET /api/state -- initial load. No events; there's nothing to animate. */
+/** GET /api/matches/:id/state -- initial load. No events; there's nothing to animate. */
 export interface StateResponse {
   seq: number;
   state: GameState;
 }
 
-/** GET /api/events?since=N -- everything after N. */
+/** GET /api/matches/:id/events?since=N -- everything after N. */
 export interface EventsResponse {
   seq: number;
   events: GameEvent[];

@@ -65,10 +65,7 @@ export interface GameSessionCallbacks {
 // too: browsers throttle rAF there, so an awaited animation would stall the
 // queue rather than play.
 //
-// Counted in tiles rather than events, because that is what costs time: a
-// move animates per step, so ten long moves is far more waiting than ten
-// short ones. At 0.15s a tile this is a bit over four seconds -- the ceiling
-/// How many events a batch may hold before it is snapped rather than played.
+// How many events a batch may hold before it is snapped rather than played.
 //
 // ⚠️ **This is a *backlog* gate, not a duration one, and that is the whole
 // reason it can be a plain count.** In normal play it never fires: a single

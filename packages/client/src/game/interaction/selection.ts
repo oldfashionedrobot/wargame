@@ -504,10 +504,9 @@ export function handleTileClick(
 /**
  * Which way this click means, or null if it was not one of the four.
  *
- * The four tiles themselves are drawn around `destinationOf`, clipped to the
- * board by the renderer, since the grid's bounds are its business. A unit on
- * the top row simply has three choices, and facing off the board would be a
- * strictly worse one anyway.
+ * The four tiles are drawn around `destinationOf` and clipped to the board by
+ * `neighboursOf`. A unit on the top row simply has three choices, and facing
+ * off the board would be a strictly worse one anyway.
  *
  * ⚠️ Answers `null` for the destination *itself*, since `directionBetween`
  * wants a step of exactly one tile. That is what lets the caller tell "keep the

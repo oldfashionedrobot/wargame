@@ -111,8 +111,8 @@ export function resolveAction(
       const events = resolveMove(state, action, rolls);
       // ⚠️ **Appended, never folded into `unitMoved`.** Two independently
       // applicable events carrying absolute values, which is invariant 9 and
-      // the same shape a successful charge takes in 10a -- `unitDied` plus
-      // `unitMoved`, not one event carrying both effects. `resolveEndTurn` is
+      // the same shape a successful charge takes -- a `battleResolved` and then
+      // a `unitMoved`, not one event carrying both effects. `resolveEndTurn` is
       // reused rather than constructing a second `turnEnded` beside it, so
       // there stays exactly one place that decides who plays next.
       // ⚠️ Read against the **pre-action** state, which is right today and is

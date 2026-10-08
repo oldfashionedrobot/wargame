@@ -143,9 +143,9 @@ const FACING_HEIGHT = 0.02;
  * At 0.8 it reads as a salmon band and terrain is still legible underneath,
  * which is what a player is evaluating.
  *
- * It sits below `FACING_HEIGHT` deliberately -- but the two sets never overlap,
- * because the four tiles beside the unit are filtered out of the attack band in
- * `selection.ts`. The ordering is insurance, not the rule.
+ * It sits below `FACING_HEIGHT` deliberately -- but the two sets are never lit
+ * together, since firing and facing are separate modes. The ordering is
+ * insurance, not the rule.
  */
 const ATTACK_COLOR = new Color3(0.95, 0.2, 0.24);
 const ATTACK_ALPHA = 0.8;

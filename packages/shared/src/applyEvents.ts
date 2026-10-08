@@ -14,14 +14,14 @@ import type { GameEvent, GameState, Unit } from './types';
  *    immediately before it, with no knowledge of its siblings. That is what
  *    lets a log be replayed to any point -- including mid-resolution -- and
  *    what lets the client fold as it animates. A successful charge therefore
- *    emits `unitDied` *and* `unitMoved`, not one compound event.
+ *    emits a `battleResolved` and then a `unitMoved`, not one compound event.
  *
  * 2. **Absolute values, not deltas.** An event says what something *became*,
  *    never how much it changed by. That is what makes applying one twice a
  *    no-op, so at-least-once delivery is safe and a replaying client needs no
- *    exact-once bookkeeping. `unitAttacked` must therefore carry the target's
- *    resulting HP, not the damage dealt -- damage is `before - after`, which
- *    the client already knows because it holds the preceding state.
+ *    exact-once bookkeeping. `battleResolved` therefore carries each side's
+ *    resulting health, not the damage dealt -- damage is `before - after`,
+ *    which the client already knows because it holds the preceding state.
  *
  * Idempotent is not commutative: order still matters, and comes from
  * `(seq, index within the events array)`.

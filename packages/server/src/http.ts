@@ -269,13 +269,6 @@ function withSession<T extends string>(
 }
 
 /**
- * The single place a request becomes a player.
- *
- * Hot-seat concession: one browser drives both sides, so the server cannot
- * tell them apart and stamps whoever's turn it is. This is where a
- * session -> PlayerId lookup goes once sessions mean something.
- */
-/**
  * The requested map, `undefined` for "whatever the default is", or `INVALID`.
  *
  * Three outcomes rather than two because absent and wrong are different
@@ -308,6 +301,13 @@ function findMap(id: string): GameMap | null {
   }
 }
 
+/**
+ * The single place a request becomes a player.
+ *
+ * Hot-seat concession: one browser drives both sides, so the server cannot
+ * tell them apart and stamps whoever's turn it is. This is where a
+ * session -> PlayerId lookup goes once sessions mean something.
+ */
 function resolveActor(_session: string, state: GameState): PlayerId {
   return state.currentTurn;
 }
