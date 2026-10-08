@@ -168,9 +168,9 @@ export const CHARGE_THRESHOLD: Partial<Record<UnitTypeId, Record<UnitTypeId, num
  * orders nothing: it is a punishment, not a toughness.
  */
 export const CHARGE_REPEL: Record<UnitTypeId, number> = {
-  infantry: 10,
-  cavalry: 5,
-  artillery: 8,
+  infantry: 15,
+  cavalry: 15,
+  artillery: 15,
 };
 
 /**
@@ -218,15 +218,18 @@ export const FRONTAL_FLOOR = 2;
 export const FLOOR_PER_STAR = 2;
 
 /**
- * What a failed charge's overshoot is divided by before being added to the flat
- * repel cost.
+ * What a failed charge's overshoot is divided by, from a defender in its lowest
+ * band (`SPENT`) to one at full health (`FRESH`), in even steps between.
  *
- * ⚠️ **Ten, so that no cap is needed.** The overshoot cannot exceed 99, so this
- * tops the term out at **+9** on its own -- the same band as `LUCK_MAX`, which
- * keeps charge from introducing a second, differently scaled idea of variance.
- * Halving it doubles the swing.
+ * ⚠️ **Only the swing follows health; the base is always paid.** The chance and
+ * the window a roll has to miss by already carry the defender's health, so a
+ * failed charge against a fresh line is the one this makes dearer.
+ *
+ * ⚠️ **Both whole numbers**, because `repelDamage` divides in integers to keep a
+ * band from landing a hair under a whole number. A test pins it.
  */
-export const REPEL_DIVISOR = 10;
+export const REPEL_DIVISOR_SPENT = 10;
+export const REPEL_DIVISOR_FRESH = 3;
 
 /**
  * What a charge into an unready side is worth, as a **multiplier on the

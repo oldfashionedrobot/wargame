@@ -10,7 +10,8 @@ import {
   CHARGE_THRESHOLD,
   FLANK_MULTIPLIER,
   REAR_MULTIPLIER,
-  REPEL_DIVISOR,
+  REPEL_DIVISOR_FRESH,
+  REPEL_DIVISOR_SPENT,
 } from './data/combat';
 import { clampHealth, getUnitType } from './data/unitTypes';
 import type { UnitTypeId } from './data/unitTypes';
@@ -470,9 +471,20 @@ export function refuseCharge(
   return null;
 }
 
-/** What a failed charge costs the attacker, for the roll that failed it. */
+/**
+ * What a failed charge costs the attacker, for the roll that failed it: the
+ * base, plus how far the roll missed divided by a divisor that falls from
+ * `REPEL_DIVISOR_SPENT` to `REPEL_DIVISOR_FRESH` as the defender's band rises.
+ *
+ * ⚠️ `miss / divisor` is worked as `miss × steps / denominator`, the same ratio
+ * in whole numbers, so no band floors a point short.
+ */
 export function repelDamage(defender: Unit, chance: number, roll: number): number {
-  return CHARGE_REPEL[defender.unitTypeId] + Math.floor((roll - chance) / REPEL_DIVISOR);
+  const steps = BANDS - 1;
+  const denominator =
+    REPEL_DIVISOR_SPENT * steps -
+    (REPEL_DIVISOR_SPENT - REPEL_DIVISOR_FRESH) * (band(defender.health) - 1);
+  return CHARGE_REPEL[defender.unitTypeId] + Math.floor(((roll - chance) * steps) / denominator);
 }
 
 /**

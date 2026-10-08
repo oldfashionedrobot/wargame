@@ -301,105 +301,13 @@ more clause in the validation above.
 
 #### The next pass
 
-From playtesting notes. Nothing here is built yet.
-
-⬜ **A failed charge against a fresh line swings wider.** Today:
-
-```
-repel = CHARGE_REPEL[defender] + floor((roll − chance) / REPEL_DIVISOR)
-```
-
-Planned: the base stays, and the overshoot's divisor follows the defender's
-health band — ÷10 against a unit in its last band, ÷3 against a fresh one, in
-even steps between. `CHARGE_REPEL` is 15 for every defender, and stays a table
-so they can differ later. Still **one roll**.
-
-```
-divisor = REPEL_DIVISOR_SPENT − (REPEL_DIVISOR_SPENT − REPEL_DIVISOR_FRESH)
-                                × (band(defenderHP) − 1) / (BANDS − 1)
-repel   = CHARGE_REPEL[defender] + floor((roll − chance) / divisor)
-```
-
-⚠️ **The base is always paid in full; only the swing follows health.** That is
-the line between this and the scaling that was measured and dropped, which
-multiplied the whole repel by the defender's band and so cut the base most
-against the wounded targets charges are made at. Health already reaches the
-repel twice — through the odds, and through the window a roll has to miss by —
-and this sharpens the second rather than adding a cost of its own.
-
-What a failed charge costs, cavalry into infantry head-on in the open — range,
-and the mean:
-
-| defender's health | 100 | 70 | 55 | 40 | 25 |
-|---|---|---|---|---|---|
-| odds to break | 1% | 4% | 13% | 35% | 87% |
-| divisor | 3 | 5.3 | 6.1 | 7.7 | 8.4 |
-| today, 15 + overshoot ÷10 | 15–24 (19) | 15–24 (19) | 15–23 (19) | 15–21 (18) | 15–16 |
-| planned | 15–47 (31) | 15–32 (23) | 15–29 (22) | 15–23 (19) | 15–16 |
-
-In the simulator — every map from both openings, 3,600 games a row, the bot
-pricing each failure with the formula rather than a flat 12 — a failed charge
-cost 13.8 and now 14.6; charges a game went 3.1 to 3.0, success 79% to 80%, and
-win rates, charges' share of kills and chargers killed by a repel (0.22 a game)
-did not move. ⚠️ **That is the intent, not a null result**: the bot seldom
-charges a fresh line, and that is the only charge this changes much. What it
-changes is the price of a human's gamble.
-
-⚠️ **Explored and not chosen**, all unscaled: a base of 20 or 25, and divisors
-of 7, 5 and 2.5. A higher base made every failure dearer, finishers included; a
-flat ÷2.5 made a failed charge at a half-strength unit cost up to 45.
-
-⚠️ **The divisor is worked out in whole numbers** — `floor(miss × (BANDS − 1) /
-denominator)` rather than dividing by a fraction. Floating point agrees at these
-values, but a retune could land a band a hair under a whole number and floor it
-a point short.
-
-⚠️ **It overturns a decision on purpose.** `REPEL_DIVISOR` was set at 10 so the
-overshoot matched luck's 0–9 and a charge did not bring in a second, differently
-scaled idea of variance. The spent end keeps that; the fresh end, at 0–32, is
-the point of the change, and that comment goes.
-
-⬜ **The charge panel shows the odds alone.** The repel preview goes from the
-UI — *Charge — 35% to break*, and nothing about what failing costs. The chance
-is the decision; the cost of failing is learned from the cutaway, as a shot's
-counter is. That also deletes the client's copy of the repel formula outright,
-the copy that had already drifted once.
-
-⬜ **One function, called everywhere.** With the client's copy gone, the repel
-is still written out twice — `resolveCharge` and `charges.ts` — and becomes
-`repelDamage(defender, chance, roll)` in `shared/combat.ts`, which
-`simulate.ts` also uses to price a failed charge rather than a flat 12. Two
-smaller copies go the same way: the shot forecast rebuilds the defender's
-post-hit health by hand to decide *they return fire*, where it can ask
-`resolveBattle` at its worst roll; and `simulate.ts` restates `rollLuck`'s draw
-ranges and re-derives an exchange, where `rollLuck` can take its random source
-as an argument and the bot can ask `resolveBattle` too.
-
-⚠️ **What the pre-check added to it.** `resolveBattle` is not exported from
-`@wargame/shared`, so asking it from the client and the bot widens the barrel,
-on the same grounds `computeDamage` is already out: the client previews what
-the server resolves. `rollLuck` lives in `match.ts` beside the store, so the
-simulator would load Drizzle and the schema to draw dice; it moves to a module of
-its own, and its *exported only so it can be tested* note goes. And the
-simulator keeps its own Manhattan `distance`, where `tileDistance` says it is the
-only distance in the codebase — unexported from the barrel, which is likely why;
-it is exported and used.
-
-⚠️ **What it touches beyond the numbers.** `REPEL_DIVISOR` becomes the two
-ends; with the client's preview gone, `charges.ts` is its only importer outside
-the rule, and it goes through the shared function. The repel tests charge a defender on 40,
-whose divisor is now 7.7: *adds the overshoot, divided* and *never adds more
-than the luck band* are restated from the function, and a new one says a fresh
-defender swings wider than a spent one at the same miss. *Keyed by who was
-charged* cannot fail while every entry is equal, so it goes, to come back with
-the first entry that differs. The client tests on the repel band go with the
-band. `charges.ts` prints one repel band per row at the row's best odds,
-which the divisor now makes depend on health; it prints the band per cell. The
-architecture doc's formula, its list of combat scalars and *flat plus a small
-term* sentence change, as does *The dials* below. The whole-number form needs
-both ends of the divisor to be whole numbers, and a test pins that. And the
-bot's new pricing moves its own baseline — charges taken fell from 3.25 to 3.08
-a game on pricing alone — so measurements either side of it do not compare.
+From playtesting notes. ✅ **Landed so far**: the charge panel quotes the odds
+alone; a failed charge against a fresh line swings wider, the overshoot's
+divisor following the defender's health while the base is always paid; and the
+repel, the shot forecast's counter and the simulator's dice, exchange and
+distance each have one home, called by everything that needs them. What they do
+is in [`architecture.md`](architecture.md); why, and what was explored on the
+way, is in the commits.
 
 #### After the combat pass
 
@@ -490,7 +398,8 @@ building it.
 The tables are `BASE_DAMAGE`, `CHARGE_THRESHOLD` and `CHARGE_REPEL`; the scalars
 beside them are `TERRAIN_WEIGHT`, `FRONTAL_FLOOR`, `FLOOR_PER_STAR`,
 `FLANK_MULTIPLIER`, `REAR_MULTIPLIER`, `LUCK_MAX`,
-`CHARGE_HALF_LIFE` and `REPEL_DIVISOR`. The `defense` column of `terrain.ts` is
+`CHARGE_HALF_LIFE`, `REPEL_DIVISOR_SPENT` and `REPEL_DIVISOR_FRESH`. The
+`defense` column of `terrain.ts` is
 a dial too, and turned out to be the one carrying the most weight.
 
 **Tune against the harnesses, never against a damage number.**

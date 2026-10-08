@@ -24,7 +24,6 @@
  * head-on column.
  */
 import { chargeChance, chargeThreshold, repelDamage } from '../src/combat';
-import { REPEL_DIVISOR } from '../src/data/combat';
 import { TERRAIN } from '../src/data/terrain';
 import { makeState } from '../src/testing';
 import type { UnitTypeId } from '../src/data/unitTypes';
@@ -73,40 +72,31 @@ const COVER = [...new Set(Object.values(TERRAIN).map((g) => g.defense))]
     return { stars, char: sharing[0][1].char, names: sharing.map(([name]) => name).join(', ') };
   });
 
-// ⚠️ **What failing costs, read at the row's *best* odds** -- the health you
-// would actually take the gamble at. It is not a constant: the overshoot can
-// only reach `99 - chance`, so better odds leave a narrower window to fail
-// into. This column printed `flat..flat+9` for every row until the floor
-// landed, which hid the second-order effect the floor introduced -- deeper
-// cover lowers the odds, and lower odds widen the beating for failing.
-const failureBand = (defender: Unit, best: number) => {
-  const low = repelDamage(defender, best, best);
-  if (best >= 100) return `${low}+, if it could`;
-  return `${low}–${repelDamage(defender, best, 99)}`;
-};
+// What failing costs in each cell: the base at a near miss, up to the worst
+// failing roll. It depends on the odds, which set how far a roll can miss, and
+// on the defender's health, which sets what each point of miss is worth.
+const failureBand = (defender: Unit, chance: number) =>
+  chance >= 100
+    ? '—'
+    : `${repelDamage(defender, chance, chance)}–${repelDamage(defender, chance, 99)}`;
 
-console.log(
-  `odds to break.  failing costs flat + overshoot/${REPEL_DIVISOR}, at the best odds in the row\n`,
-);
+const CELL = 12;
+console.log('odds to break, then what failing costs\n');
 
 for (const { stars, char, names } of COVER) {
   console.log(`\n${stars} ${stars === 1 ? 'star' : 'stars'} — ${names}`);
   for (const [approach, facing] of Object.entries(FACING)) {
     console.log(`  ${approach}`);
-    console.log(
-      `${''.padEnd(24)}${HEALTHS.map((h) => `${h}hp`.padStart(7)).join('')}   failing costs`,
-    );
+    console.log(`${''.padEnd(24)}${HEALTHS.map((h) => `${h}hp`.padStart(CELL)).join('')}`);
     for (const attacker of CHARGERS) {
       for (const defender of TARGETS) {
         if (chargeThreshold(attacker, defender) === null) continue;
-        const boards = HEALTHS.map((health) => board(attacker, defender, health, facing, char));
-        const chances = boards.map((state) => chargeChance(state, state.units[0], state.units[1])!);
-        const best = Math.max(...chances);
-        const target = boards[chances.indexOf(best)].units[1];
-        const odds = chances.map((chance) => `${chance}%`.padStart(7));
-        console.log(
-          `${`${attacker} → ${defender}`.padEnd(24)}${odds.join('')}   ${failureBand(target, best)}`,
-        );
+        const cells = HEALTHS.map((health) => {
+          const state = board(attacker, defender, health, facing, char);
+          const chance = chargeChance(state, state.units[0], state.units[1])!;
+          return `${chance}% ${failureBand(state.units[1], chance)}`.padStart(CELL);
+        });
+        console.log(`${`${attacker} → ${defender}`.padEnd(24)}${cells.join('')}`);
       }
     }
   }

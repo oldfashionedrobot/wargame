@@ -304,7 +304,8 @@ becomes a column of `UnitType` and the edit is local.
 "artillery cannot charge" is said) and `CHARGE_REPEL` (keyed by who is being
 charged). Then the scalars, each explained where it is used rather than here:
 `TERRAIN_WEIGHT` and `LUCK_MAX` in *Combat*; `CHARGE_HALF_LIFE`,
-`FRONTAL_FLOOR`, `FLOOR_PER_STAR` and `REPEL_DIVISOR` in *Charge*;
+`FRONTAL_FLOOR`, `FLOOR_PER_STAR`, `REPEL_DIVISOR_SPENT` and
+`REPEL_DIVISOR_FRESH` in *Charge*;
 and `FLANK_MULTIPLIER` and `REAR_MULTIPLIER` in *Charge*.
 
 ⚠️ `BASE_DAMAGE` is a matrix rather than an attack stat and a defence stat: no
@@ -740,7 +741,9 @@ floor_    = (head-on ? FRONTAL_FLOOR : 0) + terrainDefense × FLOOR_PER_STAR
 margin    = max(floor_, targetHealth − threshold)
 chance    = max(1, round(100 × 0.5 ^ (margin / CHARGE_HALF_LIFE)))
 success = roll < chance                                    // roll is 0..99
-repel   = CHARGE_REPEL[defender] + floor((roll − chance) / REPEL_DIVISOR)
+divisor = REPEL_DIVISOR_SPENT − (REPEL_DIVISOR_SPENT − REPEL_DIVISOR_FRESH)
+                                × (band(defenderHP) − 1) / (BANDS − 1)
+repel   = CHARGE_REPEL[defender] + floor((roll − chance) / divisor)
 ```
 
 ⚠️ **Capability is a missing row, not a flag.** `CHARGE_THRESHOLD` is a
@@ -774,8 +777,11 @@ there are no failing rolls, since `roll ∈ [0, 99]`.
 **Two tables: the threshold says how *likely* a charge is, the repel says what
 *failing* costs.** `CHARGE_REPEL` is keyed by the defender alone.
 
-**Repel is flat plus a small term, never a multiplier**, so a near miss costs
-the base and a wild charge costs more.
+**Repel is the base plus the overshoot, never a multiplier**, so a near miss
+costs the base and a wild charge costs more. The overshoot's divisor falls as the
+defender's band rises, so the same miss costs more against a fresher defender;
+the base is paid whatever its health. `repelDamage` works the division in whole
+numbers, which is why both ends of the divisor are whole.
 
 **A charge never consults the counter rule**, so `answered` means *repelled*.
 The repel is the defence, and every defender has one.

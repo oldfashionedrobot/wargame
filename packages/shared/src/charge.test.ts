@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'bun:test';
-import { chargeChance, chargeThreshold, refuseCharge, resolveCharge } from './combat';
+import { chargeChance, chargeThreshold, refuseCharge, repelDamage, resolveCharge } from './combat';
 import {
   CHARGE_HALF_LIFE,
   CHARGE_REPEL,
   CHARGE_THRESHOLD,
   REAR_MULTIPLIER,
-  REPEL_DIVISOR,
+  REPEL_DIVISOR_FRESH,
+  REPEL_DIVISOR_SPENT,
 } from './data/combat';
 import { MAX_HEALTH } from './data/unitTypes';
 import { at, makeState } from './testing';
@@ -324,31 +325,12 @@ describe('resolveCharge', () => {
     expect(resolve(state, chance).attacker.health).toBe(100 - CHARGE_REPEL.infantry);
   });
 
-  // ⚠️ One term, both behaviours: barely-failed costs the base, and a wild
-  // charge overshoots further because it leaves a wider window to fail into.
-  it('adds the overshoot, divided', () => {
-    const state = contact(40);
-    const chance = chargeChance(state, unit(state, 'b1'), unit(state, 'r1'))!;
-    const wild = resolve(state, chance + REPEL_DIVISOR * 3);
-    expect(100 - wild.attacker.health).toBe(CHARGE_REPEL.infantry + 3);
-  });
-
-  // The overshoot cannot exceed 99, so the term tops out at +9 without a cap --
-  // the same band as LUCK_MAX, which is why the divisor is ten.
-  it('never adds more than the luck band, with no cap written', () => {
+  it('charges what repelDamage says for the roll that failed it', () => {
     const state = contact(100);
-    const worst = resolve(state, 99);
-    expect(100 - worst.attacker.health).toBeLessThanOrEqual(CHARGE_REPEL.infantry + 9);
-  });
-
-  it('keyed by who was charged, not by the matchup', () => {
-    const guns = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'r1', col: 1, row: 2, owner: 'red', unitTypeId: 'artillery', health: 100 },
-    ]);
-    const chance = chargeChance(guns, unit(guns, 'b1'), unit(guns, 'r1'))!;
-    const battle = resolveCharge(guns, unit(guns, 'b1'), unit(guns, 'r1'), { charge: chance });
-    expect(100 - battle.attacker.health).toBe(CHARGE_REPEL.artillery);
+    const chance = chargeChance(state, unit(state, 'b1'), unit(state, 'r1'))!;
+    expect(100 - resolve(state, 99).attacker.health).toBe(
+      repelDamage(unit(state, 'r1'), chance, 99),
+    );
   });
 
   it('never drives the attacker below zero', () => {
@@ -361,5 +343,51 @@ describe('resolveCharge', () => {
       resolveCharge(dying, unit(dying, 'b1'), unit(dying, 'r1'), { charge: 99 }).attacker.health,
     ).toBe(0);
     expect(chance).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('repelDamage', () => {
+  const defender = (health: number) => unit(contact(health), 'r1');
+  const base = CHARGE_REPEL.infantry;
+
+  it('divides the overshoot by REPEL_DIVISOR_SPENT against a unit in its last band', () => {
+    expect(repelDamage(defender(5), 1, 1 + REPEL_DIVISOR_SPENT * 3)).toBe(base + 3);
+  });
+
+  it('and by REPEL_DIVISOR_FRESH against one at full health', () => {
+    expect(repelDamage(defender(100), 1, 1 + REPEL_DIVISOR_FRESH * 3)).toBe(base + 3);
+  });
+
+  it('costs the base alone for a near miss, whatever the defender’s health', () => {
+    for (const health of [5, 50, 100]) expect(repelDamage(defender(health), 30, 30)).toBe(base);
+  });
+
+  it('never swings narrower against a healthier defender', () => {
+    const worst = (health: number) => repelDamage(defender(health), 1, 99);
+    for (let health = 10; health < 100; health += 10) {
+      expect(worst(health + 10)).toBeGreaterThanOrEqual(worst(health));
+    }
+    expect(worst(100)).toBeGreaterThan(worst(10));
+  });
+
+  // The divisor is worked in whole numbers so no band floors a point short of
+  // the ratio it states; that needs both ends whole.
+  it('keeps both ends of the divisor whole, the fresh end the smaller', () => {
+    expect(Number.isInteger(REPEL_DIVISOR_SPENT)).toBe(true);
+    expect(Number.isInteger(REPEL_DIVISOR_FRESH)).toBe(true);
+    expect(REPEL_DIVISOR_FRESH).toBeGreaterThan(0);
+    expect(REPEL_DIVISOR_SPENT).toBeGreaterThanOrEqual(REPEL_DIVISOR_FRESH);
+  });
+
+  it('lands every band on the ratio it states', () => {
+    for (let band = 1; band <= 10; band++) {
+      const divisor =
+        REPEL_DIVISOR_SPENT - ((REPEL_DIVISOR_SPENT - REPEL_DIVISOR_FRESH) * (band - 1)) / 9;
+      for (let miss = 0; miss <= 98; miss++) {
+        expect(repelDamage(defender(band * 10), 1, 1 + miss)).toBe(
+          base + Math.floor(miss / divisor + 1e-9),
+        );
+      }
+    }
   });
 });
