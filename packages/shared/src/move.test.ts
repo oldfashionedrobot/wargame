@@ -294,7 +294,10 @@ describe('resolveMove', () => {
         ],
       );
     const fight = (facing: 'south' | 'west') => {
-      const [, battle] = resolved(peak(facing), move('b1', at(0, 0), at(0, 0), 'r1'));
+      const [, battle] = resolved(peak(facing), {
+        ...move('b1', at(0, 0), at(0, 0), 'r1'),
+        facing: 'east',
+      });
       if (battle.type !== 'battleResolved') throw new Error('expected a battle');
       return battle;
     };
@@ -402,7 +405,7 @@ describe('validateMove, a slow unit', () => {
   // fire in the same action -- which is also what keeps facing a real decision
   // for the one unit that can never answer a shot.
   it('may turn on the spot and still fire', () => {
-    expect(gunline([[0, 0]], 'east')).toBeNull();
+    expect(gunline([[0, 0]], 'north')).toBeNull();
   });
 
   it('may not attack after moving', () => {
@@ -470,10 +473,6 @@ describe('validateMove, a unit in contact', () => {
 
   it('may attack from where it stands', () => {
     expect(order([[1, 1]], { targetUnitId: 'r1' })).toBeNull();
-  });
-
-  it('may turn on the spot and attack', () => {
-    expect(order([[1, 1]], { targetUnitId: 'r1', facing: 'south' })).toBeNull();
   });
 
   it('may not move and then attack', () => {
@@ -674,5 +673,32 @@ describe('validateMove, charging', () => {
       attackKind: 'charge',
     };
     expect(validateMove(state, stray)).toBe('an attack kind needs a target');
+  });
+});
+
+describe('validateMove, attack facing', () => {
+  // A gun at the origin and a target within its range of three to five.
+  const aim = (col: number, row: number, facing: Facing) =>
+    validateMove(
+      makeState(8, [
+        { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
+        { id: 'r1', col, row, owner: 'red' },
+      ]),
+      { type: 'move', unitId: 'b1', path: [at(0, 0)], facing, targetUnitId: 'r1' },
+    );
+
+  it('accepts an attack that ends facing its target', () => {
+    expect(aim(1, 3, 'north')).toBeNull();
+  });
+
+  it('refuses one that ends facing anywhere else', () => {
+    for (const facing of ['east', 'south', 'west'] as const)
+      expect(aim(1, 3, facing)).not.toBeNull();
+  });
+
+  // Dead on the diagonal, the row wins: the rule is facingToward's, stated once.
+  it('takes the row on an exact diagonal', () => {
+    expect(aim(2, 2, 'north')).toBeNull();
+    expect(aim(2, 2, 'east')).not.toBeNull();
   });
 });

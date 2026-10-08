@@ -1,6 +1,6 @@
 import { isChargeRoll, refuseAttack, refuseCharge, resolveBattle, resolveCharge } from './combat';
 import type { Rolls } from './combat';
-import { directionBetween } from './coordinate';
+import { facingToward } from './coordinate';
 import { getUnitType } from './data/unitTypes';
 import { canSelectUnit } from './legality';
 import { validatePath } from './movement';
@@ -47,9 +47,21 @@ export function validateMove(state: GameState, command: MoveCommand): string | n
   // ⚠️ The whole path, not just its end. Distance is measured from the last
   // tile, but whether the unit *moved at all* is the other half of what an
   // attack has to be legal against, and only the path says so.
-  return command.attackKind === 'charge'
-    ? refuseCharge(state, unit, command.path, command.targetUnitId)
-    : refuseAttack(state, unit, command.path, command.targetUnitId);
+  const refused =
+    command.attackKind === 'charge'
+      ? refuseCharge(state, unit, command.path, command.targetUnitId)
+      : refuseAttack(state, unit, command.path, command.targetUnitId);
+  if (refused) return refused;
+
+  // ⚠️ **An attack always ends facing its target.** Asked here rather than in
+  // the refusals, which the client and the bot call to find targets before any
+  // facing exists. The destination is never the target's tile, so
+  // `facingToward`'s fallback never applies and the facing is fully decided.
+  const target = getUnit(state, command.targetUnitId)!;
+  const destination = command.path[command.path.length - 1];
+  return command.facing === facingToward(destination, target.position, command.facing)
+    ? null
+    : 'an attack ends facing its target';
 }
 
 /**
@@ -109,12 +121,11 @@ export function resolveMove(state: GameState, action: MoveAction, rolls: Rolls):
     // destination -- true of the approach, which was previewed, and false of
     // this, which was not. The asymmetry is correct and is why it works.
     if (battle.defender.health <= 0) {
-      const facing = directionBetween(moved.position, defender.position) ?? action.facing;
       events.push({
         type: 'unitMoved',
         unitId: moved.id,
         path: [moved.position, defender.position],
-        facing,
+        facing: action.facing,
       });
     }
     return events;

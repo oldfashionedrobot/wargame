@@ -611,6 +611,11 @@ not sharpen the blow.
 A single-element path is a **turn in place** — legal at cost 0, and a real
 defensive action.
 
+**An attack always ends facing its target.** `validateMove` refuses any other
+facing on a command with a target — the dominant axis, the row on an exact
+diagonal, as `facingToward` decides — so only a plain move chooses where it
+looks. A charge that breaks through rides on facing the same way.
+
 ### A shot from behind is never answered
 
 Where facing changes shooting. Position affects *whether* there is a reply,
