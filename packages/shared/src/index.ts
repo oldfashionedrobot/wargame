@@ -37,8 +37,8 @@ export type { ArmyPlacement } from './armyGrid';
 export type { UnitTypeId } from './data/unitTypes';
 export { clampHealth, getUnitType, MAX_HEALTH } from './data/unitTypes';
 
-// Combat: `LUCK_MAX` and `computeDamage` are out because the client previews
-// the same number the server rolls.
+// Combat: `LUCK_MAX`, `computeDamage` and `resolveBattle` are out because the
+// client previews what the server resolves, and the bot weighs it.
 export { LUCK_MAX } from './data/combat';
 export {
   band,
@@ -47,6 +47,7 @@ export {
   computeDamage,
   refuseAttack,
   refuseCharge,
+  resolveBattle,
   tilesInRange,
   wouldCounter,
 } from './combat';

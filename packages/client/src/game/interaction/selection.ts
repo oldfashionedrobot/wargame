@@ -6,8 +6,8 @@ import {
   facingToward,
   LUCK_MAX,
   refuseAttack,
+  resolveBattle,
   tilesInRange,
-  wouldCounter,
   coordinatesEqual,
   directionBetween,
   exploreMovement,
@@ -651,8 +651,8 @@ export function attackForecast(state: GameState, selection: TargetPinned): Forec
 
   const low = computeDamage(state, moved, target, 0);
   const high = computeDamage(state, moved, target, LUCK_MAX);
-  const survivor: Unit = { ...target, health: Math.max(0, target.health - low) };
-  return { kind: 'fire', low, high, answered: wouldCounter(survivor, from) };
+  const { answered } = resolveBattle(state, moved, target, { attack: 0, counter: 0 });
+  return { kind: 'fire', low, high, answered };
 }
 
 /** Which way the unit ends up looking once it commits from the panel. */
