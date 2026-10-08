@@ -20,7 +20,7 @@ import type {
   PlayerColor,
   UnitTypeId,
 } from '@wargame/shared';
-import { getTerrain } from '@wargame/shared';
+import { defenseAt } from '@wargame/shared';
 import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
 import { createCutaway } from './cutaway';
@@ -738,7 +738,7 @@ export async function createGameRenderer(
         color: owner.color,
         before: unit.health,
         after,
-        defense: getTerrain(before.grid[unit.position.row][unit.position.col]).defense,
+        defense: defenseAt(before, unit.position),
       };
     };
 

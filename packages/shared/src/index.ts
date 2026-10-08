@@ -62,7 +62,7 @@ export {
   orthogonalNeighbours,
   tileDistance,
 } from './coordinate';
-export { getCurrentPlayer, getUnit, getUnitAt } from './queries';
+export { defenseAt, getCurrentPlayer, getUnit, getUnitAt } from './queries';
 export { canSelectUnit } from './legality';
 export { isOver, soleSurvivor } from './victory';
 export { exploreMovement } from './movement';

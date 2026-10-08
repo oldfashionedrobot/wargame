@@ -15,8 +15,7 @@ import {
 } from './data/combat';
 import { clampHealth, getUnitType } from './data/unitTypes';
 import type { UnitTypeId } from './data/unitTypes';
-import { getTileAt, getUnit, inContact } from './queries';
-import { getTerrain } from './data/terrain';
+import { defenseAt, getTileAt, getUnit, inContact } from './queries';
 import type { BattleResolvedEvent, Coordinate, GameState, Unit } from './types';
 
 /** How many ten-point bands of health a unit has left: 1 through 10, never 0. */
@@ -112,7 +111,7 @@ export function computeDamage(
 ): number {
   const base = BASE_DAMAGE[attacker.unitTypeId][defender.unitTypeId];
 
-  const { defense } = getTerrain(state.grid[defender.position.row][defender.position.col]);
+  const defense = defenseAt(state, defender.position);
   // Cover is worth less the less there is left to cover, and a star is worth
   // more than it reads -- see `TERRAIN_WEIGHT`.
   //
@@ -433,7 +432,7 @@ export function chargeChance(state: GameState, attacker: Unit, defender: Unit): 
   // both come to matter exactly where a charge was about to become a sure
   // thing, and stop mattering to one that was hopeless anyway. 100% now needs
   // position *and* open ground.
-  const { defense } = getTerrain(state.grid[defender.position.row][defender.position.col]);
+  const defense = defenseAt(state, defender.position);
   const marginFloor = (side === 'front' ? FRONTAL_FLOOR : 0) + defense * FLOOR_PER_STAR;
   const margin = Math.max(marginFloor, defender.health - Math.floor(threshold * directional));
   return Math.max(1, Math.round(100 * 0.5 ** (margin / CHARGE_HALF_LIFE)));

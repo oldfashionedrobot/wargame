@@ -1,6 +1,12 @@
 import { coordinatesEqual, orthogonalNeighbours } from './coordinate';
+import { getTerrain } from './data/terrain';
 import type { TileType } from './data/terrain';
 import type { Coordinate, GameState, Player, Unit } from './types';
+
+/** The defence stars of the ground at this tile. */
+export function defenseAt(state: GameState, coordinate: Coordinate): number {
+  return getTerrain(state.grid[coordinate.row][coordinate.col]).defense;
+}
 
 export function getUnit(state: GameState, unitId: string): Unit | undefined {
   return state.units.find((unit) => unit.id === unitId);

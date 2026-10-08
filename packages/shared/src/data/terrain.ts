@@ -15,7 +15,7 @@ export interface Terrain {
    */
   char: string;
   /**
-   * Stars of cover, read by `computeDamage` and scaled there by
+   * Stars of cover, read through `defenseAt` and scaled in `computeDamage` by
    * `TERRAIN_WEIGHT` -- a star is worth 15% at full defender HP, not 10%, and
    * this column deliberately does not know that.
    *

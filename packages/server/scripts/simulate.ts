@@ -27,7 +27,7 @@ import {
   chargeChance,
   exploreMovement,
   facingToward,
-  getTerrain,
+  defenseAt,
   getUnit,
   getUnitType,
   isOver,
@@ -262,7 +262,7 @@ function record(before: GameState, command: Command, events: GameEvent[], stats:
 
     stats.shots++;
     stats.hitsTotal++;
-    const { defense } = getTerrain(before.grid[defender.position.row][defender.position.col]);
+    const defense = defenseAt(before, defender.position);
     if (defense > 0) stats.hitsOnCover++;
     stats.damageBy[by] = (stats.damageBy[by] ?? 0) + (defender.health - event.defender.health);
     if (event.defender.health <= 0) stats.killsBy[by] = (stats.killsBy[by] ?? 0) + 1;
