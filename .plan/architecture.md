@@ -1483,8 +1483,8 @@ unavailable action is omitted — so hover is the only state a row has.
 - **Elevation is visual only; the map data has no height.** A tile's walkable
   surface is `surfaceAt(coordinate)` in `renderer.ts`, the one place any `y` is
   decided — terrain props, units, the walk tween, `syncUnits`, `cancelPreview`,
-  every overlay and now picking read it, so a raised tile cannot be raised for
-  some of them and not others. Three ways a cell can say how high it is, in
+  every overlay, picking and the battle close-up read it, so a raised tile
+  cannot be raised for some of them and not others. Three ways a cell can say how high it is, in
   order of preference:
   - Nothing at all, and `terrainModels.topOf` **measures** the ground model's
     bounding box at load. Derived from the art, so swapping a model moves the

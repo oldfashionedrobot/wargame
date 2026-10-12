@@ -72,6 +72,8 @@ export interface Combatant {
   facing: Facing;
   /** The cell this unit is standing on, taken from the board's own composition. */
   cell: TerrainCell;
+  /** How high it stands there -- the board's `surfaceAt`, which is the only answer. */
+  surface: number;
 }
 
 export interface Cutaway {
@@ -182,7 +184,7 @@ export function createCutaway(
       hasActed: false,
     };
     const unit = createUnitMesh(scene, unitModels, stub, who.color, () => 0, 1, 1);
-    unit.position.set(view.at.x, view.at.y + terrainModels.topOf(who.cell.ground), view.at.z);
+    unit.position.set(view.at.x, view.at.y + who.surface, view.at.z);
     view.built.push(unit);
   };
 

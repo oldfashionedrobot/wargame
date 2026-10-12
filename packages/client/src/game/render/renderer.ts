@@ -408,10 +408,11 @@ export async function createGameRenderer(
   /**
    * How high a unit stands on a tile — **the only answer to that question**.
    *
-   * Terrain, props, units, the walk animation and all five overlays go through
-   * here, so there is no second way to ask and nothing to drift. The ground's
-   * share is measured off the model rather than declared; `standOn` adds the
-   * one case where you stand on a prop instead, a bridge deck.
+   * Terrain, props, units, the walk animation, all five overlays and the battle
+   * close-up go through here, so there is no second way to ask and nothing to
+   * drift. The ground's share is measured off the model rather than declared;
+   * `standOn` adds the one case where you stand on a prop instead, a bridge
+   * deck.
    */
   const surfaceAt = ({ col, row }: Coordinate): number => {
     const cell = cells[row]?.[col];
@@ -740,12 +741,14 @@ export async function createGameRenderer(
         color: attacker.color,
         facing: attackerUnit.facing,
         cell: cells[attackerUnit.position.row][attackerUnit.position.col],
+        surface: surfaceAt(attackerUnit.position),
       },
       {
         unitTypeId: defender.unitTypeId,
         color: defender.color,
         facing: defenderUnit.facing,
         cell: cells[defenderUnit.position.row][defenderUnit.position.col],
+        surface: surfaceAt(defenderUnit.position),
       },
     );
     cutawayHandler?.({ id: (battleCount += 1), kind: event.kind, attacker, defender });
