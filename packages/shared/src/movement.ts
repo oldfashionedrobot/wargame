@@ -13,11 +13,11 @@ const nameOf = (coordinate: Coordinate) => `(${coordinate.col},${coordinate.row}
  * May this movement type be on this terrain at all, at any price?
  *
  * ⚠️ **Split out of `entryCost` because charge needs this half and not the
- * other.** A successful charge displaces onto the *target's* tile, so it has to
- * ask whether that ground admits the attacker -- and `entryCost` answers "held by
+ * other.** A charge displaces onto the *target's* tile, so it has to ask
+ * whether that ground admits the attacker -- and `entryCost` answers "held by
  * an enemy" for exactly that tile, which is the one thing a charge is not
- * troubled by. Duplicating the terrain lookup instead would be a second spelling
- * of one rule, which is the shape this codebase keeps correcting.
+ * troubled by. Duplicating the terrain lookup instead would be a second
+ * spelling of one rule, which is the shape this codebase keeps correcting.
  */
 export function terrainAdmits(tile: TileType, movementType: MovementType): boolean {
   return getTerrain(tile).cost[movementType] !== null;

@@ -43,6 +43,15 @@ export interface Unit {
    * 9, so applying one twice is a no-op.
    */
   health: number;
+  /**
+   * Points toward a charge: one for every attack this unit makes, up to
+   * `CHARGE_METER_FULL`, and all of them spent by a charge. Answering an attack
+   * fills nothing, and nothing else empties it -- the meter leaves only with
+   * the unit. Always 0 on a unit that cannot charge.
+   *
+   * ⚠️ Absolute in the event that changes it, like `health`.
+   */
+  chargeMeter: number;
   hasActed: boolean;
 }
 
@@ -104,18 +113,17 @@ export interface MoveCommand {
    * attack is refused rather than ignored -- silently dropping it would make a
    * malformed command look like a plain move.
    *
-   * ⚠️ **It decides the resolution, not a branch inside one.** An attack produces
-   * damage and a possible counter; a charge produces death-plus-displacement or
-   * a backfire, and never consults the counter rule at all. Two self-contained
-   * resolvers, dispatched once on this.
+   * ⚠️ **It decides the resolution, not a branch inside one.** An attack
+   * produces damage and a possible counter; a charge produces death and
+   * displacement, and never consults the counter rule at all. Two
+   * self-contained resolvers, dispatched once on this.
    */
   attackKind?: AttackKind;
 }
 
 /**
- * ⚠️ Named rather than inlined, because three things key off it: the command,
- * the `Rolls` the server draws for it, and `battleResolved.kind` which the
- * cutaway will read to pick an animation.
+ * ⚠️ Named rather than inlined, because two things key off it: the command, and
+ * `battleResolved.kind`, which the cutaway reads to name the battle.
  */
 export type AttackKind = 'attack' | 'charge';
 
@@ -155,6 +163,16 @@ export interface BattleParticipant {
 }
 
 /**
+ * The attacking side, which also says what its charge meter became.
+ *
+ * ⚠️ **Only the attacker carries one**, because only attacking changes a meter
+ * -- answering fills nothing. Absolute, like `health`, so the fold stays exact.
+ */
+export interface BattleAttacker extends BattleParticipant {
+  chargeMeter: number;
+}
+
+/**
  * One exchange, resolved. **Not one event per effect.**
  *
  * ⚠️ Split events when the parts are independently meaningful; keep them
@@ -183,19 +201,19 @@ export interface BattleResolvedEvent {
    * `charge`. One word, one type, three readers.
    */
   kind: AttackKind;
-  attacker: BattleParticipant;
+  attacker: BattleAttacker;
   defender: BattleParticipant;
   /**
-   * The defender hit back -- a counter, or a charge repelled.
+   * The defender hit back with a counter. A charge is never answered.
    *
    * ⚠️ **A decision, not a duplicate.** It appears nowhere else, and
    * reconstructing it means re-running the counter predicate against a rebuilt
-   * state. Three reasons that is worth a boolean: the log outlives the rules
-   * (charge already ignores the counter rule, and a later change would make a
-   * replay describe an old match with new rules); a client deriving it would
-   * work from a reconstruction, correct only if its local fold is right; and
-   * `resolutions.events` is a consumer the moment this is written, where a row
-   * that *says* the defender answered is self-describing.
+   * state. Three reasons that is worth a boolean: the log outlives the rules (a
+   * later change would make a replay describe an old match with new rules); a
+   * client deriving it would work from a reconstruction, correct only if its
+   * local fold is right; and `resolutions.events` is a consumer the moment this
+   * is written, where a row that *says* the defender answered is
+   * self-describing.
    *
    * ⚠️ It cannot contradict the healths. `true` with the attacker's health
    * unchanged means they fired and it did nothing, which is a real outcome.

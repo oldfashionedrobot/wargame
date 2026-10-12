@@ -190,6 +190,7 @@ export function createCutaway(
       unitTypeId: who.unitTypeId,
       owner: 'cutaway',
       health: 100,
+      chargeMeter: 0,
       hasActed: false,
     };
     const unit = createUnitMesh(scene, unitModels, stub, who.color, () => 0, 1, 1);

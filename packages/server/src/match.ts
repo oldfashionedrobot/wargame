@@ -140,7 +140,7 @@ export function createMatchStore({ db }: Database): MatchStore {
       const validation = validateCommand(match.state, command, actor);
       if (!validation.ok) return { ok: false, reason: validation.reason };
 
-      const rolls = rollLuck(command);
+      const rolls = rollLuck();
       const events = resolveAction(match.state, validation.action, rolls);
 
       // Reducers return events, not state. Folding them here is the only way a

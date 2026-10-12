@@ -13,8 +13,8 @@ import type { GameEvent, GameState, Unit } from './types';
  * 1. **Independently applicable.** Each event must make sense against the state
  *    immediately before it, with no knowledge of its siblings. That is what
  *    lets a log be replayed to any point -- including mid-resolution -- and
- *    what lets the client fold as it animates. A successful charge therefore
- *    emits a `battleResolved` and then a `unitMoved`, not one compound event.
+ *    what lets the client fold as it animates. A charge therefore emits a
+ *    `battleResolved` and then a `unitMoved`, not one compound event.
  *
  * 2. **Absolute values, not deltas.** An event says what something *became*,
  *    never how much it changed by. That is what makes applying one twice a
@@ -59,17 +59,17 @@ function applyEvent(state: GameState, event: GameEvent): GameState {
       // nothing else can be sitting at zero, since anything that reached it was
       // removed by the event that put it there. Stating the rule rather than
       // the special case is what keeps applying this twice a no-op.
-      const after = new Map([
-        [event.attacker.unitId, event.attacker.health],
-        [event.defender.unitId, event.defender.health],
-      ]);
+      const { attacker, defender } = event;
 
       return {
         ...state,
         units: state.units
           .map((unit): Unit => {
-            const health = after.get(unit.id);
-            return health === undefined ? unit : { ...unit, health };
+            if (unit.id === attacker.unitId) {
+              return { ...unit, health: attacker.health, chargeMeter: attacker.chargeMeter };
+            }
+            if (unit.id === defender.unitId) return { ...unit, health: defender.health };
+            return unit;
           })
           .filter((unit) => unit.health > 0),
       };

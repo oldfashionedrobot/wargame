@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { validateCommand } from './action';
 import { resolveMove, validateMove } from './move';
 import type { Rolls } from './combat';
-import { LUCK_MAX } from './data/combat';
+import { CHARGE_METER_FULL, LUCK_MAX } from './data/combat';
 import { MAX_HEALTH } from './data/unitTypes';
 import { at, makeState, route } from './testing';
 import type { Command, Facing, MoveCommand } from './types';
@@ -470,12 +470,14 @@ describe('validateMove, a slow unit', () => {
 
 // ⚠️ **A unit that starts in contact moves or attacks, not both** -- the same
 // refusal `slow` lives under, with a second cause. Blue foot at (1,1), red
-// foot beside it at (1,2), a second red at (4,1).
+// foot beside it at (1,2), a second red at (4,1). Blue's meter is full and the
+// red beside it worn down, so a charge here is refused for the turn rule or not
+// at all.
 describe('validateMove, a unit in contact', () => {
   const engaged = (unitTypeId: 'infantry' | 'cavalry' = 'infantry') =>
     makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId },
-      { id: 'r1', col: 1, row: 2, owner: 'red' },
+      { id: 'b1', col: 1, row: 1, unitTypeId, chargeMeter: CHARGE_METER_FULL },
+      { id: 'r1', col: 1, row: 2, owner: 'red', health: 5 },
       { id: 'r2', col: 4, row: 1, owner: 'red' },
     ]);
   const order = (
@@ -528,9 +530,9 @@ describe('validateMove, a unit in contact', () => {
     ).toBeNull();
   });
 
-  // A cavalry left in contact after a failed charge may charge again: that is
-  // attacking from where it stands.
-  it('may charge again from where it stands', () => {
+  // A cavalry already in contact may charge: that is attacking from where it
+  // stands.
+  it('may charge from where it stands', () => {
     expect(order([[1, 1]], { targetUnitId: 'r1', attackKind: 'charge' }, 'cavalry')).toBeNull();
   });
 
@@ -567,12 +569,14 @@ describe('validateMove, a unit in contact', () => {
   });
 });
 
+// A full-meter cavalryman charging head-on into infantry worn down far enough
+// to break.
 describe('resolveMove, charging', () => {
   const at_ = (col: number, row: number) => ({ col, row });
-  const field = (health: number, rows?: string[]) =>
-    makeState(rows ?? 7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'r1', col: 1, row: 2, owner: 'red', health, facing: 'south' },
+  const field = () =>
+    makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'r1', col: 1, row: 2, owner: 'red', health: 10, facing: 'south' },
     ]);
   const charge = (): MoveCommand => ({
     type: 'move',
@@ -582,11 +586,13 @@ describe('resolveMove, charging', () => {
     targetUnitId: 'r1',
     attackKind: 'charge',
   });
-  const play = (state: ReturnType<typeof field>, roll: number) => {
+  // A charge draws on no roll, so the pair every command is handed goes unread.
+  const play = (state: ReturnType<typeof field>) => {
     const validation = validateCommand(state, charge() as Command, 'blue');
     if (!validation.ok) throw new Error(`expected legal, got: ${validation.reason}`);
     return resolveMove(state, validation.action as Parameters<typeof resolveMove>[1], {
-      charge: roll,
+      attack: LUCK_MAX,
+      counter: LUCK_MAX,
     });
   };
 
@@ -595,8 +601,7 @@ describe('resolveMove, charging', () => {
   // an occupied tile -- which breaks "each event makes sense against the state
   // immediately before it".
   it('breaks through as battle-then-displacement, in that order', () => {
-    const state = field(30);
-    const events = play(state, 0);
+    const events = play(field());
     expect(events.map((e) => e.type)).toEqual(['unitMoved', 'battleResolved', 'unitMoved']);
     const [, battle, displacement] = events;
     if (battle.type !== 'battleResolved' || displacement.type !== 'unitMoved')
@@ -609,7 +614,7 @@ describe('resolveMove, charging', () => {
   // produces. It is one step, from where the charge was launched onto the tile
   // that was just vacated.
   it('displaces exactly one step, onto the tile it emptied', () => {
-    const events = play(field(30), 0);
+    const events = play(field());
     const displacement = events.at(-1);
     if (displacement?.type !== 'unitMoved') throw new Error('shape');
     expect(displacement.path).toEqual([at_(1, 1), at_(1, 2)]);
@@ -623,62 +628,12 @@ describe('resolveMove, charging', () => {
   // ranged charge would break that silently, which is why it is asserted rather
   // than left as reasoning in a doc.
   it('ends facing the way it charged, on both events', () => {
-    const events = play(field(30), 0);
+    const events = play(field());
     const [approach, , displacement] = events;
     if (approach.type !== 'unitMoved' || displacement.type !== 'unitMoved')
       throw new Error('shape');
     expect(approach.facing).toBe('north');
     expect(displacement.facing).toBe('north');
-  });
-
-  it('emits no displacement when the charge is repelled', () => {
-    const state = field(100);
-    const events = play(state, 99);
-    expect(events.map((e) => e.type)).toEqual(['unitMoved', 'battleResolved']);
-  });
-
-  // ⚠️ Charge never asks the counter rule, so a defender that could not have
-  // shot back still repels. Artillery is the case that proves it -- a battery
-  // answers nothing at all -- and charging one must not be free.
-  it('is repelled by artillery, which could never have countered', () => {
-    const guns = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'r1', col: 1, row: 2, owner: 'red', unitTypeId: 'artillery' },
-    ]);
-    const validation = validateCommand(guns, charge() as Command, 'blue');
-    if (!validation.ok) throw new Error(validation.reason);
-    const events = resolveMove(guns, validation.action as Parameters<typeof resolveMove>[1], {
-      charge: 99,
-    });
-    const battle = events[1];
-    if (battle.type !== 'battleResolved') throw new Error('shape');
-    expect(battle.answered).toBe(true);
-    expect(battle.attacker.health).toBeLessThan(MAX_HEALTH);
-  });
-
-  // ⚠️ The roll shape and the command kind are checked together: the server
-  // draws for the kind it was sent, so a mismatch is a broken pipeline rather
-  // than a bad request, and it should be loud.
-  it('throws rather than resolving a charge with fire rolls', () => {
-    const state = field(30);
-    const validation = validateCommand(state, charge() as Command, 'blue');
-    if (!validation.ok) throw new Error(validation.reason);
-    expect(() =>
-      resolveMove(state, validation.action as Parameters<typeof resolveMove>[1], {
-        attack: 0,
-        counter: 0,
-      }),
-    ).toThrow(/charge with fire rolls/);
-  });
-
-  it('throws rather than resolving a shot with charge rolls', () => {
-    const state = field(30);
-    const shot = { ...charge(), attackKind: undefined } as Command;
-    const validation = validateCommand(state, shot, 'blue');
-    if (!validation.ok) throw new Error(validation.reason);
-    expect(() =>
-      resolveMove(state, validation.action as Parameters<typeof resolveMove>[1], { charge: 0 }),
-    ).toThrow(/shot with charge rolls/);
   });
 });
 

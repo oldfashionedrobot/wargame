@@ -34,15 +34,16 @@ const move = (unitId: string, from: Coordinate, to: Coordinate): Command => ({
   facing: 'north',
 });
 
+/** The attacker's third entry is the charge meter it ends on, empty unless given. */
 const battle = (
-  attacker: [string, number],
+  attacker: [string, number, number?],
   defender: [string, number],
   answered = false,
   kind: AttackKind = 'attack',
 ): GameEvent => ({
   type: 'battleResolved',
   kind,
-  attacker: { unitId: attacker[0], health: attacker[1] },
+  attacker: { unitId: attacker[0], health: attacker[1], chargeMeter: attacker[2] ?? 0 },
   defender: { unitId: defender[0], health: defender[1] },
   answered,
 });
@@ -59,6 +60,17 @@ describe('applyEvents, battleResolved', () => {
     expect(unitAt(next, 'b1').health).toBe(91);
     expect(unitAt(next, 'r1').health).toBe(44);
     expect(unitAt(next, 'b2').health).toBe(unitAt(state, 'b2').health);
+  });
+
+  // Only attacking changes a meter, so only the attacker's side carries one.
+  it('writes the attacker’s charge meter and leaves the defender’s alone', () => {
+    const filling = makeState(8, [
+      { id: 'b1', col: 0, row: 0, unitTypeId: 'cavalry' },
+      { id: 'r1', col: 2, row: 0, owner: 'red', unitTypeId: 'cavalry', chargeMeter: 2 },
+    ]);
+    const next = applyEvents(filling, [battle(['b1', 90, 1], ['r1', 40], true)]);
+    expect(unitAt(next, 'b1').chargeMeter).toBe(1);
+    expect(unitAt(next, 'r1').chargeMeter).toBe(2);
   });
 
   // ⚠️ The rule stated once: zero health leaves the board. It is why there is no
@@ -270,10 +282,8 @@ describe('a full turn cycle validates, resolves and folds', () => {
       const validation = validateCommand(live, command, actor);
       expect(validation.ok).toBe(true);
       if (!validation.ok) return { live, log };
-      // ⚠️ The roll matters to nothing in these scripts -- they are all moves
-      // and end-turns -- but leaving it off compiled anyway, because `shared/`'s
-      // test files are not typechecked, and would have been NaN damage the
-      // first time one grew an attack.
+      // Rolls fixed at zero, so a script with attacks in it resolves the same
+      // every run.
       const events = resolveAction(live, validation.action, { attack: 0, counter: 0 }, budget);
       log.push(...events);
       live = applyEvents(live, events);
@@ -326,6 +336,49 @@ describe('a full turn cycle validates, resolves and folds', () => {
     // Three moves at two events apiece, and the lone `endTurn` at one.
     expect(log).toHaveLength(7);
     expect(log.filter((event) => event.type === 'turnEnded')).toHaveLength(4);
+    expect(applyEvents(initial, log)).toEqual(live);
+  });
+
+  // ⚠️ The meter is state, so it has to fold like health: three attacks fill it,
+  // a charge spends it, and the log replays to the same place. r1 stands on a
+  // peak so it outlasts the three; r2 is worn down enough to break.
+  it('folds a charge meter through three attacks and a charge', () => {
+    const initial = makeState(
+      ['....', '....', '.^..', '....'],
+      [
+        { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
+        { id: 'r1', col: 1, row: 2, owner: 'red' },
+        { id: 'r2', col: 0, row: 1, owner: 'red', health: 10 },
+      ],
+    );
+    const hit = (attackKind: AttackKind, targetUnitId: string, facing: Facing): Command => ({
+      type: 'move',
+      unitId: 'b1',
+      path: [pos(1, 1)],
+      facing,
+      targetUnitId,
+      attackKind,
+    });
+    const attack = hit('attack', 'r1', 'north');
+    const { live, log } = play(
+      initial,
+      [
+        [attack, 'blue'],
+        [{ type: 'endTurn' }, 'red'],
+        [attack, 'blue'],
+        [{ type: 'endTurn' }, 'red'],
+        [attack, 'blue'],
+        [{ type: 'endTurn' }, 'red'],
+        [hit('charge', 'r2', 'west'), 'blue'],
+      ],
+      null,
+    );
+
+    const meters = log.flatMap((e) =>
+      e.type === 'battleResolved' ? [e.attacker.chargeMeter] : [],
+    );
+    expect(meters).toEqual([1, 2, 3, 0]);
+    expect(live.units.map((unit) => unit.id)).toEqual(['b1', 'r1']);
     expect(applyEvents(initial, log)).toEqual(live);
   });
 

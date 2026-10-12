@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { Coordinate, GameEvent, GameServer, GameState } from '@wargame/shared';
+import { CHARGE_METER_FULL } from '@wargame/shared';
 import type { ConnectionStatus } from '../net/gameServer';
 import { makeState } from '@wargame/shared/testing';
 import { GameCanvas } from './GameCanvas';
@@ -338,8 +339,8 @@ describe('GameCanvas', () => {
   // a second lit set would read as a board offering two questions at once.
   it('lights one tile set per mode and clears the others', async () => {
     const contested = makeState(5, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'r1', col: 1, row: 2, owner: 'red' },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'r1', col: 1, row: 2, owner: 'red', health: 5 },
     ]);
     const serve = () =>
       fakeServer({
@@ -363,6 +364,37 @@ describe('GameCanvas', () => {
     await act(async () => screen.getByText('Attack').click());
     expect(lastOverlay()?.[0]).toBe('attack');
     expect(lastOverlay()?.[1].length).toBeGreaterThan(0);
+  });
+
+  // ⚠️ A charge only ever kills, so a pinned one has nothing to forecast: it
+  // gets the route's quiet pane, where a pinned attack gets its damage line.
+  it('asks only for the second click once a charge is pinned', async () => {
+    const contested = makeState(5, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'r1', col: 1, row: 2, owner: 'red', health: 5 },
+    ]);
+    await renderCanvas(
+      fakeServer({
+        getState: () => contested,
+        subscribe: vi.fn((onUpdate) => {
+          onUpdate([], contested);
+          return () => {};
+        }),
+      }),
+    );
+
+    await act(async () => clickTile({ col: 1, row: 1 }));
+    await act(async () => clickTile({ col: 1, row: 1 })); // pins
+    await act(async () => clickTile({ col: 1, row: 1 })); // confirms
+    await act(async () => screen.getByText('Charge').click());
+    await act(async () => clickTile({ col: 1, row: 2 })); // pins the target
+    expect(screen.getByText('Click again to confirm')).toBeTruthy();
+    expect(screen.queryByText(/damage/)).toBeNull();
+
+    await act(async () => clickTile({ col: 4, row: 4 })); // dark: back to the panel
+    await act(async () => screen.getByText('Attack').click());
+    await act(async () => clickTile({ col: 1, row: 2 }));
+    expect(screen.getByText(/damage/)).toBeTruthy();
   });
 
   // ⚠️ **The half of the cutaway that can be tested.** The staged models are

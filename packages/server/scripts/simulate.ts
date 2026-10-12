@@ -24,7 +24,6 @@
 import {
   applyEvents,
   canSelectUnit,
-  chargeChance,
   exploreMovement,
   facingToward,
   defenseAt,
@@ -34,7 +33,6 @@ import {
   LUCK_MAX,
   refuseAttack,
   refuseCharge,
-  repelDamage,
   resolveAction,
   resolveBattle,
   tileDistance,
@@ -55,14 +53,6 @@ function rng(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-/** What failing this charge costs on average: the repel, over every roll that fails it. */
-function expectedRepel(defender: Unit, chance: number): number {
-  if (chance >= 100) return 0;
-  let total = 0;
-  for (let roll = chance; roll < 100; roll++) total += repelDamage(defender, chance, roll);
-  return total / (100 - chance);
 }
 
 /** A candidate command and what the bot thinks it is worth. */
@@ -134,23 +124,21 @@ function candidates(state: GameState): Scored[] {
           });
         }
 
-        // Charging: a kill at a price, weighted by the odds of getting it.
+        // Charging: a certain kill, offered only where it is one. ⚠️ It ties a
+        // killing attack, which costs nothing either, so a full meter is often
+        // left unspent.
         if (refuseCharge(state, moved, path, target.id) === null) {
-          const chance = chargeChance(state, moved, target);
-          if (chance !== null) {
-            const p = chance / 100;
-            out.push({
-              command: {
-                type: 'move',
-                unitId: unit.id,
-                path,
-                facing,
-                targetUnitId: target.id,
-                attackKind: 'charge',
-              },
-              score: p * (target.health + 25) - (1 - p) * expectedRepel(target, chance),
-            });
-          }
+          out.push({
+            command: {
+              type: 'move',
+              unitId: unit.id,
+              path,
+              facing,
+              targetUnitId: target.id,
+              attackKind: 'charge',
+            },
+            score: target.health + 25,
+          });
         }
       }
     }
@@ -168,8 +156,7 @@ interface Stats {
   killsBy: Record<string, number>;
   attacks: number;
   countered: number;
-  chargesTried: number;
-  chargesBroke: number;
+  charges: number;
   hitsOnCover: number;
 }
 
@@ -215,7 +202,7 @@ function playOne(
       throw new Error(`bot proposed an illegal command: ${validation.reason}`);
     }
 
-    const rolls = rollLuck(command, random);
+    const rolls = rollLuck(random);
 
     const before = state;
     const events: GameEvent[] = resolveAction(state, validation.action, rolls, budget);
@@ -243,11 +230,8 @@ function record(before: GameState, events: GameEvent[], stats: Stats): void {
     const by: UnitTypeId = attacker.unitTypeId;
 
     if (event.kind === 'charge') {
-      stats.chargesTried++;
-      if (event.defender.health <= 0) {
-        stats.chargesBroke++;
-        stats.killsBy[by] = (stats.killsBy[by] ?? 0) + 1;
-      }
+      stats.charges++;
+      stats.killsBy[by] = (stats.killsBy[by] ?? 0) + 1;
       continue;
     }
 
@@ -298,8 +282,7 @@ const stats: Stats = {
   killsBy: {},
   attacks: 0,
   countered: 0,
-  chargesTried: 0,
-  chargesBroke: 0,
+  charges: 0,
   hitsOnCover: 0,
 };
 
@@ -360,8 +343,5 @@ console.log(`  ...answered            ${stats.countered}  ${pct(stats.countered,
 console.log(
   `  ...onto covered ground ${stats.hitsOnCover}  ${pct(stats.hitsOnCover, stats.attacks)}`,
 );
-console.log(`  charges attempted      ${stats.chargesTried}`);
-console.log(
-  `  ...broke through       ${stats.chargesBroke}  ${pct(stats.chargesBroke, stats.chargesTried)}`,
-);
+console.log(`  charges made           ${stats.charges}`);
 console.log();

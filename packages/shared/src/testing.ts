@@ -24,6 +24,8 @@ export interface UnitSpec {
    *  Anything asserting a counter should say which way the defender looks
    *  rather than inherit it. */
   facing?: Facing;
+  /** Defaults to empty. A charging test fills it to `CHARGE_METER_FULL`. */
+  chargeMeter?: number;
   hasActed?: boolean;
 }
 
@@ -70,6 +72,7 @@ export function makeState(
       unitTypeId: u.unitTypeId ?? 'infantry',
       owner: u.owner ?? 'blue',
       health: u.health ?? MAX_HEALTH,
+      chargeMeter: u.chargeMeter ?? 0,
       hasActed: u.hasActed ?? false,
     })),
     currentTurn,

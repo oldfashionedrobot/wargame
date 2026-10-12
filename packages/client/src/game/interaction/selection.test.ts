@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { at, makeState, route, unitAt } from '@wargame/shared/testing';
-import { chargeChance, LUCK_MAX } from '@wargame/shared';
+import { CHARGE_METER_FULL, LUCK_MAX } from '@wargame/shared';
 import type { Coordinate, GameState } from '@wargame/shared';
 import {
   attackForecast,
@@ -444,11 +444,11 @@ describe('a lit tile means what the mode says', () => {
 });
 
 describe('the panel, and what it is told', () => {
-  /** ⚠️ Narrows and asserts in one: a charge forecast reaching these would
-      otherwise read as a missing property rather than the wrong kind. */
-  const fireForecast = (state: GameState, selection: TargetPinned) => {
+  /** Asserts there is one, so a missing forecast fails here rather than as a
+      property read off `null`. */
+  const forecastOf = (state: GameState, selection: TargetPinned) => {
     const forecast = attackForecast(state, selection);
-    if (forecast?.kind !== 'fire') throw new Error('expected a fire forecast');
+    if (!forecast) throw new Error('expected a forecast');
     return forecast;
   };
 
@@ -469,14 +469,14 @@ describe('the panel, and what it is told', () => {
   // one case where nothing scales luck, so there the width is exactly LUCK_MAX.
   it('forecasts a range whose width is the luck band', () => {
     const state = field();
-    const forecast = fireForecast(state, panel(state));
+    const forecast = forecastOf(state, panel(state));
     expect(forecast.high - forecast.low).toBe(LUCK_MAX);
     expect(forecast.low).toBeGreaterThan(0);
   });
 
   it('says they counter attack when the target can reach back', () => {
     const state = field();
-    expect(fireForecast(state, panel(state)).answered).toBe(true);
+    expect(forecastOf(state, panel(state)).answered).toBe(true);
   });
 
   // ⚠️ The panel got the rear rule without being edited for it -- it reads
@@ -490,13 +490,13 @@ describe('the panel, and what it is told', () => {
       { id: 'r1', col: 1, row: 3, owner: 'red', facing: 'north' },
     ]);
     const chosen = withB1Targeting(state, at(1, 1), 'r1');
-    expect(fireForecast(state, chosen).answered).toBe(false);
+    expect(forecastOf(state, chosen).answered).toBe(false);
     // ⚠️ And the damage is untouched: facing changes who may answer, never what
     // the shot does. A flanking bonus would show up right here, and does not --
     // the same shot against the same unit turned around forecasts the same
     // number, which is the assertion that would have to be deleted to add one.
     const head = field();
-    expect(fireForecast(state, chosen).low).toBe(fireForecast(head, panel(head)).low);
+    expect(forecastOf(state, chosen).low).toBe(forecastOf(head, panel(head)).low);
   });
 
   // The melee rule arrives by the same wiring: cavalry facing the infantry that
@@ -506,7 +506,7 @@ describe('the panel, and what it is told', () => {
       { id: 'b1', col: 1, row: 1 },
       { id: 'r1', col: 1, row: 2, owner: 'red', unitTypeId: 'cavalry', facing: 'south' },
     ]);
-    expect(fireForecast(state, withB1Targeting(state, at(1, 1), 'r1')).answered).toBe(false);
+    expect(forecastOf(state, withB1Targeting(state, at(1, 1), 'r1')).answered).toBe(false);
   });
 
   // The whole point of outranging someone: a gun firing from four is never
@@ -517,7 +517,7 @@ describe('the panel, and what it is told', () => {
       { id: 'r1', col: 1, row: 5, owner: 'red' },
     ]);
     const chosen = withB1Targeting(state, at(1, 1), 'r1');
-    expect(fireForecast(state, chosen).answered).toBe(false);
+    expect(forecastOf(state, chosen).answered).toBe(false);
   });
 
   it('points the unit at its target, however far off it is', () => {
@@ -615,12 +615,13 @@ describe('the tiles holding mode lights', () => {
 });
 
 describe('charging, which shares every gesture with attacking', () => {
-  // b1 cavalry with an enemy beside it and another two tiles off.
+  // b1 cavalry, its meter full, with a worn-down enemy beside it and another two
+  // tiles off.
   const field = () =>
     makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'adjacent', col: 1, row: 2, owner: 'red' },
-      { id: 'distant', col: 1, row: 3, owner: 'red' },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'adjacent', col: 1, row: 2, owner: 'red', health: 5 },
+      { id: 'distant', col: 1, row: 3, owner: 'red', health: 5 },
     ]);
 
   // ⚠️ **Targets, not reach — the opposite of the attack band, deliberately.**
@@ -633,10 +634,20 @@ describe('charging, which shares every gesture with attacking', () => {
     expect(tiles).toEqual([at(1, 2)]);
   });
 
+  // A charge only ever kills, so a neighbour too strong to break is not lit.
+  it('leaves a neighbour unlit when a charge would not break it', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'worn', col: 1, row: 2, owner: 'red', health: 5 },
+      { id: 'fresh', col: 2, row: 1, owner: 'red' },
+    ]);
+    expect(withB1Charging(state, at(1, 1)).step.tiles).toEqual([at(1, 2)]);
+  });
+
   it('lights nothing when no enemy is in contact', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'distant', col: 1, row: 3, owner: 'red' },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'distant', col: 1, row: 3, owner: 'red', health: 5 },
     ]);
     expect(withB1Charging(state, at(1, 1)).step.tiles).toEqual([]);
   });
@@ -656,8 +667,8 @@ describe('charging, which shares every gesture with attacking', () => {
   // two and charges at one.
   it('refuses an enemy the attack band would have accepted', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1 },
-      { id: 'distant', col: 1, row: 3, owner: 'red' },
+      { id: 'b1', col: 1, row: 1, chargeMeter: CHARGE_METER_FULL },
+      { id: 'distant', col: 1, row: 3, owner: 'red', health: 5 },
     ]);
     expect(readAimClick(state, withB1Charging(state, at(1, 1)), at(1, 3))).toBeNull();
     expect(readAimClick(state, withB1Attacking(state, at(1, 1)), at(1, 3))?.id).toBe('distant');
@@ -665,9 +676,9 @@ describe('charging, which shares every gesture with attacking', () => {
 
   it('pins and re-pins exactly as attacking does', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'r1', col: 1, row: 2, owner: 'red' },
-      { id: 'r2', col: 2, row: 1, owner: 'red' },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'r1', col: 1, row: 2, owner: 'red', health: 5 },
+      { id: 'r2', col: 2, row: 1, owner: 'red', health: 5 },
     ]);
     const first = chooseTarget(withB1Charging(state, at(1, 1)), unitAt(state, 'r1'));
     expect(isTargetPinned(first)).toBe(true);
@@ -675,37 +686,14 @@ describe('charging, which shares every gesture with attacking', () => {
     expect(second.step.target.id).toBe('r2');
     expect(second.step.kind).toBe('charging');
   });
-});
 
-describe('the charge forecast', () => {
-  const contact = (health: number) =>
-    makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'r1', col: 1, row: 2, owner: 'red', health },
-    ]);
-  const aimed = (state: GameState) => {
-    const aim = chooseTarget(withB1Charging(state, at(1, 1)), unitAt(state, 'r1'));
-    const forecast = attackForecast(state, aim);
-    if (forecast?.kind !== 'charge') throw new Error('expected a charge forecast');
-    return forecast;
-  };
-
-  // ⚠️ **The bug a browser found and the tests had not.** Aiming a charge showed
-  // "Fire — 25–34 damage · they return fire", because the forecast computed
-  // damage without ever asking which mode it was in.
-  it('is a charge forecast, not a damage range', () => {
-    expect(aimed(contact(40)).chance).toBeGreaterThan(0);
-  });
-
-  // ⚠️ Exact where a shot's is a range: no roll enters `chance`, so this is the
-  // truth rather than an estimate, and the panel can say so.
-  it('agrees exactly with the rule that will resolve it', () => {
-    const state = contact(40);
-    expect(aimed(state).chance).toBe(chargeChance(state, unitAt(state, 'b1'), unitAt(state, 'r1')));
-  });
-
-  it('gets harder as the target gets healthier', () => {
-    expect(aimed(contact(90)).chance).toBeLessThan(aimed(contact(40)).chance);
+  // ⚠️ **The bug a browser found once and the tests had not**: aiming a charge
+  // showed an attack's damage, because the forecast never asked which mode it
+  // was in. A charge only ever kills, so it has nothing to forecast at all.
+  it('has no forecast once a target is pinned', () => {
+    const state = field();
+    const aim = chooseTarget(withB1Charging(state, at(1, 1)), unitAt(state, 'adjacent'));
+    expect(attackForecast(state, aim)).toBeNull();
   });
 });
 
@@ -737,13 +725,30 @@ describe('canAttack, for a slow unit', () => {
 
 describe('canCharge, which decides whether the panel offers it', () => {
   const arrived = (state: GameState) => withB1Arrived(state, at(1, 1));
-
-  it('is true with an enemy in contact', () => {
-    const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'r1', col: 1, row: 2, owner: 'red' },
+  // A charger beside a target, its meter full and the target worn down unless a
+  // test says otherwise.
+  const contact = (
+    unitTypeId: 'infantry' | 'cavalry' | 'artillery' = 'cavalry',
+    { meter = CHARGE_METER_FULL, health = 5 } = {},
+  ) =>
+    makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId, chargeMeter: meter },
+      { id: 'r1', col: 1, row: 2, owner: 'red', health },
     ]);
+
+  it('is true with an enemy in contact that a charge would break', () => {
+    const state = contact();
     expect(canCharge(state, arrived(state))).toBe(true);
+  });
+
+  it('is false until the meter is full', () => {
+    const state = contact('cavalry', { meter: CHARGE_METER_FULL - 1 });
+    expect(canCharge(state, arrived(state))).toBe(false);
+  });
+
+  it('is false when the only enemy in contact is too strong to break', () => {
+    const state = contact('cavalry', { health: 100 });
+    expect(canCharge(state, arrived(state))).toBe(false);
   });
 
   // ⚠️ The distinction the two rows exist for: the same board offers Attack and
@@ -752,8 +757,8 @@ describe('canCharge, which decides whether the panel offers it', () => {
   // always appear and disappear together.
   it('is false when the only enemy is a tile too far, where Attack is true', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1 },
-      { id: 'r1', col: 1, row: 3, owner: 'red' },
+      { id: 'b1', col: 1, row: 1, chargeMeter: CHARGE_METER_FULL },
+      { id: 'r1', col: 1, row: 3, owner: 'red', health: 5 },
     ]);
     expect(canCharge(state, arrived(state))).toBe(false);
     expect(canAttack(state, arrived(state))).toBe(true);
@@ -762,10 +767,7 @@ describe('canCharge, which decides whether the panel offers it', () => {
   // The other half of that, stated so the coincidence is not mistaken for a bug:
   // at contact a horseman may do either, and both rows show.
   it('offers both to cavalry at contact, whose ranges coincide', () => {
-    const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'r1', col: 1, row: 2, owner: 'red' },
-    ]);
+    const state = contact();
     expect(canCharge(state, arrived(state))).toBe(true);
     expect(canAttack(state, arrived(state))).toBe(true);
   });
@@ -774,17 +776,14 @@ describe('canCharge, which decides whether the panel offers it', () => {
   // artillery has no threshold row, so `refuseCharge` says no for every target
   // and the row never appears.
   it('is false for artillery, which cannot charge at all', () => {
-    const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
-      { id: 'r1', col: 1, row: 2, owner: 'red' },
-    ]);
+    const state = contact('artillery');
     expect(canCharge(state, arrived(state))).toBe(false);
   });
 
   it('is false when the neighbour is a friend', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'b2', col: 1, row: 2 },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b2', col: 1, row: 2, health: 5 },
     ]);
     expect(canCharge(state, arrived(state))).toBe(false);
   });

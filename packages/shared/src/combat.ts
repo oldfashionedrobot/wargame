@@ -2,18 +2,13 @@ import { attackSide, isWithinGrid, tileDistance } from './coordinate';
 import { terrainAdmits } from './movement';
 import {
   BASE_DAMAGE,
-  TERRAIN_WEIGHT,
-  CHARGE_HALF_LIFE,
-  FLOOR_PER_STAR,
-  FRONTAL_FLOOR,
-  CHARGE_REPEL,
+  CHARGE_COVER_PER_STAR,
+  CHARGE_FACING,
+  CHARGE_METER_FULL,
   CHARGE_THRESHOLD,
-  FLANK_MULTIPLIER,
-  REAR_MULTIPLIER,
-  REPEL_DIVISOR_FRESH,
-  REPEL_DIVISOR_SPENT,
+  TERRAIN_WEIGHT,
 } from './data/combat';
-import { clampHealth, getUnitType } from './data/unitTypes';
+import { clampHealth, getUnitType, MAX_HEALTH } from './data/unitTypes';
 import type { UnitTypeId } from './data/unitTypes';
 import { defenseAt, getTileAt, getUnit, inContact } from './queries';
 import type { BattleResolvedEvent, Coordinate, GameState, Unit } from './types';
@@ -196,35 +191,21 @@ export function refuseAttack(
 }
 
 /**
- * What the server rolls for one resolution.
+ * What the server rolls for one resolution: a luck roll for the attack and one
+ * for the counter, each in `[0, LUCK_MAX]`.
  *
  * ⚠️ **Named, not a tuple** -- `rolls.attack` says what it is where `rolls[0]`
  * is anonymous, and an *array* would invite `rolls[2]`, which is `undefined`,
  * which is `NaN` damage: silent, and the same shape as a stored unit with no
  * health.
  *
- * ⚠️ **A union, and what decides the member is the *command*, not the rules.**
- * The note on `counter` below says the number of draws must never depend on the
- * rules -- that is why a counter is drawn whether or not it is used. This does
- * not breach it: the server knows the attack kind before it rolls, because the
- * client said so. Reading a command is not running a rule.
- *
- * ⚠️ **A charge draws once.** Its repel damage is derived from how far that same
- * roll overshot the chance, so there is no second draw to make -- which is what
- * decided the shape of this union after 10a settled the repel formula.
+ * ⚠️ **Every command draws the pair**, whatever it turns out to need. A charge
+ * uses none of it, like an end of turn, and a counter that never happens leaves
+ * its roll unread -- the number of draws must never depend on the rules.
  */
-export interface FireRolls {
+export interface Rolls {
   attack: number;
   counter: number;
-}
-export interface ChargeRolls {
-  charge: number;
-}
-export type Rolls = FireRolls | ChargeRolls;
-
-/** ⚠️ Narrowing helper, so no caller writes `'charge' in rolls` by hand. */
-export function isChargeRoll(rolls: Rolls): rolls is ChargeRolls {
-  return 'charge' in rolls;
 }
 
 /**
@@ -316,11 +297,8 @@ export function tilesInRange(
  * which is AW's behaviour -- nothing here asks what the defender has *done*,
  * only what it is and where it stands.
  *
- * ⚠️ **A charge never asks this.** The counter rule answers an attack, and a
- * charge is not one -- its repel damage is the defence. Routing a charge
- * through here would make charging artillery free, and more plainly so than it
- * once would: a battery now answers nothing at all, so the one unit cavalry
- * exists to punish would be the only one unable to punish back.
+ * ⚠️ **A charge never asks this.** It is a sure execute, offered only where it
+ * kills, so there is nothing left to answer with.
  */
 export function wouldCounter(defender: Unit, attacker: Unit): boolean {
   if (defender.health <= 0) return false;
@@ -359,7 +337,7 @@ export function resolveBattle(
   state: GameState,
   attacker: Unit,
   defender: Unit,
-  rolls: FireRolls,
+  rolls: Rolls,
 ): BattleResolvedEvent {
   const damage = computeDamage(state, attacker, defender, rolls.attack);
   // The event says what each side *has*, so both must be numbers a rule can
@@ -376,78 +354,86 @@ export function resolveBattle(
   return {
     type: 'battleResolved',
     kind: 'attack',
-    attacker: { unitId: attacker.id, health: clampHealth(attacker.health - riposte) },
+    attacker: {
+      unitId: attacker.id,
+      health: clampHealth(attacker.health - riposte),
+      // Attacking is what fills it; answering fills nothing, so only this side
+      // carries one.
+      chargeMeter: hasChargeMeter(attacker.unitTypeId)
+        ? Math.min(attacker.chargeMeter + 1, CHARGE_METER_FULL)
+        : attacker.chargeMeter,
+    },
     defender: { unitId: defender.id, health: defenderHealth },
     answered,
   };
 }
 
 /**
- * Whether this unit can charge at all -- capability is a row in
- * `CHARGE_THRESHOLD`, never a flag on the catalog.
+ * Whether this unit can charge at all, and so whether it has a charge meter --
+ * capability is a row in `CHARGE_THRESHOLD`, never a flag on the catalog.
  *
  * ⚠️ **A missing row *is* the rule.** Artillery has none, which says "artillery
  * cannot charge" once. A `canCharge` boolean beside the table would say it
  * twice, and the two could disagree.
  */
-export function chargeThreshold(attacker: UnitTypeId, defender: UnitTypeId): number | null {
-  return CHARGE_THRESHOLD[attacker]?.[defender] ?? null;
+export function hasChargeMeter(unitTypeId: UnitTypeId): boolean {
+  return CHARGE_THRESHOLD[unitTypeId] !== undefined;
 }
 
 /**
- * The odds a charge breaks the target, as a whole percentage.
+ * The most health `defender` can have and still be executed by a charge from
+ * `attacker`, standing where it charges from -- or `null` if it cannot charge.
  *
- * ⚠️ **Raw health, deliberately not banded**, and this was measured rather than
- * assumed. Damage bands because raw health broke it -- a unit at 1% dealt zero.
- * Charge has no such failure, and banding costs two things: fully banded, any
- * multiplier under 1.4 vanishes outright, because `band(25)` and `band(28)` are
- * both 3; banding the target but not the threshold makes the table lie, since
- * `ceil` rounds up and a unit sitting exactly on a stated threshold of 25 shows
- * 71%.
+ * ```
+ * reach = floor(threshold × facing × (1 − coverPerStar × stars) × health / MAX_HEALTH)
+ * ```
  *
- * ⚠️ **The 1% floor is stated, not emergent**: rounding would otherwise make a
- * long enough shot impossible rather than improbable.
+ * ⚠️ **Linear in the charger's health**, so a weaker charger finishes less --
+ * the counterpart of a wounded unit hitting softer. A smaller reach is a harder
+ * charge throughout: head-on, deep cover and a worn-down charger all shrink the
+ * health the target must be at or under.
  *
- * ⚠️ **The directional term shipped separately from the rest of this**, and the
- * reason is worth keeping: charge and facing were the two mechanics with no
- * reference behaviour, and two untested dials inside one expression cannot be
- * told apart by any observation. Head-on was tuned first, against a formula with
- * one unknown in it.
+ * ⚠️ **Worked in whole numbers**, every factor a whole percentage and one floor
+ * at the end. In floating point a reach can land a hair under a whole number
+ * and floor a point short -- threshold 60 from the rear on three stars comes to
+ * 62.99. Nothing in today's tables lands on one; this keeps it so as they move.
+ *
+ * ⚠️ **The side is read from where the attacker will be standing**, so callers
+ * hand over the unit at its charging tile -- `refuseCharge` builds it from the
+ * path, and a charge's side is then the same for the server and the panel.
  */
-export function chargeChance(state: GameState, attacker: Unit, defender: Unit): number | null {
-  const threshold = chargeThreshold(attacker.unitTypeId, defender.unitTypeId);
-  if (threshold === null) return null;
+export function chargeReach(state: GameState, attacker: Unit, defender: Unit): number | null {
+  const threshold = CHARGE_THRESHOLD[attacker.unitTypeId]?.[defender.unitTypeId];
+  if (threshold === undefined) return null;
 
-  // ⚠️ **Read from where the attacker will be standing**, which is what the
-  // callers already hand over: `resolveMove` builds the moved unit, and the
-  // client's forecast builds the same one. Facing read against the *origin*
-  // would price a charge by where the ride started.
   const side = attackSide(defender.facing, defender.position, attacker.position);
-  const directional = side === 'rear' ? REAR_MULTIPLIER : side === 'flank' ? FLANK_MULTIPLIER : 1;
-
-  // ⚠️ **Terrain and a braced front set a floor under the margin; they do not
-  // add to it.** A floor is a ceiling on the odds -- see `FRONTAL_FLOOR` -- so
-  // both come to matter exactly where a charge was about to become a sure
-  // thing, and stop mattering to one that was hopeless anyway. 100% now needs
-  // position *and* open ground.
-  const defense = defenseAt(state, defender.position);
-  const marginFloor = (side === 'front' ? FRONTAL_FLOOR : 0) + defense * FLOOR_PER_STAR;
-  const margin = Math.max(marginFloor, defender.health - Math.floor(threshold * directional));
-  return Math.max(1, Math.round(100 * 0.5 ** (margin / CHARGE_HALF_LIFE)));
+  const cover = 100 - CHARGE_COVER_PER_STAR * defenseAt(state, defender.position);
+  return Math.floor(
+    (threshold * CHARGE_FACING[side] * cover * attacker.health) / (100 * 100 * MAX_HEALTH),
+  );
 }
 
 /**
- * Why this charge is refused, or `null` if it is legal.
+ * Why this charge is refused, or `null` if it is legal -- and a legal charge
+ * kills.
+ *
+ * ⚠️ **Offered only where it executes.** A charge cannot fail, so the rule
+ * that it must kill lives here rather than in the resolution: the panel offers
+ * the row and lights the tile only for a target this accepts, and the server
+ * resolves only what it accepted.
  *
  * ⚠️ **Contact, not a range band.** `refuseAttack` measures the attacker's
  * `range`, and infantry reaches two -- so reusing it would permit a "charge"
  * from two tiles off. Cavalry's `{1,1}` coincides with contact only by accident.
  *
  * ⚠️ **And the attacker must be able to *stand* where the target is**, since a
- * successful charge displaces onto that tile. That is a question about terrain
- * alone: `entryCost` answers it, and also refuses the tile for being enemy-held
- * -- which is exactly the tile being charged -- so the terrain half is asked
+ * charge displaces onto that tile. That is a question about terrain alone:
+ * `entryCost` answers it, and also refuses the tile for being enemy-held --
+ * which is exactly the tile being charged -- so the terrain half is asked
  * through `terrainAdmits` instead, which both share.
+ *
+ * ⚠️ **A full meter is *equal to* full**, never at least full, so a unit read
+ * back without the field can never charge.
  */
 export function refuseCharge(
   state: GameState,
@@ -457,72 +443,39 @@ export function refuseCharge(
 ): string | null {
   const target = refuseTarget(state, attacker, path, targetUnitId);
   if (typeof target === 'string') return target;
-  if (chargeThreshold(attacker.unitTypeId, target.unitTypeId) === null) {
-    return `${attacker.unitTypeId} cannot charge`;
-  }
-  if (tileDistance(path[path.length - 1], target.position) !== 1) {
-    return 'a charge has to reach them';
-  }
+  if (!hasChargeMeter(attacker.unitTypeId)) return `${attacker.unitTypeId} cannot charge`;
+  if (attacker.chargeMeter !== CHARGE_METER_FULL) return 'the charge meter is not full';
+
+  const from = path[path.length - 1];
+  if (tileDistance(from, target.position) !== 1) return 'a charge has to reach them';
 
   const { movementType } = getUnitType(attacker.unitTypeId);
   const tile = getTileAt(state, target.position);
   if (!tile || !terrainAdmits(tile, movementType)) {
     return `${movementType} cannot cross ${tile ?? 'that'}`;
   }
-  return null;
+
+  const reach = chargeReach(state, { ...attacker, position: from }, target)!;
+  return target.health > reach ? 'they are too strong to break' : null;
 }
 
 /**
- * What a failed charge costs the attacker, for the roll that failed it: the
- * base, plus how far the roll missed divided by a divisor that falls from
- * `REPEL_DIVISOR_SPENT` to `REPEL_DIVISOR_FRESH` as the defender's band rises.
+ * One charge, resolved: the target dies and the meter is spent.
  *
- * ⚠️ `miss / divisor` is worked as `miss × steps / denominator`, the same ratio
- * in whole numbers, so no band floors a point short.
+ * ⚠️ **Nothing is decided here**, because `refuseCharge` already decided it --
+ * a charge it accepts kills. So this needs neither the state nor a roll.
+ *
+ * ⚠️ **Death is expressed as health zero, not as "it dies"**, which is what lets
+ * a charge be an ordinary `battleResolved` with no special case in the reducer
+ * -- the same `health <= 0` filter removes it. Nothing answers, so `answered`
+ * is always false.
  */
-export function repelDamage(defender: Unit, chance: number, roll: number): number {
-  const steps = BANDS - 1;
-  const denominator =
-    REPEL_DIVISOR_SPENT * steps -
-    (REPEL_DIVISOR_SPENT - REPEL_DIVISOR_FRESH) * (band(defender.health) - 1);
-  return CHARGE_REPEL[defender.unitTypeId] + Math.floor(((roll - chance) * steps) / denominator);
-}
-
-/**
- * One charge, resolved.
- *
- * ⚠️ **Success is expressed as damage to zero, not as "it dies"**, which is what
- * lets a charge be an ordinary `battleResolved` with no special case in the
- * reducer -- the same `health <= 0` filter removes it.
- *
- * ⚠️ **A charge never consults the counter rule**, so `answered` means *repelled*
- * here. That rule asks whether the attacker is inside the defender's *range*,
- * which is a question about shooting; applying it would make charging artillery
- * free: a battery answers nothing at all now, so the one unit cavalry exists to
- * punish would be the only one unable to punish back. The
- * repel **is** the defence, and every defender has one.
- */
-export function resolveCharge(
-  state: GameState,
-  attacker: Unit,
-  defender: Unit,
-  rolls: ChargeRolls,
-): BattleResolvedEvent {
-  const chance = chargeChance(state, attacker, defender);
-  // Validation proved the attacker has a row, so this is a broken pipeline
-  // rather than a bad request -- loud, for the same reason `getUnitType` throws.
-  if (chance === null) {
-    throw new Error(`resolved a charge for ${attacker.unitTypeId}, which cannot charge`);
-  }
-
-  const broke = rolls.charge < chance;
-  const repel = broke ? 0 : repelDamage(defender, chance, rolls.charge);
-
+export function resolveCharge(attacker: Unit, defender: Unit): BattleResolvedEvent {
   return {
     type: 'battleResolved',
     kind: 'charge',
-    attacker: { unitId: attacker.id, health: clampHealth(attacker.health - repel) },
-    defender: { unitId: defender.id, health: broke ? 0 : defender.health },
-    answered: !broke,
+    attacker: { unitId: attacker.id, health: attacker.health, chargeMeter: 0 },
+    defender: { unitId: defender.id, health: 0 },
+    answered: false,
   };
 }

@@ -48,7 +48,7 @@ import type { UnitTypeId } from './unitTypes';
  *
  * ⚠️ **Not pushed toward AW's steeper first strikes**, because it costs two
  * other mechanics: terrain stops changing hit counts, and units stop lingering
- * at the health where a charge is a good bet.
+ * at the health where a charge can finish them.
  */
 export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
   infantry: { infantry: 45, cavalry: 35, artillery: 45 },
@@ -97,160 +97,94 @@ export const TERRAIN_WEIGHT = 1.5;
 export const LUCK_MAX = 9;
 
 /**
- * Target health at or below which a charge reaches its **ceiling**, attacker
- * down the side. A percentage, read against the defender's raw health.
+ * The most health a **full-strength** charger executes from the target's
+ * **flank** on open ground, attacker down the side. A percentage, read against
+ * the defender's raw health.
  *
- * ⚠️ **It used to mean *certain*, and the floor took that away.** A head-on
- * charge caps at 87% on open ground, so this is the health at which being any
- * weaker stops helping -- not the health at which the charge cannot fail. From
- * the flank or rear on open ground there is no frontal floor and it does still
- * mean certain.
+ * ⚠️ **A charge is a sure execute, so this is a line rather than odds.** At or
+ * under what `chargeReach` makes of it, a charge is offered and kills; over it,
+ * a charge is not offered at all. The side it arrives on, the target's cover
+ * and the charger's own health each scale it -- see `CHARGE_FACING`,
+ * `CHARGE_COVER_PER_STAR` and `chargeReach`.
  *
  * ⚠️ **`Partial`, and the missing row is the rule.** Artillery has none, which is
  * how "artillery cannot charge" is said -- rather than a `canCharge` flag on the
  * unit catalog saying the same thing a second time, where the two could drift.
- * Any unit can still be a *target*.
+ * A unit with no row has no charge meter either. Any unit can still be a
+ * *target*.
+ *
+ * ⚠️ **Raw health, deliberately not banded.** Damage bands because raw health
+ * broke it -- a unit at 1% dealt zero. A charge has no such failure, and banding
+ * would make the table lie: `ceil` rounds up, so a unit sitting exactly on a
+ * stated line would read as the band above it.
  *
  * ⚠️ **The triangle closes here, not in `BASE_DAMAGE`.** A gun reaches cavalry
  * from three to five tiles and cavalry reaches a gun only from one, so cavalry
  * spends its approach under fire whatever it means to do on arrival -- and
  * `cavalry → artillery` is what makes arriving pay. ⚠️ Argued from *range*
- * rather than from the two damage figures, which are the part that gets tuned. Against infantry
- * it is 25: a frontal charge needs a nearly-dead target, which is what
- * "infantry beats cavalry by not breaking" has to mean numerically.
+ * rather than from the two damage figures, which are the part that gets tuned.
+ * Head-on halves every entry, so a frontal charge into infantry needs a
+ * nearly-dead target -- which is what "infantry beats cavalry by not breaking"
+ * has to mean numerically.
  *
- * ⚠️ **The hard constraint is `threshold × REAR_MULTIPLIER < MAX_HEALTH`.**
- * Past it, doubling carries the threshold beyond the health ceiling, the margin
- * can never be positive, and a rear charge is automatically certain against a
- * *full-health* defender -- a dead dial rather than a signature moment. At
- * `REAR_MULTIPLIER` 2 that means every entry under 50. The artillery column was
- * the only one near the line, and came down to clear it.
- *
- * ⚠️ **The constraint only guards the full-health case, and a band survives on
- * the flank.** `floor(45 × 1.5)` is 67, so a flank charge on a battery is still
- * automatic at 67 health and below in the open -- down from 85, and accepted:
- * riding round a gun crew that has been worked that far down *should* decide
- * it. The levers if play disagrees are another cut to the row or
- * `FLANK_MULTIPLIER`.
+ * ⚠️ **The hard constraint is that no entry reaches `MAX_HEALTH` from the
+ * rear.** Past it a rear charge executes a *full-health* unit, which is a dead
+ * dial rather than a signature moment. `charge.test.ts` holds every entry to it.
  *
  * ⚠️ `infantry → cavalry 15` is the lowest number in either table on purpose.
  * Charging cavalry on foot should almost never be the right call, and a number
  * says so more cheaply than a rule forbidding it.
  *
- * ⚠️ **Lightly tuned.** The shape is first-cut and the artillery column has had
- * one pass; the rest is where it started. `scripts/charges.ts` prints all three
- * approaches on every depth of cover, which is the artefact to argue with.
+ * ⚠️ **First numbers, to be tried in play.** `scripts/charges.ts` prints what
+ * each entry executes on every side, depth of cover and charger health, which
+ * is the artefact to argue with.
  */
 export const CHARGE_THRESHOLD: Partial<Record<UnitTypeId, Record<UnitTypeId, number>>> = {
-  cavalry: { infantry: 25, cavalry: 25, artillery: 45 },
-  infantry: { infantry: 20, cavalry: 15, artillery: 35 },
+  cavalry: { infantry: 35, cavalry: 25, artillery: 45 },
+  infantry: { infantry: 25, cavalry: 15, artillery: 35 },
 };
 
 /**
- * What a **failed** charge costs the attacker, keyed by who was charged.
- *
- * ⚠️ **Keyed by the defender only, never by the matchup.** What a unit does when
- * cavalry hits its line is about its own equipment, not about who is arriving --
- * and the attacker-versus-defender dimension is already spent on
- * `CHARGE_THRESHOLD`. The split is the point: **the threshold says how likely,
- * the repel says what failing costs.** Two questions, two tables, neither doing
- * the other's job.
- *
- * ⚠️ **Not the defender's own `BASE_DAMAGE` row**, which was considered and
- * refused: artillery's row is *ranged* fire, and borrowing it at contact would
- * make a battery as dangerous close as far.
- *
- * ⚠️ **This is not the "defence stat" the damage design refuses.** That refusal
- * is about *damage*, where a scalar defence forces a transitive ordering and
- * makes a triangle impossible. Repel takes no part in the damage formula and
- * orders nothing: it is a punishment, not a toughness.
- */
-export const CHARGE_REPEL: Record<UnitTypeId, number> = {
-  infantry: 15,
-  cavalry: 15,
-  artillery: 15,
-};
-
-/**
- * Every this many points of health above the threshold **halves** the odds.
- *
- * ⚠️ **This sets how wide the in-between odds are; `CHARGE_THRESHOLD` sets
- * where they sit.** Lowering a threshold slides the band down the health scale
- * without narrowing it. A shorter half-life narrows it, at the price of the long
- * shot against a healthy unit.
- */
-export const CHARGE_HALF_LIFE = 10;
-
-/**
- * A floor under the charge margin, which is a **ceiling on the odds**: the
- * margin can never fall below it, so the chance can never rise above
- * `0.5 ^ (floor / CHARGE_HALF_LIFE)`.
- *
- * `FRONTAL_FLOOR` applies only to a charge arriving head-on; `FLOOR_PER_STAR`
- * applies on any side, multiplied by the defender's cover. Both live in margin
- * space, which is why neither needs a per-matchup table -- a margin means the
- * same thing whoever is charging whom. What differs between matchups is how
- * easily each *reaches* the ceiling, and `CHARGE_THRESHOLD` already says that:
- * the ceiling arrives at exactly the threshold.
- *
- * ⚠️ **Tuned against `CHARGE_HALF_LIFE`, never alone**: a ceiling is
- * `floor / half-life`, so moving one moves every ceiling unless the other
- * follows. `charge.test.ts` pins the ceilings.
- *
- * ⚠️ **`FRONTAL_FLOOR` equals `FLOOR_PER_STAR` on purpose** -- facing a unit
- * head-on is worth one star of terrain to it. Nothing depends on the two being
- * equal; it is a starting position, not a constraint.
- *
- * ⚠️ **They replace terrain's flat contribution rather than adding to it.**
- * Cover used to add its stars straight onto the margin -- at most 4 against a
- * 100-point scale, which is nothing. Folding it into the floor concentrates
- * terrain where it is felt, and the accepted cost is that terrain stops
- * affecting a charge that was a long shot anyway.
- *
- * ⚠️ **What this really buys is that no charge is free.** `resolveCharge`
- * exacts a repel only when a charge *fails*, so a certain charge was a
- * guaranteed kill at no cost -- the one move in the game with no downside.
- * Head-on is capped at 87% on open ground and 50% on a peak.
- */
-export const FRONTAL_FLOOR = 2;
-export const FLOOR_PER_STAR = 2;
-
-/**
- * What a failed charge's overshoot is divided by, from a defender in its lowest
- * band (`SPENT`) to one at full health (`FRESH`), in even steps between.
- *
- * ⚠️ **Only the swing follows health; the base is always paid.** The chance and
- * the window a roll has to miss by already carry the defender's health, so a
- * failed charge against a fresh line is the one this makes dearer.
- *
- * ⚠️ **Both whole numbers**, because `repelDamage` divides in integers to keep a
- * band from landing a hair under a whole number. A test pins it.
- */
-export const REPEL_DIVISOR_SPENT = 10;
-export const REPEL_DIVISOR_FRESH = 3;
-
-/**
- * What a charge into an unready side is worth, as a **multiplier on the
- * threshold**.
+ * How much of the threshold a charge reaches by the side of the target it
+ * arrives on, as a percentage: head-on halves it, the flank is the threshold
+ * itself, and the rear adds half again. Charging head-on always gives the
+ * defender a better chance.
  *
  * ⚠️ **Multiplied, never added, and the reason is retuning.** An additive
  * constant stops meaning anything the moment the table underneath it moves --
  * halve every threshold and a flat `+20` goes from a nudge to an override. A
  * multiplier is scale-free, so `CHARGE_THRESHOLD` can be retuned without
- * dragging these behind it. They also read as what they are: a rear charge is
- * *twice as likely to break them*, not *twenty more points of something*.
+ * dragging these behind it.
  *
- * ⚠️ **They have to be worth manoeuvring for.** At ×1.15 the flank moved 20% to
- * 23% -- inside the noise, a rule to learn that never changes a decision. These
- * move the curve enough to be a reason to ride around someone.
- *
- * ⚠️ **A multiplied threshold can exceed 100**, and the charge is then automatic
- * against any health at all. That is deliberate and it is the mechanic's
- * signature moment -- cavalry into the rear of a battery -- but it is also why a
- * base value wants checking at *all three* multipliers rather than head-on
- * alone: one that reads reasonable front-on can saturate at the flank and leave
- * the rear distinction doing nothing. `scripts/charges.ts` prints all three for
- * exactly that.
+ * ⚠️ **Whole percentages**, so `chargeReach` can work in integers.
  */
-export const FLANK_MULTIPLIER = 1.5;
-export const REAR_MULTIPLIER = 2;
+export const CHARGE_FACING: Record<'front' | 'flank' | 'rear', number> = {
+  front: 50,
+  flank: 100,
+  rear: 150,
+};
+
+/**
+ * What each star of the target's cover takes off a charge's reach, as a
+ * percentage of it: a wood's two stars take 20%, a mountain's four 40%. A
+ * worn-down unit that falls back into a wood or onto a hill is genuinely harder
+ * to finish.
+ *
+ * ⚠️ **A share, not the damage formula's cover.** That cover shrinks with the
+ * defender's health, so against the worn-down units an execute reaches it takes
+ * almost nothing -- 6% on a mountain at 10 health, against 40% here. A share
+ * scales with the threshold, so every charge stays possible and only gets
+ * harder, where a flat amount per star would eat the small thresholds whole.
+ *
+ * ⚠️ **Held under 100% at the deepest cover** by `charge.test.ts`, or a charge
+ * into it would reach below nothing.
+ */
+export const CHARGE_COVER_PER_STAR = 10;
+
+/**
+ * The attacks it takes to earn a charge. Every attack a unit that can charge
+ * makes fills its meter a point, up to this; a charge needs it full and spends
+ * all of it. Answering an attack fills nothing, and nothing but a charge or the
+ * unit's death empties it.
+ */
+export const CHARGE_METER_FULL = 3;

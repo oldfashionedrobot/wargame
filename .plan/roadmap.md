@@ -94,11 +94,9 @@ its reason stops holding.
 - **The movement budget, looked up by three callers** (`validateMove`, the
   overlay, the bot). A catalog lookup rather than a rule; worth one home only if
   a budget ever comes to depend on state.
-- **The attacker after its move, built by hand five times without its new
+- **The attacker after its move, built by hand six times without its new
   facing.** One spread; nothing reads an attacker's facing — only a defender's —
   and `validateMove` already decides what an attack ends facing.
-- **The charge roll's 0–99 written as a literal.** It is the percentage
-  `chance` is expressed in; a constant would only name a hundred.
 - **Adjacency asked as neighbours in one place and as distance 1 in another.**
   Identical on a square grid by definition.
 - **`hitsToKill` applying damage by hand.** It counts unanswered hits on
@@ -227,14 +225,15 @@ interesting. Several rules have already moved on evidence from playing rather
 than from measuring, and more than one of those turned out to be a *rule*
 rather than a dial — which is the shape to expect from this epic too.
 
-⚠️ **It runs in passes: play, then tune.** Two have shipped. The first set
+⚠️ **It runs in passes: play, then tune.** Three have shipped. The first set
 terrain weighting, the charge floor and the artillery charge row by printing
 grids; the second, the combat pass, came from playing — see *After the combat
-pass*. A pass's changes go to [`architecture.md`](architecture.md) and leave
-only their open questions here.
+pass*; the third reworked charging — see *The charging pass*. A pass's changes
+go to [`architecture.md`](architecture.md) and leave only their open questions
+here.
 
-⬜ **The next pass starts from playtesting notes** — see *The next pass*,
-below. What goes in it is settled as the notes come in.
+⬜ **The next pass starts from playing the earned charge**, and what goes in it
+is settled as the notes come in.
 
 #### Known to want attention
 
@@ -252,8 +251,8 @@ below. What goes in it is settled as the notes come in.
   capture points: if either comes back, they come back as one design. Nothing
   recovers health today, so a wounded unit is wounded for the rest of the match. ⚠️ It
   sits upstream of the numbers above rather than beside them: cover scales with
-  the defender's band and the charge floor only bites near the threshold, so
-  both mechanics are most active at low health, and how often units *are* at low
+  the defender's band and a charge executes only a worn-down unit, so both
+  mechanics are most active at low health, and how often units *are* at low
   health is what healing decides.
 - ⬜ **Capture points**, sketched and parked: presence is possession, so a point
   is held by standing on it and there is no capture meter to build. ⚠️ **Tied
@@ -352,220 +351,38 @@ its three dials. The two want reading together now that the two sides can differ
 ⚠️ **The pricing half is *Content*'s** — a cost column, a budget constant, and one
 more clause in the validation above.
 
-#### The next pass
+#### The charging pass
 
-From playtesting notes. ✅ **Landed so far**: the charge panel quotes the odds
-alone; a failed charge against a fresh line swings wider, the overshoot's
-divisor following the defender's health while the base is always paid; and the
-repel, the shot forecast's counter and the simulator's dice, exchange and
-distance each have one home, called by everything that needs them. What they do
-is in [`architecture.md`](architecture.md); why, and what was explored on the
-way, is in the commits.
+✅ **Shipped**, from playtesting notes. Charging felt off, and the simulator said
+why: a charge was the *wounded* unit's attack, a healthy unit's charge was a
+worse shot, and infantry made half of all charges. So cavalry fights with
+sabres, as a `melee` unit that cannot answer a ranged attacker, and the charge
+is earned: three attacks fill a meter, and a full meter buys a sure execute that
+scales with the side it arrives on, the target's cover and the charger's own
+health. Earlier in the pass the repel, the attack forecast's counter and the
+simulator's dice, exchange and distance each got one home. What it does is in
+[`architecture.md`](architecture.md); why, and what was measured, is in the
+commits.
 
-⬜ **Charging is reworked, in two steps: cavalry fight with swords, and the
-charge is earned.** From playtesting: charging felt off, and the simulator says
-why. Charge odds ignored the charger's health while fire scales with it, so a
-charge was the *wounded* unit's attack — the average charger stood on 42 health,
-head-on chargers on 22–28. A healthy unit's charge was a worse shot: wherever
-its odds were good, a shot already killed. And infantry made half of all
-charges, most often into a gun's flank.
+⬜ **For play to answer:**
 
-⚠️ **An execute on its own does too little, and the reason is the damage
-rule.** Health already throttles damage, so a unit worn down far enough to
-execute has lost most of its threat; finishing it is the lowest-value attack in
-the game. Measured in scratch on the current tables, every map from both
-openings: a cavalry-only sure execute, scaled by facing and by the charger's
-health, mostly took units a shot could not have killed only once its flank
-threshold reached about 60 — at 25 it took units on 10 health, nearly every one
-a kill a shot would have made. So the charge stops being a tool to reach for
-every turn and becomes a reward, and cavalry stops being a weak shooter.
-
-**Step 1 — ✅ cavalry fight with swords.** Landed; step 2 waits on playing it.
-
-- ✅ **Sword cavalry** — landed: the `melee` flag, the rule that a melee unit
-  never answers a ranged attacker, and cavalry's sabre row in the damage table.
-  What they do is in the architecture doc; what they did to the armies is in
-  *Armies*, and to the second mover under *After the combat pass*.
-- ✅ **Attack, not fire** — landed: the attack kind is `'attack'` on the wire,
-  in the event log and on screen. What it does is in the architecture doc.
-- **Presentation:** ✅ the cavalry model carries a sabre, and the carbine rider
-  is kept as `dragoon.gltf`. ✅ The battle close-up stages the two units facing
-  each other and looks down at about 30° onto each unit's tile — landed; what it
-  does is in the architecture doc. A blow that *looks* like a blow waits on
-  animated figures, in *Animation and sound*. ✅ The sabre is wider and a little
-  taller, to read at board scale.
-- ⬜ Later: **dragoons**, horse with carbines — the flag is what makes room for
-  them, and their model is already in `public/models/`.
-
-**Step 2 — ⬜ the charge is earned.**
-
-- **A charge meter.** Modeled on morale, but it only ever feeds the charge, so
-  it is named for it. Every attack a unit makes fills it a point, up to 3; a
-  unit on 3 may charge, and charging spends all three. Answering an attack
-  fills nothing — only attacking does — and the meter is never lost, except
-  with the unit. ⚠️ **A unit that cannot charge has no meter**: with no row in
-  `CHARGE_THRESHOLD`, it neither fills nor shows one.
-- **A charge that executes takes the defender's tile**, as a successful charge
-  does today: a definite kill, with the drawbacks of the new position to
-  weigh.
-- **A charge is a sure execute** — no roll, no failure, no repel. It breaks the
-  target when
-
-  ```
-  target health ≤ floor(CHARGE_THRESHOLD[charger][target] × facing
-                        × (1 − CHARGE_COVER_PER_STAR × stars)
-                        × chargerHealth / MAX_HEALTH)
-  ```
-
-  and is not offered otherwise: either the unit is worn down enough to send the
-  charge in, or it is strong enough to hold.
-- **Any unit with a row in `CHARGE_THRESHOLD` may charge**, infantry included;
-  the table stays as it is, read as what a full-strength charger executes from
-  the flank. **Facing:** head-on ×0.5, flank ×1, rear ×1.5 — charging head-on
-  always gives the defender a better chance. **Linear in the charger's
-  health.** ⚠️ Read "harder" as a smaller number: a head-on approach and a
-  weaker charger both shrink the health the target must be at or below.
-- **On the board: a small counter, 1 to 3**, beside the unit — the meter's
-  value, on units that can charge and on nothing else, and nothing at 0. A ring
-  of three parts around the health ring was the first idea and was set aside:
-  there is no room for it outside the health ring on infantry. Built as its own
-  small module and attached where the health ring is — made, removed on death,
-  synced — so it is one module and three lines in the renderer, and can be
-  thrown away whole. Charge is offered only on a full meter with a target it
-  would execute — `refuseCharge` decides, so the panel and the lit tiles follow
-  it.
-- **No charge forecast.** Charge is only offered where it executes, so there is
-  nothing left to forecast: the forecast's charge half goes, and with it the
-  panel's charge line. Picking the target and confirming it stay as they are,
-  so a stray click still cannot spend the meter — and a pinned charge target
-  shows the route's own quiet pane, *Click again to confirm* and nothing else,
-  so the two gestures read the same.
-- **First thresholds**, in the working tree and to be tried in play: cavalry
-  35 / 25 / 45 against infantry, cavalry and guns; infantry 25 / 15 / 35.
-- **Cover makes it harder by a share per star**: `CHARGE_COVER_PER_STAR`,
-  starting at 10%, so a wood takes 20% off what a charge can execute and a
-  mountain 40%. It scales with the threshold, so every charge stays possible and
-  only gets harder — a worn-down unit that falls back into a wood or onto a
-  hill is genuinely harder to finish. ⚠️ **The damage formula's cover was
-  considered and not taken**: it shrinks with the defender's health, so for the
-  worn-down units an execute reaches it takes almost nothing — 6% on a
-  mountain at 10 health, against 40% here. A flat amount per star, which eats
-  small thresholds to nothing, and a gate on deep ground, which adds a rule,
-  were set aside too.
-
-⚠️ **What step 2 removes.** The odds curve and everything that shaped it —
-`CHARGE_HALF_LIFE`, `FRONTAL_FLOOR`, `FLOOR_PER_STAR`, the 1% floor — and the
-repel with its overshoot: `CHARGE_REPEL`, both `REPEL_DIVISOR` ends,
-`repelDamage`. `FLANK_MULTIPLIER` and `REAR_MULTIPLIER` become one facing table.
-A charge draws nothing, so `ChargeRolls` and `isChargeRoll` go and `rollLuck`
-stops branching: every command draws the same pair, and a charge, like an end
-of turn, uses none of it. `chargeChance` becomes `chargeReach` — the most
-health a charge would execute, or none — which `refuseCharge` compares with the
-target and the harness prints, so the formula has one home; `resolveCharge`
-needs neither the state nor rolls, `rollLuck` no longer needs the command, and
-the move's check of the roll's shape against the attack kind goes.
-
-⚠️ **What step 2 touches beyond the rule.** **The meter is new state**: a field on
-every `Unit`, carried as an absolute value in the event that changes it — the
-attacker's side of `battleResolved` — so the fold stays exact. That changes
-`GameState`'s shape, so matches stored before it are abandoned, under the
-ruleset policy in *Known compromises*; the dev database is cleared when it
-lands, decided. The charge forecast and its panel line go; the bot prices a
-charge as a certain kill and has a meter to spend; the charges harness prints executable health per target,
-facing and charger health; `charge.test.ts` is largely rewritten, and the
-charge tests in `move.test.ts`, the client's charge-forecast tests and the
-charge half of the rolls tests are restated; the architecture doc's *Charge*
-section is rewritten. The rolls column keeps rows that stored a `{ charge }`
-roll, and nothing reads them.
-
-⚠️ **Step 2, pre-checked against the code** in a scratch copy, the meter
-prototyped end to end and a log of shots, turns and a charge folded back to
-the stored state exactly:
-
-- **The meter's events.** `chargeMeter` is a required number on every `Unit`,
-  0 on a unit that cannot charge. It rides on the *attacker's* side of
-  `battleResolved` as an absolute value: a shot sets it to one more, up to 3,
-  for a unit that can charge, and leaves it otherwise; a charge sets it to 0.
-  The defender's side is unchanged, since answering fills nothing. A charge's
-  displacement `unitMoved` becomes unconditional — every charge executes.
-  `applyEvents` patches the attacker as it already patches health; a killed
-  unit's meter leaves with it, and ending a turn never touches it. Three places
-  build a unit and gain the field: `createMatchState`, the test fixture, and the
-  close-up's stub. Not called `charge`, which the rolls test's leak search would
-  match. The full-meter check is written as *equals full*, so an old match
-  without the field can never charge — the database is cleared regardless.
-- **Where a charge's side is read.** `validateMove` hands the refusals the unit
-  as it stood, the client and the bot the unit where it will stand; once facing
-  decides whether a charge executes, `refuseCharge` reads the side from the
-  path's last tile, or the server and the panel could disagree about head-on
-  and flank.
-- **Whole numbers.** The execute is worked in integers — facing in halves,
-  cover as tenths — so no case floors a point short; floating point already
-  lands one under at threshold 60, rear, three stars.
-- **The client.** The confirm pane renders today only when there is a
-  forecast, so a pinned charge would show nothing: it renders whenever a target
-  is pinned, with the attack's line only for an attack. The forecast becomes
-  attack-only. A small predicate, `hasChargeMeter(type)`, reads the threshold
-  table so a unit with no row shows no counter; it and `CHARGE_METER_FULL` join the
-  barrel, and `chargeChance` and `repelDamage` leave it.
-- **The counter, not a ring.** The health ring's outer edge is 0.29 of the
-  model, and infantry is drawn half again larger, so it already reaches 87% of
-  the way to the tile's edge — a ring outside it had a hairline of room, which
-  is why the counter replaced it. Six of the default army's eight units can
-  charge; at 0 they show nothing, so the map viewer's previews stay clean.
-- **The bot** prices a charge as a certain kill and loses `expectedRepel` and
-  the *broke through* count, now always every one. A charge ties a killing shot
-  in its scoring, so it seldom spends a full meter — 30 to 67 charges in 200
-  games a map — which measurements of step 2 should read with that in mind.
-- **Tests.** `charge.test.ts` is rewritten. In `move.test.ts` four charging
-  tests are restated with a full meter and four go (the two repel tests and
-  the two roll-shape checks); `rollLuck.test.ts` loses its charge block; the
-  rolls test's charge case expects the shot's pair; the fold test adds a shot
-  and a charge so it folds a meter; the client's charge-forecast tests go and
-  its charging tests take a full meter and a weak target.
-- **Docs.** The architecture doc's state model, *Content*, *Combat*, *Contact*
-  (*charge again*), rolls, forecast and rendering sections; the roadmap's *The
-  dials* and the kept literal for the charge roll's 0–99, both of which stop
-  being true; and the comments on the threshold table, `answered`, the attack
-  kind, `wouldCounter`'s repel rationale and the move's dispatch.
-
-⚠️ **Dead code, swept with every commit.** Each commit ends by checking for
-what it left unused — exports nothing outside reads, constants, helpers, test
-fixtures, and docs describing them — and removes it in the same commit. Known
-in advance: step 1 leaves the close-up's `Combatant.facing` and the two lines
-in the renderer that fill it, and replaces `wouldCounter`'s `from` with the
-attacker. Step 2 leaves everything in *What step 2 removes*, plus the bot's
-`expectedRepel` and *broke through* count, the forecast's charge member and its
-panel line, `rollLuck`'s command parameter and charge branch, the move's
-roll-shape checks, `resolveCharge`'s rolls and state, and `chargeChance` and
-`repelDamage` in the barrel. `dragoon.gltf` stays unused on purpose, for
-dragoons.
-
-⚠️ **One step at a time.** Step 1 lands and is played on its own before step 2
-adds the charge meter, so each can be judged without the other moving under
-it.
-
-⚠️ **Step 2 settles two items below** when it lands: *the long shot*, since no
-odds remain, and the parked *charge's odds scaling with the charger's own
-strength*, which the linear term is.
+- **The thresholds are first numbers** — cavalry 35 / 25 / 45 against infantry,
+  cavalry and guns, infantry 25 / 15 / 35 — and so is the meter's size of three
+  and cover's 10% a star. `scripts/charges.ts` prints what each executes.
+- **The simulator seldom charges**, and that is the bot: it scores a charge
+  level with a killing attack, which costs nothing either, so it rarely spends a
+  full meter — 10 charges in 50 games on `classic`. Read its charge counts with
+  that in mind.
+- ⬜ Later: **dragoons**, horse with carbines — the `melee` flag is what makes
+  room for them, and their model is already in `public/models/`.
 
 #### After the combat pass
 
 ✅ **The pass shipped**: contact, a flanked defender answering in full,
-artillery's row at 55 / 40 / 40, luck scaled in with its rolls recorded, and a
-charge half-life of ten. What it does is in [`architecture.md`](architecture.md);
-why, and what it measured, is in the commits that landed it. What is left is for
-play to answer.
-
-⬜ **The long shot, if play wants it back.** The half-life made the charge a
-gamble or a finisher, and the price was the gamble against a healthy line:
-cavalry into infantry head-on is 1% at full health and 4% at 70. If that reads
-as a wall, the lever is a floor on the odds — the `1` in `chargeChance` raised —
-which is a rule, not the half-life put back.
-
-⬜ **Parked: a charge's odds scaling with the charger's own strength.**
-`chargeChance` reads the defender's health and never the attacker's, so a broken
-squadron breaks a fresh line exactly as often as a fresh one does.
+artillery's row, and luck scaled in with its rolls recorded; its charge
+half-life went with the charging pass. What it does is in
+[`architecture.md`](architecture.md); why, and what it measured, is in the
+commits that landed it. What is left is for play to answer.
 
 ⚠️ **One shot in eight is answered, and what makes a shot free is the range
 design rather than a rule.** A shot goes unanswered because it killed (35%),
@@ -636,17 +453,15 @@ building it.
 
 #### The dials
 
-The tables are `BASE_DAMAGE`, `CHARGE_THRESHOLD` and `CHARGE_REPEL`; the scalars
-beside them are `TERRAIN_WEIGHT`, `FRONTAL_FLOOR`, `FLOOR_PER_STAR`,
-`FLANK_MULTIPLIER`, `REAR_MULTIPLIER`, `LUCK_MAX`,
-`CHARGE_HALF_LIFE`, `REPEL_DIVISOR_SPENT` and `REPEL_DIVISOR_FRESH`. The
-`defense` column of `terrain.ts` is
-a dial too, and turned out to be the one carrying the most weight.
+The tables are `BASE_DAMAGE`, `CHARGE_THRESHOLD` and `CHARGE_FACING`; the
+scalars beside them are `TERRAIN_WEIGHT`, `LUCK_MAX`, `CHARGE_COVER_PER_STAR`
+and `CHARGE_METER_FULL`. The `defense` column of `terrain.ts` is a dial too, and
+turned out to be the one carrying the most weight.
 
 **Tune against the harnesses, never against a damage number.**
 `scripts/matchups.ts` prints hits-to-kill across every matchup and terrain,
-`charges.ts` prints charge odds for all three approaches on every depth of
-cover, and `server/scripts/simulate.ts` plays the game against itself and
+`charges.ts` prints the most health each charge executes from all three sides
+on every depth of cover, and `server/scripts/simulate.ts` plays the game against itself and
 reports outcomes, match length, damage and kills by unit type, and whether each
 mechanic fired. ⚠️ **All three have earned themselves** — one killed a table
 where everything died in two hits, another found cavalry-into-artillery

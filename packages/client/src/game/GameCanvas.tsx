@@ -475,25 +475,26 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
           </div>
         )}
 
-        {aiming && forecast && (
-          <div ref={forecastRef} className="board-pane board-pane--forecast">
-            {/* ⚠️ Informational, with no button, like the route's confirm pane
-                -- and for the same reason. Buttons pick intent; tiles pick
-                targets. A second click on the target is what fires, which is the
-                gesture the route already taught. */}
-            {forecast.kind === 'fire' ? (
+        {/* ⚠️ Informational, with no button, like the route's confirm pane --
+            and for the same reason. Buttons pick intent; tiles pick targets. A
+            second click on the target is what commits, which is the gesture the
+            route already taught. A pinned charge has nothing to forecast, so it
+            gets the route's own quiet pane and the two gestures read the same. */}
+        {aiming &&
+          (forecast ? (
+            <div ref={forecastRef} className="board-pane board-pane--forecast">
               <span>
                 Attack — {forecast.low}
                 {forecast.high > forecast.low && `–${forecast.high}`} damage
                 {forecast.answered && ' · they counter attack'}
               </span>
-            ) : (
-              /* An exact figure where a shot gets a range: no roll enters `chance`. */
-              <span>Charge — {forecast.chance}% to break</span>
-            )}
-            <span style={{ opacity: 0.75 }}>Click again to confirm</span>
-          </div>
-        )}
+              <span style={{ opacity: 0.75 }}>Click again to confirm</span>
+            </div>
+          ) : (
+            <div ref={forecastRef} className="board-pane board-pane--quiet">
+              Click again to confirm
+            </div>
+          ))}
 
         {awaitingConfirm && (
           <div ref={confirmPaneRef} className="board-pane board-pane--quiet">

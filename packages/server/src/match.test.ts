@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { route } from '@wargame/shared/testing';
 import type { Command, Coordinate } from '@wargame/shared';
-import { exploreMovement, facingToward, getUnitType, LUCK_MAX } from '@wargame/shared';
+import {
+  CHARGE_METER_FULL,
+  exploreMovement,
+  facingToward,
+  getUnitType,
+  LUCK_MAX,
+} from '@wargame/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore } from './match';
 import type { MatchStore } from './match';
@@ -242,8 +248,18 @@ describe('submit', () => {
         ],
         { width: 1, depth: 1 },
       );
-      const blue = { ...base.units.find((u) => u.owner === BLUE)!, position: { col: 5, row: 0 } };
-      const red = { ...base.units.find((u) => u.owner === RED)!, position: { col: 5, row: 1 } };
+      // A full meter and a worn-down target, so a charge is legal; an attack
+      // ignores both.
+      const blue = {
+        ...base.units.find((u) => u.owner === BLUE)!,
+        position: { col: 5, row: 0 },
+        chargeMeter: CHARGE_METER_FULL,
+      };
+      const red = {
+        ...base.units.find((u) => u.owner === RED)!,
+        position: { col: 5, row: 1 },
+        health: 5,
+      };
       const fight = { ...base, units: [blue, red] };
       await sql.execute({
         sql: 'UPDATE matches SET initial_state = ?, current_state = ? WHERE id = ?',
@@ -269,23 +285,19 @@ describe('submit', () => {
     };
     const leaked = /"(attack|counter|charge|rolls)":/;
 
-    it('keeps both of a shot’s', async () => {
-      const { rolls, sent } = await attack('attack');
-      expect(Object.keys(rolls).sort()).toEqual(['attack', 'counter']);
-      for (const roll of [rolls.attack, rolls.counter]) {
-        expect(roll).toBeGreaterThanOrEqual(0);
-        expect(roll).toBeLessThanOrEqual(LUCK_MAX);
-      }
-      expect(sent).not.toMatch(leaked);
-    });
-
-    it('keeps a charge’s one', async () => {
-      const { rolls, sent } = await attack('charge');
-      expect(Object.keys(rolls)).toEqual(['charge']);
-      expect(rolls.charge).toBeGreaterThanOrEqual(0);
-      expect(rolls.charge).toBeLessThanOrEqual(99);
-      expect(sent).not.toMatch(leaked);
-    });
+    // ⚠️ The same pair for either kind: a charge reads neither, but the number
+    // of draws never depends on what the rules will do with them.
+    for (const kind of ['attack', 'charge'] as const) {
+      it(`keeps the pair ${kind === 'attack' ? 'an attack' : 'a charge'} was handed`, async () => {
+        const { rolls, sent } = await attack(kind);
+        expect(Object.keys(rolls).sort()).toEqual(['attack', 'counter']);
+        for (const roll of [rolls.attack, rolls.counter]) {
+          expect(roll).toBeGreaterThanOrEqual(0);
+          expect(roll).toBeLessThanOrEqual(LUCK_MAX);
+        }
+        expect(sent).not.toMatch(leaked);
+      });
+    }
   });
 
   it('stamps the actor it was given, ignoring any the client supplied', async () => {

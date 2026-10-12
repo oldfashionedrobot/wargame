@@ -74,7 +74,7 @@ packages/
     data/             the static content tables — unit types, terrain, combat
   shared/scripts/
     matchups.ts       prints hits-to-kill
-    charges.ts        prints charge odds against the repel band
+    charges.ts        prints the most health each charge executes
   server/
     src/
       http.ts         createServer() — Bun.serve routes, /api/* plus the client build
@@ -113,7 +113,7 @@ Run from the repo root. All exit non-zero on failure.
 | `bun run format` / `format:check` | Prettier (Markdown and exported glTF are excluded) |
 | `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
 | `bun packages/shared/scripts/matchups.ts` | Tuning harness: hits-to-kill for every matchup on every terrain |
-| `bun packages/shared/scripts/charges.ts` | Tuning harness: charge odds for all three approaches on every depth of cover, and what failing costs |
+| `bun packages/shared/scripts/charges.ts` | Tuning harness: the most health each charge executes, from all three sides, on every depth of cover, by the charger's health |
 | `bun packages/server/scripts/simulate.ts [games] [map] [opener] [budget] [blueArmy] [redArmy]` | Plays the game against itself with a greedy bot and reports outcomes, match length, damage by unit type, and whether each mechanic fired. An army is comma-separated rows; omitted, both sides take the default deployment |
 | `bun run preview` | `vite preview` — the built client with no `/api` proxy, so it reaches no match |
 | `bun run --filter '@wargame/server' start` | The production shape: one process serving the API and `dist` together |
@@ -135,7 +135,7 @@ applyEvents(state, events)              → GameState
 
 `rolls` is an argument, never a field on `Action`: `shared/` produces no
 randomness (invariant 2), so the server rolls and passes them in. `endTurn`
-ignores the argument.
+and a charge ignore the argument.
 
 | | Direction | Contents |
 |---|---|---|
@@ -190,7 +190,8 @@ Facing      'north' | 'east' | 'south' | 'west'      // read by the counter rule
 PlayerId    string                                   // never a union of colours
 PlayerColor 'blue' | 'red' | 'green' | 'yellow'      // the renderer keys on it
 Player      { id, name, color }                      // colour is display-only
-Unit        { id, position, facing, unitTypeId, owner, health, hasActed }
+Unit        { id, position, facing, unitTypeId, owner, health, chargeMeter,
+              hasActed }
 GameState   { grid, units, players, currentTurn,
               winner }                               // grid is [row][col]; winner is null while playing
 
@@ -202,7 +203,8 @@ Action        (MoveCommand & Validated) | (EndTurnCommand & Validated)
 GameEvent     UnitMovedEvent { type, unitId, path, facing }
             | TurnEndedEvent { type, nextPlayer }
             | BattleResolvedEvent { type, kind, attacker, defender, answered }
-              -- attacker/defender are { unitId, health }, resulting
+              -- attacker is { unitId, health, chargeMeter }, defender
+              -- { unitId, health }, every value resulting
             | GameEndedEvent { type, winner }
               -- never emitted beside a TurnEndedEvent
 
@@ -306,12 +308,10 @@ becomes a column of `UnitType` and the edit is local.
 **`combat.ts`** — every number combat reads, and nothing else. Three tables:
 `BASE_DAMAGE` (attacker → defender, as a percentage of a full-health target),
 `CHARGE_THRESHOLD` (a `Partial`, where the *missing* artillery row is how
-"artillery cannot charge" is said) and `CHARGE_REPEL` (keyed by who is being
-charged). Then the scalars, each explained where it is used rather than here:
-`TERRAIN_WEIGHT` and `LUCK_MAX` in *Combat*; `CHARGE_HALF_LIFE`,
-`FRONTAL_FLOOR`, `FLOOR_PER_STAR`, `REPEL_DIVISOR_SPENT` and
-`REPEL_DIVISOR_FRESH` in *Charge*;
-and `FLANK_MULTIPLIER` and `REAR_MULTIPLIER` in *Charge*.
+"artillery cannot charge" is said) and `CHARGE_FACING` (a percentage of the
+threshold per side). Then the scalars, each explained where it is used rather
+than here: `TERRAIN_WEIGHT` and `LUCK_MAX` in *Combat*; `CHARGE_COVER_PER_STAR`
+and `CHARGE_METER_FULL` in *Charge*.
 
 ⚠️ `BASE_DAMAGE` is a matrix rather than an attack stat and a defence stat: no
 pair of scalars can express rock-paper-scissors, since any `f(attack, defence)`
@@ -547,10 +547,10 @@ refuseAttack(state, attacker, path, targetUnitId) → string | null
 refuseCharge(state, attacker, path, targetUnitId) → string | null
 tilesInRange(unit, from, gridWidth, gridHeight)   → Coordinate[]
 wouldCounter(defender, attacker)                  → boolean
-chargeThreshold(attackerType, defenderType)       → number | null   // null = cannot charge
-chargeChance(state, attacker, defender)           → number | null
+hasChargeMeter(unitTypeId)                        → boolean          // false = cannot charge
+chargeReach(state, attacker, defender)            → number | null    // null = cannot charge
 resolveBattle(state, attacker, defender, rolls)   → BattleResolvedEvent   // attack
-resolveCharge(state, attacker, defender, rolls)   → BattleResolvedEvent   // charge
+resolveCharge(attacker, defender)                 → BattleResolvedEvent   // charge
 computeDamage(state, attacker, defender, roll)    → number
 ```
 
@@ -600,8 +600,8 @@ say where it began.
 
 A unit that starts in the open moves and attacks as it always has, including
 moving *into* contact and attacking on arrival, which is how contact is made. A
-withdrawal may end in contact with another enemy. A cavalry in contact may
-charge again without moving, since that is attacking from where it stands.
+withdrawal may end in contact with another enemy. A unit in contact may charge
+without moving, since that is attacking from where it stands.
 
 ⚠️ **Mutual.** A unit that rides into contact is in contact itself, and is
 committed the same way on its next action.
@@ -609,7 +609,7 @@ committed the same way on its next action.
 ### Facing
 
 **Facing does exactly two things**: an attack from directly behind goes
-unanswered, and it adjusts a charge's threshold. `computeDamage` cannot see
+unanswered, and it scales what a charge can execute. `computeDamage` cannot see
 facing at all, so there is no modifier on the *outgoing* attack — position
 limits the reply, it does not sharpen the blow.
 
@@ -619,7 +619,7 @@ defensive action.
 **An attack always ends facing its target.** `validateMove` refuses any other
 facing on a command with a target — the dominant axis, the row on an exact
 diagonal, as `facingToward` decides — so only a plain move chooses where it
-looks. A charge that breaks through rides on facing the same way.
+looks. A charge's displacement rides on facing the same way.
 
 ### An attack from behind is never answered
 
@@ -673,10 +673,9 @@ how the attack roll lands. `answered` is read at the **worst** roll, so it means
 
 The client is told the shape of the outcome and never the roll.
 
-`Rolls` is `FireRolls | ChargeRolls` — named members rather than a tuple. A shot
-draws `{ attack, counter }`; a charge draws `{ charge }` alone. ⚠️ **Both of a
-shot's are drawn whether or not both are used**, so the number of draws never
-depends on the rules.
+`Rolls` is `{ attack, counter }` — named members rather than a tuple. ⚠️
+**Every command draws both, whether or not either is used** — a charge and an
+end of turn use neither — so the number of draws never depends on the rules.
 
 ⚠️ **`from` is where the attacker *ends up*, not where it stands.** A command is
 move-then-attack. `validateMove` passes the last tile of the path.
@@ -747,103 +746,83 @@ outcome and never its roll.
 
 ### Charge
 
-A second kind of attack, chosen instead of the plain one and spending the turn either way.
+A second kind of attack, earned by attacking and offered only where it kills.
 
 ```
-threshold = floor(CHARGE_THRESHOLD[attacker][defender] × directional)
-floor_    = (head-on ? FRONTAL_FLOOR : 0) + terrainDefense × FLOOR_PER_STAR
-margin    = max(floor_, targetHealth − threshold)
-chance    = max(1, round(100 × 0.5 ^ (margin / CHARGE_HALF_LIFE)))
-success = roll < chance                                    // roll is 0..99
-divisor = REPEL_DIVISOR_SPENT − (REPEL_DIVISOR_SPENT − REPEL_DIVISOR_FRESH)
-                                × (band(defenderHP) − 1) / (BANDS − 1)
-repel   = CHARGE_REPEL[defender] + floor((roll − chance) / divisor)
+reach = floor(CHARGE_THRESHOLD[charger][target] × CHARGE_FACING[side]
+              × (100 − CHARGE_COVER_PER_STAR × stars) × chargerHealth
+              / (100 × 100 × MAX_HEALTH))
+a charge is legal  ⇔  meter = CHARGE_METER_FULL, in contact, and target health ≤ reach
 ```
+
+**The charge meter.** `Unit.chargeMeter` fills a point for every attack the unit
+makes, up to `CHARGE_METER_FULL` (3), and a charge spends all of it. Answering
+an attack fills nothing, and nothing else empties it — it leaves only with the
+unit. It rides as an absolute value on the **attacker's** side of
+`battleResolved`, the only side that carries one, so the fold stays exact. ⚠️
+**A unit that cannot charge never fills one**: `hasChargeMeter` is the threshold
+row, and without one the meter stays 0. ⚠️ **Full is *equal to* full**, never
+at least, so a unit read back without the field can never charge.
+
+**A charge is a sure execute.** No roll, no failure, nothing answers it. It
+takes the target to zero health — an ordinary `battleResolved`, so the reducer's
+`health <= 0` filter removes it — leaves the charger's health as it was, and
+spends the meter. `answered` is always false. `resolveCharge` decides nothing
+and needs neither the state nor a roll, because `refuseCharge` already did.
+
+**Offered only where it executes.** `refuseCharge` refuses a charge that would
+not kill, so the panel offers the row and lights the tile only for a target it
+would break, and the server resolves only what it accepted. Either the target
+is worn down enough to send the charge in, or it is strong enough to hold.
+
+**`chargeReach` is the one formula**, read by `refuseCharge` and printed by the
+harness. The threshold is what a full-strength charger executes from the flank
+on open ground, and three things scale it:
+
+- **The side it arrives on** — `CHARGE_FACING` is 50 / 100 / 150 percent head-on,
+  flank and rear, so charging head-on always gives the defender a better chance.
+  Multiplied, never added, so `CHARGE_THRESHOLD` can be retuned alone.
+- **The target's cover** — each star takes `CHARGE_COVER_PER_STAR` (10%) off: a
+  wood 20%, a mountain 40%. A share rather than the damage formula's cover,
+  which shrinks with the defender's health and so would barely touch the
+  worn-down units an execute reaches.
+- **The charger's own health**, linearly — a weaker charger finishes less.
+
+A smaller reach is a harder charge throughout. ⚠️ **Worked in whole numbers**,
+every factor a percentage and one floor at the end, so no reach lands a hair
+under a whole number and floors a point short.
+
+⚠️ **The side is read from where the attacker will be standing.** `validateMove`
+hands `refuseCharge` the unit as it stood, so `refuseCharge` builds the unit at
+the path's last tile before asking `chargeReach` — and the server and the panel
+price the same tile. This is `attackSide`'s second reader and the only one to
+consult `flank`; the counter's rear rule uses only its `rear` case.
 
 ⚠️ **Capability is a missing row, not a flag.** `CHARGE_THRESHOLD` is a
 `Partial` and artillery has none, which is the only place *artillery cannot
-charge* is stated. Any unit is still a valid **target**.
+charge* is stated. Any unit is still a valid **target**. ⚠️ No entry may reach
+`MAX_HEALTH` from the rear, or a rear charge would execute a full-health unit —
+a dead dial rather than a signature moment; `charge.test.ts` holds every entry
+to it, and the deepest cover short of taking a whole charge.
 
-**Terrain and a braced front set a floor under the margin rather than adding
-to it**, which makes them a *ceiling on the odds* — `0.5 ^ (floor / half-life)`.
-Both therefore matter exactly where a charge was about to become a sure thing,
-and not at all to one that was already a long shot. Head-on caps at 87% on open
-ground and 50% on a peak; **100% needs position *and* open ground**.
+**A charge never consults the counter rule**, and nothing answers it.
 
-**The threshold says where the odds fall, the half-life how steeply.** From 75%
-down to 25% is 1.6 half-lives of health, and moving a threshold slides that band
-along the health scale without narrowing it. ⚠️ A ceiling is `floor / half-life`,
-so the floors are read against `CHARGE_HALF_LIFE` and move with it.
+**Contact, not a range band.** A charge has to reach the target, whatever the
+charger's own range — infantry shoots two tiles and charges at one.
 
-⚠️ **The floor is shared across the sides, so cover compresses position.** As
-it rises the gap between a head-on charge and one from behind closes on its
-own — 87% against 100% in the open, 50% against 57% on a mountain. *Taking
-cover protects your flanks* is the same constant as *cover is hard to charge*.
+⚠️ **The displacement is a second `unitMoved`, appended after the battle**, on
+every charge. The defender leaves the board when its health hits zero, so
+displacing first would put the attacker on an occupied tile — breaking invariant
+9's *makes sense against the state immediately before it*. It is the only place
+two `unitMoved` for one unit appear in one batch. `playEvents` skips a move
+whose mesh already stands at the destination, which is true of the previewed
+approach and false of the displacement; that asymmetry is what makes it work.
 
-⚠️ **A charge is therefore never free.** A repel is exacted only when a charge
-*fails*, so a certain one was a guaranteed kill at no cost. Head-on no longer
-has that, from any position.
-
-**The 1% floor is stated rather than emergent**, so integer rounding cannot
-produce a silent 0%. At `chance = 100`
-there are no failing rolls, since `roll ∈ [0, 99]`.
-
-**Two tables: the threshold says how *likely* a charge is, the repel says what
-*failing* costs.** `CHARGE_REPEL` is keyed by the defender alone.
-
-**Repel is the base plus the overshoot, never a multiplier**, so a near miss
-costs the base and a wild charge costs more. The overshoot's divisor falls as the
-defender's band rises, so the same miss costs more against a fresher defender;
-the base is paid whatever its health. `repelDamage` works the division in whole
-numbers, which is why both ends of the divisor are whole.
-
-**A charge never consults the counter rule**, so `answered` means *repelled*.
-The repel is the defence, and every defender has one.
-
-**Success is damage to zero, not "it dies"**, so a charge is an ordinary
-`battleResolved` with no special case in the reducer.
-
-⚠️ **The displacement is a second `unitMoved`, appended after the battle.** The
-defender leaves the board when its health hits zero, so displacing first would
-put the attacker on an occupied tile — breaking invariant 9's *makes sense
-against the state immediately before it*. It is the only place two `unitMoved`
-for one unit appear in one batch. `playEvents` skips a move whose mesh already
-stands at the destination, which is true of the previewed approach and false of
-the displacement; that asymmetry is what makes it work.
-
-⚠️ **`Rolls` is a union whose member the *command* picks**, not the rules. A
-charge draws **once**, on 0..99, since the same number decides success and sizes
-the repel. Both resolvers throw on a mismatched shape.
-
-⚠️ **`terrainAdmits` is split out of `entryCost` for this.** A successful charge
-displaces onto the target's tile, so the attacker must be able to stand there —
-and `entryCost` refuses that tile for being *enemy-held*, the one objection a
-charge is not troubled by. Sharing the terrain half is what stops movement and
-charge disagreeing about what ground a unit may be on.
-
-**The directional factor multiplies the threshold**, so `CHARGE_THRESHOLD` can
-be retuned without dragging `FLANK_MULTIPLIER` and `REAR_MULTIPLIER` behind it.
-
-⚠️ **The side is read from where the attacker will be standing.** Both callers
-hand over the moved unit — `resolveMove` builds it, and the client's forecast
-builds the same one — so a charge is priced by where the ride *ends*.
-
-⚠️ **This is `attackSide`'s second reader and the first to consult `flank`**; the
-counter's rear rule uses only its `rear` case.
-
-⚠️ **A multiplied threshold can exceed 100, and the charge is then automatic at
-any health** — a dead dial rather than a signature moment, because the rear
-distinction stops doing anything. The hard constraint is therefore
-`threshold × REAR_MULTIPLIER < MAX_HEALTH`, which at 2 means every entry under
-50; the artillery column is the only one that was ever near it.
-
-⚠️ **That guards the full-health case only, and a saturation band survives on
-the flank.** `floor(45 × 1.5)` is 67, so a flank charge on a battery is
-automatic at 67 health and below on open ground. Accepted: at that health the
-gun crew has been worked down, and riding round it should decide the matter. A
-base value that reads reasonable head-on can saturate at the flank while the
-head-on column looks fine, which is why `scripts/charges.ts` prints all three
-approaches on every depth of cover.
+⚠️ **`terrainAdmits` is split out of `entryCost` for this.** A charge displaces
+onto the target's tile, so the attacker must be able to stand there — and
+`entryCost` refuses that tile for being *enemy-held*, the one objection a charge
+is not troubled by. Sharing the terrain half is what stops movement and charge
+disagreeing about what ground a unit may be on.
 
 ### The combat cutaway
 
@@ -1263,9 +1242,10 @@ unrepresentable. The two attack modes share one reader, differing only in which
 refusal they ask — `refuseAttack` or `refuseCharge`.
 
 **Buttons pick intent; tiles pick targets.** A target pins and confirms exactly
-like a route: first click pins it and shows the forecast, second commits, a
-click on a different lit enemy re-pins. The forecast panel is *informational*
-and carries no button.
+like a route: first click pins it and opens its pane, second commits, a click on
+a different lit enemy re-pins. The pane is *informational* and carries no
+button: a pinned attack shows its forecast, and a pinned charge the route's own
+quiet *Click again to confirm*, so the two gestures read the same.
 
 ⚠️ **Two rules for backing out, not a chain.** A dark click inside a mode returns
 to the panel; a dark click at the panel un-walks the ghost and returns to movement
@@ -1295,17 +1275,19 @@ the same re-pin, the same second click. The kind is read off `step.kind` at the
 single place that builds the command, rather than branched on through the
 dispatch.
 
-⚠️ **`Forecast` is a union, because the two attacks are knowable to different
-degrees.** A shot's damage is a *range* — the roll is unknown. A charge shows
-its odds alone, which are **exact**: `chance` is a pure function of state with
-no roll in it. What a failed charge would cost is not previewed.
+⚠️ **`Forecast` is an attack's alone.** An attack's damage is a *range* — the
+roll is unknown. A charge is offered only where it kills, so it has nothing to
+forecast and `attackForecast` answers `null` for one.
 
 **The charge overlay lights targets, not reach** — the opposite of the attack
-band, because a charge is contact-only and has no reach to show.
+band, because a charge is contact-only and has no reach to show. It lights only
+what `refuseCharge` accepts, so nothing is lit until the meter is full, and a
+neighbour too strong to break stays dark.
 
 `canCharge` is `canAttack`'s twin and asks `refuseCharge`, the rule the click will
 ask, so the menu row and the board cannot disagree. Artillery has no threshold
-row, so the rule refuses every target and the row never appears.
+row, so the rule refuses every target and the row never appears; nor does it
+until the meter is full and a target in contact would break.
 
 **`availableActions` is the one list both the panel and the skip read.** Holding
 is always last and always present, so the list is never empty — which makes *one

@@ -38,7 +38,7 @@ describe('parseCommand', () => {
 
     // ⚠️ **The same whitelist, and a worse failure if it is forgotten.** A
     // dropped `targetUnitId` loses an attack; a dropped `attackKind` turns a
-    // *charge* into a shot, which resolves, succeeds, and does something the
+    // *charge* into an attack, which resolves, succeeds, and does something the
     // player never asked for.
     it('carries an attack kind through', () => {
       expect(

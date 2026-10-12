@@ -142,6 +142,7 @@ export function createMatchState(
         unitTypeId: placement.unitTypeId,
         owner: player.id,
         health: MAX_HEALTH,
+        chargeMeter: 0,
         hasActed: false,
       };
     }),

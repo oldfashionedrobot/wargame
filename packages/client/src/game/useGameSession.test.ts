@@ -9,6 +9,7 @@ import type {
   GameState,
   UpdateListener,
 } from '@wargame/shared';
+import { CHARGE_METER_FULL } from '@wargame/shared';
 import { isTargetPinned } from './interaction/selection';
 import { useGameSession } from './useGameSession';
 import type { GameSessionCallbacks } from './useGameSession';
@@ -213,9 +214,10 @@ describe('useGameSession', () => {
   // rather than branched on through the dispatch. These two assert the whole
   // difference between the modes: same clicks, same gesture, different word.
   describe('committing an attack', () => {
+    // A full meter and a worn-down target, so both modes are on offer.
     const contested = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry' },
-      { id: 'r1', col: 1, row: 2, owner: 'red' },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'r1', col: 1, row: 2, owner: 'red', health: 5 },
     ]);
     const aimAt = async (
       result: ReturnType<typeof renderSession>['result'],

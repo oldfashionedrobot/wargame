@@ -38,15 +38,14 @@ export { getUnitType, MAX_HEALTH } from './data/unitTypes';
 
 // Combat: `LUCK_MAX`, `computeDamage` and `resolveBattle` are out because the
 // client previews what the server resolves, and the bot weighs it.
-export { LUCK_MAX } from './data/combat';
+// `CHARGE_METER_FULL` is out so a server test can stage a charge.
+export { CHARGE_METER_FULL, LUCK_MAX } from './data/combat';
 export {
   band,
   BANDS,
-  chargeChance,
   computeDamage,
   refuseAttack,
   refuseCharge,
-  repelDamage,
   resolveBattle,
   tilesInRange,
 } from './combat';

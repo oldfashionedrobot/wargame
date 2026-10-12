@@ -1,5 +1,5 @@
 import { LUCK_MAX } from '@wargame/shared';
-import type { Command, Rolls } from '@wargame/shared';
+import type { Rolls } from '@wargame/shared';
 
 /**
  * The only randomness in the codebase, and it is here because `shared/` is not
@@ -19,22 +19,12 @@ import type { Command, Rolls } from '@wargame/shared';
  * ⚠️ **`random` is a parameter so the simulator can pass its seeded source** and
  * draw exactly as a match does. The server never passes one.
  */
-export function rollLuck(command: Command, random: () => number = Math.random): Rolls {
-  // ⚠️ **Reads the command, never the rules.** The note below forbids letting
-  // the *rules* decide how many draws to make -- which is why a counter is drawn
-  // whether or not it turns out to be used. Asking the command is a different
-  // thing: the client already said which attack it is making, and reading that
-  // is not running a rule.
-  if (command.type === 'move' && command.attackKind === 'charge') {
-    // ⚠️ 0..99, not 0..LUCK_MAX. A charge rolls against a *percentage*, and the
-    // same draw decides success and sizes the repel -- so one number, on the
-    // scale the chance is expressed in.
-    return { charge: Math.floor(random() * 100) };
-  }
-
+export function rollLuck(random: () => number = Math.random): Rolls {
   const draw = () => Math.floor(random() * (LUCK_MAX + 1));
-  // ⚠️ Both drawn whether or not both are used. Deciding first and rolling
-  // second would make the *number of draws* depend on the rules, which is the
-  // coupling that keeping randomness out of `shared/` exists to avoid.
+  // ⚠️ **Both drawn for every command, whether or not either is used** -- a
+  // charge and an end of turn use neither, and a counter that never happens
+  // leaves its roll unread. Deciding first and rolling second would make the
+  // *number of draws* depend on the rules, which is the coupling that keeping
+  // randomness out of `shared/` exists to avoid.
   return { attack: draw(), counter: draw() };
 }
