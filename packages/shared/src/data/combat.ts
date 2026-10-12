@@ -32,10 +32,9 @@ import type { UnitTypeId } from './unitTypes';
  * vehicle -- and there is no armour in a horse-and-musket war. Importing them
  * would say infantry cannot hurt horses and leave cavalry untouchable.
  *
- * ⚠️ **Cavalry is bad in every column on purpose** -- carbines from horseback.
- * Its identity lives in the charge table, and a cavalry that also shoots well
- * has no reason to close. Four hits to kill infantry is what makes that true
- * rather than merely stated.
+ * ⚠️ **Cavalry fights with sabres, and hits hardest at close quarters.** It
+ * pays in reach and reply instead: one tile, and as a `melee` unit it cannot
+ * answer a ranged attacker.
  *
  * ⚠️ **Artillery's row is kept below what its range would suggest**, because
  * nothing answers a gun: it fires from beyond every reply and `slow` means it
@@ -52,9 +51,9 @@ import type { UnitTypeId } from './unitTypes';
  * at the health where a charge is a good bet.
  */
 export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
-  infantry: { infantry: 45, cavalry: 50, artillery: 60 },
-  cavalry: { infantry: 30, cavalry: 35, artillery: 40 },
-  artillery: { infantry: 55, cavalry: 40, artillery: 40 },
+  infantry: { infantry: 45, cavalry: 35, artillery: 45 },
+  cavalry: { infantry: 55, cavalry: 45, artillery: 65 },
+  artillery: { infantry: 55, cavalry: 45, artillery: 45 },
 };
 
 /**
@@ -72,11 +71,10 @@ export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
  * the table's stoutest ground is 4. Past the line, cover exceeds 100% and
  * terrain starts healing the unit standing on it.
  *
- * ⚠️ **And a second, softer ceiling at 1.667**, where `cavalry → infantry` on a
+ * ⚠️ **And a second, softer ceiling at 1.667**, where the weakest matchup on a
  * mountain rounds to zero and the *no living attacker is harmless* sweep in
- * `combat.test.ts` fires. That guard is one point of base damage away from
- * binding either way, so this constant and `BASE_DAMAGE` have to move together
- * downward, though never upward.
+ * `combat.test.ts` fires -- so this constant and the table's lowest entry move
+ * together downward, though never upward.
  */
 export const TERRAIN_WEIGHT = 1.5;
 

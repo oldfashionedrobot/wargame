@@ -229,7 +229,10 @@ describe('band', () => {
 });
 
 describe('wouldCounter', () => {
-  const at = (col: number, row: number) => ({ col, row });
+  // The attacker, standing where it attacked from: infantry unless a test says
+  // otherwise, so every reach and facing case below is a ranged attack.
+  const at = (col: number, row: number, unitTypeId: 'infantry' | 'cavalry' = 'infantry') =>
+    makeState(8, [{ id: 'a', col, row, unitTypeId }]).units[0];
   // ⚠️ Facing `north` on purpose, because these attackers are all placed to the
   // north: a shot from directly behind is never answered, so a defender left on
   // the fixture's `south` default would refuse every one of them and this whole
@@ -269,6 +272,18 @@ describe('wouldCounter', () => {
     expect(wouldCounter(foot, at(0, 1))).toBe(true);
     expect(wouldCounter(foot, at(0, 2))).toBe(true);
     expect(wouldCounter(foot, at(0, 3))).toBe(false);
+  });
+
+  // ⚠️ A melee unit strikes back on its own turn, never in answer to a shot --
+  // but a melee attack is still answered, by melee and ranged alike.
+  it('lets a melee unit answer a melee attacker and never a ranged one', () => {
+    const horse = unitAt('cavalry', 0, 0);
+    expect(wouldCounter(horse, at(0, 1))).toBe(false); // infantry, point-blank
+    expect(wouldCounter(horse, at(0, 1, 'cavalry'))).toBe(true); // sabre on sabre
+  });
+
+  it('answers a melee attacker from a ranged defender', () => {
+    expect(wouldCounter(unitAt('infantry', 0, 0), at(0, 1, 'cavalry'))).toBe(true);
   });
 
   it('never answers when it did not survive', () => {

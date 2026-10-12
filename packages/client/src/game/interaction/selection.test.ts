@@ -499,6 +499,16 @@ describe('the panel, and what it is told', () => {
     expect(fireForecast(state, chosen).low).toBe(fireForecast(head, panel(head)).low);
   });
 
+  // The melee rule arrives by the same wiring: cavalry facing the infantry that
+  // shoots it from beside cannot answer, and the panel does not promise it will.
+  it('says nothing about a counter attack from cavalry it shot', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 2, owner: 'red', unitTypeId: 'cavalry', facing: 'south' },
+    ]);
+    expect(fireForecast(state, withB1Targeting(state, at(1, 1), 'r1')).answered).toBe(false);
+  });
+
   // The whole point of outranging someone: a gun firing from four is never
   // answered, and the panel has to say so before you commit rather than after.
   it('says nothing about a counter attack when the target cannot reach', () => {

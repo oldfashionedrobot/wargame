@@ -288,7 +288,7 @@ describe('resolveMove', () => {
         ['^.', '..'],
         [
           { id: 'b1', col: 0, row: 0 },
-          { id: 'r1', col: 1, row: 0, owner: 'red', unitTypeId: 'cavalry', health: 55, facing },
+          { id: 'r1', col: 1, row: 0, owner: 'red', health: 55, facing },
         ],
       );
     const fight = (facing: 'south' | 'west') => {
@@ -302,6 +302,27 @@ describe('resolveMove', () => {
     expect(fight('west').attacker.health).toBe(MAX_HEALTH - 1); // head-on: a single point
     expect(fight('south').answered).toBe(true);
     expect(fight('south').attacker.health).toBe(MAX_HEALTH - 1); // flanked: the same point
+  });
+
+  // A melee unit cannot answer a ranged attacker: infantry may fire point-blank
+  // into cavalry and draw nothing back, where a sabre answers a sabre.
+  it('draws no answer from cavalry shot at by infantry beside it', () => {
+    const board = (attacker: 'infantry' | 'cavalry') =>
+      makeState(4, [
+        { id: 'b1', col: 0, row: 0, unitTypeId: attacker },
+        { id: 'r1', col: 0, row: 1, owner: 'red', unitTypeId: 'cavalry', facing: 'south' },
+      ]);
+    const fight = (attacker: 'infantry' | 'cavalry') => {
+      const [, battle] = resolved(board(attacker), {
+        ...move('b1', at(0, 0), at(0, 0), 'r1'),
+        facing: 'north',
+      });
+      if (battle.type !== 'battleResolved') throw new Error('expected a battle');
+      return battle;
+    };
+    expect(fight('infantry').answered).toBe(false);
+    expect(fight('infantry').attacker.health).toBe(MAX_HEALTH);
+    expect(fight('cavalry').answered).toBe(true);
   });
 
   // `hasActed` stops a unit *acting* twice in its own turn; answering an attack

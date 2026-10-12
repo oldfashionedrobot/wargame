@@ -283,16 +283,19 @@ it was left looking.
 Static tables keyed by `Record`, so adding a member makes every incomplete table
 a compile error. **The values are the modules' — read them there.**
 
-**`unitTypes.ts`** — `{ id, name, char, movementType, movementRange, range, slow }`
-per type. `range` is `{ min, max }` tiles, inclusive, read by `refuseAttack`,
-`tilesInRange` and `wouldCounter`. ⚠️ **It classifies nothing:** there is no
-direct/indirect flag, and `min: 3` describes a gun rather than naming a kind of
-one — which is what lets a single rule ask "is the attacker inside my own range"
-and get an answer for every unit.
+**`unitTypes.ts`** — `{ id, name, char, movementType, movementRange, range, slow,
+melee }` per type. `range` is `{ min, max }` tiles, inclusive, read by
+`refuseAttack`, `tilesInRange` and `wouldCounter`. ⚠️ **It classifies
+nothing:** there is no direct/indirect flag, and `min: 3` describes a gun rather
+than naming a kind of one — which is what lets a single rule ask "is the
+attacker inside my own range" and get an answer for every unit.
 
-⚠️ **`slow` is the one thing no distance could express**, and it is a flag
-because what it governs is a *turn* rather than a gap: a slow unit may move or
-attack, never both, and never answers a shot. See *Slow* below.
+⚠️ **`slow` and `melee` are what no distance could express**, so they are
+flags. `slow` governs a *turn*: a slow unit may move or attack, never both, and
+never answers a shot — see *Slow* below. `melee` governs a *weapon*: a melee
+unit fights hand to hand, so it cannot answer a ranged attacker, though its own
+attack is answered as any other is. Cavalry is melee; infantry and guns are
+not.
 `movementType` is `foot`, `horse` or `wheels`, and picks a column out of the
 terrain cost table; `movementRange` is the budget that column is spent against.
 Also `MAX_HEALTH`, a constant beside the interface rather than a field on it:
@@ -543,7 +546,7 @@ costs, and whether entering it ends the move.
 refuseAttack(state, attacker, path, targetUnitId) → string | null
 refuseCharge(state, attacker, path, targetUnitId) → string | null
 tilesInRange(unit, from, gridWidth, gridHeight)   → Coordinate[]
-wouldCounter(defender, from)                      → boolean
+wouldCounter(defender, attacker)                  → boolean
 chargeThreshold(attackerType, defenderType)       → number | null   // null = cannot charge
 chargeChance(state, attacker, defender)           → number | null
 resolveBattle(state, attacker, defender, rolls)   → BattleResolvedEvent   // attack
@@ -555,9 +558,10 @@ One private `outsideRange` answers which side of the band a distance falls off,
 and both callers use it: `refuseAttack` turns it into a reason, `wouldCounter`
 asks whether there is one.
 
-**A counter fires iff the defender survived, is not `slow`, has the attacker
-inside its own range, and was not shot from directly behind.** One predicate,
-no unit categories.
+**A counter fires iff the defender survived, is not `slow`, is not a `melee`
+unit answering a ranged attacker, has the attacker inside its own range, and was
+not attacked from directly behind.** One predicate; reach decides everything but
+the two flags.
 
 ⚠️ **The `slow` conjunct subsumes the band's lower end**, so the band's *too
 close* case is not observable through `wouldCounter`: artillery is the only unit
@@ -626,9 +630,10 @@ never what the attacking shot does. Front and flank both draw a full counter.
 attack* or nothing, and since the only thing facing can do to a reply is remove
 it, that is all there is to say.
 
-`wouldCounter` takes no facing argument: a `Unit` carries its own, so both
-callers — `resolveBattle` and the client's `attackForecast` — get the rule
-without passing anything.
+`wouldCounter` takes the attacker, which carries its own position and type;
+facing it reads off the defender. `resolveBattle` is its one caller, and the
+client's `attackForecast` and the simulator's bot both ask `resolveBattle`, so
+they get every part of the rule without a copy of it.
 
 It negates the counter rather than shrinking it, and only where a counter was
 possible at all.

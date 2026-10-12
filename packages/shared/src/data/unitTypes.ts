@@ -35,10 +35,10 @@ export interface UnitType {
    * -- including how far a counter reaches, which is "is the attacker inside my
    * own range" for every unit `slow` does not speak for first.
    *
-   * ⚠️ **What did not fall out is `slow`.** This comment used to claim there was
-   * no `canMoveAndAttack` either, and play disagreed: no number makes "may not
-   * move and shoot in one turn" emerge, because it is a rule about a *turn*
-   * rather than about a distance. See `slow` below.
+   * ⚠️ **What did not fall out is `slow` and `melee`.** No number makes "may not
+   * move and shoot in one turn" or "cannot answer a shot" emerge: one is a rule
+   * about a *turn*, the other about a *weapon*, and a sabre and a carbine can
+   * both reach one tile. See both below.
    */
   range: { min: number; max: number };
 
@@ -64,6 +64,12 @@ export interface UnitType {
    * to answer each other.
    */
   slow: boolean;
+
+  /**
+   * Fights hand to hand, so it cannot answer a ranged attacker -- it strikes
+   * back on its own turn. A melee attack is still answered by whatever it hits.
+   */
+  melee: boolean;
 }
 
 /**
@@ -115,10 +121,10 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     // ⚠️ Reaching two tiles is what lets infantry fight a battery at all, and
     // since `slow` it is a free shot rather than a trade: two is inside this
     // band and outside the gun's, so the gun can neither fire back nor answer.
-    // Closing to one buys nothing extra -- what it buys is a charge, which
-    // infantry does not have. That is cavalry's job.
+    // Closing to one buys no harder a shot -- only a charge.
     range: { min: 1, max: 2 },
     slow: false,
+    melee: false,
   },
   cavalry: {
     id: 'cavalry',
@@ -131,6 +137,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     // counter once it arrives. Closing is the cost, and the charge is the point.
     range: { min: 1, max: 1 },
     slow: false,
+    melee: true,
   },
   artillery: {
     id: 'artillery',
@@ -147,6 +154,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     // -- a gun that has been reached must spend its whole turn withdrawing.
     range: { min: 3, max: 5 },
     slow: true,
+    melee: false,
   },
 };
 

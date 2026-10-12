@@ -312,19 +312,21 @@ four foot) from both seats, both openings, all six maps, 300 games a cell:
 
 | army | wins against the default |
 |---|---|
-| four guns, four foot | 79% (82% on the committed table) |
+| four guns, four foot | 79% (82% on the carbine table) |
 | four horse, four guns | 68% |
 | eight foot | 55% |
-| four horse, four foot | 15% (7% on the committed table) |
+| four horse, four foot | 15% (7% on the carbine table) |
 | eight horse | 2% |
 
 The ranking was measured on a since-discarded variant of the damage table; on
-the committed table, guns and horse sit further apart still. More guns wins
-and more horse loses, on every map. ⚠️ **It says as much about the bot as the
+the carbine table that cavalry carried until sword cavalry, guns and horse sat
+further apart still. More guns wins and more horse loses, on every map. ⚠️ **It says as much about the bot as the
 armies**: a greedy bot never screens, and screening is the manoeuvre horse
 needs, so the horse figures are a floor. The guns figure agrees with
-everything else measured — a gun is never answered. ⬜ **Re-run once sword
-cavalry lands**, since that changes what horse is.
+everything else measured — a gun is never answered. ✅ **Sword cavalry
+flattens it a long way**, measured on every map from both openings: four horse
+and four foot win 38% against the default, eight horse 34%, four guns and four
+foot 70%. The order holds; the gaps mostly close.
 
 ⬜ **A zone declared by the map.** `DEPLOYMENT_ZONE` is a constant, so on every
 board the rows nearest each edge are assumed. The day a map carries its
@@ -380,48 +382,10 @@ every turn and becomes a reward, and cavalry stops being a weak shooter.
 
 **Step 1 — ⬜ cavalry fight with swords.**
 
-- **A `melee` flag on the unit catalog**, beside `slow`. Cavalry is melee, with
-  reach 1–1 as now; infantry and guns are ranged. A flag rather than reading
-  melee off the reach, because the rules never treat range as a category, and
-  so that one kind of horse can be melee and another not.
-- **A melee unit cannot answer a ranged attacker.** Infantry firing on adjacent
-  cavalry draws no reply; the cavalry strikes back on its own turn. A melee
-  attack is still answered by the unit it hits, ranged or melee, under the
-  counter rule as it stands: guns never answer, and nothing answers an attack
-  from the rear. ⚠️ **Pre-checked:** `wouldCounter` has one caller,
-  `resolveBattle`, and today knows only the defender and where the attack came
-  from; it takes the attacker instead, and refuses a reply from a melee
-  defender to a ranged attacker beside the rear and the guns rules. The client
-  forecast and the bot both ask `resolveBattle`, so they follow with no change
-  of their own. New tests say so for the rule, for `resolveMove`, and for the
-  forecast. Its docblock — *one predicate, and no categories* — and the unit
-  catalog's *almost no category* stop being true and are rewritten.
-- **Cavalry's damage row becomes its sabres, and it hits hard.** First numbers,
-  in the working tree and tested before they are committed: sabres 55 / 45 / 65
-  against infantry, cavalry and guns; infantry's fire into cavalry 35 and into
-  guns 45; guns 55 / 45 / 45. Tested in scratch, every map from both openings,
-  with the melee rule prototyped:
-
-  | | committed table | new table | new table + melee rule |
-  |---|---|---|---|
-  | cavalry's share of damage | 5% | 17% | 17% |
-  | cavalry's share of kills | 13% | 21% | 20% |
-  | four horse, four foot, against the default | 7% | 41% | 38% |
-  | eight horse, against the default | 0% | 36% | 34% |
-  | four guns, four foot, against the default | 82% | 70% | 70% |
-  | the second mover wins | 55% | 63% | 64% |
-
-  The new table flattens the composition ladder a long way; the melee rule on
-  its own barely shows, since the greedy bot seldom shoots at adjacent cavalry.
-  ⚠️ **The second mover's edge grows**, from about 55% to 63% — a thing to
-  watch in play. ⚠️ **The same file holds step 2's new thresholds**, which break
-  two charge tests under today's rule: step 1 commits the damage table alone,
-  and the thresholds wait for step 2. The flanked-counter test that pins the
-  old infantry-into-cavalry damage — and whose cavalry defender no longer
-  answers at all under the melee rule — takes an infantry defender instead,
-  and both its assertions hold. The damage table's comments that describe
-  cavalry as carbines, four hits to kill infantry, and the binding cell of the
-  harmless-attacker floor are rewritten to the new numbers.
+- ✅ **Sword cavalry** — landed: the `melee` flag, the rule that a melee unit
+  never answers a ranged attacker, and cavalry's sabre row in the damage table.
+  What they do is in the architecture doc; what they did to the armies is in
+  *Armies*, and to the second mover under *After the combat pass*.
 - ✅ **Attack, not fire** — landed: the attack kind is `'attack'` on the wire,
   in the event log and on screen. What it does is in the architecture doc.
 - **Presentation:** ✅ the cavalry model now carries a sabre, and the carbine
@@ -630,7 +594,8 @@ contact it was near even, and `classic` turned the same way (53% and 62%).
 `two-bridges` always rewarded replying; `crossroads` is still even. The likely
 reason is the rule doing what it says: whoever advances into contact first is
 pinned and answered first. The bot always advances, which a human need not, so
-this is a thing to watch in play rather than a verdict. ✅ **Accepted for now**:
+this is a thing to watch in play rather than a verdict. Sword cavalry widens
+it, from about 55% to 64% across every map. ✅ **Accepted for now**:
 the first mover still gets its volley off before contact is made, and tuning
 options wait on how it plays.
 

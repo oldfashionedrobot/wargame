@@ -166,7 +166,7 @@ interface Stats {
   actions: number[];
   damageBy: Record<string, number>;
   killsBy: Record<string, number>;
-  shots: number;
+  attacks: number;
   countered: number;
   chargesTried: number;
   chargesBroke: number;
@@ -252,7 +252,7 @@ function record(before: GameState, command: Command, events: GameEvent[], stats:
       continue;
     }
 
-    stats.shots++;
+    stats.attacks++;
     stats.hitsTotal++;
     const defense = defenseAt(before, defender.position);
     if (defense > 0) stats.hitsOnCover++;
@@ -299,7 +299,7 @@ const stats: Stats = {
   actions: [],
   damageBy: {},
   killsBy: {},
-  shots: 0,
+  attacks: 0,
   countered: 0,
   chargesTried: 0,
   chargesBroke: 0,
@@ -359,8 +359,8 @@ for (const t of types) {
 }
 
 console.log('\ndid the mechanics fire at all');
-console.log(`  shots taken            ${stats.shots}`);
-console.log(`  ...answered            ${stats.countered}  ${pct(stats.countered, stats.shots)}`);
+console.log(`  attacks made           ${stats.attacks}`);
+console.log(`  ...answered            ${stats.countered}  ${pct(stats.countered, stats.attacks)}`);
 console.log(
   `  ...onto covered ground ${stats.hitsOnCover}  ${pct(stats.hitsOnCover, stats.hitsTotal)}`,
 );

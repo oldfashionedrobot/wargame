@@ -280,21 +280,20 @@ export function tilesInRange(
 }
 
 /**
- * Can `defender` answer an attack that came from `from`?
+ * Can `defender` answer an attack from `attacker`, standing where it attacked
+ * from?
  *
- * ⚠️ **One predicate, and no categories.** AW's rule reads "both units must be
- * direct", which *looks* categorical and is not: it is equivalent to *the
- * attacker is adjacent and the defender can fight at adjacency*, because a
- * direct unit in AW can only ever attack from range 1. Days of Ruin's Anti-Tank
- * settles it -- indirect out to three, **no minimum range**, and it counters.
- * Under the category reading that needs a special case; under this one it falls
- * out.
+ * ⚠️ **Reach decides, apart from two flags.** AW's rule reads "both units must
+ * be direct", which is equivalent to *the attacker is adjacent and the defender
+ * can fight at adjacency* -- so the reach band answers it, with no category.
+ * What reach cannot say is a weapon's nature: a `slow` gun never answers, and a
+ * `melee` unit cannot answer a ranged attacker, though a melee attack is
+ * answered by whatever it hits.
  *
  * ⚠️ **A shot from directly behind is never answered**, and this is the only
- * place facing changes shooting -- `computeDamage` still cannot see it. The
- * signature did not have to change to say so, because a `Unit` already carries
- * its facing, which is why both callers got the rule for free: this one, and the
- * client's `attackForecast`.
+ * place facing changes shooting -- `computeDamage` still cannot see it.
+ * `resolveBattle` is the one caller, and the client's forecast and the bot both
+ * ask `resolveBattle`, so they follow every rule here with no copy of it.
  *
  * ⚠️ **The rear negates the counter, and nothing else about facing touches a
  * shot.** Front and flank both draw a full reply, so what the panel says --
@@ -325,12 +324,15 @@ export function tilesInRange(
  * once would: a battery now answers nothing at all, so the one unit cavalry
  * exists to punish would be the only one unable to punish back.
  */
-export function wouldCounter(defender: Unit, from: Coordinate): boolean {
+export function wouldCounter(defender: Unit, attacker: Unit): boolean {
   if (defender.health <= 0) return false;
+  const type = getUnitType(defender.unitTypeId);
   // ⚠️ A gun that has to be traversed cannot be swung round in time -- see
   // `slow`. This subsumes what the range band already did at contact and goes
   // further, taking counter-battery with it.
-  if (getUnitType(defender.unitTypeId).slow) return false;
+  if (type.slow) return false;
+  if (type.melee && !getUnitType(attacker.unitTypeId).melee) return false;
+  const from = attacker.position;
   if (attackSide(defender.facing, defender.position, from) === 'rear') return false;
   return outsideRange(defender, defender.position, from) === null;
 }
@@ -372,7 +374,7 @@ export function resolveBattle(
   const survivor: Unit = { ...defender, health: defenderHealth };
   // ⚠️ **Front and flank answer in full; only the rear is refused**, and
   // `wouldCounter` has already done that.
-  const answered = wouldCounter(survivor, attacker.position);
+  const answered = wouldCounter(survivor, attacker);
   const riposte = answered ? computeDamage(state, survivor, attacker, rolls.counter) : 0;
 
   return {
