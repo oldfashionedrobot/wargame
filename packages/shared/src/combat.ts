@@ -280,8 +280,7 @@ export function tilesInRange(
 }
 
 /**
- * Can `defender` answer an attack from `attacker`, standing where it attacked
- * from?
+ * Can `defender` answer `attacker`, standing where it attacked from?
  *
  * ⚠️ **Reach decides, apart from two flags.** AW's rule reads "both units must
  * be direct", which is equivalent to *the attacker is adjacent and the defender
@@ -290,16 +289,15 @@ export function tilesInRange(
  * `melee` unit cannot answer a ranged attacker, though a melee attack is
  * answered by whatever it hits.
  *
- * ⚠️ **A shot from directly behind is never answered**, and this is the only
- * place facing changes shooting -- `computeDamage` still cannot see it.
+ * ⚠️ **An attack from directly behind is never answered, and nothing else
+ * about facing touches one** -- `computeDamage` cannot see it. Front and flank
+ * both draw a full reply, so what the panel says -- "they counter attack" or
+ * nothing -- is the whole of the rule rather than a rounding of it. A flanking
+ * *damage* bonus on the attack itself is a different thing and was refused on
+ * its own terms.
+ *
  * `resolveBattle` is the one caller, and the client's forecast and the bot both
  * ask `resolveBattle`, so they follow every rule here with no copy of it.
- *
- * ⚠️ **The rear negates the counter, and nothing else about facing touches a
- * shot.** Front and flank both draw a full reply, so what the panel says --
- * "they counter attack" or nothing -- is the whole of the rule rather than a
- * rounding of it. A flanking *damage* bonus on the attacking shot is a different
- * thing and was refused on its own terms.
  *
  * ⚠️ **In a head-on meeting it changes nothing**, which is the point. Deployment
  * points each army at the other, so the armies arrive front-to-front and the
@@ -318,8 +316,8 @@ export function tilesInRange(
  * which is AW's behaviour -- nothing here asks what the defender has *done*,
  * only what it is and where it stands.
  *
- * ⚠️ **A charge never asks this.** The counter rule is about *shooting*, and a
- * charge is not shooting -- its repel damage is the defence. Routing a charge
+ * ⚠️ **A charge never asks this.** The counter rule answers an attack, and a
+ * charge is not one -- its repel damage is the defence. Routing a charge
  * through here would make charging artillery free, and more plainly so than it
  * once would: a battery now answers nothing at all, so the one unit cavalry
  * exists to punish would be the only one unable to punish back.
@@ -372,8 +370,6 @@ export function resolveBattle(
   // exchange calculus for free: striking first compounds, because a wounded
   // defender both hits softer and keeps less of its terrain cover.
   const survivor: Unit = { ...defender, health: defenderHealth };
-  // ⚠️ **Front and flank answer in full; only the rear is refused**, and
-  // `wouldCounter` has already done that.
   const answered = wouldCounter(survivor, attacker);
   const riposte = answered ? computeDamage(state, survivor, attacker, rolls.counter) : 0;
 

@@ -132,9 +132,9 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     char: 'c',
     movementType: 'horse',
     movementRange: 4,
-    // ⚠️ Adjacent only, which is the whole shape of the unit: it is shot at all
-    // the way in, cannot answer a gun that outranges it, and is safe from a
-    // counter once it arrives. Closing is the cost, and the charge is the point.
+    // ⚠️ Adjacent only, and `melee`, which is the whole shape of the unit: it is
+    // shot at all the way in and can answer none of it, striking back on its own
+    // turn instead. Closing is the cost, and the charge is the point.
     range: { min: 1, max: 1 },
     slow: false,
     melee: true,

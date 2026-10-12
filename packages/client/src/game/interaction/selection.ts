@@ -298,9 +298,9 @@ void allActionsListed;
  * ⚠️ **Asked with `refuseAttack`, the server's own rule**, rather than by
  * counting what stands in `tilesInRange`. The band is *reach* and says nothing
  * about ownership, a minimum range, or a unit targeting itself -- so a panel
- * built on the band would offer Fire for a friend standing two tiles away, and
- * the click would then be refused. One rule, asked twice, cannot disagree with
- * itself.
+ * built on the band would offer Attack for a friend standing two tiles away,
+ * and the click would then be refused. One rule, asked twice, cannot disagree
+ * with itself.
  *
  * ⚠️ Walks every unit rather than the band. Sixteen units against a band of up
  * to sixty tiles is the cheaper loop, and it needs no grid bounds.
@@ -623,8 +623,8 @@ export type Forecast =
  * range. A single figure would be true only at the worst roll.
  *
  * ⚠️ `answered` is read at the **worst** roll, where the defender is likeliest
- * to survive. So it means *they will fire back unless you kill them*, which is
- * the pessimistic reading and the right default for a warning.
+ * to survive. So it means *they will counter attack unless you kill them*,
+ * which is the pessimistic reading and the right default for a warning.
  */
 export function attackForecast(state: GameState, selection: TargetPinned): Forecast | null {
   const attacker = getUnit(state, selection.unitId);

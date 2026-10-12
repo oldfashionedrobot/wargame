@@ -836,7 +836,7 @@ export async function createGameRenderer(
     },
     async playEvents(events) {
       // ⚠️ **Each battle is staged against the state just before it**, not the
-      // last sync: a move-then-fire's approach has already moved the attacker,
+      // last sync: a move-then-attack's approach has already moved the attacker,
       // and an earlier battle in the batch has already hurt its targets. Folded
       // at the top of the step, so a skipped (previewed) move is folded too.
       let shown = drawn;

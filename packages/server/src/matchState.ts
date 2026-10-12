@@ -34,9 +34,10 @@ export interface DeploymentZone {
 /**
  * ⚠️ **Assumed, not declared by the map -- for now.** The two rows nearest each
  * edge are simply taken, on a board of any size that fits both zones;
- * `createMatchState` refuses one that does not. The day a map carries its own zone, this constant is what it replaces,
- * and an existing convention becomes checkable with it: *a river may only leave
- * the board where the army does not stand* is kept by hand today.
+ * `createMatchState` refuses one that does not. The day a map carries its own
+ * zone, this constant is what it replaces, and an existing convention becomes
+ * checkable with it: *a river may only leave the board where the army does not
+ * stand* is kept by hand today.
  *
  * ⚠️ **Reachable as an argument**, the same shape `ACTIONS_PER_TURN` has and for
  * the same reason: the suite deploys onto boards this game never ships, so

@@ -33,10 +33,10 @@ describe('getUnitType', () => {
     }
   });
 
-  // ⚠️ A design assertion rather than a technical one. Nothing breaks if every unit can shoot at one tile
-  // -- but a gun that can defend itself at arm's length leaves cavalry with no
-  // job, and the whole triangle rests on that not being true. Loud, here,
-  // rather than discovered in a playtest.
+  // ⚠️ A design assertion rather than a technical one. Nothing breaks if every
+  // unit can attack at one tile -- but a gun that can defend itself at arm's
+  // length leaves cavalry with no job, and the whole triangle rests on that not
+  // being true. Loud, here, rather than discovered in a playtest.
   it('keeps at least one unit unable to fire at what has reached it', () => {
     const helplessUpClose = Object.values(UNIT_TYPES).filter(({ range }) => range.min > 1);
     expect(helplessUpClose.length).toBeGreaterThan(0);

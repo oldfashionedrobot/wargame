@@ -828,7 +828,7 @@ hand over the moved unit — `resolveMove` builds it, and the client's forecast
 builds the same one — so a charge is priced by where the ride *ends*.
 
 ⚠️ **This is `attackSide`'s second reader and the first to consult `flank`**; the
-rear-fire rule uses only its `rear` case.
+counter's rear rule uses only its `rear` case.
 
 ⚠️ **A multiplied threshold can exceed 100, and the charge is then automatic at
 any health** — a dead dial rather than a signature moment, because the rear
@@ -1403,9 +1403,9 @@ DOM. See *The combat cutaway*. `dismissCutaway` is a no-op when nothing is
 waiting, so a late click from a cutaway that already closed needs no guard.
 ⚠️ **A battle is staged against the state just before it.** `playEvents` folds
 the batch's events onto the last-drawn state as it plays them, with the shared
-`applyEvents`, so a move-then-fire stages the attacker where it fired from and a
-second battle in the batch sees the first one's damage. That copy is display
-only: `syncUnits` still sets what was drawn, and authority is read from
+`applyEvents`, so a move-then-attack stages the attacker where it attacked from
+and a second battle in the batch sees the first one's damage. That copy is
+display only: `syncUnits` still sets what was drawn, and authority is read from
 `server.getState()`.
 
 ⚠️ **Coordinates, never a `Movement`.** The renderer is told what to light, not

@@ -97,8 +97,8 @@ export function resolveMove(state: GameState, action: MoveAction, rolls: Rolls):
     position: action.path[action.path.length - 1],
     facing: action.facing,
   };
-  // ⚠️ **Dispatched once, on the kind, into two self-contained resolvers.** Fire
-  // produces damage and a possible counter; a charge produces
+  // ⚠️ **Dispatched once, on the kind, into two self-contained resolvers.** An
+  // attack produces damage and a possible counter; a charge produces
   // death-plus-displacement or a backfire, and never consults the counter rule.
   // Threading conditionals through one function would put two mechanics in one
   // body and make every later change ask which it belonged to.
