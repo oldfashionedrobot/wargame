@@ -134,10 +134,6 @@ function opposite(facing: Facing): Facing {
  * so a gun sitting off the axis is classified by the same arbitrary rule that
  * decides which way the attacker itself turns. Arbitrary, but stated once and
  * shared, which is what `facingToward` is for.
- *
- * ⚠️ `flank` is returned and read by nothing: `wouldCounter` asks only about
- * `rear`, and charge wants all three in 10a. The one place this file knowingly
- * describes more than the game currently uses.
  */
 export function attackSide(
   defenderFacing: Facing,
