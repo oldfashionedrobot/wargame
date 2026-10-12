@@ -26,6 +26,8 @@ import { createGridLines } from './gridLines';
 import { createCutaway } from './cutaway';
 import type { Combatant } from './cutaway';
 import { createTileHighlight, setHighlightTile } from './highlight';
+import { createChargeCounter } from './chargeCounter';
+import type { ChargeCounter } from './chargeCounter';
 import { createHealthRing } from './healthRing';
 import type { HealthRing } from './healthRing';
 import { createRouteArrow } from './routeArrow';
@@ -603,9 +605,11 @@ export async function createGameRenderer(
   let drawn: GameState = initialState;
 
   const unitMeshes = new Map<string, TransformNode>();
-  // Parallel to `unitMeshes` and disposed with it: a ring is a *child* of its
-  // unit's node, so `mesh.dispose` takes it, and only this map needs clearing.
+  // Parallel to `unitMeshes` and disposed with it: a ring and a counter are
+  // *children* of their unit's node, so `mesh.dispose` takes them, and only
+  // these maps need clearing.
   const healthRings = new Map<string, HealthRing>();
+  const chargeCounters = new Map<string, ChargeCounter>();
   for (const unit of initialState.units) {
     const owner = initialState.players.find((player) => player.id === unit.owner);
     if (!owner) throw new Error(`unit ${unit.id} has unknown owner ${unit.owner}`);
@@ -614,6 +618,9 @@ export async function createGameRenderer(
     const ring = createHealthRing(scene, node);
     ring.setHealth(unit.health);
     healthRings.set(unit.id, ring);
+    const counter = createChargeCounter(scene, node);
+    counter.setMeter(unit.chargeMeter);
+    chargeCounters.set(unit.id, counter);
   }
 
   // The whole ghost: which unit is displaced, where it really stands, and the
@@ -922,8 +929,10 @@ export async function createGameRenderer(
         // the model's child meshes go with it.
         mesh.dispose(false, false);
         unitMeshes.delete(id);
-        // The ring was a child and went with the node; only the entry is left.
+        // The ring and counter were children and went with the node; only the
+        // entries are left.
         healthRings.delete(id);
+        chargeCounters.delete(id);
       }
 
       for (const unit of state.units) {
@@ -939,6 +948,7 @@ export async function createGameRenderer(
         // will need stopping the ring's own animation, which
         // `scene.stopAnimation(mesh)` above does *not* reach.
         healthRings.get(unit.id)?.setHealth(unit.health);
+        chargeCounters.get(unit.id)?.setMeter(unit.chargeMeter);
       }
     },
     toggleInspector() {

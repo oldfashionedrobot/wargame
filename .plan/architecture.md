@@ -1656,6 +1656,17 @@ unavailable action is omitted — so hover is the only state a row has.
   persistent state; showing *change* belongs to the cutaway. That keeps it out
   of `playEvents`, where an animation on the ring would be a different target
   from the unit node and would survive `scene.stopAnimation(mesh)`.
+- **A unit's charge meter is a small number beside it**, 1 to 3 —
+  `chargeCounter.ts`, a digit on a dark disc, **absent at 0**, so a unit that
+  cannot charge never shows one. ⚠️ A number rather than three segments around
+  the health ring, which has no room outside it on infantry. Made, removed on
+  death and synced beside the health ring, by the same three lines, and like it
+  parented to the unit node and scaled by `PIECE_SCALE`. ⚠️ **Billboarded**,
+  which in Babylon keeps the parent's position and scale but not its turn, so
+  the digit faces the camera and an offset baked sideways into its own plane
+  holds it to the figure's right on screen whichever way the unit looks. One
+  material per digit, cached on the scene by name, for the same
+  `disposeMaterialAndTextures: false` reason.
 - **The pinned route is an arrow, not a tint** — `routeArrow.ts`, a sibling of
   `tileOverlay.ts` that merges per-tile quads into one mesh the same way and
   adds UVs. A tint says *these tiles*; an arrow says *this way, ending here*.
