@@ -380,7 +380,7 @@ threshold reached about 60 — at 25 it took units on 10 health, nearly every on
 a kill a shot would have made. So the charge stops being a tool to reach for
 every turn and becomes a reward, and cavalry stops being a weak shooter.
 
-**Step 1 — ⬜ cavalry fight with swords.**
+**Step 1 — ✅ cavalry fight with swords.** Landed; step 2 waits on playing it.
 
 - ✅ **Sword cavalry** — landed: the `melee` flag, the rule that a melee unit
   never answers a ranged attacker, and cavalry's sabre row in the damage table.
@@ -392,8 +392,8 @@ every turn and becomes a reward, and cavalry stops being a weak shooter.
   is kept as `dragoon.gltf`. ✅ The battle close-up stages the two units facing
   each other and looks down at about 30° onto each unit's tile — landed; what it
   does is in the architecture doc. A blow that *looks* like a blow waits on
-  animated figures, in *Animation and sound*. ⬜ The sabre a little wider and a
-  little taller, to read at board scale.
+  animated figures, in *Animation and sound*. ✅ The sabre is wider and a little
+  taller, to read at board scale.
 - ⬜ Later: **dragoons**, horse with carbines — the flag is what makes room for
   them, and their model is already in `public/models/`.
 

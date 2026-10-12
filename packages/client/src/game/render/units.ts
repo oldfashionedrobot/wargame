@@ -29,7 +29,8 @@ const FRAMES_PER_TILE = 9;
  *
  * ⚠️ **A table rather than one dial, because the models disagree too much for a
  * multiplier to fix.** Measured from the art: infantry is 0.48 at its deepest
- * and 0.57 tall, cavalry 0.68 and 0.64, a cannon **0.80 and 0.39**. One global
+ * and 0.57 tall, cavalry 0.68 and 0.64 -- 0.76 to the tip of its raised sabre,
+ * which the height target leaves out -- a cannon **0.80 and 0.39**. One global
  * scale preserves that spread rather than closing it -- at 1.25 the cannon
  * already fills its tile while infantry is still a 0.60-deep speck, and there is
  * no single number that fixes the second without pushing the first into the
