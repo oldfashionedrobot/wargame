@@ -86,12 +86,12 @@ export type MenuStep =
   | { kind: 'choosing' }
   // ⚠️ `target` is nullable rather than a fourth kind. `unitSelected` and
   // `routePinned` are separate *phases* because they differ in more than the
-  // path; firing with and without a target differ in exactly one field, so a
+  // path; attacking with and without a target differ in exactly one field, so a
   // nullable one is the honest encoding. Pinning a target and confirming it is
   // the same gesture a route uses -- first click pins and shows the forecast,
   // second commits, another lit enemy re-pins.
-  | { kind: 'firing'; tiles: Coordinate[]; target: Unit | null }
-  // ⚠️ Identical in shape to `firing`, and that is the point: a charge picks a
+  | { kind: 'attacking'; tiles: Coordinate[]; target: Unit | null }
+  // ⚠️ Identical in shape to `attacking`, and that is the point: a charge picks a
   // target with the same pin-then-confirm gesture, so it needs no interaction
   // of its own. What differs is which tiles light and what the command says.
   | { kind: 'charging'; tiles: Coordinate[]; target: Unit | null }
@@ -159,12 +159,12 @@ export function isPlan(selection: SelectionState): selection is Pinned {
   return (PINNED_PHASES as readonly string[]).includes(selection.phase);
 }
 
-type AttackStep = Extract<MenuStep, { kind: 'firing' | 'charging' }>;
+type AttackStep = Extract<MenuStep, { kind: 'attacking' | 'charging' }>;
 
 /**
  * An attack mode is up: its tiles are lit, and a click on a lit enemy pins one.
  *
- * ⚠️ **Covers firing and charging together**, because everything between picking
+ * ⚠️ **Covers attacking and charging together**, because everything between picking
  * a mode and committing is identical for both -- the same gesture, the same
  * re-pin, the same second click. Only the command differs, and that is read off
  * `step.kind` at the one place that builds it.
@@ -190,13 +190,13 @@ export type TargetPinned = DestinationChosen & { step: AttackStep & { target: Un
 /**
  * ⚠️ **Two predicates, so no caller writes the two-level narrowing by hand.**
  * That is what absorbing `targetChosen` costs, and it is paid once here rather
- * than at every `phase === 'destinationChosen' && step.kind === 'firing' &&
+ * than at every `phase === 'destinationChosen' && step.kind === 'attacking' &&
  * step.target !== null` a reader would otherwise spell out.
  */
 export function isAttacking(selection: SelectionState): selection is Attacking {
   return (
     selection.phase === 'destinationChosen' &&
-    (selection.step.kind === 'firing' || selection.step.kind === 'charging')
+    (selection.step.kind === 'attacking' || selection.step.kind === 'charging')
   );
 }
 
@@ -234,13 +234,13 @@ export function enterMode(
 }
 
 /** A mode the action panel can put the selection into. */
-export type ActionKind = 'firing' | 'charging' | 'holding';
+export type ActionKind = 'attacking' | 'charging' | 'holding';
 
 /**
  * Which modes this selection could enter, in the order the panel offers them.
  *
  * ⚠️ **One list, so the menu and the skip cannot disagree.** The panel renders
- * from this and the arrival path counts it; asking `canFire` and `canCharge`
+ * from this and the arrival path counts it; asking `canAttack` and `canCharge`
  * separately in each would be the same question spelled twice, and the failure
  * would be a panel offering a row that the skip had already decided did not
  * exist.
@@ -270,11 +270,11 @@ export function availableActions(state: GameState, selection: DestinationChosen)
  * rather than nothing at all.
  *
  * ⚠️ Declared below its only caller and above nothing, which is safe because
- * `canFire` and `canCharge` are function *declarations* -- hoisted and
+ * `canAttack` and `canCharge` are function *declarations* -- hoisted and
  * initialised before any statement here runs.
  */
 const PANEL_ACTIONS = [
-  { kind: 'firing', when: canFire },
+  { kind: 'attacking', when: canAttack },
   { kind: 'charging', when: canCharge },
   { kind: 'holding', when: () => true },
 ] as const satisfies readonly {
@@ -305,21 +305,21 @@ void allActionsListed;
  * ⚠️ Walks every unit rather than the band. Sixteen units against a band of up
  * to sixty tiles is the cheaper loop, and it needs no grid bounds.
  */
-export function canFire(state: GameState, selection: DestinationChosen): boolean {
-  return canAttack(state, selection, refuseAttack);
+export function canAttack(state: GameState, selection: DestinationChosen): boolean {
+  return anyTarget(state, selection, refuseAttack);
 }
 
 /**
  * Is there anything this unit could charge from where it stopped?
  *
- * ⚠️ `canFire`'s twin, and it asks `refuseCharge` for the same reason `canFire`
+ * ⚠️ `canAttack`'s twin, and it asks `refuseCharge` for the same reason `canAttack`
  * asks `refuseAttack`: the menu row and the click that follows it must be
  * answered by one rule, or the panel offers what the board then refuses. It
  * covers capability too -- artillery has no threshold row, so this is false for
  * every target and the row never appears.
  */
 export function canCharge(state: GameState, selection: DestinationChosen): boolean {
-  return canAttack(state, selection, refuseCharge);
+  return anyTarget(state, selection, refuseCharge);
 }
 
 type Refusal = (
@@ -329,7 +329,7 @@ type Refusal = (
   targetUnitId: string,
 ) => string | null;
 
-function canAttack(state: GameState, selection: DestinationChosen, refuse: Refusal): boolean {
+function anyTarget(state: GameState, selection: DestinationChosen, refuse: Refusal): boolean {
   const from = destinationOf(selection);
   const unit = getUnit(state, selection.unitId);
   if (!unit) return false;
@@ -344,7 +344,7 @@ function canAttack(state: GameState, selection: DestinationChosen, refuse: Refus
  * asked of `refuseCharge` -- the same question `canCharge` asks, so the row is
  * never offered with nothing lit.
  *
- * ⚠️ **Targets, not reach — the opposite of the firing band, and deliberately.**
+ * ⚠️ **Targets, not reach — the opposite of the attack band, and deliberately.**
  * Red means *in range* because reach is the information a shot is planned
  * against; a charge has no reach to show, being contact-only, so lighting all
  * four neighbours would light tiles that do nothing. Here the lit set *is* the
@@ -367,7 +367,7 @@ export function clearStep(selection: DestinationChosen): DestinationChosen {
 }
 
 /**
- * Which tiles firing mode lights, from where the unit ends up.
+ * Which tiles attacking mode lights, from where the unit ends up.
  *
  * ⚠️ **The whole band, and nothing filtered out of it** -- reach is the
  * information, so red means *in range* rather than *attackable*. It used to
@@ -562,7 +562,7 @@ export function readHoldClick(
 }
 
 /**
- * What a click in **firing** mode means: an enemy that may be shot from here, or
+ * What a click in **attacking** mode means: an enemy that may be attacked from here, or
  * `null` for anything else.
  *
  * ⚠️ `refuseAttack` is compared against `null` and never against its text -- the

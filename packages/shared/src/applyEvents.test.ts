@@ -38,7 +38,7 @@ const battle = (
   attacker: [string, number],
   defender: [string, number],
   answered = false,
-  kind: AttackKind = 'fire',
+  kind: AttackKind = 'attack',
 ): GameEvent => ({
   type: 'battleResolved',
   kind,
@@ -110,7 +110,7 @@ describe('applyEvents, battleResolved', () => {
   });
 
   it('carries kind and answered without either touching state', () => {
-    const shot = applyEvents(state, [battle(['b1', 90], ['r1', 40], true, 'fire')]);
+    const shot = applyEvents(state, [battle(['b1', 90], ['r1', 40], true, 'attack')]);
     const charge = applyEvents(state, [battle(['b1', 90], ['r1', 40], false, 'charge')]);
     expect(shot).toEqual(charge);
   });

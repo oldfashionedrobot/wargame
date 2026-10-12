@@ -167,7 +167,7 @@ describe('resolveMove', () => {
     expect(battle.defender.unitId).toBe('r1');
     expect(battle.defender.health).toBeLessThan(MAX_HEALTH);
     expect(battle.attacker.unitId).toBe('b1');
-    expect(battle.kind).toBe('fire');
+    expect(battle.kind).toBe('attack');
   });
 
   // ⚠️ Clamped, because the event says what the defender *has* -- a negative

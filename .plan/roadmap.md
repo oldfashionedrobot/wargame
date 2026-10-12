@@ -85,7 +85,7 @@ its reason stops holding.
 - **`band()` dividing by the number of bands**, a band's width only because
   `MAX_HEALTH` is 100. Not silent: `combat.test.ts` pins `band(MAX_HEALTH)` to
   `BANDS`, so changing `MAX_HEALTH` fails the build, and that is when to fix it.
-- **An `ATTACK_KINDS` list for the protocol's `'fire' | 'charge'` check.** A list
+- **An `ATTACK_KINDS` list for the protocol's `'attack' | 'charge'` check.** A list
   beside the union would be a second home rather than one, and a new kind
   already fails loudly, as a 400.
 - **The lobby's `winner === null` rather than `isOver`.** It asks *is there a
@@ -422,33 +422,8 @@ every turn and becomes a reward, and cavalry stops being a weak shooter.
   and both its assertions hold. The damage table's comments that describe
   cavalry as carbines, four hits to kill infantry, and the binding cell of the
   harmless-attacker floor are rewritten to the new numbers.
-- **Attack, not fire.** The attack kind becomes `'attack'` — on the wire, in
-  `battleResolved`, and in the names built on it: the client's `firing` mode
-  and action become `attacking`, `canFire` becomes `canAttack` (its private
-  helper of that name is renamed out of the way), and the bot's commands and
-  every test that sends or expects one follow. On screen: the panel's **Fire** is **Attack**, *they
-  return fire* is *they counter attack*, and the close-up's label reads
-  *attack*. More general, so a melee strike and a volley are one kind of
-  action; prose about a gun *firing* stays, since that is what a ranged unit
-  does. ⚠️ **Side effects, checked:** replaying the log never reads an event's
-  kind, so old logs still fold exactly; the client reads it only to label the
-  close-up, charge or not, so old events still display; no migration, since
-  the kind lives inside the stored JSON and the stored rolls keep their keys.
-  The one break: a browser tab opened before the change sends `'fire'`, which
-  the protocol parser rejects as *not a valid command* — a 400, shown as
-  *reconnecting…* — until it reloads. ⚠️ **It lands first, on its own**, as a
-  pure rename — behaviour unchanged but for the words on screen — so the melee
-  rules that follow are a change of rules and nothing else.
-  ⚠️ **Pre-checked:** the full rename was done in a scratch copy, sixteen files,
-  every suite green. Beyond the list above it also takes the forecast's
-  **Fire —** prefix and the firing hint's *click it again to fire*, the
-  `firing:` keys in the panel's tables, the README's *hold, fire or charge*,
-  and a dozen places in the architecture doc. `Attacking`, `isAttacking` and
-  `AttackStep` keep their names, decided: they mean *the attack mode or the
-  charge mode*, and a charge is a special attack, so `isAttacking` being true
-  in both is right. `FireRolls` and the forecast's `'fire'` kind are left as
-  they are: step 2 collapses the rolls to one shape and the forecast to one
-  kind, so renaming them first is churn.
+- ✅ **Attack, not fire** — landed: the attack kind is `'attack'` on the wire,
+  in the event log and on screen. What it does is in the architecture doc.
 - **Presentation:** ✅ the cavalry model now carries a sabre, and the carbine
   rider is kept as `dragoon.gltf`. ⬜ The battle close-up stages the two units
   facing each other — the attacker, on the left, turned to face right, and the

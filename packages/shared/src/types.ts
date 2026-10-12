@@ -96,7 +96,7 @@ export interface MoveCommand {
    */
   targetUnitId?: string;
   /**
-   * How the attack is made. Absent means `fire`, which is what keeps this
+   * How the attack is made. Absent means `attack`, which is what keeps this
    * additive: a client that never sends one keeps working and no stored row
    * changes meaning.
    *
@@ -104,7 +104,7 @@ export interface MoveCommand {
    * attack is refused rather than ignored -- silently dropping it would make a
    * malformed command look like a plain move.
    *
-   * ⚠️ **It decides the resolution, not a branch inside one.** Fire produces
+   * ⚠️ **It decides the resolution, not a branch inside one.** An attack produces
    * damage and a possible counter; a charge produces death-plus-displacement or
    * a backfire, and never consults the counter rule at all. Two self-contained
    * resolvers, dispatched once on this.
@@ -117,7 +117,7 @@ export interface MoveCommand {
  * the `Rolls` the server draws for it, and `battleResolved.kind` which the
  * cutaway will read to pick an animation.
  */
-export type AttackKind = 'fire' | 'charge';
+export type AttackKind = 'attack' | 'charge';
 
 export interface EndTurnCommand {
   type: 'endTurn';
@@ -178,10 +178,9 @@ export interface BattleResolvedEvent {
    * end in the same arithmetic and look nothing alike, and the kind lives only
    * in the command.
    *
-   * ⚠️ **The same type the command uses**, deliberately. This was its own
-   * `'volley' | 'charge'` union, which meant one concept had two vocabularies --
-   * the command saying `fire` while the event said `volley`, and the panel
-   * already saying "Fire" to the player. One word, one type, three readers.
+   * ⚠️ **The same type the command uses**, deliberately, so one concept has one
+   * vocabulary: the command, the event and the panel all say `attack` or
+   * `charge`. One word, one type, three readers.
    */
   kind: AttackKind;
   attacker: BattleParticipant;

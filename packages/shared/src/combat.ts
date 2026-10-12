@@ -298,7 +298,7 @@ export function tilesInRange(
  *
  * ⚠️ **The rear negates the counter, and nothing else about facing touches a
  * shot.** Front and flank both draw a full reply, so what the panel says --
- * "they return fire" or nothing -- is the whole of the rule rather than a
+ * "they counter attack" or nothing -- is the whole of the rule rather than a
  * rounding of it. A flanking *damage* bonus on the attacking shot is a different
  * thing and was refused on its own terms.
  *
@@ -377,7 +377,7 @@ export function resolveBattle(
 
   return {
     type: 'battleResolved',
-    kind: 'fire',
+    kind: 'attack',
     attacker: { unitId: attacker.id, health: clampHealth(attacker.health - riposte) },
     defender: { unitId: defender.id, health: defenderHealth },
     answered,

@@ -190,7 +190,7 @@ describe('useGameSession', () => {
       await act(async () => {});
 
       await reachMenu(result);
-      act(() => result.current.chooseAction('firing'));
+      act(() => result.current.chooseAction('attacking'));
       act(() => result.current.clickTile(at(1, 4)));
       // The precondition, asserted: without a pinned target the confirming
       // click below is just a click on the dark and proves nothing.
@@ -219,7 +219,7 @@ describe('useGameSession', () => {
     ]);
     const aimAt = async (
       result: ReturnType<typeof renderSession>['result'],
-      kind: 'firing' | 'charging',
+      kind: 'attacking' | 'charging',
     ) => {
       act(() => result.current.clickTile(at(1, 1)));
       await act(async () => result.current.clickTile(at(1, 1)));
@@ -229,14 +229,14 @@ describe('useGameSession', () => {
       await act(async () => result.current.clickTile(at(1, 2)));
     };
 
-    it('sends fire from firing mode', async () => {
+    it('sends attack from attacking mode', async () => {
       const fake = fakeServer(contested);
       const { result } = renderSession(fake, callbacks());
       await act(async () => {});
       fake.respond({ ok: true, seq: 1, events: [], state: contested });
-      await aimAt(result, 'firing');
+      await aimAt(result, 'attacking');
       expect(fake.submissions).toEqual([
-        expect.objectContaining({ targetUnitId: 'r1', attackKind: 'fire' }),
+        expect.objectContaining({ targetUnitId: 'r1', attackKind: 'attack' }),
       ]);
     });
 

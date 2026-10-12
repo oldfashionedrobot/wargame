@@ -128,7 +128,7 @@ function candidates(state: GameState): Scored[] {
               path,
               facing,
               targetUnitId: target.id,
-              attackKind: 'fire',
+              attackKind: 'attack',
             },
             score: dealt + (battle.defender.health <= 0 ? 25 : 0) - riposte,
           });

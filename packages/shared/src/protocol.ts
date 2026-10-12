@@ -198,7 +198,7 @@ export function parseCommand(input: unknown): Command | null {
       // a shot, which resolves, succeeds, and does something the player did not
       // ask for. This parser whitelists fields, so anything added to `Command`
       // and forgotten here is silently discarded.
-      if (attackKind !== undefined && attackKind !== 'fire' && attackKind !== 'charge') {
+      if (attackKind !== undefined && attackKind !== 'attack' && attackKind !== 'charge') {
         return null;
       }
 

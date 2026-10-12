@@ -13,7 +13,7 @@ that explains it. What is planned but unbuilt lives in
 **What plays today:** hot-seat against a real server process, from the opening
 move to a winner. Select a unit and see the tiles it can reach across terrain;
 click a destination to pin the route there and click it again to send the unit
-walking. Where it arrives a panel asks what it is doing — hold, fire or charge,
+walking. Where it arrives a panel asks what it is doing — hold, attack or charge,
 listing only the ones it can actually do and skipping itself when that leaves
 one — after which a held unit is pointed somewhere, since facing decides whether
 a shot is answered. A unit beside an enemy is **in contact**: moving into
@@ -546,7 +546,7 @@ tilesInRange(unit, from, gridWidth, gridHeight)   → Coordinate[]
 wouldCounter(defender, from)                      → boolean
 chargeThreshold(attackerType, defenderType)       → number | null   // null = cannot charge
 chargeChance(state, attacker, defender)           → number | null
-resolveBattle(state, attacker, defender, rolls)   → BattleResolvedEvent   // fire
+resolveBattle(state, attacker, defender, rolls)   → BattleResolvedEvent   // attack
 resolveCharge(state, attacker, defender, rolls)   → BattleResolvedEvent   // charge
 computeDamage(state, attacker, defender, roll)    → number
 ```
@@ -622,8 +622,8 @@ looks. A charge that breaks through rides on facing the same way.
 Where facing changes shooting. Position affects *whether* there is a reply,
 never what the attacking shot does. Front and flank both draw a full counter.
 
-⚠️ **The forecast shows the whole rule.** `attackForecast` reports *they return
-fire* or nothing, and since the only thing facing can do to a reply is remove
+⚠️ **The forecast shows the whole rule.** `attackForecast` reports *they counter
+attack* or nothing, and since the only thing facing can do to a reply is remove
 it, that is all there is to say.
 
 `wouldCounter` takes no facing argument: a `Unit` carries its own, so both
@@ -663,7 +663,7 @@ with the roll, so those are the true floor and ceiling. ⚠️ The width is
 or a defender in cover narrows it. The counter's *magnitude* is
 absent — it is computed on the defender's post-damage health, so it depends on
 how the attack roll lands. `answered` is read at the **worst** roll, so it means
-*they will fire back unless you kill them*.
+*they will counter attack unless you kill them*.
 
 The client is told the shape of the outcome and never the roll.
 
@@ -741,7 +741,7 @@ outcome and never its roll.
 
 ### Charge
 
-A second attack, chosen instead of firing and spending the turn either way.
+A second kind of attack, chosen instead of the plain one and spending the turn either way.
 
 ```
 threshold = floor(CHARGE_THRESHOLD[attacker][defender] × directional)
@@ -1160,7 +1160,7 @@ handleTileClick(state, selection, coordinate) → SelectionState
 destinationOf(pinned)                         → Coordinate
 confirmRoute(routePinned)                     → DestinationChosen
 enterMode(state, arrived, kind)               → DestinationChosen   // a mode's tiles
-readAimClick(state, attacking, coordinate)    → Unit | null        // fire or charge
+readAimClick(state, attacking, coordinate)    → Unit | null        // attack or charge
 readHoldClick(state, arrived, coordinate)     → Facing | null
 chooseTarget(attacking, target)               → TargetPinned
 clearStep(arrived)                            → DestinationChosen   // back to the panel
@@ -1173,13 +1173,13 @@ moveCommandFor(arrived, facing)               → Command
 does is a tile click. `clearStep` and `unpinDestination` are the two back-out
 rules, one per level.
 
-⚠️ **`canFire` decides whether the panel offers Fire at all, and it asks
+⚠️ **`canAttack` decides whether the panel offers Attack at all, and it asks
 `refuseAttack`** — the server's own rule — rather than counting what stands in
 `tilesInRange`. The band is *reach*: it knows nothing about ownership, a minimum
-range, or a unit targeting itself, so a panel built on it would offer Fire for a
+range, or a unit targeting itself, so a panel built on it would offer Attack for a
 friend two tiles off and the click would then be refused. One rule asked twice
 cannot disagree with itself — and it is what makes `slow` and contact free on
-the client: Fire and Charge simply stop being offered to a gun that has moved, or
+the client: Attack and Charge simply stop being offered to a gun that has moved, or
 to any unit that started in contact and moved, because the refusal they ask reads the
 path. It walks every unit rather than the band, which is
 sixteen against up to sixty and needs no grid bounds. ⚠️ **Unavailable actions
@@ -1206,7 +1206,7 @@ nothing more. The phase dispatch that decides whether a click commits lives in
 
 MenuStep
   | { kind: 'choosing' }                     // panel up, nothing lit
-  | { kind: 'firing'; tiles; target | null }   // the band; null until one is pinned
+  | { kind: 'attacking'; tiles; target | null }   // the band; null until one is pinned
   | { kind: 'charging'; tiles; target | null } // the neighbours it may charge
   | { kind: 'holding'; tiles }                 // the four beside it
 ```
@@ -1269,7 +1269,7 @@ which read the wrong way round: the gerund sounds like the earlier state and was
 the later one, across four symbols separated by three letters. ⚠️ Two predicates, so no caller spells the two-level check
 by hand; that is what absorbing `targetChosen` costs, paid once.
 
-⚠️ **`Attacking` covers firing and charging together**, because everything between
+⚠️ **`Attacking` covers attacking and charging together** — a charge is a special attack —, because everything between
 picking a mode and committing is identical: the same pin-then-confirm gesture,
 the same re-pin, the same second click. The kind is read off `step.kind` at the
 single place that builds the command, rather than branched on through the
@@ -1283,7 +1283,7 @@ no roll in it. What a failed charge would cost is not previewed.
 **The charge overlay lights targets, not reach** — the opposite of the shooting
 band, because a charge is contact-only and has no reach to show.
 
-`canCharge` is `canFire`'s twin and asks `refuseCharge`, the rule the click will
+`canCharge` is `canAttack`'s twin and asks `refuseCharge`, the rule the click will
 ask, so the menu row and the board cannot disagree. Artillery has no threshold
 row, so the rule refuses every target and the row never appears.
 

@@ -232,7 +232,7 @@ describe('submit', () => {
 
   // Stored on the row; never sent to either player.
   describe('the rolls', () => {
-    const attack = async (attackKind: 'fire' | 'charge') => {
+    const attack = async (attackKind: 'attack' | 'charge') => {
       const { id } = await store.create();
       const base = createMatchState(
         getMap('classic'),
@@ -270,7 +270,7 @@ describe('submit', () => {
     const leaked = /"(attack|counter|charge|rolls)":/;
 
     it('keeps both of a shot’s', async () => {
-      const { rolls, sent } = await attack('fire');
+      const { rolls, sent } = await attack('attack');
       expect(Object.keys(rolls).sort()).toEqual(['attack', 'counter']);
       for (const roll of [rolls.attack, rolls.counter]) {
         expect(roll).toBeGreaterThanOrEqual(0);

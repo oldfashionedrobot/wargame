@@ -51,9 +51,9 @@ const STEP_UI: Record<MenuStep['kind'], { overlay: StepOverlay | null; hint: str
     overlay: 'facing',
     hint: 'Click a tile beside the unit to face that way, or the unit to keep its facing.',
   },
-  firing: {
+  attacking: {
     overlay: 'attack',
-    hint: 'Click an enemy in range, then click it again to fire. Click elsewhere to go back.',
+    hint: 'Click an enemy in range, then click it again to attack. Click elsewhere to go back.',
   },
   charging: {
     overlay: 'charge',
@@ -197,7 +197,7 @@ function CutawaySide({ side, align }: { side: CutawaySideData; align: 'left' | '
 /** ⚠️ Beside the list rather than inside it: the words are presentation and the
     modes are not, so a renamed row cannot change what a click does. */
 const ACTION_LABEL: Record<ActionKind, string> = {
-  firing: 'Fire',
+  attacking: 'Attack',
   charging: 'Charge',
   holding: 'Hold',
 };
@@ -445,7 +445,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
                   whiteSpace: 'nowrap',
                 }}
               >
-                {cutaway.kind === 'charge' ? 'charge' : 'fire'}
+                {cutaway.kind === 'charge' ? 'charge' : 'attack'}
                 {/* ⚠️ Said, because a view that waits without saying so reads as
                     one that has hung. */}
                 <div style={{ opacity: 0.7, marginTop: '2px' }}>click to continue</div>
@@ -462,7 +462,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
                 in range" and "I misread the menu" look the same; the gain is a
                 menu with no dead rows, which is what makes it readable at a
                 glance. Revisit if omitting reads badly in play.
-                ⚠️ `canFire` asks `refuseAttack`, the same rule the click will,
+                ⚠️ `canAttack` asks `refuseAttack`, the same rule the click will,
                 so the button and the tile cannot disagree. */}
             {/* ⚠️ Rendered from the same list the arrival path counts, so a row
                 the panel offers and a row the skip believes in cannot differ.
@@ -483,9 +483,9 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
                 gesture the route already taught. */}
             {forecast.kind === 'fire' ? (
               <span>
-                Fire — {forecast.low}
+                Attack — {forecast.low}
                 {forecast.high > forecast.low && `–${forecast.high}`} damage
-                {forecast.answered && ' · they return fire'}
+                {forecast.answered && ' · they counter attack'}
               </span>
             ) : (
               /* An exact figure where a shot gets a range: no roll enters `chance`. */

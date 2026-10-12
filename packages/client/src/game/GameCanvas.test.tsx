@@ -321,7 +321,7 @@ describe('GameCanvas', () => {
     await act(async () => clickTile({ col: 1, row: 1 }));
     await act(async () => clickTile({ col: 1, row: 1 })); // pins its own tile
     await act(async () => clickTile({ col: 1, row: 1 })); // confirms
-    expect(screen.getByText('Fire')).toBeTruthy();
+    expect(screen.getByText('Attack')).toBeTruthy();
     expect(screen.getByText('Hold')).toBeTruthy();
     // ⚠️ **Charge is omitted rather than greyed**, following AW — the enemy is
     // two tiles off, which a shot reaches and a charge does not. This is the
@@ -359,7 +359,7 @@ describe('GameCanvas', () => {
 
     // And back the other way, so the mode is genuinely read and not a constant.
     await act(async () => clickTile({ col: 4, row: 4 })); // dark: back to the panel
-    await act(async () => screen.getByText('Fire').click());
+    await act(async () => screen.getByText('Attack').click());
     expect(lastOverlay()?.[0]).toBe('attack');
     expect(lastOverlay()?.[1].length).toBeGreaterThan(0);
   });
@@ -371,7 +371,7 @@ describe('GameCanvas', () => {
   describe('the cutaway readout', () => {
     const scene: CutawayScene = {
       id: 1,
-      kind: 'fire',
+      kind: 'attack',
       attacker: {
         unitTypeId: 'cavalry' as const,
         color: 'blue' as const,

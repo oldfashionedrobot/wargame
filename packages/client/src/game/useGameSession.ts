@@ -75,7 +75,7 @@ export interface GameSessionCallbacks {
 // replaying somebody else's turns at tween speed is worse than useless.
 //
 // ⚠️ **Four, derived rather than chosen.** It is exactly one action's worth, and
-// it preserves the ceiling the old tile-count had: two firing actions is two
+// it preserves the ceiling the old tile-count had: two attacking actions is two
 // cutaways and two moves, about four seconds, which is what 28 tiles at 0.15s
 // came to.
 //
@@ -284,7 +284,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       // A pinned route is a plan, and a second click on its own destination is
       // what commits it to the walk. ⚠️ Read *before* `handleTileClick`, which
       // would otherwise re-pin the destination onto itself: an equal object, a
-      // wasted render, and no walk. The same order firing mode uses below, and
+      // wasted render, and no walk. The same order attacking mode uses below, and
       // for the same reason: confirm before re-pin, or the confirming click
       // re-pins what it meant to commit.
       if (
@@ -324,7 +324,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       if (selection.phase === 'destinationChosen') {
         const state = server.getState();
 
-        // ⚠️ The predicate, not a bare `step.kind === 'firing'`. TypeScript
+        // ⚠️ The predicate, not a bare `step.kind === 'attacking'`. TypeScript
         // narrows `selection.step` on a nested discriminant but not `selection`
         // itself, and `readAimClick` wants the whole thing -- so asking the
         // predicate does both jobs where the inline check does one and then
@@ -344,7 +344,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
                 // ⚠️ The one place the two attack modes diverge. Everything
                 // between picking a mode and committing is identical, so the
                 // kind is read off the step here rather than branched on above.
-                attackKind: selection.step.kind === 'charging' ? 'charge' : 'fire',
+                attackKind: selection.step.kind === 'charging' ? 'charge' : 'attack',
               }),
               initialSelectionState,
               unpinDestination(selection),
