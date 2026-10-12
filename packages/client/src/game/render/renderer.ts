@@ -24,6 +24,7 @@ import { applyEvents, defenseAt } from '@wargame/shared';
 import { tileToWorld } from './coordinates';
 import { createGridLines } from './gridLines';
 import { createCutaway } from './cutaway';
+import type { Combatant } from './cutaway';
 import { createTileHighlight, setHighlightTile } from './highlight';
 import { createHealthRing } from './healthRing';
 import type { HealthRing } from './healthRing';
@@ -714,17 +715,26 @@ export async function createGameRenderer(
    * player previewed -- and a charge's cutaway would be skipped along with it.
    */
   const playBattle = async (event: BattleResolvedEvent, before: GameState): Promise<void> => {
-    const side = (id: string, after: number): CutawaySide | null => {
+    // What the DOM prints over a side and what its view stages, from one lookup.
+    const side = (id: string, after: number) => {
       const unit = before.units.find((u) => u.id === id);
       const owner = before.players.find((p) => p.id === unit?.owner);
       if (!unit || !owner) return null;
-      return {
-        unitTypeId: unit.unitTypeId,
+      const { unitTypeId, position } = unit;
+      const readout: CutawaySide = {
+        unitTypeId,
         color: owner.color,
         before: unit.health,
         after,
-        defense: defenseAt(before, unit.position),
+        defense: defenseAt(before, position),
       };
+      const staged: Combatant = {
+        unitTypeId,
+        color: owner.color,
+        cell: cells[position.row][position.col],
+        surface: surfaceAt(position),
+      };
+      return { readout, staged };
     };
 
     const attacker = side(event.attacker.unitId, event.attacker.health);
@@ -733,23 +743,13 @@ export async function createGameRenderer(
     // drawable battle. Skipping beats staging a blank.
     if (!attacker || !defender) return;
 
-    const attackerUnit = before.units.find((u) => u.id === event.attacker.unitId)!;
-    const defenderUnit = before.units.find((u) => u.id === event.defender.unitId)!;
-    cutaway.show(
-      {
-        unitTypeId: attacker.unitTypeId,
-        color: attacker.color,
-        cell: cells[attackerUnit.position.row][attackerUnit.position.col],
-        surface: surfaceAt(attackerUnit.position),
-      },
-      {
-        unitTypeId: defender.unitTypeId,
-        color: defender.color,
-        cell: cells[defenderUnit.position.row][defenderUnit.position.col],
-        surface: surfaceAt(defenderUnit.position),
-      },
-    );
-    cutawayHandler?.({ id: (battleCount += 1), kind: event.kind, attacker, defender });
+    cutaway.show(attacker.staged, defender.staged);
+    cutawayHandler?.({
+      id: (battleCount += 1),
+      kind: event.kind,
+      attacker: attacker.readout,
+      defender: defender.readout,
+    });
 
     await new Promise<void>((resolve) => {
       releaseCutaway = resolve;

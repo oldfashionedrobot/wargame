@@ -1,5 +1,6 @@
 import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera';
 import { Camera } from '@babylonjs/core/Cameras/camera';
+import { BoundingBox } from '@babylonjs/core/Culling/boundingBox';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
@@ -222,21 +223,14 @@ export function createCutaway(
     // them from wherever the camera stood for the previous battle.
     view.camera.setTarget(Vector3.Center(min, max), false, false, true);
     const toView = view.camera.getViewMatrix(true);
-    let low = Infinity;
-    let high = -Infinity;
-    for (const x of [min.x, max.x]) {
-      for (const y of [min.y, max.y]) {
-        for (const z of [min.z, max.z]) {
-          const up = Vector3.TransformCoordinates(new Vector3(x, y, z), toView).y;
-          low = Math.min(low, up);
-          high = Math.max(high, up);
-        }
-      }
-    }
+    const heights = new BoundingBox(min, max).vectorsWorld.map(
+      (corner) => Vector3.TransformCoordinates(corner, toView).y,
+    );
+    const height = Math.max(Math.max(...heights) - Math.min(...heights), 0.1);
 
     // The box is centred on the target and fills the top `1 - READOUT_SHARE` of
     // the view; the rest of the view hangs below it, for the readout.
-    const half = (Math.max(high - low, 0.1) * (1 + STAGE_MARGIN)) / 2;
+    const half = (height * (1 + STAGE_MARGIN)) / 2;
     const span = (2 * half) / (1 - READOUT_SHARE);
     const engine = scene.getEngine();
     const aspect = (engine.getRenderWidth() * 0.5) / (engine.getRenderHeight() * BAND_HEIGHT);
