@@ -379,10 +379,11 @@ every turn and becomes a reward, and cavalry stops being a weak shooter.
   from the rear.
 - **Cavalry's damage row becomes its sabres, and it hits hard.** The numbers
   are measured before they are chosen.
-- **Presentation:** a sabre in place of the carbine on the cavalry model, and a
-  close-up that reads as a blow rather than a shot.
+- **Presentation:** ✅ the cavalry model now carries a sabre, and the carbine
+  rider is kept as `dragoon.gltf`. ⬜ A close-up that reads as a blow rather
+  than a shot.
 - ⬜ Later: **dragoons**, horse with carbines — the flag is what makes room for
-  them.
+  them, and their model is already in `public/models/`.
 
 **Step 2 — ⬜ the charge is earned.**
 

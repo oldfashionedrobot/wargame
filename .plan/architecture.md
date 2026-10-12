@@ -1671,6 +1671,8 @@ unavailable action is omitted — so hover is the only state a row has.
   right-handed-to-left-handed conversion as a negative scale, and a facing
   rotation set on that node would compose with the flip and turn the unit the
   wrong way. Models face `+Z`, which is north here, so there is no offset.
+  Cavalry's rider holds a sabre; `dragoon.gltf`, the same rider with a carbine,
+  is kept for dragoons and nothing loads it yet.
 - One `StandardMaterial` per player colour, looked up by name so the scene is
   the cache. The models arrive untextured and near-white, so colour is the whole
   of a side's identity. Matte like the terrain — specular is zeroed — plus a
