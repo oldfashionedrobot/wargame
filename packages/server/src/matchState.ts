@@ -135,7 +135,7 @@ export function createMatchState(
         position: seat === 0 ? { col, row } : { col: width - 1 - col, row: height - 1 - row },
         // ⚠️ Toward the enemy, which is the opposite of what this used to say.
         // Row index increases north and seat 0 starts at row 0, so giving it
-        // `south` pointed both armies off their own edge. A rule reads this: a
+        // `south` pointed both armies off their own edge. A rule reads this: an
         // attack from directly behind goes unanswered, so the sign being wrong
         // would hand every opening counter to whoever moved second.
         facing: seat === 0 ? 'north' : 'south',
