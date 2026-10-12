@@ -171,7 +171,6 @@ interface Stats {
   chargesTried: number;
   chargesBroke: number;
   hitsOnCover: number;
-  hitsTotal: number;
 }
 
 function playOne(
@@ -220,7 +219,7 @@ function playOne(
 
     const before = state;
     const events: GameEvent[] = resolveAction(state, validation.action, rolls, budget);
-    record(before, command, events, stats);
+    record(before, events, stats);
     state = applyEvents(state, events);
     actions++;
     if (events.some((e) => e.type === 'turnEnded')) turns++;
@@ -235,7 +234,7 @@ function playOne(
 }
 
 /** What a resolved command says about the rules, read off the events. */
-function record(before: GameState, command: Command, events: GameEvent[], stats: Stats): void {
+function record(before: GameState, events: GameEvent[], stats: Stats): void {
   for (const event of events) {
     if (event.type !== 'battleResolved') continue;
     const attacker = getUnit(before, event.attacker.unitId);
@@ -253,14 +252,12 @@ function record(before: GameState, command: Command, events: GameEvent[], stats:
     }
 
     stats.attacks++;
-    stats.hitsTotal++;
     const defense = defenseAt(before, defender.position);
     if (defense > 0) stats.hitsOnCover++;
     stats.damageBy[by] = (stats.damageBy[by] ?? 0) + (defender.health - event.defender.health);
     if (event.defender.health <= 0) stats.killsBy[by] = (stats.killsBy[by] ?? 0) + 1;
     if (event.answered && event.attacker.health < attacker.health) stats.countered++;
   }
-  void command;
 }
 
 // --- run -------------------------------------------------------------------
@@ -304,7 +301,6 @@ const stats: Stats = {
   chargesTried: 0,
   chargesBroke: 0,
   hitsOnCover: 0,
-  hitsTotal: 0,
 };
 
 const first = process.argv[4] ?? PLAYERS[0].id;
@@ -362,7 +358,7 @@ console.log('\ndid the mechanics fire at all');
 console.log(`  attacks made           ${stats.attacks}`);
 console.log(`  ...answered            ${stats.countered}  ${pct(stats.countered, stats.attacks)}`);
 console.log(
-  `  ...onto covered ground ${stats.hitsOnCover}  ${pct(stats.hitsOnCover, stats.hitsTotal)}`,
+  `  ...onto covered ground ${stats.hitsOnCover}  ${pct(stats.hitsOnCover, stats.attacks)}`,
 );
 console.log(`  charges attempted      ${stats.chargesTried}`);
 console.log(
