@@ -348,6 +348,100 @@ distance each have one home, called by everything that needs them. What they do
 is in [`architecture.md`](architecture.md); why, and what was explored on the
 way, is in the commits.
 
+⬜ **Charging is reworked, in two steps: cavalry fight with swords, and the
+charge is earned.** From playtesting: charging felt off, and the simulator says
+why. Charge odds ignored the charger's health while fire scales with it, so a
+charge was the *wounded* unit's attack — the average charger stood on 42 health,
+head-on chargers on 22–28. A healthy unit's charge was a worse shot: wherever
+its odds were good, a shot already killed. And infantry made half of all
+charges, most often into a gun's flank.
+
+⚠️ **An execute on its own does too little, and the reason is the damage
+rule.** Health already throttles damage, so a unit worn down far enough to
+execute has lost most of its threat; finishing it is the lowest-value attack in
+the game. Measured in scratch on the current tables, every map from both
+openings: a cavalry-only sure execute, scaled by facing and by the charger's
+health, mostly took units a shot could not have killed only once its flank
+threshold reached about 60 — at 25 it took units on 10 health, nearly every one
+a kill a shot would have made. So the charge stops being a tool to reach for
+every turn and becomes a reward, and cavalry stops being a weak shooter.
+
+**Step 1 — ⬜ cavalry fight with swords.**
+
+- **A `melee` flag on the unit catalog**, beside `slow`. Cavalry is melee, with
+  reach 1–1 as now; infantry and guns are ranged. A flag rather than reading
+  melee off the reach, because the rules never treat range as a category, and
+  so that one kind of horse can be melee and another not.
+- **A melee unit cannot answer a ranged attacker.** Infantry firing on adjacent
+  cavalry draws no reply; the cavalry strikes back on its own turn. A melee
+  attack is still answered by the unit it hits, ranged or melee, under the
+  counter rule as it stands: guns never answer, and nothing answers an attack
+  from the rear.
+- **Cavalry's damage row becomes its sabres, and it hits hard.** The numbers
+  are measured before they are chosen.
+- **Presentation:** a sabre in place of the carbine on the cavalry model, and a
+  close-up that reads as a blow rather than a shot.
+- ⬜ Later: **dragoons**, horse with carbines — the flag is what makes room for
+  them.
+
+**Step 2 — ⬜ the charge is earned.**
+
+- **Morale.** Every attack a unit makes earns it a point, up to 3; a unit on 3
+  may charge, and charging spends all three. Answering an attack earns nothing
+  — only attacking does. Morale is never lost, except with the unit.
+- **A charge is a sure execute** — no roll, no failure, no repel. It breaks the
+  target when
+
+  ```
+  target health ≤ floor(CHARGE_THRESHOLD[charger][target] × facing
+                        × chargerHealth / MAX_HEALTH)
+  ```
+
+  and is not offered otherwise: either the unit is worn down enough to send the
+  charge in, or it is strong enough to hold.
+- **Any unit with a row in `CHARGE_THRESHOLD` may charge**, infantry included;
+  the table stays as it is, read as what a full-strength charger executes from
+  the flank. **Facing:** head-on ×0.5, flank ×1, rear ×1.5 — charging head-on
+  always gives the defender a better chance. **Linear in the charger's
+  health.** ⚠️ Read "harder" as a smaller number: a head-on approach and a
+  weaker charger both shrink the health the target must be at or below.
+- **On the board:** a unit's morale is shown on it, and Charge is offered only
+  at full morale with a target it would execute — `refuseCharge` decides, so
+  the panel and the lit tiles follow it.
+- ⬜ **Open: whether cover still makes an execute harder**, and the threshold
+  numbers, re-measured once a charge is a scarce reward rather than the main
+  tool — a player saves it for when it matters, so lower thresholds may be
+  enough.
+
+⚠️ **What step 2 removes.** The odds curve and everything that shaped it —
+`CHARGE_HALF_LIFE`, `FRONTAL_FLOOR`, `FLOOR_PER_STAR`, the 1% floor — and the
+repel with its overshoot: `CHARGE_REPEL`, both `REPEL_DIVISOR` ends,
+`repelDamage`. `FLANK_MULTIPLIER` and `REAR_MULTIPLIER` become one facing table.
+A charge draws nothing, so `ChargeRolls` and `isChargeRoll` go and `rollLuck`
+stops branching: every command draws the same pair, and a charge, like an end
+of turn, uses none of it. `chargeChance` becomes a yes-or-no question asked by
+`refuseCharge`, and `resolveCharge` stops reading rolls.
+
+⚠️ **What step 2 touches beyond the rule.** **Morale is new state**: a field on
+every `Unit`, carried as an absolute value in the event that changes it — the
+attacker's side of `battleResolved` — so the fold stays exact. That changes
+`GameState`'s shape, so matches stored before it are abandoned, under the
+ruleset policy in *Known compromises*. The charge panel states the execute
+instead of a percentage; the bot prices a charge as a certain kill and has
+morale to spend; the charges harness prints executable health per target,
+facing and charger health; `charge.test.ts` is largely rewritten, and the
+charge tests in `move.test.ts`, the client's charge-forecast tests and the
+charge half of the rolls tests are restated; the architecture doc's *Charge*
+section is rewritten. The rolls column keeps rows that stored a `{ charge }`
+roll, and nothing reads them.
+
+⚠️ **One step at a time.** Step 1 lands and is played on its own before step 2
+adds morale, so each can be judged without the other moving under it.
+
+⚠️ **Step 2 settles two items below** when it lands: *the long shot*, since no
+odds remain, and the parked *charge's odds scaling with the charger's own
+strength*, which the linear term is.
+
 #### After the combat pass
 
 ✅ **The pass shipped**: contact, a flanked defender answering in full,
