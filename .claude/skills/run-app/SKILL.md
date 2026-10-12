@@ -66,7 +66,8 @@ screenshot, read it, note the pixel centre of the unit or tile you want, and
 issue `page.mouse.click(x, y)` in a second run.
 
 At viewport 1280×800 (canvas is 100vw × 90vh = 1280×720) a **12×12** board —
-every map is that size — renders at roughly **x 375–907, y 197–528**, columns
+every shipped map is that size; a smaller one draws smaller — renders at roughly
+**x 375–907, y 197–528**, columns
 ~44px wide, rows narrower toward the top (isometric tilt). Column *c*'s centre
 is about `397 + 44.3c`; the bottom rank (row 0, where blue deploys) has its tile
 centres near **y 512**, not at the figures' bodies around y 490 — clicking the

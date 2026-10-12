@@ -32,9 +32,9 @@ export interface DeploymentZone {
 }
 
 /**
- * ⚠️ **Assumed, not declared by the map -- for now.** Every board is 12x12 and
- * `maps.test.ts` asserts it, so the two rows nearest each edge can simply be
- * taken. The day a map carries its own zone, this constant is what it replaces,
+ * ⚠️ **Assumed, not declared by the map -- for now.** The two rows nearest each
+ * edge are simply taken, on a board of any size that fits both zones;
+ * `createMatchState` refuses one that does not. The day a map carries its own zone, this constant is what it replaces,
  * and an existing convention becomes checkable with it: *a river may only leave
  * the board where the army does not stand* is kept by hand today.
  *

@@ -386,8 +386,9 @@ Nothing about centring varies with what is fielded, so `armyWidth` is read as a
 *check* — is this grid the zone's width — rather than as an input to the sum. A
 grid of the wrong size is refused, naming the player whose army it is.
 
-⚠️ **The zone is assumed, not declared by the map.** Every board is 12×12, so the
-rows nearest each edge are simply taken. **Reachable as an argument**, the shape
+⚠️ **The zone is assumed, not declared by the map.** The rows nearest each edge
+are simply taken, on a board of any size that fits both zones —
+`createMatchState` refuses one that does not. **Reachable as an argument**, the shape
 `ACTIONS_PER_TURN` has and for the same reason: the suite deploys onto boards
 this game never ships.
 
@@ -423,10 +424,10 @@ match claims to have been played on. A changed map gets a new id.
 camera** — row index increases north, so a map written out top-down is upside
 down in the source.
 
-**Every map is 12×12.** Nothing in the code requires it — `createMatchState`
-centres the zone on whatever width it is handed — but `maps.test.ts` asserts it,
-so it is a constraint rather than a coincidence. The zone spans ten columns,
-leaving one spare a side.
+**The shipped maps are 12×12, but a board may be any size that fits both
+deployment zones** — at least ten columns and four rows — and `createMatchState`
+refuses one that does not, centring the zone on whatever width it is handed. On a
+12×12 board the zone leaves one spare column a side.
 
 **Four rules hold across every board**, and they are design rather than code —
 nothing enforces the last two but the eye:

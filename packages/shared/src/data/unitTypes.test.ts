@@ -33,8 +33,7 @@ describe('getUnitType', () => {
     }
   });
 
-  // ⚠️ A design assertion rather than a technical one, like the maps suite's
-  // "is twelve by twelve". Nothing breaks if every unit can shoot at one tile
+  // ⚠️ A design assertion rather than a technical one. Nothing breaks if every unit can shoot at one tile
   // -- but a gun that can defend itself at arm's length leaves cavalry with no
   // job, and the whole triangle rests on that not being true. Loud, here,
   // rather than discovered in a playtest.

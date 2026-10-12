@@ -326,8 +326,8 @@ needs, so the horse figures are a floor. The guns figure agrees with
 everything else measured — a gun is never answered. ⬜ **Re-run once sword
 cavalry lands**, since that changes what horse is.
 
-⬜ **A zone declared by the map.** `DEPLOYMENT_ZONE` is a constant and every board
-is 12×12, so the rows nearest each edge are assumed. The day a map carries its
+⬜ **A zone declared by the map.** `DEPLOYMENT_ZONE` is a constant, so on every
+board the rows nearest each edge are assumed. The day a map carries its
 own, the check in `maps.test.ts` reads it instead of the constant — and the
 *shape* of a deployment area becomes a board's design rather than a global. That
 belongs with *Content*, where maps become data. **Parked.**
@@ -614,17 +614,6 @@ panel line, `rollLuck`'s command parameter and charge branch, the move's
 roll-shape checks, `resolveCharge`'s rolls and state, and `chargeChance` and
 `repelDamage` in the barrel. `dragoon.gltf` stays unused on purpose, for
 dragoons.
-
-⬜ **Boards of any size**, decided, landing on its own. The test that every map
-is 12×12 goes: it asserted a design choice, not a need — `createMatchState`
-already refuses a board too small for both deployment zones, and the zone test
-deploys through the engine, so it reads the right squares at any width.
-Checked with the 10×10 `tester` board: every other map test passes. The
-comments and docs that say *every board is 12×12* — the deployment zone's
-constant, the architecture doc's *Maps*, the roadmap's *a zone declared by the
-map*, a cross-reference in the unit catalog's tests, and the run-app skill's
-screen coordinates — say instead that the shipped boards are 12×12 and the
-zone must fit.
 
 ⚠️ **One step at a time.** Step 1 lands and is played on its own before step 2
 adds the charge meter, so each can be judged without the other moving under
