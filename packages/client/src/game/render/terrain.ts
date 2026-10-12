@@ -93,8 +93,24 @@ function mergeByMaterial(scene: Scene, meshes: AbstractMesh[]): Mesh {
   for (const [name, group] of groups) {
     // Merging bakes each copy's world transform into its vertices, which is
     // what lets one mesh hold tiles that were rotated differently.
+    // ⚠️ **A group of one comes back inside out.** The loader mirrors every
+    // model, and Babylon rewinds a mirrored mesh's faces as it merges -- except
+    // when there is nothing to merge it with, where it bakes the mirror and
+    // skips the rewind, so the faces are culled from the side they face. A
+    // one-tile board is mostly groups of one.
+    const mirrored = group.length === 1 && group[0].computeWorldMatrix(true).determinant() < 0;
     const merged = Mesh.MergeMeshes(group, true, true);
     if (!merged) continue;
+    if (mirrored) {
+      // Rewound on a copy, never with `flipFaces`: that case also hands back
+      // the model's own index array, and rewinding it in place turns every
+      // later copy of the model inside out instead.
+      const indices = merged.getIndices(false, true) ?? [];
+      for (let i = 0; i < indices.length; i += 3) {
+        [indices[i + 1], indices[i + 2]] = [indices[i + 2], indices[i + 1]];
+      }
+      merged.setIndices(indices);
+    }
     merged.name = name; // already `terrain-<material>`, from terrainModels
     // Re-applied by hand: the sources are disposed as part of merging, and the
     // merged mesh does not reliably inherit their material -- which shows up as

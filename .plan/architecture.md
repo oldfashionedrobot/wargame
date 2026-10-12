@@ -1521,7 +1521,12 @@ unavailable action is omitted — so hover is the only state a row has.
   draw calls for a board, against several hundred as loose copies. ⚠️ That
   number grows with the *palette*, not the board — each genuinely new colour
   costs one, so a doodad painted in a material the board already has is free.
-  Merging works because terrain is made once and never moves.
+  Merging works because terrain is made once and never moves. ⚠️ **A material
+  used once is rewound by hand.** The loader mirrors every model, and Babylon's
+  merge rewinds a mirrored mesh's faces only when it has something to merge it
+  with — alone, it comes back inside out, culled from the side it faces, and with
+  the model's own index array, so the rewind is done on a copy. The close-up's
+  one-tile board is mostly groups of one.
   `terrainModels.ts` loads the set and
   shares one material per name across all of them, which is what makes the
   grouping work. ⚠️ Three families are recoloured, because the kit reuses materials
