@@ -306,13 +306,25 @@ inside it; boards validated against the *zone* rather than against one formation
 and the harness taking an army a side. What it does now is in
 [`architecture.md`](architecture.md) — what is left is below.
 
-⬜ **Find out whether composition creates playstyles.** This is the question the
-mechanism was built for, and it is answered by playing and by sweeping rather
-than by reasoning — a sweep to run rather than a design question. ⚠️ **One result already, and it says more about the bot than
-about cavalry**: eight horse against the default army loses 200 of 200 on
-`classic` *while moving first*. Both sides run the identical policy, so the
-asymmetry is real — but a greedy bot never screens, and screening is the
-manoeuvre horse needs. Read it as the sweep working, not as a verdict.
+✅ **Whether composition creates playstyles: swept, and it does not — it
+makes a ladder.** Each army of eight against the default (two guns, two horse,
+four foot) from both seats, both openings, all six maps, 300 games a cell:
+
+| army | wins against the default |
+|---|---|
+| four guns, four foot | 79% (82% on the committed table) |
+| four horse, four guns | 68% |
+| eight foot | 55% |
+| four horse, four foot | 15% (7% on the committed table) |
+| eight horse | 2% |
+
+The ranking was measured on a since-discarded variant of the damage table; on
+the committed table, guns and horse sit further apart still. More guns wins
+and more horse loses, on every map. ⚠️ **It says as much about the bot as the
+armies**: a greedy bot never screens, and screening is the manoeuvre horse
+needs, so the horse figures are a floor. The guns figure agrees with
+everything else measured — a gun is never answered. ⬜ **Re-run once sword
+cavalry lands**, since that changes what horse is.
 
 ⬜ **A zone declared by the map.** `DEPLOYMENT_ZONE` is a constant and every board
 is 12×12, so the rows nearest each edge are assumed. The day a map carries its
@@ -376,25 +388,106 @@ every turn and becomes a reward, and cavalry stops being a weak shooter.
   cavalry draws no reply; the cavalry strikes back on its own turn. A melee
   attack is still answered by the unit it hits, ranged or melee, under the
   counter rule as it stands: guns never answer, and nothing answers an attack
-  from the rear.
-- **Cavalry's damage row becomes its sabres, and it hits hard.** The numbers
-  are measured before they are chosen.
+  from the rear. ⚠️ **Pre-checked:** `wouldCounter` has one caller,
+  `resolveBattle`, and today knows only the defender and where the attack came
+  from; it takes the attacker instead, and refuses a reply from a melee
+  defender to a ranged attacker beside the rear and the guns rules. The client
+  forecast and the bot both ask `resolveBattle`, so they follow with no change
+  of their own. New tests say so for the rule, for `resolveMove`, and for the
+  forecast. Its docblock — *one predicate, and no categories* — and the unit
+  catalog's *almost no category* stop being true and are rewritten.
+- **Cavalry's damage row becomes its sabres, and it hits hard.** First numbers,
+  in the working tree and tested before they are committed: sabres 55 / 45 / 65
+  against infantry, cavalry and guns; infantry's fire into cavalry 35 and into
+  guns 45; guns 55 / 45 / 45. Tested in scratch, every map from both openings,
+  with the melee rule prototyped:
+
+  | | committed table | new table | new table + melee rule |
+  |---|---|---|---|
+  | cavalry's share of damage | 5% | 17% | 17% |
+  | cavalry's share of kills | 13% | 21% | 20% |
+  | four horse, four foot, against the default | 7% | 41% | 38% |
+  | eight horse, against the default | 0% | 36% | 34% |
+  | four guns, four foot, against the default | 82% | 70% | 70% |
+  | the second mover wins | 55% | 63% | 64% |
+
+  The new table flattens the composition ladder a long way; the melee rule on
+  its own barely shows, since the greedy bot seldom shoots at adjacent cavalry.
+  ⚠️ **The second mover's edge grows**, from about 55% to 63% — a thing to
+  watch in play. ⚠️ **The same file holds step 2's new thresholds**, which break
+  two charge tests under today's rule: step 1 commits the damage table alone,
+  and the thresholds wait for step 2. The flanked-counter test that pins the
+  old infantry-into-cavalry damage — and whose cavalry defender no longer
+  answers at all under the melee rule — takes an infantry defender instead,
+  and both its assertions hold. The damage table's comments that describe
+  cavalry as carbines, four hits to kill infantry, and the binding cell of the
+  harmless-attacker floor are rewritten to the new numbers.
+- **Attack, not fire.** The attack kind becomes `'attack'` — on the wire, in
+  `battleResolved`, and in the names built on it: the client's `firing` mode
+  and action become `attacking`, `canFire` becomes `canAttack` (its private
+  helper of that name is renamed out of the way), and the bot's commands and
+  every test that sends or expects one follow. On screen: the panel's **Fire** is **Attack**, *they
+  return fire* is *they counter attack*, and the close-up's label reads
+  *attack*. More general, so a melee strike and a volley are one kind of
+  action; prose about a gun *firing* stays, since that is what a ranged unit
+  does. ⚠️ **Side effects, checked:** replaying the log never reads an event's
+  kind, so old logs still fold exactly; the client reads it only to label the
+  close-up, charge or not, so old events still display; no migration, since
+  the kind lives inside the stored JSON and the stored rolls keep their keys.
+  The one break: a browser tab opened before the change sends `'fire'`, which
+  the protocol parser rejects as *not a valid command* — a 400, shown as
+  *reconnecting…* — until it reloads. ⚠️ **It lands first, on its own**, as a
+  pure rename — behaviour unchanged but for the words on screen — so the melee
+  rules that follow are a change of rules and nothing else.
+  ⚠️ **Pre-checked:** the full rename was done in a scratch copy, sixteen files,
+  every suite green. Beyond the list above it also takes the forecast's
+  **Fire —** prefix and the firing hint's *click it again to fire*, the
+  `firing:` keys in the panel's tables, the README's *hold, fire or charge*,
+  and a dozen places in the architecture doc. `Attacking`, `isAttacking` and
+  `AttackStep` keep their names, decided: they mean *the attack mode or the
+  charge mode*, and a charge is a special attack, so `isAttacking` being true
+  in both is right. `FireRolls` and the forecast's `'fire'` kind are left as
+  they are: step 2 collapses the rolls to one shape and the forecast to one
+  kind, so renaming them first is churn.
 - **Presentation:** ✅ the cavalry model now carries a sabre, and the carbine
-  rider is kept as `dragoon.gltf`. ⬜ A close-up that reads as a blow rather
-  than a shot.
+  rider is kept as `dragoon.gltf`. ⬜ The battle close-up stages the two units
+  facing each other — the attacker, on the left, turned to face right, and the
+  defender to face left, rather than each keeping its board facing — and its
+  camera rises a little, from about 21° above the horizon to about 30°, so it
+  looks down onto the top of each unit's tile. ⚠️ **Pre-checked:** each stage
+  camera looks along −z, so screen-right is *west*: the attacker is staged
+  facing west and the defender east, fixed per view, and the close-up stops
+  carrying each unit's facing. The tilt is not one number: framing sizes a view
+  from world height alone, but a tilted tile shows its depth too, and a gun's
+  tile already runs under the readout today. Framing measures the staged
+  bounding box in the camera's view instead, and places it with the camera's
+  screen offset, so no number has to change with the tilt; and the backdrop,
+  which today sits inside the staged tile and cuts its back edge, moves back
+  along the line of sight. Prototyped: every unit spans 35–90% of its view at
+  either angle. A browser confirms the facing, the trees and peaks unclipped,
+  the tile's front edge clear of the readout, and the backdrop behind it all. A blow that *looks* like a blow
+  waits on animated figures, in *Animation and sound*. ⬜ The sabre a little
+  wider and a little taller, to read at board scale.
 - ⬜ Later: **dragoons**, horse with carbines — the flag is what makes room for
   them, and their model is already in `public/models/`.
 
 **Step 2 — ⬜ the charge is earned.**
 
-- **Morale.** Every attack a unit makes earns it a point, up to 3; a unit on 3
-  may charge, and charging spends all three. Answering an attack earns nothing
-  — only attacking does. Morale is never lost, except with the unit.
+- **A charge meter.** Modeled on morale, but it only ever feeds the charge, so
+  it is named for it. Every attack a unit makes fills it a point, up to 3; a
+  unit on 3 may charge, and charging spends all three. Answering an attack
+  fills nothing — only attacking does — and the meter is never lost, except
+  with the unit. ⚠️ **A unit that cannot charge has no meter**: with no row in
+  `CHARGE_THRESHOLD`, it neither fills nor shows one.
+- **A charge that executes takes the defender's tile**, as a successful charge
+  does today: a definite kill, with the drawbacks of the new position to
+  weigh.
 - **A charge is a sure execute** — no roll, no failure, no repel. It breaks the
   target when
 
   ```
   target health ≤ floor(CHARGE_THRESHOLD[charger][target] × facing
+                        × (1 − CHARGE_COVER_PER_STAR × stars)
                         × chargerHealth / MAX_HEALTH)
   ```
 
@@ -406,13 +499,33 @@ every turn and becomes a reward, and cavalry stops being a weak shooter.
   always gives the defender a better chance. **Linear in the charger's
   health.** ⚠️ Read "harder" as a smaller number: a head-on approach and a
   weaker charger both shrink the health the target must be at or below.
-- **On the board:** a unit's morale is shown on it, and Charge is offered only
-  at full morale with a target it would execute — `refuseCharge` decides, so
-  the panel and the lit tiles follow it.
-- ⬜ **Open: whether cover still makes an execute harder**, and the threshold
-  numbers, re-measured once a charge is a scarce reward rather than the main
-  tool — a player saves it for when it matters, so lower thresholds may be
-  enough.
+- **On the board: a small counter, 1 to 3**, beside the unit — the meter's
+  value, on units that can charge and on nothing else, and nothing at 0. A ring
+  of three parts around the health ring was the first idea and was set aside:
+  there is no room for it outside the health ring on infantry. Built as its own
+  small module and attached where the health ring is — made, removed on death,
+  synced — so it is one module and three lines in the renderer, and can be
+  thrown away whole. Charge is offered only on a full meter with a target it
+  would execute — `refuseCharge` decides, so the panel and the lit tiles follow
+  it.
+- **No charge forecast.** Charge is only offered where it executes, so there is
+  nothing left to forecast: the forecast's charge half goes, and with it the
+  panel's charge line. Picking the target and confirming it stay as they are,
+  so a stray click still cannot spend the meter — and a pinned charge target
+  shows the route's own quiet pane, *Click again to confirm* and nothing else,
+  so the two gestures read the same.
+- **First thresholds**, in the working tree and to be tried in play: cavalry
+  35 / 25 / 45 against infantry, cavalry and guns; infantry 25 / 15 / 35.
+- **Cover makes it harder by a share per star**: `CHARGE_COVER_PER_STAR`,
+  starting at 10%, so a wood takes 20% off what a charge can execute and a
+  mountain 40%. It scales with the threshold, so every charge stays possible and
+  only gets harder — a worn-down unit that falls back into a wood or onto a
+  hill is genuinely harder to finish. ⚠️ **The damage formula's cover was
+  considered and not taken**: it shrinks with the defender's health, so for the
+  worn-down units an execute reaches it takes almost nothing — 6% on a
+  mountain at 10 health, against 40% here. A flat amount per star, which eats
+  small thresholds to nothing, and a gate on deep ground, which adds a rule,
+  were set aside too.
 
 ⚠️ **What step 2 removes.** The odds curve and everything that shaped it —
 `CHARGE_HALF_LIFE`, `FRONTAL_FLOOR`, `FLOOR_PER_STAR`, the 1% floor — and the
@@ -420,24 +533,102 @@ repel with its overshoot: `CHARGE_REPEL`, both `REPEL_DIVISOR` ends,
 `repelDamage`. `FLANK_MULTIPLIER` and `REAR_MULTIPLIER` become one facing table.
 A charge draws nothing, so `ChargeRolls` and `isChargeRoll` go and `rollLuck`
 stops branching: every command draws the same pair, and a charge, like an end
-of turn, uses none of it. `chargeChance` becomes a yes-or-no question asked by
-`refuseCharge`, and `resolveCharge` stops reading rolls.
+of turn, uses none of it. `chargeChance` becomes `chargeReach` — the most
+health a charge would execute, or none — which `refuseCharge` compares with the
+target and the harness prints, so the formula has one home; `resolveCharge`
+needs neither the state nor rolls, `rollLuck` no longer needs the command, and
+the move's check of the roll's shape against the attack kind goes.
 
-⚠️ **What step 2 touches beyond the rule.** **Morale is new state**: a field on
+⚠️ **What step 2 touches beyond the rule.** **The meter is new state**: a field on
 every `Unit`, carried as an absolute value in the event that changes it — the
 attacker's side of `battleResolved` — so the fold stays exact. That changes
 `GameState`'s shape, so matches stored before it are abandoned, under the
-ruleset policy in *Known compromises*. The charge panel states the execute
-instead of a percentage; the bot prices a charge as a certain kill and has
-morale to spend; the charges harness prints executable health per target,
+ruleset policy in *Known compromises*; the dev database is cleared when it
+lands, decided. The charge forecast and its panel line go; the bot prices a
+charge as a certain kill and has a meter to spend; the charges harness prints executable health per target,
 facing and charger health; `charge.test.ts` is largely rewritten, and the
 charge tests in `move.test.ts`, the client's charge-forecast tests and the
 charge half of the rolls tests are restated; the architecture doc's *Charge*
 section is rewritten. The rolls column keeps rows that stored a `{ charge }`
 roll, and nothing reads them.
 
+⚠️ **Step 2, pre-checked against the code** in a scratch copy, the meter
+prototyped end to end and a log of shots, turns and a charge folded back to
+the stored state exactly:
+
+- **The meter's events.** `chargeMeter` is a required number on every `Unit`,
+  0 on a unit that cannot charge. It rides on the *attacker's* side of
+  `battleResolved` as an absolute value: a shot sets it to one more, up to 3,
+  for a unit that can charge, and leaves it otherwise; a charge sets it to 0.
+  The defender's side is unchanged, since answering fills nothing. A charge's
+  displacement `unitMoved` becomes unconditional — every charge executes.
+  `applyEvents` patches the attacker as it already patches health; a killed
+  unit's meter leaves with it, and ending a turn never touches it. Three places
+  build a unit and gain the field: `createMatchState`, the test fixture, and the
+  close-up's stub. Not called `charge`, which the rolls test's leak search would
+  match. The full-meter check is written as *equals full*, so an old match
+  without the field can never charge — the database is cleared regardless.
+- **Where a charge's side is read.** `validateMove` hands the refusals the unit
+  as it stood, the client and the bot the unit where it will stand; once facing
+  decides whether a charge executes, `refuseCharge` reads the side from the
+  path's last tile, or the server and the panel could disagree about head-on
+  and flank.
+- **Whole numbers.** The execute is worked in integers — facing in halves,
+  cover as tenths — so no case floors a point short; floating point already
+  lands one under at threshold 60, rear, three stars.
+- **The client.** The confirm pane renders today only when there is a
+  forecast, so a pinned charge would show nothing: it renders whenever a target
+  is pinned, with the attack's line only for an attack. The forecast becomes
+  attack-only. A small predicate, `hasChargeMeter(type)`, reads the threshold
+  table so a unit with no row shows no counter; it and `CHARGE_METER_FULL` join the
+  barrel, and `chargeChance` and `repelDamage` leave it.
+- **The counter, not a ring.** The health ring's outer edge is 0.29 of the
+  model, and infantry is drawn half again larger, so it already reaches 87% of
+  the way to the tile's edge — a ring outside it had a hairline of room, which
+  is why the counter replaced it. Six of the default army's eight units can
+  charge; at 0 they show nothing, so the map viewer's previews stay clean.
+- **The bot** prices a charge as a certain kill and loses `expectedRepel` and
+  the *broke through* count, now always every one. A charge ties a killing shot
+  in its scoring, so it seldom spends a full meter — 30 to 67 charges in 200
+  games a map — which measurements of step 2 should read with that in mind.
+- **Tests.** `charge.test.ts` is rewritten. In `move.test.ts` four charging
+  tests are restated with a full meter and four go (the two repel tests and
+  the two roll-shape checks); `rollLuck.test.ts` loses its charge block; the
+  rolls test's charge case expects the shot's pair; the fold test adds a shot
+  and a charge so it folds a meter; the client's charge-forecast tests go and
+  its charging tests take a full meter and a weak target.
+- **Docs.** The architecture doc's state model, *Content*, *Combat*, *Contact*
+  (*charge again*), rolls, forecast and rendering sections; the roadmap's *The
+  dials* and the kept literal for the charge roll's 0–99, both of which stop
+  being true; and the comments on the threshold table, `answered`, the attack
+  kind, `wouldCounter`'s repel rationale and the move's dispatch.
+
+⚠️ **Dead code, swept with every commit.** Each commit ends by checking for
+what it left unused — exports nothing outside reads, constants, helpers, test
+fixtures, and docs describing them — and removes it in the same commit. Known
+in advance: step 1 leaves the close-up's `Combatant.facing` and the two lines
+in the renderer that fill it, and replaces `wouldCounter`'s `from` with the
+attacker. Step 2 leaves everything in *What step 2 removes*, plus the bot's
+`expectedRepel` and *broke through* count, the forecast's charge member and its
+panel line, `rollLuck`'s command parameter and charge branch, the move's
+roll-shape checks, `resolveCharge`'s rolls and state, and `chargeChance` and
+`repelDamage` in the barrel. `dragoon.gltf` stays unused on purpose, for
+dragoons.
+
+⬜ **Boards of any size**, decided, landing on its own. The test that every map
+is 12×12 goes: it asserted a design choice, not a need — `createMatchState`
+already refuses a board too small for both deployment zones, and the zone test
+deploys through the engine, so it reads the right squares at any width.
+Checked with the 10×10 `tester` board: every other map test passes. The
+comments and docs that say *every board is 12×12* — the deployment zone's
+constant, the architecture doc's *Maps*, the roadmap's *a zone declared by the
+map*, a cross-reference in the unit catalog's tests, and the run-app skill's
+screen coordinates — say instead that the shipped boards are 12×12 and the
+zone must fit.
+
 ⚠️ **One step at a time.** Step 1 lands and is played on its own before step 2
-adds morale, so each can be judged without the other moving under it.
+adds the charge meter, so each can be judged without the other moving under
+it.
 
 ⚠️ **Step 2 settles two items below** when it lands: *the long shot*, since no
 odds remain, and the parked *charge's odds scaling with the charger's own
@@ -639,7 +830,9 @@ currently play the same absence of an animation.
 #### 11b — Animation and sound
 
 - **Model animation in the cutaway**, which the cutaway was built to branch on
-  and does not.
+  and does not. It wants a set of animated figures — a sabre cut that reads as
+  one, a volley that reads as one — and until then the close-up stages the
+  units still.
 - **Sound.** Nothing in the codebase makes any and there is no audio path at
   all — a new capability rather than a pass over an existing one.
 
