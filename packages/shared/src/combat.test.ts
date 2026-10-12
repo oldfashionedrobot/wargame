@@ -239,9 +239,9 @@ describe('wouldCounter', () => {
   // whole block would assert the rear rule while reading as a range-band check.
   // The rear rule has its own block below.
   const unitAt = (
-    unitTypeId: 'infantry' | 'cavalry' | 'artillery',
     col: number,
     row: number,
+    unitTypeId: 'infantry' | 'cavalry' | 'artillery' = 'infantry',
     facing: Facing = 'north',
   ) => makeState(8, [{ id: 'd', col, row, owner: 'red', unitTypeId, facing }]).units[0];
 
@@ -249,7 +249,7 @@ describe('wouldCounter', () => {
   // traversed, and cannot be swung round in time -- so this is not a band check
   // with a hole in it, it is the band never being consulted.
   it('never answers when the defender is slow', () => {
-    const gun = unitAt('artillery', 0, 0); // range 3..5, and slow
+    const gun = unitAt(0, 0, 'artillery'); // range 3..5, and slow
     for (const row of [1, 3, 5, 6]) expect(wouldCounter(gun, at(0, row))).toBe(false);
   });
 
@@ -257,33 +257,25 @@ describe('wouldCounter', () => {
   // consequence rather than a gap: artillery is the only unit with `min > 1`,
   // and it is slow, so a counter refused for being *too close* cannot happen.
   // `refuseAttack` still reads both ends, which is where that half is tested.
-  it('answers inside its own band and nowhere else', () => {
-    const foot = unitAt('infantry', 0, 0); // range 1..2
+  // ⚠️ Both bounds are inclusive -- the formula's band and the counter's share
+  // one predicate, so an exclusive bound here would be one everywhere.
+  it('answers inside its own band, both ends included, and nowhere else', () => {
+    const foot = unitAt(0, 0); // range 1..2
     expect(wouldCounter(foot, at(0, 1))).toBe(true);
     expect(wouldCounter(foot, at(0, 2))).toBe(true);
     expect(wouldCounter(foot, at(0, 3))).toBe(false); // outranged
   });
 
-  // ⚠️ Both bounds are inclusive, and this is the only place that is stated
-  // twice -- the formula's band and the counter's share one predicate, so an
-  // exclusive bound here would be an exclusive bound everywhere.
-  it('treats both ends of the band as inside it', () => {
-    const foot = unitAt('infantry', 0, 0); // range 1..2
-    expect(wouldCounter(foot, at(0, 1))).toBe(true);
-    expect(wouldCounter(foot, at(0, 2))).toBe(true);
-    expect(wouldCounter(foot, at(0, 3))).toBe(false);
-  });
-
   // ⚠️ A melee unit strikes back on its own turn, never in answer to a shot --
   // but a melee attack is still answered, by melee and ranged alike.
   it('lets a melee unit answer a melee attacker and never a ranged one', () => {
-    const horse = unitAt('cavalry', 0, 0);
+    const horse = unitAt(0, 0, 'cavalry');
     expect(wouldCounter(horse, at(0, 1))).toBe(false); // infantry, point-blank
     expect(wouldCounter(horse, at(0, 1, 'cavalry'))).toBe(true); // sabre on sabre
   });
 
   it('answers a melee attacker from a ranged defender', () => {
-    expect(wouldCounter(unitAt('infantry', 0, 0), at(0, 1, 'cavalry'))).toBe(true);
+    expect(wouldCounter(unitAt(0, 0), at(0, 1, 'cavalry'))).toBe(true);
   });
 
   it('never answers when it did not survive', () => {
@@ -295,7 +287,7 @@ describe('wouldCounter', () => {
 
   // Diagonals cost two, like every other distance in the game.
   it('measures in orthogonal steps', () => {
-    const foot = unitAt('infantry', 0, 0);
+    const foot = unitAt(0, 0);
     expect(wouldCounter(foot, at(1, 1))).toBe(true); // two steps
     expect(wouldCounter(foot, at(2, 1))).toBe(false); // three
   });
@@ -305,13 +297,13 @@ describe('wouldCounter', () => {
   // makes it a test of the rear rule rather than of the band.
   describe('an attack from behind', () => {
     it('is never answered, at any distance it could have answered from', () => {
-      const foot = unitAt('infantry', 0, 4, 'south');
+      const foot = unitAt(0, 4, 'infantry', 'south');
       expect(wouldCounter(foot, at(0, 5))).toBe(false); // adjacent, behind
       expect(wouldCounter(foot, at(0, 6))).toBe(false); // the far end of the band
     });
 
     it('still answers the same tiles from the front and the flanks', () => {
-      const foot = unitAt('infantry', 4, 4, 'south');
+      const foot = unitAt(4, 4, 'infantry', 'south');
       expect(wouldCounter(foot, at(4, 3))).toBe(true); // front
       expect(wouldCounter(foot, at(5, 4))).toBe(true); // flank
       expect(wouldCounter(foot, at(3, 4))).toBe(true); // the other flank
@@ -325,7 +317,7 @@ describe('wouldCounter', () => {
     it('changes nothing about a shot that was out of range anyway', () => {
       // ⚠️ Infantry, not a gun: artillery returns false on `slow` before the
       // band is consulted, so it cannot show that the band is what refused.
-      const foot = unitAt('infantry', 0, 4, 'south'); // range 1..2
+      const foot = unitAt(0, 4, 'infantry', 'south'); // range 1..2
       expect(wouldCounter(foot, at(0, 7))).toBe(false); // rear *and* outranged
       expect(wouldCounter(foot, at(0, 1))).toBe(false); // front, still outranged
     });

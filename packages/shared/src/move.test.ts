@@ -320,8 +320,9 @@ describe('resolveMove', () => {
       if (battle.type !== 'battleResolved') throw new Error('expected a battle');
       return battle;
     };
-    expect(fight('infantry').answered).toBe(false);
-    expect(fight('infantry').attacker.health).toBe(MAX_HEALTH);
+    const shot = fight('infantry');
+    expect(shot.answered).toBe(false);
+    expect(shot.attacker.health).toBe(MAX_HEALTH);
     expect(fight('cavalry').answered).toBe(true);
   });
 
