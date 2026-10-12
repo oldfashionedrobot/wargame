@@ -101,7 +101,7 @@ function candidates(state: GameState): Scored[] {
       );
 
       // A plain reposition. Scored well below any attack, so the bot only
-      // walks when it cannot shoot -- which is what makes it close at all.
+      // walks when it cannot attack -- which is what makes it close at all.
       out.push({
         command: {
           type: 'move',
@@ -115,7 +115,7 @@ function candidates(state: GameState): Scored[] {
       for (const target of enemies) {
         const facing = facingToward(stop, target.position, unit.facing);
 
-        // Shooting: expected damage, less what the reply is expected to cost.
+        // Attacking: expected damage, less what the reply is expected to cost.
         if (refuseAttack(state, moved, path, target.id) === null) {
           const mid = Math.floor(LUCK_MAX / 2);
           const battle = resolveBattle(state, moved, target, { attack: mid, counter: mid });

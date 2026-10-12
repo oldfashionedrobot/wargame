@@ -195,9 +195,9 @@ export function parseCommand(input: unknown): Command | null {
 
       // ⚠️ **Same rule, and the failure it prevents is worse here.** A dropped
       // `attackKind` does not merely lose an attack -- it turns a *charge* into
-      // a shot, which resolves, succeeds, and does something the player did not
-      // ask for. This parser whitelists fields, so anything added to `Command`
-      // and forgotten here is silently discarded.
+      // an attack, which resolves, succeeds, and does something the player did
+      // not ask for. This parser whitelists fields, so anything added to
+      // `Command` and forgotten here is silently discarded.
       if (attackKind !== undefined && attackKind !== 'attack' && attackKind !== 'charge') {
         return null;
       }

@@ -457,7 +457,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
 
         {menuOpen && (
           <div ref={menuRef} className="board-pane board-pane--menu">
-            {/* ⚠️ **Offered only when there is something to shoot**, following
+            {/* ⚠️ **Offered only when there is something to attack**, following
                 AW, which omits rather than greys. The cost is that "nothing is
                 in range" and "I misread the menu" look the same; the gain is a
                 menu with no dead rows, which is what makes it readable at a

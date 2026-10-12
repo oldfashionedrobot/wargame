@@ -16,9 +16,9 @@ click a destination to pin the route there and click it again to send the unit
 walking. Where it arrives a panel asks what it is doing — hold, attack or charge,
 listing only the ones it can actually do and skipping itself when that leaves
 one — after which a held unit is pointed somewhere, since facing decides whether
-a shot is answered. A unit beside an enemy is **in contact**: moving into
+an attack is answered. A unit beside an enemy is **in contact**: moving into
 contact ends the move, and a unit that starts its action in contact may move or
-attack, not both. A shot or a charge cuts away to the two units and plays the
+attack, not both. An attack or a charge cuts away to the two units and plays the
 exchange. Every unit acts once and the
 turn ends when the last of them has gone; when a player has nothing left, the
 match is over and says so.
@@ -275,8 +275,8 @@ default (`directionBetween`), the command carries the answer, and `parseCommand`
 refuses anything but one of the four. A single-element path plus a facing is a
 **turn in place**, and it spends the unit's turn like any other action.
 
-**A defender's facing is never changed by being shot at.** It answers from where
-it was left looking.
+**A defender's facing is never changed by being attacked.** It answers from
+where it was left looking.
 
 ## Content — `shared/src/data/`
 
@@ -290,12 +290,12 @@ nothing:** there is no direct/indirect flag, and `min: 3` describes a gun rather
 than naming a kind of one — which is what lets a single rule ask "is the
 attacker inside my own range" and get an answer for every unit.
 
-⚠️ **`slow` and `melee` are what no distance could express**, so they are
-flags. `slow` governs a *turn*: a slow unit may move or attack, never both, and
-never answers a shot — see *Slow* below. `melee` governs a *weapon*: a melee
-unit fights hand to hand, so it cannot answer a ranged attacker, though its own
-attack is answered as any other is. Cavalry is melee; infantry and guns are
-not.
+⚠️ **`slow` and `melee` are what no distance could express**, so they are flags.
+`slow` governs a *turn*: a slow unit may move or attack, never both, and never
+answers an attack — see *Slow* below. `melee` governs a *weapon*: a melee unit
+fights hand to hand, so it cannot answer a ranged attacker, though its own
+attack is answered as any other is. Cavalry is melee; infantry and guns are not.
+
 `movementType` is `foot`, `horse` or `wheels`, and picks a column out of the
 terrain cost table; `movementRange` is the budget that column is spent against.
 Also `MAX_HEALTH`, a constant beside the interface rather than a field on it:
@@ -574,9 +574,9 @@ that half is tested.
 slow: boolean   // artillery, and nothing else
 ```
 
-A slow unit may move **or** attack in a turn, never both, and never answers a
-shot. The two rules are enforced in different places, because they are asked at
-different moments:
+A slow unit may move **or** attack in a turn, never both, and never answers an
+attack. The two rules are enforced in different places, because they are asked
+at different moments:
 
 - `wouldCounter` returns false outright, before the band and before facing. A
   slow defender never answers, at any distance, from any side.
@@ -608,10 +608,10 @@ committed the same way on its next action.
 
 ### Facing
 
-**Facing does exactly two things**: a shot from directly behind goes
-unanswered, and it adjusts a charge's threshold. `computeDamage` cannot see facing at all, so
-there is no modifier on the *outgoing* shot — position limits the reply, it does
-not sharpen the blow.
+**Facing does exactly two things**: an attack from directly behind goes
+unanswered, and it adjusts a charge's threshold. `computeDamage` cannot see
+facing at all, so there is no modifier on the *outgoing* attack — position
+limits the reply, it does not sharpen the blow.
 
 A single-element path is a **turn in place** — legal at cost 0, and a real
 defensive action.
@@ -621,10 +621,10 @@ facing on a command with a target — the dominant axis, the row on an exact
 diagonal, as `facingToward` decides — so only a plain move chooses where it
 looks. A charge that breaks through rides on facing the same way.
 
-### A shot from behind is never answered
+### An attack from behind is never answered
 
-Where facing changes shooting. Position affects *whether* there is a reply,
-never what the attacking shot does. Front and flank both draw a full counter.
+Where facing changes an exchange. Position affects *whether* there is a reply,
+never what the attack itself does. Front and flank both draw a full counter.
 
 ⚠️ **The forecast shows the whole rule.** `attackForecast` reports *they counter
 attack* or nothing, and since the only thing facing can do to a reply is remove
@@ -645,11 +645,12 @@ attackSide(defenderFacing, defenderAt, attackerAt) → 'front' | 'flank' | 'rear
 ```
 
 ⚠️ **`attackerAt` is measured *from* the defender.** The direction from a unit
-to its attacker equalling its facing means it is *looking at* the shot, which is
-`front`. Read as the direction the shot travels, every case inverts and no
+to its attacker equalling its facing means it is *looking at* the attack, which
+is `front`. Read as the direction the attack travels, every case inverts and no
 individual result looks wrong. Diagonals inherit `facingToward`'s tie-break.
 
-⚠️ **Shooting reads only `rear`; `flank` is read by the charge alone.** There is no flanking damage bonus.
+⚠️ **The counter reads only `rear`; `flank` is read by the charge alone.**
+There is no flanking damage bonus.
 
 ⚠️ **The test fixture's `facing` is a rule input.** `makeState` defaults units
 to `south`, which decides whether a counter happens, so anything asserting one
@@ -1299,7 +1300,7 @@ degrees.** A shot's damage is a *range* — the roll is unknown. A charge shows
 its odds alone, which are **exact**: `chance` is a pure function of state with
 no roll in it. What a failed charge would cost is not previewed.
 
-**The charge overlay lights targets, not reach** — the opposite of the shooting
+**The charge overlay lights targets, not reach** — the opposite of the attack
 band, because a charge is contact-only and has no reach to show.
 
 `canCharge` is `canAttack`'s twin and asks `refuseCharge`, the rule the click will

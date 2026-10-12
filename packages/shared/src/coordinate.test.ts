@@ -122,11 +122,11 @@ describe('facingToward', () => {
 
 describe('attackSide', () => {
   // ⚠️ The sign, asserted from both ends deliberately. Read the arguments the
-  // other way round -- as the direction the *shot travels* rather than the
+  // other way round -- as the direction the *attack travels* rather than the
   // direction the defender looks to find it -- and front and rear swap with
   // nothing about either result looking wrong. One example would be satisfied
   // by the inverted reading; a matched pair cannot be.
-  it('is front when the defender is looking at the shot, rear when away', () => {
+  it('is front when the defender is looking at the attack, rear when away', () => {
     expect(attackSide('north', at(2, 2), at(2, 5))).toBe('front');
     expect(attackSide('north', at(2, 2), at(2, 0))).toBe('rear');
     expect(attackSide('south', at(2, 2), at(2, 0))).toBe('front');

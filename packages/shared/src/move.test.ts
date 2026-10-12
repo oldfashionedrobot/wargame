@@ -76,7 +76,7 @@ const lane = (enemyRow: number, unitTypeId: 'infantry' | 'artillery' = 'infantry
     { id: 'b1', col: 0, row: 0, unitTypeId },
     { id: 'friend', col: 7, row: 0 },
     // ⚠️ Stated, not inherited. `b1` attacks from the south, so a defender
-    // looking south is looking *at* it -- and a shot from directly behind is
+    // looking south is looking *at* it -- and an attack from directly behind is
     // never answered, so the fixture's own default deciding that would make
     // every counter below depend on something it does not mention.
     { id: 'r1', col: 0, row: enemyRow, owner: 'red', facing: 'south' },

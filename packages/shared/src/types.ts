@@ -174,9 +174,9 @@ export interface BattleParticipant {
 export interface BattleResolvedEvent {
   type: 'battleResolved';
   /**
-   * ⚠️ Carried because the client never sees the `Action`. A shot and a charge
-   * end in the same arithmetic and look nothing alike, and the kind lives only
-   * in the command.
+   * ⚠️ Carried because the client never sees the `Action`. An attack and a
+   * charge end in the same arithmetic and look nothing alike, and the kind
+   * lives only in the command.
    *
    * ⚠️ **The same type the command uses**, deliberately, so one concept has one
    * vocabulary: the command, the event and the panel all say `attack` or

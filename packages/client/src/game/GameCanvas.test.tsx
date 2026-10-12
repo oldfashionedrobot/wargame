@@ -298,8 +298,9 @@ describe('GameCanvas', () => {
   });
 
   // ⚠️ The other half of omitting: the row appears the moment there is anything
-  // to shoot. Both sides are asserted because a menu that never offers Fire and
-  // a menu that always does are equally wrong and look the same from one test.
+  // to attack. Both sides are asserted because a menu that never offers Attack
+  // and a menu that always does are equally wrong and look the same from one
+  // test.
   it('offers the rows the rules allow and omits the rest', async () => {
     const contested = makeState(5, [
       { id: 'b1', col: 1, row: 1 },
@@ -332,7 +333,7 @@ describe('GameCanvas', () => {
   });
 
   // ⚠️ **Exactly one overlay is lit, and the mode is what guarantees it.** With
-  // three attack-ish sets now -- the shooting band, the charge targets, the
+  // three attack-ish sets now -- the attack band, the charge targets, the
   // facing tiles -- "they never coincide" stops being obvious by inspection, and
   // a second lit set would read as a board offering two questions at once.
   it('lights one tile set per mode and clears the others', async () => {
@@ -450,7 +451,7 @@ describe('GameCanvas', () => {
       expect(screen.getByText('100')).toBeTruthy();
     });
 
-    it('names the kind, so a charge does not read as a shot', async () => {
+    it('names the kind, so a charge does not read as an attack', async () => {
       await renderCanvas(fakeServer());
       await raise({ ...scene, kind: 'charge' });
       expect(screen.getByText('charge')).toBeTruthy();

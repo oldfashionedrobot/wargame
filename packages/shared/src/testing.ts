@@ -18,11 +18,11 @@ export interface UnitSpec {
   unitTypeId?: UnitTypeId;
   /** Defaults to full. A wounded unit is what most combat cases are about. */
   health?: number;
-  /** ⚠️ Defaults to `south`, which is a *rule* input and not decoration: a shot
-   *  from directly behind is never answered, so where a test puts an attacker
-   *  relative to this decides whether a counter happens at all. Anything
-   *  asserting a counter should say which way the defender looks rather than
-   *  inherit it. */
+  /** ⚠️ Defaults to `south`, which is a *rule* input and not decoration: an
+   *  attack from directly behind is never answered, so where a test puts an
+   *  attacker relative to this decides whether a counter happens at all.
+   *  Anything asserting a counter should say which way the defender looks
+   *  rather than inherit it. */
   facing?: Facing;
   hasActed?: boolean;
 }

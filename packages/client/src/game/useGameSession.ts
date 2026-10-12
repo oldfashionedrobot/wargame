@@ -333,7 +333,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
           // A second click on the pinned target is what fires it -- the same
           // gesture a route uses, read before `readAimClick` for the same
           // reason: re-pinning the target onto itself is a wasted render and no
-          // shot. Dispatch order, exactly like the route's.
+          // attack. Dispatch order, exactly like the route's.
           if (
             isTargetPinned(selection) &&
             coordinatesEqual(coordinate, selection.step.target.position)
@@ -408,8 +408,9 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
    * looking at them.
    *
    * ⚠️ Both face the target, which is why Hold has to exist here at all -- the
-   * only tile that would face an adjacent enemy is the one they are standing on,
-   * so without a button there is no way to turn toward someone without shooting.
+   * only tile that would face an adjacent enemy is the one they are standing
+   * on, so without a button there is no way to turn toward someone without
+   * attacking.
    */
   const chooseAction = useCallback(
     (kind: ActionKind): void => {

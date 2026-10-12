@@ -293,7 +293,7 @@ const allActionsListed: NoActionForgotten = true;
 void allActionsListed;
 
 /**
- * Is there anything this unit could shoot from where it stopped?
+ * Is there anything this unit could attack from where it stopped?
  *
  * ⚠️ **Asked with `refuseAttack`, the server's own rule**, rather than by
  * counting what stands in `tilesInRange`. The band is *reach* and says nothing
@@ -345,7 +345,7 @@ function anyTarget(state: GameState, selection: DestinationChosen, refuse: Refus
  * never offered with nothing lit.
  *
  * ⚠️ **Targets, not reach — the opposite of the attack band, and deliberately.**
- * Red means *in range* because reach is the information a shot is planned
+ * Red means *in range* because reach is the information an attack is planned
  * against; a charge has no reach to show, being contact-only, so lighting all
  * four neighbours would light tiles that do nothing. Here the lit set *is* the
  * legal set.
@@ -597,7 +597,7 @@ export type Forecast =
       /** Damage at the worst roll, and at the best. The true outcome is one of them. */
       low: number;
       high: number;
-      /** Whether the target can shoot back from where you are standing. */
+      /** Whether the target can strike back from where you are standing. */
       answered: boolean;
     }
   | {
@@ -676,9 +676,9 @@ export function moveCommandFor(
   facing: Facing,
   /**
    * The attack, if there is one. ⚠️ **A pair rather than two optional
-   * parameters**, because they are only ever meaningful together: a kind with no
-   * target is refused by the server, and a target with no kind is a shot. One
-   * argument makes the invalid halves unrepresentable at the call site.
+   * parameters**, because they are only ever meaningful together: a kind with
+   * no target is refused by the server, and a target with no kind is an attack.
+   * One argument makes the invalid halves unrepresentable at the call site.
    */
   attack?: { targetUnitId: string; attackKind: AttackKind },
 ): Command {

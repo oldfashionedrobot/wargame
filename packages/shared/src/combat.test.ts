@@ -234,10 +234,10 @@ describe('wouldCounter', () => {
   const at = (col: number, row: number, unitTypeId: 'infantry' | 'cavalry' = 'infantry') =>
     makeState(8, [{ id: 'a', col, row, unitTypeId }]).units[0];
   // ⚠️ Facing `north` on purpose, because these attackers are all placed to the
-  // north: a shot from directly behind is never answered, so a defender left on
-  // the fixture's `south` default would refuse every one of them and this whole
-  // block would assert the rear rule while reading as a range-band check. The
-  // rear rule has its own block below.
+  // north: an attack from directly behind is never answered, so a defender left
+  // on the fixture's `south` default would refuse every one of them and this
+  // whole block would assert the rear rule while reading as a range-band check.
+  // The rear rule has its own block below.
   const unitAt = (
     unitTypeId: 'infantry' | 'cavalry' | 'artillery',
     col: number,
@@ -300,10 +300,10 @@ describe('wouldCounter', () => {
     expect(wouldCounter(foot, at(2, 1))).toBe(false); // three
   });
 
-  // ⚠️ The one place facing changes shooting. Every case here is inside the
+  // ⚠️ The one place facing changes an exchange. Every case here is inside the
   // defender's range and would be answered but for the direction, which is what
   // makes it a test of the rear rule rather than of the band.
-  describe('a shot from behind', () => {
+  describe('an attack from behind', () => {
     it('is never answered, at any distance it could have answered from', () => {
       const foot = unitAt('infantry', 0, 4, 'south');
       expect(wouldCounter(foot, at(0, 5))).toBe(false); // adjacent, behind

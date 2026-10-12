@@ -150,7 +150,7 @@ const FACING_HEIGHT = 0.02;
 const ATTACK_COLOR = new Color3(0.95, 0.2, 0.24);
 const ATTACK_ALPHA = 0.8;
 const ATTACK_HEIGHT = 0.016;
-// ⚠️ **A deeper red than the shooting band, not a different hue.** A charge is
+// ⚠️ **A deeper red than the attack band, not a different hue.** A charge is
 // an attack, so it should read as one at a glance; what it must not do is read
 // as *the same* attack, because the two are never offered together and a player
 // arriving at a lit board needs to know which question is being asked. Same
@@ -218,7 +218,7 @@ export interface GameRenderer {
    * reading off the signature. Now it cannot be broken.
    *
    * ⚠️ **Named for what it paints, not for what the player is doing.** `attack`
-   * is the shooting *band* -- red means in range -- while `charge` is
+   * is the attack *band* -- red means in range -- while `charge` is
    * *targets*, since a charge is contact-only and has no reach to show; and
    * `facing` is the four a unit may turn to look at. Which tiles those are is
    * decided in `selection.ts`, where the board is. Keeping the two vocabularies

@@ -21,11 +21,11 @@ describe('getUnitType', () => {
     }
   });
 
-  it('gives every unit type a coherent shooting range', () => {
+  it('gives every unit type a coherent attack range', () => {
     for (const { range } of Object.values(UNIT_TYPES)) {
       expect(Number.isInteger(range.min)).toBe(true);
       expect(Number.isInteger(range.max)).toBe(true);
-      // A minimum below 1 would mean shooting your own tile; a max below the
+      // A minimum below 1 would mean attacking your own tile; a max below the
       // min is a band nothing can ever be inside, so the unit could never fire
       // and could never counter -- both silent, since no rule reads a category.
       expect(range.min).toBeGreaterThanOrEqual(1);

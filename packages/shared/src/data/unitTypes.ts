@@ -27,7 +27,7 @@ export interface UnitType {
   // tile entered via the (movementType, tileType) table rather than 1-per-tile.
   movementRange: number;
   /**
-   * How far this unit can shoot, inclusive at both ends, in tiles.
+   * How far this unit can attack, inclusive at both ends, in tiles.
    *
    * ⚠️ **Two numbers, and *almost* no category beside them.** There is no
    * direct/indirect flag: `min: 3` *describes* a gun rather than classifying it,
@@ -35,10 +35,10 @@ export interface UnitType {
    * -- including how far a counter reaches, which is "is the attacker inside my
    * own range" for every unit `slow` does not speak for first.
    *
-   * ⚠️ **What did not fall out is `slow` and `melee`.** No number makes "may not
-   * move and shoot in one turn" or "cannot answer a shot" emerge: one is a rule
-   * about a *turn*, the other about a *weapon*, and a sabre and a carbine can
-   * both reach one tile. See both below.
+   * ⚠️ **What did not fall out is `slow` and `melee`.** No number makes "may
+   * not move and attack in one turn" or "cannot answer a shot" emerge: one is a
+   * rule about a *turn*, the other about a *weapon*, and a sabre and a carbine
+   * can both reach one tile. See both below.
    */
   range: { min: number; max: number };
 
@@ -48,7 +48,7 @@ export interface UnitType {
    * ⚠️ **One physical fact with two consequences, which is why it is one flag
    * and not two.** A piece that must be unlimbered, laid and traversed cannot
    * fire in the same turn it repositions, and cannot snap off a reply to
-   * something that shot at it. Both rules are the same sentence about the gun.
+   * something that attacked it. Both rules are the same sentence about the gun.
    * Bundling unrelated behaviours behind one boolean would be the category this
    * catalog refuses; bundling consequences of one cause is what a name is for.
    *

@@ -136,7 +136,7 @@ export function createMatchState(
         // ⚠️ Toward the enemy, which is the opposite of what this used to say.
         // Row index increases north and seat 0 starts at row 0, so giving it
         // `south` pointed both armies off their own edge. A rule reads this: a
-        // shot from directly behind goes unanswered, so the sign being wrong
+        // attack from directly behind goes unanswered, so the sign being wrong
         // would hand every opening counter to whoever moved second.
         facing: seat === 0 ? 'north' : 'south',
         unitTypeId: placement.unitTypeId,

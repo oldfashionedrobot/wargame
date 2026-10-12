@@ -454,9 +454,9 @@ describe('the panel, and what it is told', () => {
 
   // b1 infantry at (1,1); an enemy two north, which infantry can reach.
   // ⚠️ The enemy's facing is stated rather than inherited: b1 attacks from the
-  // south, and a shot from directly behind is never answered, so leaving it to
-  // the fixture default would make "they counter attack" depend on something these
-  // tests do not mention.
+  // south, and an attack from directly behind is never answered, so leaving it
+  // to the fixture default would make "they counter attack" depend on something
+  // these tests do not mention.
   const field = () =>
     makeState(7, [
       { id: 'b1', col: 1, row: 1 },
@@ -623,7 +623,7 @@ describe('charging, which shares every gesture with attacking', () => {
       { id: 'distant', col: 1, row: 3, owner: 'red' },
     ]);
 
-  // ⚠️ **Targets, not reach — the opposite of the shooting band, deliberately.**
+  // ⚠️ **Targets, not reach — the opposite of the attack band, deliberately.**
   // Red means *in range* for a shot because reach is what a shot is planned
   // against. A charge is contact-only, so there is no reach to show and a lit
   // tile that could not be charged would promise nothing.
@@ -654,7 +654,7 @@ describe('charging, which shares every gesture with attacking', () => {
   // **cavalry's range is `{1,1}`**, so for a horseman Attack and Charge light the
   // identical tile and the distinction cannot be seen at all. Infantry reaches
   // two and charges at one.
-  it('refuses an enemy the shooting band would have accepted', () => {
+  it('refuses an enemy the attack band would have accepted', () => {
     const state = makeState(7, [
       { id: 'b1', col: 1, row: 1 },
       { id: 'distant', col: 1, row: 3, owner: 'red' },

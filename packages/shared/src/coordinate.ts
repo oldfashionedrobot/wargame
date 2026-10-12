@@ -16,7 +16,7 @@ export function coordinateKey(coordinate: Coordinate): string {
  * ⚠️ **Not Euclidean, and not Chebyshev.** Movement is orthogonal, so two tiles
  * diagonally apart are *two* steps away, and a range band that counted them as
  * one would let a gun reach corners its own movement could not. Every rule that
- * measures distance measures it the same way: a shooting range now, whether a
+ * measures distance measures it the same way: an attack's range now, whether a
  * defender can answer at 9g, and what a panel may target at 9h.
  *
  * This is deliberately the **only** distance in the codebase. Written inline at
@@ -121,12 +121,12 @@ function opposite(facing: Facing): Facing {
 }
 
 /**
- * Where a shot is coming from, relative to the way its target is looking.
+ * Where an attack is coming from, relative to the way its target is looking.
  *
  * ⚠️ **`attackerAt` is measured *from* the defender, not toward it.** The
  * direction from a unit to its attacker equalling its facing means it is
- * *looking at* the shot, which is `front`. Read the other way round every case
- * inverts and nothing about the result looks wrong -- the same sign error
+ * *looking at* the attack, which is `front`. Read the other way round every
+ * case inverts and nothing about the result looks wrong -- the same sign error
  * `maps.test.ts` guards for deployment, and the reason both ends are asserted
  * rather than just one.
  *

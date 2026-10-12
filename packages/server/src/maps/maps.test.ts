@@ -99,7 +99,7 @@ describe('every map', () => {
       });
 
       it('points each army at the other rather than off its own edge', () => {
-        // ⚠️ A rule reads this now: a shot from directly behind is never
+        // ⚠️ A rule reads this now: an attack from directly behind is never
         // answered, so deployment facing the wrong way would hand every opening
         // exchange's counter to whoever moved second. Row index increases north,
         // and that is the sign worth stating -- it is the one thing here that

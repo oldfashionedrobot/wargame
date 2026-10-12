@@ -164,7 +164,7 @@ function refuseMovingAttack(state: GameState, attacker: Unit, path: Coordinate[]
 }
 
 /**
- * The checks every attack opens with, shot or charge: the target exists, is an
+ * The checks every attack and charge opens with: the target exists, is an
  * enemy -- which also refuses a unit itself -- and the turn allows attacking.
  * Returns the target, or why not.
  */
@@ -245,7 +245,7 @@ function outsideRange(unit: Unit, from: Coordinate, target: Coordinate): 'near' 
 }
 
 /**
- * Every tile a unit standing at `from` could shoot at, whether or not anything
+ * Every tile a unit standing at `from` could attack, whether or not anything
  * is there.
  *
  * ⚠️ **Reach, not targets.** The overlay draws this whole band, because a gun's
