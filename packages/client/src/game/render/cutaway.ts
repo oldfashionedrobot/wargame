@@ -55,9 +55,16 @@ const READOUT_SHARE = 0.25;
 /**
  * ⚠️ Shallower than the board's camera, and deliberately. The board is read
  * from above because it is a map; a combatant is read from nearer eye level
- * because it is a figure.
+ * because it is a figure -- though high enough to look down onto the top of
+ * the tile it stands on.
  */
-const STAGE_BETA = Math.PI / 2.6;
+const STAGE_BETA = Math.PI / 3;
+
+/**
+ * How far behind the staged tile the backdrop stands, along the line of sight.
+ * At the tile's centre it cut the tile's back edge off.
+ */
+const BACKDROP_DEPTH = 10;
 
 /** Dark enough to read as "the board is not what you are looking at". */
 const BACKDROP = new Color3(0.09, 0.1, 0.14);
@@ -69,7 +76,6 @@ const BAND_HEIGHT = 0.4;
 export interface Combatant {
   unitTypeId: Unit['unitTypeId'];
   color: PlayerColor;
-  facing: Facing;
   /** The cell this unit is standing on, taken from the board's own composition. */
   cell: TerrainCell;
   /** How high it stands there -- the board's `surfaceAt`, which is the only answer. */
@@ -111,16 +117,18 @@ export function createCutaway(
   terrainModels: TerrainModels,
   boardCamera: Camera,
 ): Cutaway {
+  // ⚠️ **Facing each other, not as they stand on the board.** Each camera looks
+  // back along -z, so screen-right is *west*: the attacker, on the left, faces
+  // west, and the defender, on the right, faces east.
   const views = [
-    stage(STAGE_A, new Viewport(0, BAND_BOTTOM, 0.5, BAND_HEIGHT)),
-    stage(STAGE_B, new Viewport(0.5, BAND_BOTTOM, 0.5, BAND_HEIGHT)),
+    stage(STAGE_A, new Viewport(0, BAND_BOTTOM, 0.5, BAND_HEIGHT), 'west'),
+    stage(STAGE_B, new Viewport(0.5, BAND_BOTTOM, 0.5, BAND_HEIGHT), 'east'),
   ];
 
-  function stage(at: Vector3, viewport: Viewport) {
+  function stage(at: Vector3, viewport: Viewport, facing: Facing) {
     const camera = new ArcRotateCamera(
       `cutaway-${at.x}`,
-      // Looking down the +z axis at the figure's front, which is where
-      // `setUnitFacing`'s north points.
+      // From +z, where `setUnitFacing`'s north points.
       Math.PI / 2,
       STAGE_BETA,
       20,
@@ -149,7 +157,7 @@ export function createCutaway(
     backdrop.setEnabled(false);
     // ⚠️ No `attachControl`. These are not cameras anyone drives, and attaching
     // would put two controllers on one canvas.
-    return { at, camera, backdrop, built: [] as TransformNode[] };
+    return { at, facing, camera, backdrop, built: [] as TransformNode[] };
   }
 
   const clearBuilt = (): void => {
@@ -177,7 +185,7 @@ export function createCutaway(
     const stub: Unit = {
       id: `cutaway-${view.at.x}`,
       position: { col: 0, row: 0 },
-      facing: who.facing,
+      facing: view.facing,
       unitTypeId: who.unitTypeId,
       owner: 'cutaway',
       health: 100,
@@ -195,32 +203,50 @@ export function createCutaway(
    * its tile, so its centre is neither the tile's height nor a guess about the
    * model -- and the two unit types are different heights anyway. Asking the
    * hierarchy means a new model or a changed scale needs nothing here.
+   *
+   * ⚠️ **And measured in the camera's view, not in world height**, because a
+   * tilted camera sees the tile's depth as well as its height. The box's corners
+   * are projected, so the tilt is free to change with nothing here following it.
    */
   const frame = (view: (typeof views)[number]): void => {
-    let min = Number.POSITIVE_INFINITY;
-    let max = Number.NEGATIVE_INFINITY;
+    const min = new Vector3(Infinity, Infinity, Infinity);
+    const max = new Vector3(-Infinity, -Infinity, -Infinity);
     for (const node of view.built) {
       const bounds = node.getHierarchyBoundingVectors();
-      min = Math.min(min, bounds.min.y);
-      max = Math.max(max, bounds.max.y);
+      min.minimizeInPlace(bounds.min);
+      max.maximizeInPlace(bounds.max);
     }
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return;
+    if (!Number.isFinite(min.y) || !Number.isFinite(max.y)) return;
 
-    // The figure occupies the top `1 - READOUT_SHARE` of the view, so it spans
-    // `1.5 × extent` of the viewport's full `2 × extent` -- which fixes both the
-    // extent and how far the target sits below the figure's own centre.
-    const height = Math.max(max - min, 0.1);
-    const extent = ((height / (2 - READOUT_SHARE * 2)) * (1 + STAGE_MARGIN)) / 1;
-    const centre = (min + max) / 2;
-    view.camera.setTarget(new Vector3(view.at.x, centre - extent * READOUT_SHARE, view.at.z));
-    view.backdrop.position.copyFrom(view.camera.getTarget());
+    // ⚠️ Keeping the stage's angles. Without the last flag, `setTarget` rebuilds
+    // them from wherever the camera stood for the previous battle.
+    view.camera.setTarget(Vector3.Center(min, max), false, false, true);
+    const toView = view.camera.getViewMatrix(true);
+    let low = Infinity;
+    let high = -Infinity;
+    for (const x of [min.x, max.x]) {
+      for (const y of [min.y, max.y]) {
+        for (const z of [min.z, max.z]) {
+          const up = Vector3.TransformCoordinates(new Vector3(x, y, z), toView).y;
+          low = Math.min(low, up);
+          high = Math.max(high, up);
+        }
+      }
+    }
 
+    // The box is centred on the target and fills the top `1 - READOUT_SHARE` of
+    // the view; the rest of the view hangs below it, for the readout.
+    const half = (Math.max(high - low, 0.1) * (1 + STAGE_MARGIN)) / 2;
+    const span = (2 * half) / (1 - READOUT_SHARE);
     const engine = scene.getEngine();
     const aspect = (engine.getRenderWidth() * 0.5) / (engine.getRenderHeight() * BAND_HEIGHT);
-    view.camera.orthoTop = extent;
-    view.camera.orthoBottom = -extent;
-    view.camera.orthoLeft = -extent * aspect;
-    view.camera.orthoRight = extent * aspect;
+    view.camera.orthoTop = half;
+    view.camera.orthoBottom = half - span;
+    view.camera.orthoLeft = (-span * aspect) / 2;
+    view.camera.orthoRight = (span * aspect) / 2;
+
+    const sight = view.camera.target.subtract(view.camera.position).normalize();
+    view.backdrop.position.copyFrom(view.camera.target.add(sight.scale(BACKDROP_DEPTH)));
   };
 
   return {

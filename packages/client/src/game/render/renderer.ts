@@ -739,14 +739,12 @@ export async function createGameRenderer(
       {
         unitTypeId: attacker.unitTypeId,
         color: attacker.color,
-        facing: attackerUnit.facing,
         cell: cells[attackerUnit.position.row][attackerUnit.position.col],
         surface: surfaceAt(attackerUnit.position),
       },
       {
         unitTypeId: defender.unitTypeId,
         color: defender.color,
-        facing: defenderUnit.facing,
         cell: cells[defenderUnit.position.row][defenderUnit.position.col],
         surface: surfaceAt(defenderUnit.position),
       },

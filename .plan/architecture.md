@@ -870,13 +870,27 @@ unit is in forest*, so it needs no neighbours and no road continuation.
 smaller argument — props included, so a wood arrives with its own trees. The cell
 is the board's own, taken from `composeTerrain`'s result.
 
+⚠️ **Staged facing each other, not as they stand on the board.** The attacker,
+on the left, faces right and the defender faces left. Each camera looks back
+along −z, so screen-right is *west*: the views carry `west` and `east`, and a
+`Combatant` carries no facing at all.
+
+**The camera looks down at 30°**, shallower than the board's but high enough to
+show the top of the tile a unit stands on. It keeps that angle across battles:
+retargeting passes `setTarget`'s keep-the-angles flag, since by default it
+rebuilds them from wherever the camera last stood.
+
 **The figure is framed from its own bounding box**, via
 `getHierarchyBoundingVectors`, so it survives a new model or a changed
-`PIECE_SCALE`. The readout's strip is reserved in the **camera** rather than by
-layout.
+`PIECE_SCALE`. ⚠️ The box's corners are projected into the camera's view before
+they are measured, because a tilted camera sees the tile's depth as well as its
+height — so the tilt can change with nothing in the framing following it. The
+readout's strip is reserved in the **camera** rather than by layout: the box is
+centred on the target and the ortho bounds hang off-centre below it.
 
 **A backdrop plane**, in the scene rather than in DOM, because the models are
-drawn by Babylon and anything behind them has to be too.
+drawn by Babylon and anything behind them has to be too. It stands well behind
+the tile along the line of sight, so it never cuts into the tile.
 
 **Built on show and torn down on hide.** The models come from already-loaded
 containers, so instantiating two is a call rather than a load.

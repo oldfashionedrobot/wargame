@@ -388,25 +388,12 @@ every turn and becomes a reward, and cavalry stops being a weak shooter.
   *Armies*, and to the second mover under *After the combat pass*.
 - ✅ **Attack, not fire** — landed: the attack kind is `'attack'` on the wire,
   in the event log and on screen. What it does is in the architecture doc.
-- **Presentation:** ✅ the cavalry model now carries a sabre, and the carbine
-  rider is kept as `dragoon.gltf`. ⬜ The battle close-up stages the two units
-  facing each other — the attacker, on the left, turned to face right, and the
-  defender to face left, rather than each keeping its board facing — and its
-  camera rises a little, from about 21° above the horizon to about 30°, so it
-  looks down onto the top of each unit's tile. ⚠️ **Pre-checked:** each stage
-  camera looks along −z, so screen-right is *west*: the attacker is staged
-  facing west and the defender east, fixed per view, and the close-up stops
-  carrying each unit's facing. The tilt is not one number: framing sizes a view
-  from world height alone, but a tilted tile shows its depth too, and a gun's
-  tile already runs under the readout today. Framing measures the staged
-  bounding box in the camera's view instead, and places it with the camera's
-  screen offset, so no number has to change with the tilt; and the backdrop,
-  which today sits inside the staged tile and cuts its back edge, moves back
-  along the line of sight. Prototyped: every unit spans 35–90% of its view at
-  either angle. A browser confirms the facing, the trees and peaks unclipped,
-  the tile's front edge clear of the readout, and the backdrop behind it all. A blow that *looks* like a blow
-  waits on animated figures, in *Animation and sound*. ⬜ The sabre a little
-  wider and a little taller, to read at board scale.
+- **Presentation:** ✅ the cavalry model carries a sabre, and the carbine rider
+  is kept as `dragoon.gltf`. ✅ The battle close-up stages the two units facing
+  each other and looks down at about 30° onto each unit's tile — landed; what it
+  does is in the architecture doc. A blow that *looks* like a blow waits on
+  animated figures, in *Animation and sound*. ⬜ The sabre a little wider and a
+  little taller, to read at board scale.
 - ⬜ Later: **dragoons**, horse with carbines — the flag is what makes room for
   them, and their model is already in `public/models/`.
 
