@@ -1,9 +1,16 @@
+import { generalOf } from './queries';
 import type { GameState, PlayerId } from './types';
 
 /**
- * Who has won, or `null` while more than one player is still standing.
+ * Who has won with this action, or `null` while more than one player is still
+ * standing -- read from the state before the action and the state after it.
  *
- * Elimination is the only condition so far: a player with no units has lost.
+ * Two ways to lose: **a player with no units**, and **a player whose general
+ * fell**. The second needs both states, because a board without a general says
+ * nothing on its own: the general may have fallen, or the army may never have
+ * fielded one -- and every stored match and test board is the second kind, so
+ * plays by elimination alone. A general that fell in an earlier action ended
+ * the match then, so only this action's can matter.
  *
  * ⚠️ **Sole survivor, never "the one who isn't the loser".** With two players
  * those are the same answer and `players.find(p => p.id !== loser)` is the
@@ -13,16 +20,19 @@ import type { GameState, PlayerId } from './types';
  * `gameEnded` rather than a rework of it.
  *
  * ⚠️ **An empty board is unreachable, so it answers `null` rather than
- * guessing.** At most one player can be eliminated per resolution, and that
- * falls out of code elsewhere: `wouldCounter` is false at zero health, so a
- * defender that dies never ripostes, so a single battle kills exactly one unit.
- * If that ever stops being true this returns "nobody has won yet", which is the
- * safe wrong answer -- the game continues and the next resolution asks again --
- * rather than crowning whoever `players[0]` happens to be.
+ * guessing.** At most one player can lose per resolution, and that falls out of
+ * code elsewhere: `wouldCounter` is false at zero health, so a defender that
+ * dies never ripostes, so a single battle kills exactly one unit -- one army's
+ * last, or one general. If that ever stops being true this returns "nobody has
+ * won yet", which is the safe wrong answer -- the game continues and the next
+ * resolution asks again -- rather than crowning whoever `players[0]` happens to
+ * be.
  */
-export function soleSurvivor(state: GameState): PlayerId | null {
-  const standing = state.players.filter((player) =>
-    state.units.some((unit) => unit.owner === player.id),
+export function victor(before: GameState, after: GameState): PlayerId | null {
+  const standing = after.players.filter(
+    (player) =>
+      after.units.some((unit) => unit.owner === player.id) &&
+      !(generalOf(before, player.id) && !generalOf(after, player.id)),
   );
   return standing.length === 1 ? standing[0].id : null;
 }

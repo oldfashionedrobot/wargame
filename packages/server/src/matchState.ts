@@ -62,7 +62,7 @@ export const DEPLOYMENT_ZONE: DeploymentZone = { width: 10, depth: 2 };
  * what catches it, and it now checks the *zone* rather than this army -- which
  * is the stronger property, because the zone is what a player may fill.
  */
-const ARMY: string[] = ['caac......', 'iiii......'];
+const ARMY: string[] = ['..cagac...', '...iiii...'];
 
 /** One player, and the army they field. */
 export interface Deployment {

@@ -23,7 +23,7 @@ import type { UnitTypeId } from '../src/data/unitTypes';
 import { makeState } from '../src/testing';
 import type { Facing } from '../src/types';
 
-const TYPES: UnitTypeId[] = ['infantry', 'cavalry', 'artillery'];
+const TYPES: UnitTypeId[] = ['infantry', 'cavalry', 'artillery', 'general'];
 const CHARGERS = [100, 70, 40];
 const GROUNDS = [
   ['open', '.'],

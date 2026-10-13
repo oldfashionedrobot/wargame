@@ -57,6 +57,10 @@ function rng(seed: number): () => number {
   };
 }
 
+/** Scored as a win: taking the enemy's general ends the match. */
+const GENERAL_KILL = 1000;
+const isGeneral = (unit: Unit) => unit.unitTypeId === 'general';
+
 /** A candidate command and what the bot thinks it is worth. */
 interface Scored {
   command: Command;
@@ -94,6 +98,8 @@ function candidates(state: GameState): Scored[] {
 
       // A plain reposition. Scored well below any attack, so the bot only
       // walks when it cannot attack -- which is what makes it close at all.
+      // ⚠️ Its own general walks the other way: kept back, like a king.
+      const distance = tileDistance(stop, nearest.position) * 0.01;
       out.push({
         command: {
           type: 'move',
@@ -101,7 +107,7 @@ function candidates(state: GameState): Scored[] {
           path,
           facing: facingToward(stop, nearest.position, unit.facing),
         },
-        score: -tileDistance(stop, nearest.position) * 0.01,
+        score: isGeneral(unit) ? distance : -distance,
       });
 
       for (const target of enemies) {
@@ -113,6 +119,9 @@ function candidates(state: GameState): Scored[] {
           const battle = resolveBattle(state, moved, target, { attack: mid, counter: mid });
           const dealt = target.health - battle.defender.health;
           const riposte = moved.health - battle.attacker.health;
+          const kills = battle.defender.health <= 0;
+          // Its own general fights only to finish something.
+          if (isGeneral(unit) && !kills) continue;
           out.push({
             command: {
               type: 'move',
@@ -122,7 +131,7 @@ function candidates(state: GameState): Scored[] {
               targetUnitId: target.id,
               attackKind: 'attack',
             },
-            score: dealt + (battle.defender.health <= 0 ? 25 : 0) - riposte,
+            score: dealt + (kills ? 25 + (isGeneral(target) ? GENERAL_KILL : 0) : 0) - riposte,
           });
         }
 
@@ -131,8 +140,10 @@ function candidates(state: GameState): Scored[] {
         // killing attack, which costs nothing either.
         if (refuseCharge(state, moved, path, target.id) === null) {
           const p = chargeChance(state, moved, target) / 100;
+          if (isGeneral(unit) && p < 1) continue;
           const mid = Math.floor(LUCK_MAX / 2);
           const repel = computeDamage(state, target, moved, mid);
+          const prize = target.health + 25 + (isGeneral(target) ? GENERAL_KILL : 0);
           out.push({
             command: {
               type: 'move',
@@ -142,7 +153,7 @@ function candidates(state: GameState): Scored[] {
               targetUnitId: target.id,
               attackKind: 'charge',
             },
-            score: p * (target.health + 25) - (1 - p) * repel,
+            score: p * prize - (1 - p) * repel,
           });
         }
       }
@@ -164,6 +175,8 @@ interface Stats {
   charges: number;
   chargesBroke: number;
   hitsOnCover: number;
+  wonByGeneral: number;
+  healed: number;
 }
 
 function playOne(
@@ -223,12 +236,27 @@ function playOne(
   stats.actions.push(actions);
   const winner = state.winner;
   if (winner === null) stats.unfinished++;
-  else stats.wins[winner] = (stats.wins[winner] ?? 0) + 1;
+  else {
+    stats.wins[winner] = (stats.wins[winner] ?? 0) + 1;
+    // The loser with units still standing lost its general rather than its army.
+    if (state.units.some((unit) => unit.owner !== winner)) stats.wonByGeneral++;
+  }
 }
 
 /** What a resolved command says about the rules, read off the events. */
 function record(before: GameState, events: GameEvent[], stats: Stats): void {
+  // Folded as it goes, so a heal is measured against the health it began from
+  // even when a battle in the same batch changed it.
+  let shown = before;
   for (const event of events) {
+    const prior = shown;
+    shown = applyEvents(shown, [event]);
+    if (event.type === 'unitsHealed') {
+      for (const { unitId, health } of event.units) {
+        stats.healed += health - (getUnit(prior, unitId)?.health ?? health);
+      }
+      continue;
+    }
     if (event.type !== 'battleResolved') continue;
     const attacker = getUnit(before, event.attacker.unitId);
     const defender = getUnit(before, event.defender.unitId);
@@ -294,6 +322,8 @@ const stats: Stats = {
   charges: 0,
   chargesBroke: 0,
   hitsOnCover: 0,
+  wonByGeneral: 0,
+  healed: 0,
 };
 
 const first = process.argv[4] ?? PLAYERS[0].id;
@@ -327,6 +357,10 @@ for (const [player, n] of Object.entries(stats.wins)) {
 console.log(
   `  ${'unfinished'.padEnd(14)} ${String(stats.unfinished).padStart(5)}  ${pct(stats.unfinished, stats.games)}  (hit the ${ACTION_CAP}-action cap)`,
 );
+const decided = stats.games - stats.unfinished;
+console.log(
+  `  won by general ${String(stats.wonByGeneral).padStart(5)}  ${pct(stats.wonByGeneral, decided)} of decided`,
+);
 
 const sortedActions = [...stats.actions].sort((a, b) => a - b);
 console.log('\nmatch length');
@@ -338,7 +372,7 @@ console.log(
 );
 
 console.log('\ndamage and kills, by who dealt it');
-const types: UnitTypeId[] = ['infantry', 'cavalry', 'artillery'];
+const types: UnitTypeId[] = ['infantry', 'cavalry', 'artillery', 'general'];
 const totalDamage = types.reduce((a, t) => a + (stats.damageBy[t] ?? 0), 0);
 for (const t of types) {
   const d = stats.damageBy[t] ?? 0;
@@ -353,6 +387,7 @@ console.log(`  ...answered            ${stats.countered}  ${pct(stats.countered,
 console.log(
   `  ...onto covered ground ${stats.hitsOnCover}  ${pct(stats.hitsOnCover, stats.attacks)}`,
 );
+console.log(`  health healed          ${stats.healed}`);
 console.log(`  charges made           ${stats.charges}`);
 console.log(
   `  ...broke through       ${stats.chargesBroke}  ${pct(stats.chargesBroke, stats.charges)}`,

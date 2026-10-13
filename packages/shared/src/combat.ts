@@ -25,7 +25,7 @@ export const BANDS = 10;
  * and a unit on 1 point attacks at 1% rather than 10%, which floors to nothing:
  * measured, a cavalry unit at 4 health or less dealt **zero** to infantry in
  * forest even on a maximum roll. Two wounded units could then be permanently
- * unable to kill each other, and elimination is the only way a match ends.
+ * unable to kill each other, and only a kill ends a match.
  *
  * ⚠️ AW has no minimum-damage rule and does not need one; this is what it has
  * instead. Zero is still reachable at the extremes, which is faithful -- it is

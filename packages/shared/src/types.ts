@@ -155,6 +155,21 @@ export interface TurnEndedEvent {
   nextPlayer: PlayerId;
 }
 
+/**
+ * Units that began their turn beside their own general, and the health each
+ * now has.
+ *
+ * ⚠️ **Nobody ordered it, and it is still a fact.** It follows a `turnEnded`,
+ * as a consequence of the turn passing, which an action already resolves -- so
+ * the server works it out and the log states it, absolute like every event,
+ * rather than `applyEvents` re-deriving it from the rules and replaying old
+ * logs under new ones. Emitted only when someone heals.
+ */
+export interface UnitsHealedEvent {
+  type: 'unitsHealed';
+  units: { unitId: string; health: number }[];
+}
+
 /** One side of a battle, and what it has left afterwards. */
 export interface BattleParticipant {
   unitId: string;
@@ -240,4 +255,5 @@ export interface GameEndedEvent {
   winner: PlayerId;
 }
 
-export type GameEvent = UnitMovedEvent | TurnEndedEvent | BattleResolvedEvent | GameEndedEvent;
+export type GameEvent =
+  UnitMovedEvent | TurnEndedEvent | UnitsHealedEvent | BattleResolvedEvent | GameEndedEvent;

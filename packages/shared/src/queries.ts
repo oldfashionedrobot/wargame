@@ -1,7 +1,7 @@
 import { coordinatesEqual, orthogonalNeighbours } from './coordinate';
 import { getTerrain } from './data/terrain';
 import type { TileType } from './data/terrain';
-import type { Coordinate, GameState, Player, Unit } from './types';
+import type { Coordinate, GameState, Player, PlayerId, Unit } from './types';
 
 /** The defence stars of the ground at this tile. */
 export function defenseAt(state: GameState, coordinate: Coordinate): number {
@@ -42,6 +42,17 @@ export function inContact(state: GameState, unit: Unit, coordinate: Coordinate):
     const other = getUnitAt(state, tile);
     return other !== undefined && other.owner !== unit.owner;
   });
+}
+
+/**
+ * A player's general on the board, or `undefined` -- either it has fallen, or
+ * the army never fielded one.
+ *
+ * ⚠️ **The one place the rules name the general's unit type**, so the victory
+ * check and the heal ask the same question rather than each spelling it.
+ */
+export function generalOf(state: GameState, player: PlayerId): Unit | undefined {
+  return state.units.find((unit) => unit.owner === player && unit.unitTypeId === 'general');
 }
 
 export function getCurrentPlayer(state: GameState): Player {

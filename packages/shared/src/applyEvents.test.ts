@@ -190,6 +190,7 @@ describe('every event is idempotent', () => {
   const cases: [string, GameEvent][] = [
     ['unitMoved', moved('b1', [0, 0], [2, 0])],
     ['turnEnded', { type: 'turnEnded', nextPlayer: 'red' }],
+    ['unitsHealed', { type: 'unitsHealed', units: [{ unitId: 'b1', health: 70 }] }],
     ['battleResolved', battle(['b1', 80], ['r1', 40], true)],
     ['gameEnded', { type: 'gameEnded', winner: 'blue' }],
   ];

@@ -1,3 +1,6 @@
+import { tileDistance } from './coordinate';
+import { clampHealth, GENERAL_HEALING } from './data/unitTypes';
+import { generalOf } from './queries';
 import { nextPlayer } from './turns';
 import type { GameEvent, GameState } from './types';
 
@@ -20,6 +23,30 @@ export function validateEndTurn(): string | null {
   return null;
 }
 
+/**
+ * The turn passes: hand over, then whatever happens as the next turn begins --
+ * today, the incoming player's units on the four tiles beside their general
+ * heal `GENERAL_HEALING`. The general does not heal itself.
+ *
+ * ⚠️ **`state` is the board the turn ends on**, after whatever action ended it,
+ * so a unit killed by the turn's last move is not healed. No move changes whose
+ * turn it is, so the hand-over reads the same from it.
+ */
 export function resolveEndTurn(state: GameState): GameEvent[] {
-  return [{ type: 'turnEnded', nextPlayer: nextPlayer(state) }];
+  const next = nextPlayer(state);
+  const events: GameEvent[] = [{ type: 'turnEnded', nextPlayer: next }];
+
+  const general = generalOf(state, next);
+  const healed = !general
+    ? []
+    : state.units
+        .filter(
+          (unit) =>
+            unit.owner === next &&
+            tileDistance(unit.position, general.position) === 1 &&
+            unit.health < clampHealth(unit.health + GENERAL_HEALING),
+        )
+        .map((unit) => ({ unitId: unit.id, health: clampHealth(unit.health + GENERAL_HEALING) }));
+  if (healed.length > 0) events.push({ type: 'unitsHealed', units: healed });
+  return events;
 }

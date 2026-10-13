@@ -20,7 +20,7 @@ import { MAX_HEALTH } from '../src/data/unitTypes';
 import { makeState } from '../src/testing';
 import type { UnitTypeId } from '../src/data/unitTypes';
 
-const TYPES: UnitTypeId[] = ['infantry', 'cavalry', 'artillery'];
+const TYPES: UnitTypeId[] = ['infantry', 'cavalry', 'artillery', 'general'];
 
 // Every terrain a unit can be standing on when it is shot at. `defense` is the
 // only column that matters here.

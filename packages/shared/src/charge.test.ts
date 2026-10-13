@@ -40,9 +40,10 @@ const bestAttack = (state: GameState) =>
   computeDamage(state, unit(state, 'b1'), unit(state, 'r1'), LUCK_MAX);
 
 describe('the charges flag, which is also the capability rule', () => {
-  it('is set for cavalry and infantry and not for artillery', () => {
+  it('is set for cavalry, infantry and the general, and not for artillery', () => {
     expect(getUnitType('cavalry').charges).toBe(true);
     expect(getUnitType('infantry').charges).toBe(true);
+    expect(getUnitType('general').charges).toBe(true);
     expect(getUnitType('artillery').charges).toBe(false);
   });
 });

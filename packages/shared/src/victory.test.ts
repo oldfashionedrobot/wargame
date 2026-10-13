@@ -1,19 +1,24 @@
 import { describe, expect, it } from 'bun:test';
 import { makeState } from './testing';
-import { isOver, soleSurvivor } from './victory';
+import { isOver, victor } from './victory';
+import type { GameState } from './types';
 
-describe('soleSurvivor', () => {
+// Elimination reads only the board after the action, so most cases hand the
+// same state in as both halves.
+const settled = (state: GameState) => victor(state, state);
+
+describe('victor, by elimination', () => {
   it('is nobody while both sides have units', () => {
     const state = makeState(8, [
       { id: 'b1', col: 0, row: 0 },
       { id: 'r1', col: 0, row: 3, owner: 'red' },
     ]);
-    expect(soleSurvivor(state)).toBeNull();
+    expect(settled(state)).toBeNull();
   });
 
   it('is the side still holding units when the other has none', () => {
     const state = makeState(8, [{ id: 'b1', col: 0, row: 0 }]);
-    expect(soleSurvivor(state)).toBe('blue');
+    expect(settled(state)).toBe('blue');
   });
 
   // ⚠️ The half that would be missing from "whoever isn't the loser". That
@@ -21,14 +26,14 @@ describe('soleSurvivor', () => {
   // not the loser -- both of them. This is the case that makes sole-survivor
   // the N-player predicate rather than a wordier two-player one.
   it('is nobody on an empty board rather than crowning players[0]', () => {
-    expect(soleSurvivor(makeState(8, []))).toBeNull();
+    expect(settled(makeState(8, []))).toBeNull();
   });
 
   // The winner is whoever is left, not whoever moved -- asserted from the other
   // side so a hardcoded 'blue' cannot pass.
   it('names red just as readily as blue', () => {
     const state = makeState(8, [{ id: 'r1', col: 0, row: 0, owner: 'red' }]);
-    expect(soleSurvivor(state)).toBe('red');
+    expect(settled(state)).toBe('red');
   });
 
   // ⚠️ It reads the roster, not the marker: a state can satisfy the condition
@@ -36,7 +41,39 @@ describe('soleSurvivor', () => {
   // `resolveAction` asks.
   it('does not consult the winner already recorded on the state', () => {
     const state = makeState(8, [{ id: 'b1', col: 0, row: 0 }], 'blue', 'red');
-    expect(soleSurvivor(state)).toBe('blue');
+    expect(settled(state)).toBe('blue');
+  });
+});
+
+describe('victor, by the general', () => {
+  const before = makeState(8, [
+    { id: 'bg', col: 0, row: 0, unitTypeId: 'general' },
+    { id: 'b1', col: 1, row: 0 },
+    { id: 'rg', col: 0, row: 7, owner: 'red', unitTypeId: 'general' },
+    { id: 'r1', col: 1, row: 7, owner: 'red' },
+  ]);
+  const without = (id: string): GameState => ({
+    ...before,
+    units: before.units.filter((unit) => unit.id !== id),
+  });
+
+  it('hands the match over when a general falls, with its army still standing', () => {
+    expect(victor(before, without('bg'))).toBe('red');
+    expect(victor(before, without('rg'))).toBe('blue');
+  });
+
+  it('is nobody while both generals stand, whatever else falls', () => {
+    expect(victor(before, without('b1'))).toBeNull();
+  });
+
+  // ⚠️ A board with no general says nothing about one: every stored match and
+  // test board is that kind, and has to play by elimination alone.
+  it('plays by elimination alone where no general was fielded', () => {
+    const noGenerals = makeState(8, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'r1', col: 0, row: 7, owner: 'red' },
+    ]);
+    expect(victor(noGenerals, noGenerals)).toBeNull();
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { resolveEndTurn, validateEndTurn } from './endTurn';
+import { GENERAL_HEALING, MAX_HEALTH } from './data/unitTypes';
 import { makeState } from './testing';
 import type { GameState, Player } from './types';
 
@@ -47,5 +48,66 @@ describe('resolveEndTurn', () => {
     expect(resolveEndTurn(withPlayers(['blue', 'red'], 'ghost'))).toEqual([
       { type: 'turnEnded', nextPlayer: 'blue' },
     ]);
+  });
+});
+
+describe('resolveEndTurn, healing beside a general', () => {
+  // Blue ends its turn; red's turn begins with red's general at (2,2).
+  const board = (units: Parameters<typeof makeState>[1]) =>
+    makeState(
+      6,
+      [{ id: 'rg', col: 2, row: 2, owner: 'red', unitTypeId: 'general' }, ...units],
+      'blue',
+    );
+  const healed = (state: GameState) => resolveEndTurn(state).find((e) => e.type === 'unitsHealed');
+
+  it("heals the incoming player's units on the four tiles beside their general", () => {
+    const state = board([
+      { id: 'north', col: 2, row: 3, owner: 'red', health: 50 },
+      { id: 'west', col: 1, row: 2, owner: 'red', health: 30 },
+    ]);
+    expect(healed(state)).toEqual({
+      type: 'unitsHealed',
+      units: [
+        { unitId: 'north', health: 50 + GENERAL_HEALING },
+        { unitId: 'west', health: 30 + GENERAL_HEALING },
+      ],
+    });
+  });
+
+  it('never heals past full health', () => {
+    const state = board([{ id: 'r1', col: 2, row: 3, owner: 'red', health: MAX_HEALTH - 5 }]);
+    expect(healed(state)).toEqual({
+      type: 'unitsHealed',
+      units: [{ unitId: 'r1', health: MAX_HEALTH }],
+    });
+  });
+
+  // Diagonals are two steps away, like every other distance in the game.
+  it('reaches only the four tiles beside it, not the diagonals', () => {
+    expect(healed(board([{ id: 'r1', col: 3, row: 3, owner: 'red', health: 50 }]))).toBeUndefined();
+  });
+
+  it("heals neither the general itself nor the outgoing player's units", () => {
+    const state = makeState(
+      6,
+      [
+        { id: 'rg', col: 2, row: 2, owner: 'red', unitTypeId: 'general', health: 40 },
+        { id: 'b1', col: 2, row: 3, health: 40 },
+      ],
+      'blue',
+    );
+    expect(healed(state)).toBeUndefined();
+  });
+
+  it('emits nothing when nobody beside the general is hurt', () => {
+    expect(resolveEndTurn(board([{ id: 'r1', col: 2, row: 3, owner: 'red' }]))).toEqual([
+      { type: 'turnEnded', nextPlayer: 'red' },
+    ]);
+  });
+
+  it('emits nothing for a player who fielded no general', () => {
+    const state = makeState(6, [{ id: 'r1', col: 2, row: 3, owner: 'red', health: 40 }], 'blue');
+    expect(healed(state)).toBeUndefined();
   });
 });

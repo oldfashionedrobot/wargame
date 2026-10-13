@@ -279,7 +279,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   // the game is finished; the lookup only decides what to *call* the winner. Key
   // the rule off the lookup instead and a `winner` naming somebody outside
   // `players` would leave the board showing a live turn label and an enabled
-  // button for a finished game -- unreachable today, since `soleSurvivor` picks
+  // button for a finished game -- unreachable today, since `victor` picks
   // from `players`, and exactly the sort of thing that stops being unreachable
   // quietly.
   //

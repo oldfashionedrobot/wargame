@@ -202,6 +202,8 @@ Action        (MoveCommand & Validated) | (EndTurnCommand & Validated)
               latter would admit an endTurn carrying a path
 GameEvent     UnitMovedEvent { type, unitId, path, facing }
             | TurnEndedEvent { type, nextPlayer }
+            | UnitsHealedEvent { type, units }
+              -- units is [{ unitId, health }], each the healed value
             | BattleResolvedEvent { type, kind, attacker, defender, answered }
               -- attacker is { unitId, health, chargeMeter }, defender
               -- { unitId, health }, every value resulting
@@ -259,6 +261,14 @@ can exercise the arithmetic at any value.
 `resolveEndTurn` so exactly one place decides who plays next. **Two events,
 never one carrying both effects** — invariant 9.
 
+**The turn's start is part of the hand-over.** `resolveEndTurn` follows
+`turnEnded` with `unitsHealed` when the incoming player has a general and any of
+their units on the four tiles beside it are hurt: each gains `GENERAL_HEALING`,
+never past `MAX_HEALTH`. The general does not heal itself, and nothing is
+emitted when nobody heals. ⚠️ **It reads the board the turn ends on** — a move
+that spends the turn passes the state after its own events, so a unit the last
+move killed is not healed.
+
 **The End Turn command is the early exit**: a player may stop before committing
 every unit they are allowed to. At a budget of 1 it is a pass.
 
@@ -296,20 +306,27 @@ attacker inside my own range" and get an answer for every unit.
 `slow` governs a *turn*: a slow unit may move or attack, never both, and never
 answers an attack — see *Slow* below. `melee` governs a *weapon*: a melee unit
 fights hand to hand, so it cannot answer a ranged attacker, though its own
-attack is answered as any other is. Cavalry is melee; infantry and guns are not.
-`charges` says a unit can charge, and so has a charge meter — cavalry and
-infantry, not guns; see *Charge*. ⚠️ Required, so a new unit type has to say.
+attack is answered as any other is. Cavalry and the general are melee; infantry
+and guns are not. `charges` says a unit can charge, and so has a charge meter —
+everyone but guns; see *Charge*. ⚠️ Required, so a new unit type has to say.
+
+**The general** is cavalry in all but name: a horse, cavalry's range and flags,
+and cavalry's row and column in `BASE_DAMAGE`. What sets it apart is outside the
+catalog — losing it loses the match (see *Victory*), and units beside it heal as
+their turn begins (see the hand-over above). `generalOf` in `queries.ts` is the
+one place the rules name its type.
 
 `movementType` is `foot`, `horse` or `wheels`, and picks a column out of the
 terrain cost table; `movementRange` is the budget that column is spent against.
 Also `MAX_HEALTH`, a constant beside the interface rather than a field on it:
 nothing varies it, so a per-instance copy would be one number written once per
 unit. ⚠️ It lives here so that the day some unit is tougher than another, it
-becomes a column of `UnitType` and the edit is local.
+becomes a column of `UnitType` and the edit is local. `GENERAL_HEALING` sits
+beside it, a fifth of it.
 
 **`combat.ts`** — every number combat reads, and nothing else. Two tables:
 `BASE_DAMAGE` (attacker → defender, as a percentage of a full-health target,
-read by attacks and charges both) and `CHARGE_FACING` (what a charge's damage is
+read by attacks and charges both; the general's row and column copy cavalry's) and `CHARGE_FACING` (what a charge's damage is
 multiplied by, per side). Then the scalars, each explained where it is used
 rather than here: `TERRAIN_WEIGHT` and `LUCK_MAX` in *Combat*;
 `CHARGE_METER_FULL` in *Charge*.
@@ -913,25 +930,30 @@ is waiting.
 `shared/src/victory.ts`:
 
 ```ts
-soleSurvivor(state) → PlayerId | null    // who has won, by elimination
-isOver(state)       → boolean            // whether the marker is set
+victor(before, after) → PlayerId | null  // who has won with this action
+isOver(state)         → boolean          // whether the marker is set
 ```
 
-Elimination is the only condition: **a player with no units has lost**.
+Two ways to lose: **a player with no units**, and **a player whose general
+fell**. `victor` reads both states because a board without a general says
+nothing on its own — the general may have fallen, or the army never fielded
+one, and a board of the second kind plays by elimination alone. A general that
+fell earlier ended the match then, so only this action's can matter.
 
-⚠️ **`soleSurvivor` reads the roster; `isOver` reads the marker.** A board can
+⚠️ **`victor` reads the roster; `isOver` reads the marker.** A board can
 satisfy the condition before any resolution has recorded it, and that gap is
 where `resolveAction` asks.
 
-`soleSurvivor` is the N-player predicate, not "the one who isn't the loser". An
-empty board answers `null`. At most one player is eliminated per resolution,
-because `wouldCounter` is false at zero health, so a single battle kills exactly
-one unit.
+`victor` is the N-player predicate, not "the one who isn't the loser". An empty
+board answers `null`. At most one player loses per resolution, because
+`wouldCounter` is false at zero health, so a single battle kills exactly one
+unit — one army's last, or one general.
 
 ⚠️ **`resolveAction` folds to ask.** Units leave the board in `applyEvents`, so
 the question cannot be answered from `state`, which predates the death. It is
-the only fold in resolution. `endTurn` does not ask, because ending a turn
-removes no units.
+the only fold in resolution, and the turn's hand-over reads the same folded
+board. `endTurn` does not ask, because ending a turn removes no unit and fells
+no general — its heal only adds health.
 
 ⚠️ **`gameEnded` is emitted alone, never with `turnEnded`** — an early return
 guarantees it, so the loser's `hasActed` flags are not refreshed for a turn that
@@ -1164,14 +1186,15 @@ against has moved. This is the first thing to suspect when a pin seems to vanish
 on its own.
 
 `worthAnimating` is false for an empty batch, while the tab is hidden, and for
-a batch of more than **four events**.
+a batch of more than **five events**.
 
 ⚠️ **A backlog gate, not a duration one**, which is why a plain count suffices.
-One action produces at most four events — approach, battle, displacement,
-turn-end — so a turn always animates. It fires only when several resolutions
+One action produces at most five events — approach, battle, displacement,
+turn-end, heal — so a turn always animates. It fires only when several resolutions
 arrive together, which means the client was away.
 
-A new event type needs no entry anywhere. Long and short moves are alike.
+A new event type needs no entry anywhere unless it raises that most. Long and
+short moves are alike.
 
 A failing animation or snap is caught and logged; the commit always happens.
 
@@ -1714,7 +1737,8 @@ unavailable action is omitted — so hover is the only state a row has.
   rotation set on that node would compose with the flip and turn the unit the
   wrong way. Models face `+Z`, which is north here, so there is no offset.
   Cavalry's rider holds a sabre; `dragoon.gltf`, the same rider with a carbine,
-  is kept for dragoons and nothing loads it yet.
+  stands in for the general, at cavalry's scale, until it has a model of its
+  own.
 - One `StandardMaterial` per player colour, looked up by name so the scene is
   the cache. The models arrive untextured and near-white, so colour is the whole
   of a side's identity. Matte like the terrain — specular is zeroed — plus a

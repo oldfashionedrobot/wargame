@@ -361,3 +361,45 @@ describe('resolveAction, when a resolution ends the game', () => {
     ]);
   });
 });
+
+describe('resolveAction, with generals on the board', () => {
+  // A blue gun at (0,0) and red's general within its reach, beside a wounded
+  // red infantryman.
+  const field = (generalHealth: number, woundedHealth: number) =>
+    makeState(8, [
+      { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
+      { id: 'rg', col: 0, row: 3, owner: 'red', unitTypeId: 'general', health: generalHealth },
+      { id: 'r1', col: 1, row: 3, owner: 'red', health: woundedHealth },
+    ]);
+  const fire = (targetUnitId: string): MoveCommand => ({
+    type: 'move',
+    unitId: 'b1',
+    path: [at(0, 0)],
+    facing: 'north',
+    targetUnitId,
+  });
+
+  it('ends the match when a general falls, though its army still stands', () => {
+    const state = field(3, 50);
+    const events = resolveAction(state, accept(state, fire('rg')), NO_LUCK);
+    expect(events.at(-1)).toEqual({ type: 'gameEnded', winner: 'blue' });
+  });
+
+  // ⚠️ The heal reads the board the turn ends on: blue's last shot kills r1,
+  // so r1 must not be healed -- the pre-action state still has it beside its
+  // general, wounded.
+  it("does not heal a unit the turn's last action killed", () => {
+    const state = field(100, 3);
+    const events = resolveAction(state, accept(state, fire('r1')), NO_LUCK);
+    expect(events.map((e) => e.type)).toEqual(['unitMoved', 'battleResolved', 'turnEnded']);
+  });
+
+  it('heals the incoming side once the turn passes', () => {
+    const state = field(100, 50);
+    const events = resolveAction(state, accept(state, { type: 'endTurn' }), NO_LUCK);
+    expect(events).toEqual([
+      { type: 'turnEnded', nextPlayer: 'red' },
+      { type: 'unitsHealed', units: [{ unitId: 'r1', health: 70 }] },
+    ]);
+  });
+});

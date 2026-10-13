@@ -69,13 +69,14 @@ export interface GameSessionCallbacks {
 //
 // ⚠️ **This is a *backlog* gate, not a duration one, and that is the whole
 // reason it can be a plain count.** In normal play it never fires: a single
-// action produces at most four events -- approach, battle, displacement,
-// turn-end -- so one turn always animates. It only speaks when several
+// action produces at most five events -- approach, battle, displacement,
+// turn-end, heal -- so one turn always animates. It only speaks when several
 // resolutions arrive together, which means the client was away or hidden, and
 // replaying somebody else's turns at tween speed is worse than useless.
 //
-// ⚠️ **Four, derived rather than chosen.** It is exactly one action's worth, and
-// it preserves the ceiling the old tile-count had: two attacking actions is two
+// ⚠️ **Five, derived rather than chosen.** It is exactly one action's worth, so
+// an event that can join an action raises it, or that action snaps. It keeps
+// about the ceiling the old tile-count had: two attacking actions is two
 // cutaways and two moves, about four seconds, which is what 28 tiles at 0.15s
 // came to.
 //
@@ -92,7 +93,7 @@ export interface GameSessionCallbacks {
 // ⚠️ Erring toward snapping is the safe direction. Skipping when you could have
 // animated costs a board that corrects itself; animating when you should have
 // skipped costs a player stuck watching with no way out.
-const MAX_ANIMATED_EVENTS = 4;
+const MAX_ANIMATED_EVENTS = 5;
 
 function worthAnimating(events: GameEvent[]): boolean {
   // Nothing to watch (an end-turn on its own) still counts as worth playing:

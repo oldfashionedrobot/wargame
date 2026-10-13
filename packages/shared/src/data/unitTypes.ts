@@ -2,7 +2,7 @@
 // match, so it lives here rather than being copied onto every Unit instance.
 // `Unit.unitTypeId` references an entry in this catalog.
 
-export type UnitTypeId = 'infantry' | 'cavalry' | 'artillery';
+export type UnitTypeId = 'infantry' | 'cavalry' | 'artillery' | 'general';
 
 // One movement type per unit type for now -- they're deliberately kept as
 // separate axes because the movement-cost table is keyed by movement type, not
@@ -99,6 +99,12 @@ export interface UnitType {
 export const MAX_HEALTH = 100;
 
 /**
+ * What a unit regains when its turn begins beside its own general: a fifth of
+ * `MAX_HEALTH`, never past it -- see `resolveEndTurn`.
+ */
+export const GENERAL_HEALING = 20;
+
+/**
  * A health, brought inside its bounds.
  *
  * ⚠️ **Because the bounds were being written inline, and only half of them
@@ -167,6 +173,21 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     slow: true,
     melee: false,
     charges: false,
+  },
+  // ⚠️ **Cavalry in all but name for now**, to be tuned in play -- what makes it
+  // a general is not here but in the rules that name it: losing it loses the
+  // match, and the units beside it heal. Guns hit it as they hit cavalry, so
+  // keeping it out of their reach is the game.
+  general: {
+    id: 'general',
+    name: 'General',
+    char: 'g',
+    movementType: 'horse',
+    movementRange: 4,
+    range: { min: 1, max: 1 },
+    slow: false,
+    melee: true,
+    charges: true,
   },
 };
 

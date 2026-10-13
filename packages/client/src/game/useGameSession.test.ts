@@ -335,7 +335,7 @@ describe('useGameSession', () => {
       expect(result.current.gameState).toEqual(end);
     });
 
-    // The threshold is `<=`, so four events animate and five do not. Both sides,
+    // The threshold is `<=`, so five events animate and six do not. Both sides,
     // because only one of them tells you which comparison it is.
     it('still animates a batch of exactly the threshold size', async () => {
       const fake = fakeServer(board);
@@ -343,7 +343,7 @@ describe('useGameSession', () => {
       renderSession(fake, cb);
       await act(async () => {});
 
-      await act(async () => fake.push([walk(1), walk(1), walk(1), walk(1)], board));
+      await act(async () => fake.push([walk(1), walk(1), walk(1), walk(1), walk(1)], board));
       expect(cb.onEvents).toHaveBeenCalled();
     });
 
@@ -356,7 +356,7 @@ describe('useGameSession', () => {
       const next = makeState(7, [{ id: 'b1', col: 1, row: 3 }]);
       await act(async () =>
         fake.push(
-          Array.from({ length: 5 }, () => walk(1)),
+          Array.from({ length: 6 }, () => walk(1)),
           next,
         ),
       );

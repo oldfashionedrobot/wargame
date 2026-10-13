@@ -15,6 +15,8 @@ const MODEL_URLS: Record<UnitTypeId, string> = {
   infantry: '/models/infantry.gltf',
   cavalry: '/models/cavalry.gltf',
   artillery: '/models/cannon.gltf',
+  // A placeholder: the carbine rider, until a general of its own is modelled.
+  general: '/models/dragoon.gltf',
 };
 
 export interface UnitModels {

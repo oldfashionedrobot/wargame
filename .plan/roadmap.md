@@ -225,8 +225,8 @@ the combat pass, came from playing — see *After the combat pass*; the third
 reworked charging — see *The charging pass*. A pass's changes go to
 [`architecture.md`](architecture.md) and leave only their open questions here.
 
-⬜ **The next pass starts from playing the earned charge**, and what goes in it
-is settled as the notes come in.
+⬜ **The next pass is under way** — see *The next pass*, below. Its general
+has shipped.
 
 #### Known to want attention
 
@@ -306,6 +306,80 @@ Guns still win and horse still loses; the earned charge took horse back down
 from 38%, since the bot only ever charges where it is certain. ⚠️ **`common`
 says nothing about composition**: the opener won every game there whatever it
 fielded — see the turn-order note under *After the combat pass*.
+
+#### The next pass
+
+⬜ **Settled as it goes.** The general has shipped; the panel at selection and
+panes staying on the board are next.
+
+✅ **The general.** From playing: battles ended as gun duels — the other arms
+fought it out under bombardment, and the guns were what was left. A general
+gives every match something to defend and something to hunt, and plays like
+the king in chess: kept back and protected, with the wounded falling back to it
+to heal. It is cavalry in all but name for now, and exposed to guns on purpose,
+so keeping it out of their reach is the game. What it does is in
+[`architecture.md`](architecture.md).
+
+- ⬜ **Two lone generals never finish.** In the simulator, matches the bot
+  leaves unfinished went from none to a fifth on `classic` and `crossroads`, 100
+  games each, and nearly all of them end with one general a side and nothing
+  else: the bot keeps its general away and attacks only where it kills, so once
+  the armies are gone neither general closes. Partly the bot, but not only — a
+  general is as fast as anything that could chase it. Undecided: a rule that
+  settles it, such as a general with no army having lost, or a bot that fights
+  with its general once it stands alone.
+- ⬜ **For play to answer**: whether the heal pulls the wounded back. The bot
+  never retreats a unit to heal, so it healed 20 points in 100 games, and its
+  generals fell in about 1% of decided matches.
+- ⬜ **Later, global bonuses**, as Advance Wars' commanders give. Both sides
+  field the same general for now; a commander chosen per player can carry
+  modifiers later without the unit changing.
+
+⬜ **The panel at selection.** Selecting a unit opens the movement selection
+today, so a unit that means to attack from where it stands has to be walked to
+its own tile and confirmed before the panel offers anything. Instead: **if it
+could attack or charge from where it stands, selecting it opens the panel
+there**; if there is nothing to attack or charge, it goes straight to the
+movement selection as now, since moving is the only thing to do. **To move
+instead, click elsewhere** — a dark click at the panel already backs out to the
+movement selection, and the panel's hint line says so.
+
+- **Built from what exists.** The panel in place is exactly what the
+  walk-to-its-own-tile gesture builds: the selection's own tile pinned and
+  confirmed. So one small function in `selection.ts` composes `handleTileClick`
+  on the unit's tile with `confirmRoute`, and keeps the result when
+  `availableActions` offers more than Hold — the same test the menu-skip
+  already uses. The session applies it when a click selects a unit;
+  `handleTileClick` itself is untouched.
+- **No Move row.** A row for it was the first idea, and it costs more than it
+  looks: a new `ActionKind`, a branch in `chooseAction`, since moving leaves the
+  panel rather than entering a mode, and a menu-skip that can no longer count
+  rows, since *one row* would stop meaning *nothing to attack*. Clicking off
+  the panel already does it, and the hint line makes it findable.
+
+⚠️ **Pre-checked against the code.** The selection tests' helpers select
+through `handleTileClick` and then pin a route, so they stand as they are. The
+new function gets its own tests, and the session and canvas tests whose
+fixtures select a unit already beside its target — committing an attack in
+`useGameSession.test.ts`, and the overlay and charge-odds tests in
+`GameCanvas.test.tsx` — open the panel at once and drop their pin-and-confirm
+clicks. The panel's step has no hint line today; it gains one. Docs: the
+architecture doc's panel section.
+
+⬜ **Panes stay on the board.** The menu, the forecast and the confirm prompt
+are anchored above a tile: `placeAnchor` projects a point a tile above it every
+frame and centres the pane over that point with a CSS translate, measuring
+nothing — so a unit at an edge or on the far row puts its pane partly off the
+canvas. Instead, **the pane is kept inside the canvas**: shifted in from the
+left and right edges, and **flipped below its tile** when there is no room above.
+
+⚠️ **Pre-checked against the code.** Fitting needs two sizes `placeAnchor` does
+not read today — the pane's own and the canvas's — so it measures both each
+frame, and the gap above the tile, now `--board-clearance` applied as a
+negative margin and used nowhere else, moves into the computation so a flipped
+pane can take it on the other side. The arithmetic is a
+small pure function beside the renderer, which gets tests where the renderer
+has none; a browser checks a unit at each edge and on the far row.
 
 #### The charging pass
 
@@ -866,7 +940,7 @@ match_players  match, player, seat — who is blue and who is red
 ```
 
 ⚠️ **A join table rather than `blue_player_id` / `red_player_id` columns.**
-`soleSurvivor` already generalises victory to any number of players and
+`victor` already generalises victory to any number of players and
 `GameState.players` is already an array, so two columns would be the one place
 that re-hardcodes two — for no less work.
 

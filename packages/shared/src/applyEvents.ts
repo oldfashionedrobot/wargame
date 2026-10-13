@@ -76,6 +76,17 @@ function applyEvent(state: GameState, event: GameEvent): GameState {
       };
     }
 
+    case 'unitsHealed': {
+      const healed = new Map(event.units.map(({ unitId, health }) => [unitId, health]));
+      return {
+        ...state,
+        units: state.units.map((unit): Unit => {
+          const health = healed.get(unit.id);
+          return health === undefined ? unit : { ...unit, health };
+        }),
+      };
+    }
+
     case 'turnEnded':
       // Only the incoming player's units refresh; the outgoing player's stay
       // spent, which is what stops a unit acting twice across the boundary.

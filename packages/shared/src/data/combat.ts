@@ -10,9 +10,11 @@ import type { UnitTypeId } from './unitTypes';
  * accepted, as what getting behind a battery with a full meter is worth.
  */
 export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
-  infantry: { infantry: 45, cavalry: 35, artillery: 45 },
-  cavalry: { infantry: 55, cavalry: 45, artillery: 65 },
-  artillery: { infantry: 55, cavalry: 45, artillery: 45 },
+  infantry: { infantry: 45, cavalry: 35, artillery: 45, general: 35 },
+  cavalry: { infantry: 55, cavalry: 45, artillery: 65, general: 45 },
+  artillery: { infantry: 55, cavalry: 45, artillery: 45, general: 45 },
+  // The general fights, and is fought, as cavalry -- for now.
+  general: { infantry: 55, cavalry: 45, artillery: 65, general: 45 },
 };
 
 /**

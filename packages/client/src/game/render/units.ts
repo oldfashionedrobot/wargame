@@ -51,6 +51,8 @@ const PIECE_SCALE: Record<UnitTypeId, number> = {
   // the others on height would take a gun carriage to 1.75 deep, most of two
   // tiles.
   artillery: 1.2,
+  // The dragoon placeholder is the cavalry rider, so it takes cavalry's scale.
+  general: 1.34,
 };
 
 // The models face +Z, which is what north is here: tileToWorld maps a rising
