@@ -74,7 +74,7 @@ packages/
     data/             the static content tables — unit types, terrain, combat
   shared/scripts/
     matchups.ts       prints hits-to-kill
-    charges.ts        prints what each charge finishes beside an attack
+    charges.ts        prints each charge's certain line and odds beside an attack
   server/
     src/
       http.ts         createServer() — Bun.serve routes, /api/* plus the client build
@@ -113,7 +113,7 @@ Run from the repo root. All exit non-zero on failure.
 | `bun run format` / `format:check` | Prettier (Markdown and exported glTF are excluded) |
 | `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
 | `bun packages/shared/scripts/matchups.ts` | Tuning harness: hits-to-kill for every matchup on every terrain |
-| `bun packages/shared/scripts/charges.ts` | Tuning harness: the most health each charge finishes from all three sides, beside what an attack kills, by ground and charger health |
+| `bun packages/shared/scripts/charges.ts` | Tuning harness: the most health each charge is certain of from all three sides, beside what an attack kills, and its odds against full health — by ground and charger health |
 | `bun packages/server/scripts/simulate.ts [games] [map] [opener] [budget] [blueArmy] [redArmy]` | Plays the game against itself with a greedy bot and reports outcomes, match length, damage by unit type, and whether each mechanic fired. An army is comma-separated rows; omitted, both sides take the default deployment |
 | `bun run preview` | `vite preview` — the built client with no `/api` proxy, so it reaches no match |
 | `bun run --filter '@wargame/server' start` | The production shape: one process serving the API and `dist` together |
@@ -550,9 +550,10 @@ refuseAttack(state, attacker, path, targetUnitId) → string | null
 refuseCharge(state, attacker, path, targetUnitId) → string | null
 tilesInRange(unit, from, gridWidth, gridHeight)   → Coordinate[]
 wouldCounter(defender, attacker)                  → boolean
-chargeDamage(state, attacker, defender)           → number
+chargeDamage(state, attacker, defender)           → number   // what a charge is certain of
+chargeChance(state, attacker, defender)           → number   // 1..100
 resolveBattle(state, attacker, defender, rolls)   → BattleResolvedEvent   // attack
-resolveCharge(attacker, defender)                 → BattleResolvedEvent   // charge
+resolveCharge(state, attacker, defender, rolls)   → BattleResolvedEvent   // charge
 computeDamage(state, attacker, defender, roll)    → number
 ```
 
@@ -611,9 +612,10 @@ committed the same way on its next action.
 ### Facing
 
 **Facing does exactly two things**: an attack from directly behind goes
-unanswered, and it multiplies a charge's damage. `computeDamage` cannot see
-facing at all, so there is no modifier on the *outgoing* attack — position
-limits the reply, it does not sharpen the blow.
+unanswered, and it scales a charge — what it is certain of, and its odds
+against a full-health target. `computeDamage` cannot see facing at all, so
+there is no modifier on the *outgoing* attack — position limits the reply, it
+does not sharpen the blow.
 
 A single-element path is a **turn in place** — legal at cost 0, and a real
 defensive action.

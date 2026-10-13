@@ -57,7 +57,6 @@ somebody has to remember to recount, and nobody does.
   production object, which is the reason to think before building it rather than
   the reason not to. *UI and interaction* is where it would pay for itself fastest.
 
-
 ## Known compromises
 
 Deliberate limits of the current design, and what each would take to lift. Distinct from *Out of scope for v1* below, which is unbuilt features rather than accepted limits.
@@ -94,7 +93,7 @@ its reason stops holding.
 - **The movement budget, looked up by three callers** (`validateMove`, the
   overlay, the bot). A catalog lookup rather than a rule; worth one home only if
   a budget ever comes to depend on state.
-- **The attacker after its move, built by hand six times without its new
+- **The attacker after its move, built by hand five times without its new
   facing.** One spread; nothing reads an attacker's facing — only a defender's —
   and `validateMove` already decides what an attack ends facing.
 - **Adjacency asked as neighbours in one place and as distance 1 in another.**
@@ -173,7 +172,6 @@ option, and both cost a few lines against a table's seeding machinery.
 - **Manual routing.** Dragging out a deliberately non-optimal path. Unblocked by the protocol carrying a path and the server validating it — purely a matter of building the UI for it. ⚠️ The substrate now exists and did not before: a route is **pinned, re-pinnable, and drawn as an arrow**, so waypoints have something to hang off rather than needing the whole idea built at once.
 - **A blocky / voxel art style.** Tried on a branch with [KayKit's Block Bits](https://kaylousberg.itch.io/block-bits) and rejected — recorded so it is not re-litigated from the screenshots alone. It works: every terrain maps onto a block, and **the autotiler turns out not to be load-bearing** — a cube has no shoreline, so a one-tile river bends through a right angle with no mask arithmetic at all, and `composeTerrain` drops from ~250 lines to ~60. What killed it is the camera. The style lives on block *sides*, a near-top-down board shows only tops, and stepping by whole blocks to expose the sides is the elevation problem above. So it is a real option, but only alongside a different camera — not a swap.
 
-
 ## The epics
 
 **Order is in the table at the top of this file**, not here. Each section below
@@ -226,11 +224,10 @@ than from measuring, and more than one of those turned out to be a *rule*
 rather than a dial — which is the shape to expect from this epic too.
 
 ⚠️ **It runs in passes: play, then tune.** Three have shipped. The first set
-terrain weighting, the charge floor and the artillery charge row by printing
-grids; the second, the combat pass, came from playing — see *After the combat
-pass*; the third reworked charging — see *The charging pass*. A pass's changes
-go to [`architecture.md`](architecture.md) and leave only their open questions
-here.
+terrain weighting and the first charge numbers by printing grids; the second,
+the combat pass, came from playing — see *After the combat pass*; the third
+reworked charging — see *The charging pass*. A pass's changes go to
+[`architecture.md`](architecture.md) and leave only their open questions here.
 
 ⬜ **The next pass starts from playing the earned charge**, and what goes in it
 is settled as the notes come in.
@@ -243,16 +240,16 @@ is settled as the notes come in.
   it. ⚠️ Listed under *Content* as well, because which of those it turns out to
   be decides where the work lands. ⚠️ **Deeper cover made this worse** — worst
   case went from 5 blows to 6 — and the lever if the two collide is
-  `BASE_DAMAGE`, which has room upward and none down: the *no living attacker is
-  harmless* sweep binds one point below the lowest row. ✅ **Left uncapped for
-  now**, by decision rather than by default — the dials above are what to reach
-  for if that changes.
+  `BASE_DAMAGE`, which has room upward and little down: the *no living attacker
+  is harmless* sweep binds below 30, and the lowest entry is 35. ✅ **Left
+  uncapped for now**, by decision rather than by default — the dials above are
+  what to reach for if that changes.
 - ⬜ **Healing**, in some form — parked rather than decided, and parked *with*
   capture points: if either comes back, they come back as one design. Nothing
-  recovers health today, so a wounded unit is wounded for the rest of the match. ⚠️ It
-  sits upstream of the numbers above rather than beside them: cover scales with
-  the defender's band and a charge executes only a worn-down unit, so both
-  mechanics are most active at low health, and how often units *are* at low
+  recovers health today, so a wounded unit is wounded for the rest of the match.
+  ⚠️ It sits upstream of the numbers above rather than beside them: cover scales
+  with the defender's band and a charge is certain only of a worn-down unit, so
+  both mechanics are most active at low health, and how often units *are* at low
   health is what healing decides.
 - ⬜ **Capture points**, sketched and parked: presence is possession, so a point
   is held by standing on it and there is no capture meter to build. ⚠️ **Tied
@@ -287,9 +284,10 @@ is settled as the notes come in.
 
   ⬜ **So the budget is the wrong lever for this, and a *reactive* mechanic is
   the candidate** — which now lives in *Mobility in contact*, below, where
-  overwatch and engagement turned out to be one question. The same sweep also says a cautious
-  bot would show less first-mover advantage than a greedy one does, which is
-  itself a hint that punishing the advance is aimed at the right thing.
+  overwatch and engagement turned out to be one question. The same sweep also
+  says a cautious bot would show less first-mover advantage than a greedy one
+  does, which is itself a hint that punishing the advance is aimed at the right
+  thing.
 
   ⬜ Still untried, and the one idea the sweep did not cover: making `hasActed`
   persist until the roster is spent, which gives one-at-a-time pacing *and*
@@ -307,25 +305,14 @@ and the harness taking an army a side. What it does now is in
 
 ✅ **Whether composition creates playstyles: swept, and it does not — it
 makes a ladder.** Each army of eight against the default (two guns, two horse,
-four foot) from both seats, both openings, all six maps, 300 games a cell:
-
-| army | wins against the default |
-|---|---|
-| four guns, four foot | 79% (82% on the carbine table) |
-| four horse, four guns | 68% |
-| eight foot | 55% |
-| four horse, four foot | 15% (7% on the carbine table) |
-| eight horse | 2% |
-
-The ranking was measured on a since-discarded variant of the damage table; on
-the carbine table that cavalry carried until sword cavalry, guns and horse sat
-further apart still. More guns wins and more horse loses, on every map. ⚠️ **It says as much about the bot as the
-armies**: a greedy bot never screens, and screening is the manoeuvre horse
-needs, so the horse figures are a floor. The guns figure agrees with
-everything else measured — a gun is never answered. ✅ **Sword cavalry
-flattens it a long way**, measured on every map from both openings: four horse
-and four foot win 38% against the default, eight horse 34%, four guns and four
-foot 70%. The order holds; the gaps mostly close.
+four foot), on every map from both openings: more guns wins and more horse
+loses, on every map. ⚠️ **It says as much about the bot as the armies**: a
+greedy bot never screens, and screening is the manoeuvre horse needs, so the
+horse figures are a floor. Sword cavalry flattened the ladder a long way —
+four horse and four foot went from 7% to 38% against the default, eight horse
+to 34%, four guns and four foot from 82% to 70% — without changing its order.
+⬜ **Not re-measured since the charge became earned**; a sweep then says
+whether horse has found its place.
 
 ⬜ **A zone declared by the map.** `DEPLOYMENT_ZONE` is a constant, so on every
 board the rows nearest each edge are assumed. The day a map carries its
@@ -358,16 +345,16 @@ why: a charge was the *wounded* unit's attack, a healthy unit's charge was a
 worse shot, and infantry made half of all charges. So cavalry fights with
 sabres, as a `melee` unit that cannot answer a ranged attacker, and the charge
 is earned: three attacks fill a meter, and a full meter buys a charge that is
-certain wherever an attack's best roll, times the side it arrives on, would
-kill — and a gamble above that, its odds falling to a quarter against a fresh
-unit, scaled by the side and by the charger's own health. A failed charge is
-met by a free attack from the defender. A first cut scaled a separate
-threshold table by cover and the charger's health; it never finished anything
-an attack would not, even from the rear, so the line became the attack
-formula, and offering only certain charges then gave way to odds above it. Earlier in the pass the repel, the attack forecast's counter and the
-simulator's dice, exchange and distance each got one home. What it does is in
-[`architecture.md`](architecture.md); why, and what was measured, is in the
-commits.
+certain wherever an attack's best roll, times the side it arrives on, would kill
+— and a gamble above that, its odds falling to a quarter against a fresh unit,
+scaled by the side and by the charger's own health. A failed charge is met by a
+free attack from the defender. A first cut scaled a separate threshold table by
+cover and the charger's health; it never finished anything an attack would not,
+even from the rear, so the line became the attack formula, and offering only
+certain charges then gave way to odds above it. Earlier in the pass the attack
+forecast's counter and the simulator's dice, exchange and distance each got one
+home. What it does is in [`architecture.md`](architecture.md); why, and what was
+measured, is in the commits.
 
 ⬜ **For play to answer:**
 
@@ -379,9 +366,9 @@ commits.
 - **The cliff just over a wounded charger's line** — certain of a target on 38
   and 58% against one on 40, for a charger on 60 — is the price of scaling the
   whole curve by the charger's health, and was accepted.
-- **Cavalry into a gun's rear on open ground finishes it at any health.**
-  Accepted rather than tuned away; if it reads as too much in play, the rear
-  multiplier at 1.35× brings it to 99 without touching attacks.
+- **Cavalry charging a gun's rear on open ground is certain of it at any
+  health.** Accepted rather than tuned away; if it reads as too much in play,
+  the rear multiplier at 1.35× brings it to 99 without touching attacks.
 - **The simulator never gambles**: its greedy bot weighs a charge's kill by the
   odds against the free attack it risks, and only certain charges come out
   ahead of an attack — 22 in 50 games on `classic`, all breaking through. The
@@ -452,12 +439,13 @@ along the path: the destination is one more battle in the same command, while
 stops, which touches `validatePath` and the one-event-carries-a-path design.
 Prove it on the destination first.
 
-⚠️ **The sharp edge is randomness, not the rule.** `rollLuck` reads the
-*command* and never the rules, deliberately — so the number of draws cannot
-depend on whether a path crossed a watched tile. The existing precedent is to
-draw for the worst case: a counter roll is already drawn whether or not it is
-used. It also needs watching state on `Unit`, which is a `GameState` shape
-change and abandons stored matches under the ruleset compromise.
+⚠️ **The sharp edge is randomness, not the rule.** `rollLuck` draws the same
+rolls for every command and never consults the rules, deliberately — so the
+number of draws cannot depend on whether a path crossed a watched tile. The
+existing precedent is to draw for the worst case: a counter roll and a charge
+roll are already drawn whether or not either is used. It also needs watching
+state on `Unit`, which is a `GameState` shape change and abandons stored matches
+under the ruleset compromise.
 
 ⚠️ **The reactive family is unmeasured, and structurally so.** A zone is worked
 out from positions alone, so a scratch search can say what it does; a reaction
@@ -467,19 +455,20 @@ building it.
 #### The dials
 
 The tables are `BASE_DAMAGE`, which charges read too, and `CHARGE_FACING`; the
-scalars beside them are `TERRAIN_WEIGHT`, `LUCK_MAX` and `CHARGE_METER_FULL`. The `defense` column of `terrain.ts` is a dial too, and
-turned out to be the one carrying the most weight.
+scalars beside them are `TERRAIN_WEIGHT`, `LUCK_MAX`, `CHARGE_CHANCE_AT_FULL`
+and `CHARGE_METER_FULL`. The `defense` column of `terrain.ts` is a dial too,
+and turned out to be the one carrying the most weight.
 
 **Tune against the harnesses, never against a damage number.**
 `scripts/matchups.ts` prints hits-to-kill across every matchup and terrain,
-`charges.ts` prints what each charge finishes from all three sides beside what
-an attack kills, and `server/scripts/simulate.ts` plays the game against itself and
-reports outcomes, match length, damage and kills by unit type, and whether each
-mechanic fired. ⚠️ **All three have earned themselves** — one killed a table
-where everything died in two hits, another found cavalry-into-artillery
-saturating at the flank on its opening run, the hits-to-kill grid showed that a
-wood was worth literally nothing, and the simulator settled the turn budget in
-an afternoon.
+`charges.ts` prints what each charge is certain of from all three sides beside
+what an attack kills, with its odds against full health, and
+`server/scripts/simulate.ts` plays the game against itself and reports outcomes,
+match length, damage and kills by unit type, and whether each mechanic fired. ⚠️
+**All three have earned themselves** — one killed a table where everything died
+in two hits, another found cavalry-into-artillery saturating at the flank on its
+opening run, the hits-to-kill grid showed that a wood was worth literally
+nothing, and the simulator settled the turn budget in an afternoon.
 
 ⚠️ **Read the simulator's mechanic counts before its win rates.** A bot
 confirms whatever it is scored on: the greedy one subtracts the expected
@@ -566,10 +555,6 @@ Three facts about the current setup that constrain whatever is chosen:
   at all. `UNIT_GLOW` exists to prop up silhouettes the hemispheric light does
   not give, and whether it comes out depends on which way this goes.
 
-⚠️ `battleResolved.kind` is carried for exactly this and read by nothing yet —
-the cutaway was built to branch on it and does not, so a volley and a charge
-currently play the same absence of an animation.
-
 #### 11b — Animation and sound
 
 - **Model animation in the cutaway**, which the cutaway was built to branch on
@@ -606,9 +591,9 @@ to start playing: a guest id is enough to own a match and be *you* across turns,
 which satisfies "no passwords, ever" trivially and costs a fraction of OAuth.
 Signing in is the upgrade for people who want an identity that persists, and
 Better Auth supports exactly that split as a first-class path — see the spike
-result below, which came back green. ⚠️ Frictionless to first move is the requirement, and it is
-worth stating as one: on a portal, a sign-in wall in front of a free game is
-the funnel.
+result below, which came back green. ⚠️ Frictionless to first move is the
+requirement, and it is worth stating as one: on a portal, a sign-in wall in
+front of a free game is the funnel.
 
 ✅ **Hot-seat is kept, not removed.** This section argued the other way — that
 it was scaffolding and two browser tabs are two players. It is a way to play:
@@ -1020,8 +1005,8 @@ free**, and a review sharpened it into two items rather than one.
 ### 14 — Content: units, maps, and the numbers
 
 A track, not a queue — it depends on nothing above and it is what moves the
-metrics a portal actually gates on. *Tuning and gameplay tweaks* is where the numbers and the
-argument live; this is the phase that keeps changing them.
+metrics a portal actually gates on. *Tuning and gameplay tweaks* is where the
+numbers and the argument live; this is the phase that keeps changing them.
 
 - **More unit types.** The catalog is built for this: `Record<UnitTypeId, …>`
   means adding one is a compile error in every table that needs an entry, and
@@ -1057,15 +1042,15 @@ argument live; this is the phase that keeps changing them.
   left the count exactly where it was, 49 of 300 when blue opens, so it is the
   board's. **Not pursued**: the maps are due a redesign regardless.
 
-  ⚠️ **Artillery's `movementRange` was the biggest single lever on all of this**,
-  and it is measured rather than argued. At **4** the same six boards handed the
-  game to whoever moved *second* — 94% on `crossroads` and `meadow`, 89% on
-  `two-bridges`, a spread of 54% to 95%. At **3**, before contact, the spread was 50%
-  to 73% and the second-mover effect survived only on `two-bridges`. `wheels` pays 1.5 for
-  plains against 1 for road, so the gun's budget decides how much board it
-  covers between replies, and a road network amplifies whatever that number is.
-  ⚠️ **So settle the gun before redrawing a board to chase a number** — the
-  terrain is downstream of it.
+  ⚠️ **Artillery's `movementRange` was the biggest single lever on all of
+  this**, and it is measured rather than argued. At **4** the same six boards
+  handed the game to whoever moved *second* — 94% on `crossroads` and `meadow`,
+  89% on `two-bridges`, a spread of 54% to 95%. At **3**, before contact, the
+  spread was 50% to 73% and the second-mover effect survived only on
+  `two-bridges`. `wheels` pays 1.5 for plains against 1 for road, so the gun's
+  budget decides how much board it covers between replies, and a road network
+  amplifies whatever that number is. ⚠️ **So settle the gun before redrawing a
+  board to chase a number** — the terrain is downstream of it.
 
   ⚠️ **Do not tune these against the bot.** It is greedy, it never screens, and
   it does not value terrain — so chasing an even split optimises the board for a
@@ -1126,9 +1111,9 @@ argument live; this is the phase that keeps changing them.
 
 itch is *A hosted build*'s target and is not repeated here; this is the portals
 that gate, review, or supply their own accounts. Worth attempting only once
-*Presentation* and *Content* have moved playtime and retention — the one portal publishing a bar publishes a
-specific one, and the game is judged against it rather than against a portal-wide
-average.
+*Presentation* and *Content* have moved playtime and retention — the one portal
+publishing a bar publishes a specific one, and the game is judged against it
+rather than against a portal-wide average.
 
 - **Per-platform SDK work**, which is mostly identity, room/invite plumbing and
   an ads hook. What each one demands is in the Publishing Pipeline doc.
