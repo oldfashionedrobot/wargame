@@ -21,7 +21,8 @@ import type {
   UnitTypeId,
 } from '@wargame/shared';
 import { applyEvents, defenseAt } from '@wargame/shared';
-import { tileToWorld } from './coordinates';
+import { TILE_SIZE, tileToWorld } from './coordinates';
+import { fitPane } from './fitPane';
 import { createGridLines } from './gridLines';
 import { createCutaway } from './cutaway';
 import type { Combatant } from './cutaway';
@@ -239,7 +240,7 @@ export interface GameRenderer {
    */
   setRoute(path: Coordinate[]): void;
   /**
-   * Keep `element` positioned over `coordinate`, or stop.
+   * Keep `element` positioned over `coordinate`, and on the board, or stop.
    *
    * ⚠️ The renderer writes `transform` rather than React re-rendering: a DOM
    * overlay tracking the board is otherwise a React commit every frame the
@@ -681,29 +682,53 @@ export async function createGameRenderer(
   let anchorElement: HTMLElement | null = null;
   let anchorTile: Coordinate | null = null;
 
-  const placeAnchor = (): void => {
-    if (!anchorElement || !anchorTile) return;
-    const { x, z } = tileToWorld(anchorTile, gridWidth, gridHeight);
+  // Render-buffer pixels to CSS pixels. ⚠️ They are equal today
+  // (`adaptToDeviceRatio` is off, so the scaling level is 1) and would silently
+  // diverge on a retina display the day it is not.
+  const project = (point: Vector3): { x: number; y: number } => {
     const screen = Vector3.Project(
-      // ⚠️ **Lifted, and lifted in *world* space.** Projecting the tile's own
-      // surface put the element's bottom edge exactly there, so it sat on the
-      // tile it was describing -- over a route's arrowhead, or over the unit
-      // whose choices it was offering. A pixel margin would have drifted with
-      // zoom; a world offset holds, because it is projected like everything
-      // else. One tile up clears both a tile's drawn extent and the tallest
-      // piece standing on it.
-      new Vector3(x, surfaceAt(anchorTile) + ANCHOR_LIFT, z),
+      point,
       Matrix.Identity(),
       scene.getTransformMatrix(),
       camera.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight()),
     );
-    // ⚠️ Projection lands in render-buffer pixels and CSS wants CSS pixels.
-    // They are equal today (`adaptToDeviceRatio` is off, so the scaling level
-    // is 1) and would silently diverge on a retina display the day it is not.
     const scale = engine.getHardwareScalingLevel();
-    // Centred above the tile: the element's own size is its business, so this
-    // shifts by its own extent rather than measuring anything.
-    anchorElement.style.transform = `translate(${screen.x * scale}px, ${screen.y * scale}px) translate(-50%, -100%)`;
+    return { x: screen.x * scale, y: screen.y * scale };
+  };
+
+  const HALF_TILE = TILE_SIZE / 2;
+  const TILE_CORNERS = [
+    [-HALF_TILE, -HALF_TILE],
+    [-HALF_TILE, HALF_TILE],
+    [HALF_TILE, -HALF_TILE],
+    [HALF_TILE, HALF_TILE],
+  ] as const;
+
+  // ⚠️ Measures the pane and the canvas every frame, as it projects: both change
+  // under it -- the pane with what it says, the canvas with the window.
+  const placeAnchor = (): void => {
+    if (!anchorElement || !anchorTile) return;
+    const { x, z } = tileToWorld(anchorTile, gridWidth, gridHeight);
+    const surface = surfaceAt(anchorTile);
+    // ⚠️ **Lifted, and lifted in *world* space.** Projecting the tile's own
+    // surface put the element's bottom edge exactly there, so it sat on the tile
+    // it was describing -- over a route's arrowhead, or over the unit whose
+    // choices it was offering. A pixel margin would have drifted with zoom; a
+    // world offset holds, because it is projected like everything else. One tile
+    // up clears both a tile's drawn extent and the tallest piece standing on it.
+    const above = project(new Vector3(x, surface + ANCHOR_LIFT, z));
+    // The lowest the tile reaches on screen, for a pane flipped below it. Every
+    // corner, so it holds however the camera has turned.
+    const below = Math.max(
+      ...TILE_CORNERS.map(([dx, dz]) => project(new Vector3(x + dx, surface, z + dz)).y),
+    );
+    const { x: left, y: top } = fitPane(
+      above,
+      below,
+      { width: anchorElement.offsetWidth, height: anchorElement.offsetHeight },
+      { width: canvas.clientWidth, height: canvas.clientHeight },
+    );
+    anchorElement.style.transform = `translate(${left}px, ${top}px)`;
   };
 
   const cutaway = createCutaway(scene, models, terrainModels, camera);

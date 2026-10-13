@@ -308,8 +308,8 @@ fielded — see the turn-order note under *After the combat pass*.
 
 #### The next pass
 
-⬜ **Settled as it goes.** The general and the panel at selection have shipped;
-panes staying on the board is next.
+⬜ **Settled as it goes.** The general, the panel at selection and panes kept
+on the board have shipped; more may join.
 
 ✅ **The general.** From playing: battles ended as gun duels — the other arms
 fought it out under bombardment, and the guns were what was left. A general
@@ -333,21 +333,6 @@ so keeping it out of their reach is the game. What it does is in
 - ⬜ **Later, global bonuses**, as Advance Wars' commanders give. Both sides
   field the same general for now; a commander chosen per player can carry
   modifiers later without the unit changing.
-
-⬜ **Panes stay on the board.** The menu, the forecast and the confirm prompt
-are anchored above a tile: `placeAnchor` projects a point a tile above it every
-frame and centres the pane over that point with a CSS translate, measuring
-nothing — so a unit at an edge or on the far row puts its pane partly off the
-canvas. Instead, **the pane is kept inside the canvas**: shifted in from the
-left and right edges, and **flipped below its tile** when there is no room above.
-
-⚠️ **Pre-checked against the code.** Fitting needs two sizes `placeAnchor` does
-not read today — the pane's own and the canvas's — so it measures both each
-frame, and the gap above the tile, now `--board-clearance` applied as a
-negative margin and used nowhere else, moves into the computation so a flipped
-pane can take it on the other side. The arithmetic is a
-small pure function beside the renderer, which gets tests where the renderer
-has none; a browser checks a unit at each edge and on the far row.
 
 #### The charging pass
 

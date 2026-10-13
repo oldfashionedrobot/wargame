@@ -1464,11 +1464,19 @@ is off.
 pane clears the thing it is describing. A pixel margin would drift with zoom; a
 world offset is projected like everything else.
 
+**The pane stays on the board.** Each frame the renderer measures the pane and
+the canvas and asks `fitPane` (`render/fitPane.ts`, pure and tested) where its
+top-left corner goes: centred over the lifted point, shifted in from the left
+and right edges, and **flipped below the tile** when there is no room above,
+hanging from the lowest of the tile's four projected corners. The last few
+pixels of clearance, `PANE_CLEARANCE`, live there rather than in CSS, since a
+flipped pane takes them on the other side.
+
 ⚠️ **Because the renderer writes only `transform`, everything else about a pane
-is CSS.** The three anchored panes — menu, forecast, confirm — are
+is CSS** — apart from that clearance. The three anchored panes — menu, forecast, confirm — are
 `.board-pane` in `index.css` plus one modifier each, and they read a `--board-*`
 token set defined there: surface, edge, lift, ink, hover, damage, track,
-radius, clearance.
+radius.
 
 ⚠️ **The board's tokens are separate from the page's, and that is the point.**
 These sit on a lit 3D scene rather than on the page, so their contrast is
@@ -1476,8 +1484,8 @@ against grass and stone; wiring them to `--bg` would produce a light-mode panel
 that is unreadable over the board. `--danger` and `--warn` *are* page chrome and
 live with the page tokens.
 
-**One surface token for all three panes**, one `--board-clearance` for their
-offsets, and one `--danger` for the error red across both routes and the canvas.
+**One surface token for all three panes**, and one `--danger` for the error red
+across both routes and the canvas.
 
 **Row hover is `:hover`, not React state.** There is no disabled row — an
 unavailable action is omitted — so hover is the only state a row has.

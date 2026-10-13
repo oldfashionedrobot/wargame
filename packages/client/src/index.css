@@ -142,10 +142,6 @@ code {
   --board-void: #2f3042;
   --board-radius: 5px;
   --board-text: 13px;
-  /* How far a pane clears the tile it is describing. ⚠️ On top of the
-     renderer's own world-space `ANCHOR_LIFT`, which does the real work: this
-     is the last few pixels, and it was three different numbers. */
-  --board-clearance: 12px;
 }
 
 /* A pane anchored over a tile. ⚠️ `position` and the offsets are load-bearing:
@@ -155,7 +151,6 @@ code {
   position: absolute;
   top: 0;
   left: 0;
-  margin-top: calc(var(--board-clearance) * -1);
   padding: 6px 8px;
   border-radius: var(--board-radius);
   background: var(--board-surface);
