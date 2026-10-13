@@ -177,10 +177,6 @@ option, and both cost a few lines against a table's seeding machinery.
 **Order is in the table at the top of this file**, not here. Each section below
 is self-contained; read the one you are about to work on.
 
-⚠️ One dependency crosses epics: *Multiplayer* decides matches are meant to be
-**short**, and how long a match runs is content. Co-presence puts two people at
-the board at the same time; only *Content* makes that a single sitting.
-
 ⚠️ **Deploying comes before multiplayer, and the reversal rests on hot-seat
 being a real mode.** This file argued the other way for a while, on the grounds
 that hot-seat was scaffolding and shipping it would teach nothing true. That
@@ -234,26 +230,8 @@ is settled as the notes come in.
 
 #### Known to want attention
 
-- **Match length.** Nothing caps a match: eight units a side, no turn limit, and
-  a player who retreats can extend it indefinitely. *Multiplayer* wants a match
-  to be one sitting; the dial is army size, board size, or a condition that ends
-  it. ⚠️ Listed under *Content* as well, because which of those it turns out to
-  be decides where the work lands. ⚠️ **Deeper cover made this worse** — worst
-  case went from 5 blows to 6 — and the lever if the two collide is
-  `BASE_DAMAGE`, which has room upward and little down: the *no living attacker
-  is harmless* sweep binds below 30, and the lowest entry is 35. ✅ **Left
-  uncapped for now**, by decision rather than by default — the dials above are
-  what to reach for if that changes.
-- ⬜ **Healing**, in some form — parked rather than decided, and parked *with*
-  capture points: if either comes back, they come back as one design. Nothing
-  recovers health today, so a wounded unit is wounded for the rest of the match.
-  ⚠️ It sits upstream of the numbers above rather than beside them: cover scales
-  with the defender's band and a charge is certain only of a worn-down unit, so
-  both mechanics are most active at low health, and how often units *are* at low
-  health is what healing decides.
 - ⬜ **Capture points**, sketched and parked: presence is possession, so a point
-  is held by standing on it and there is no capture meter to build. ⚠️ **Tied
-  to healing** — see above — so neither is designed without the other.
+  is held by standing on it and there is no capture meter to build.
 - ⬜ **How much lands before the other player answers.** Uncapped, a whole army
   can fall on one unit before it gets a reply. ⚠️ **That is how the tabletop
   games this is modelled on work**, so it is a dislike rather than a defect —
@@ -309,34 +287,25 @@ four foot), on every map from both openings: more guns wins and more horse
 loses, on every map. ⚠️ **It says as much about the bot as the armies**: a
 greedy bot never screens, and screening is the manoeuvre horse needs, so the
 horse figures are a floor. Sword cavalry flattened the ladder a long way —
-four horse and four foot went from 7% to 38% against the default, eight horse
-to 34%, four guns and four foot from 82% to 70% — without changing its order.
-⬜ **Not re-measured since the charge became earned**; a sweep then says
-whether horse has found its place.
+four horse and four foot went from 7% to 38% against the default — without
+changing its order.
 
-⬜ **A zone declared by the map.** `DEPLOYMENT_ZONE` is a constant, so on every
-board the rows nearest each edge are assumed. The day a map carries its
-own, the check in `maps.test.ts` reads it instead of the constant — and the
-*shape* of a deployment area becomes a board's design rather than a global. That
-belongs with *Content*, where maps become data. **Parked.**
+✅ **Re-measured under the earned charge**, 300 games a cell from both seats
+and both openings, with the default army centred in its zone. Wins against the
+default:
 
-⬜ **Validation that answers rather than throws.** `createMatchState` throws on an
-army that is not the zone's size and `parseArmyGrid` throws on an unknown
-character, which is right for a server-side constant and wrong for a
-*client-supplied* army — it would be a 500. The `{ ok, reason }` shape
-`validateCommand` already uses is what `POST /api/matches` needs before it can
-accept one, along with a column if an army is ever worth displaying. **Parked
-with the builder**, which is the only thing that needs it.
+| army | six shipped maps | `tester` |
+|---|---|---|
+| four guns, four foot | 71% | 62% |
+| four horse, four guns | 65% | 59% |
+| four horse, four foot | 31% | 26% |
+| eight horse | 27% | 1% |
+| eight foot | 25% | 24% |
 
-⬜ **The builder is UI**, and belongs with *UI and interaction*. Until it exists an
-army is an argument, which is enough for the harness and for a hot-seat match
-started from a constant. **Parked**, and so is the pricing below.
-
-⚠️ **It made roster size a variable**, which *Match length* above names as one of
-its three dials. The two want reading together now that the two sides can differ.
-
-⚠️ **The pricing half is *Content*'s** — a cost column, a budget constant, and one
-more clause in the validation above.
+Guns still win and horse still loses; the earned charge took horse back down
+from 38%, since the bot only ever charges where it is certain. ⚠️ **`common`
+says nothing about composition**: the opener won every game there whatever it
+fielded — see the turn-order note under *After the combat pass*.
 
 #### The charging pass
 
@@ -402,6 +371,15 @@ this is a thing to watch in play rather than a verdict. Sword cavalry widens
 it, from about 55% to 64% across every map. ✅ **Accepted for now**:
 the first mover still gets its volley off before contact is made, and tuning
 options wait on how it plays.
+
+⚠️ **Centring the default army in its zone flips it, and makes it far
+stronger.** Default against default, 200 games each way: the opener wins 94–97%
+on `classic` and every game on `common`, and 81% / 57% on `meadow`, while on
+`tester` the *second* mover wins 88–99%; `crossroads` stays even. With the army
+at the zone's left edge, as before, the second mover won 57–75% on those same
+boards. Centred, the two armies start directly across from each other rather
+than offset, so whoever strikes first lands on a full line. A thing to watch in
+play before the army's placement is settled.
 
 #### Mobility in contact — engagement and overwatch
 
@@ -1072,17 +1050,16 @@ numbers and the argument live; this is the phase that keeps changing them.
   eight units are that weapon, free, every game. Cost is what makes fielding a
   second gun a decision instead of a default.
 
-  ✅ **The mechanism is not this epic's.** Per-player armies, the deployment
-  zone, and the validation that reads them are in *Tuning and gameplay tweaks*,
-  because composition is a playstyle question before it is an economy. What is
-  left here is the pricing: a cost column beside the catalog, a budget constant
-  to tune like any other dial, and one more clause in the validation that epic
-  builds.
+  ✅ **The mechanism is built**: per-player armies and the deployment zone, and
+  a simulator that takes an army a side, which is what pricing needs. What is
+  left is a cost column beside the catalog, a budget constant to tune like any
+  other dial, an army builder — UI, so *UI and interaction*'s — and validation
+  that answers rather than throws: `createMatchState` and `parseArmyGrid` throw
+  on a bad army, right for a server constant and a 500 for a client-supplied
+  one.
 
   ⬜ It also becomes match data, so it lands with the ruleset-versioning
-  question rather than before it. The builder itself is UI and belongs with
-  *UI and interaction*, and the sweep that prices it needs the simulator to
-  take an army first — see *Armies, and where they deploy*, which owns that.
+  question rather than before it.
 
 - **Maps into a table, and an editor over it.** Settled in *Maps in a table*
   above. The storage half is a migration and a foreign key; the editor is the
@@ -1102,10 +1079,6 @@ numbers and the argument live; this is the phase that keeps changing them.
   three are a **palette** job touching no rule, and a wall is not a tile at all:
   cover *from one direction* is an **edge** feature against a grid that only has
   cells, and it multiplies with facing.
-- ⚠️ **Match length, if the answer turns out to be army size.** *Multiplayer*
-  wants a match to be one sitting and cannot make the game *end*; *Tuning and
-  gameplay tweaks* owns the question. It lands here only if the dial chosen is
-  the roster rather than a turn limit or an ending condition.
 
 ### 15 — Platforms beyond itch
 
