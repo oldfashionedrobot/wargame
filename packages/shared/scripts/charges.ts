@@ -1,85 +1,88 @@
 /**
- * What the charge tables actually mean, printed as the most health each charge
- * executes.
+ * What a charge finishes, beside what an attack would.
  *
  *     bun packages/shared/scripts/charges.ts
  *
- * ⚠️ **The companion to `matchups.ts`, and it prints a different artefact
- * because charge is a different question.** Damage is tuned against
- * hits-to-kill; a charge is a sure execute, so it is tuned against *how worn
- * down a target has to be before a charge will finish it* -- and that line
- * falls with the charger's own health, which is why it gets a column per
- * health rather than one number.
+ * ⚠️ **The companion to `matchups.ts`, printed as kill lines rather than hits.**
+ * A charge is offered only where it kills, so the question is *how worn down a
+ * target has to be*: the most health a charge finishes, head-on, from the flank
+ * and from the rear, next to the most an attack is sure to kill at its worst
+ * roll and might kill at its best. A charge is an attack's worst roll times the
+ * side, so the head-on column equals the first of those, and the other two are
+ * what getting round a unit buys.
  *
- * ⚠️ **Printed on every distinct depth of cover, and from all three sides.**
- * Each scales the line, and a value that reads reasonable from one side can
- * reach a full-health target from another -- the dead dial `charge.test.ts`
- * guards against, visible here before it is a failure there. One block per
- * star count rather than per terrain: road, bridge, plains and river are all 0
- * and would print four identical tables.
+ * ⚠️ **Per ground and per charger health**, because both move the lines: cover
+ * and the attacker's band work as they do in an attack.
  */
-import { chargeReach, hasChargeMeter } from '../src/combat';
-import { TERRAIN } from '../src/data/terrain';
-import { makeState } from '../src/testing';
+import { chargeDamage, computeDamage } from '../src/combat';
+import { LUCK_MAX } from '../src/data/combat';
+import { getUnitType } from '../src/data/unitTypes';
 import type { UnitTypeId } from '../src/data/unitTypes';
+import { makeState } from '../src/testing';
+import type { Facing } from '../src/types';
 
 const TYPES: UnitTypeId[] = ['infantry', 'cavalry', 'artillery'];
-const HEALTHS = [100, 85, 70, 55, 40, 25];
+const CHARGERS = [100, 70, 40];
+const GROUNDS = [
+  ['open', '.'],
+  ['wood', 'f'],
+  ['peak', '^'],
+] as const;
 
 /**
  * ⚠️ The **defender's** facing decides the side, so the approach is set by
  * turning the target rather than by moving the attacker: `south` looks straight
- * at a charger coming from the south, `north` looks away, `east` takes it on
- * the flank.
+ * at a charger coming from the south, `east` takes it on the flank, `north`
+ * looks away.
  */
-const FACING = { 'head-on': 'south', flank: 'east', rear: 'north' } as const;
+const SIDES: Facing[] = ['south', 'east', 'north'];
 
 const board = (
   attacker: UnitTypeId,
-  attackerHealth: number,
+  charger: number,
   defender: UnitTypeId,
-  facing: (typeof FACING)[keyof typeof FACING],
+  health: number,
+  facing: Facing,
   ground: string,
 ) =>
   makeState(
     ['...', '.-.', `.${ground}.`],
     [
-      { id: 'b1', col: 1, row: 1, unitTypeId: attacker, health: attackerHealth },
-      { id: 'r1', col: 1, row: 2, owner: 'red', unitTypeId: defender, facing },
+      { id: 'b1', col: 1, row: 1, unitTypeId: attacker, health: charger },
+      { id: 'r1', col: 1, row: 2, owner: 'red', unitTypeId: defender, health, facing },
     ],
   );
 
-/**
- * One representative tile per distinct star count, named by everything that
- * shares it.
- *
- * ⚠️ **Grouped rather than listed, so the print-out cannot go stale.** Terrains
- * that share a `defense` are indistinguishable to a charge, and printing each
- * of them separately would be four identical tables today and a silently
- * missing one the day a terrain is added.
- */
-const COVER = [...new Set(Object.values(TERRAIN).map((g) => g.defense))]
-  .sort((a, b) => a - b)
-  .map((stars) => {
-    const sharing = Object.entries(TERRAIN).filter(([, g]) => g.defense === stars);
-    return { stars, char: sharing[0][1].char, names: sharing.map(([name]) => name).join(', ') };
-  });
+/** The most health a target can have and still die to `damage`, read at every health. */
+const killLine = (damage: (health: number) => number) => {
+  let line = 0;
+  for (let health = 1; health <= 100; health++) if (damage(health) >= health) line = health;
+  return line;
+};
 
-const CELL = 8;
-console.log('the most health a charge executes, by the charger’s own health\n');
+console.log(
+  'the most health each finishes: attack at worst–best roll | charge head-on / flank / rear',
+);
 
-for (const { stars, char, names } of COVER) {
-  console.log(`\n${stars} ${stars === 1 ? 'star' : 'stars'} — ${names}`);
-  for (const [approach, facing] of Object.entries(FACING)) {
-    console.log(`  ${approach}`);
-    console.log(`${''.padEnd(24)}${HEALTHS.map((h) => `${h}hp`.padStart(CELL)).join('')}`);
-    for (const attacker of TYPES.filter(hasChargeMeter)) {
-      for (const defender of TYPES) {
-        const cells = HEALTHS.map((health) => {
-          const state = board(attacker, health, defender, facing, char);
-          return String(chargeReach(state, state.units[0], state.units[1])).padStart(CELL);
-        });
-        console.log(`${`${attacker} → ${defender}`.padEnd(24)}${cells.join('')}`);
+for (const attacker of TYPES.filter((type) => getUnitType(type).charges)) {
+  for (const defender of TYPES) {
+    console.log(`\n${attacker} → ${defender}`);
+    for (const charger of CHARGERS) {
+      for (const [name, char] of GROUNDS) {
+        const attack = (roll: number) =>
+          killLine((health) => {
+            const state = board(attacker, charger, defender, health, 'south', char);
+            return computeDamage(state, state.units[0], state.units[1], roll);
+          });
+        const charge = SIDES.map((facing) =>
+          killLine((health) => {
+            const state = board(attacker, charger, defender, health, facing, char);
+            return chargeDamage(state, state.units[0], state.units[1]);
+          }),
+        );
+        console.log(
+          `  ${`${charger}hp`.padEnd(7)}${name.padEnd(6)}${`${attack(0)}–${attack(LUCK_MAX)}`.padEnd(9)}| ${charge.join(' / ')}`,
+        );
       }
     }
   }

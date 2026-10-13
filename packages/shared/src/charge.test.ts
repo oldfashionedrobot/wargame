@@ -1,21 +1,12 @@
 import { describe, expect, it } from 'bun:test';
-import { chargeReach, hasChargeMeter, refuseCharge, resolveBattle, resolveCharge } from './combat';
-import {
-  CHARGE_COVER_PER_STAR,
-  CHARGE_FACING,
-  CHARGE_METER_FULL,
-  CHARGE_THRESHOLD,
-} from './data/combat';
-import { TERRAIN } from './data/terrain';
-import { MAX_HEALTH } from './data/unitTypes';
+import { chargeDamage, computeDamage, refuseCharge, resolveBattle, resolveCharge } from './combat';
+import { CHARGE_FACING, CHARGE_METER_FULL } from './data/combat';
+import { getUnitType, MAX_HEALTH, UNIT_TYPES } from './data/unitTypes';
 import type { UnitTypeId } from './data/unitTypes';
 import { at, makeState } from './testing';
 import type { Facing, GameState, Unit } from './types';
 
 const unit = (state: GameState, id: string): Unit => state.units.find((u) => u.id === id)!;
-
-// Read off the table rather than written out, so retuning it fails nothing here.
-const THRESHOLD = CHARGE_THRESHOLD.cavalry!.infantry;
 
 /**
  * A full-meter cavalryman just south of an infantryman, the target on plains
@@ -37,99 +28,94 @@ const contact = ({
     ],
   );
 
-const reach = (state: GameState) => chargeReach(state, unit(state, 'b1'), unit(state, 'r1'));
+const charge = (state: GameState) => chargeDamage(state, unit(state, 'b1'), unit(state, 'r1'));
+const worstAttack = (state: GameState) =>
+  computeDamage(state, unit(state, 'b1'), unit(state, 'r1'), 0);
 
-describe('hasChargeMeter, which is also the capability rule', () => {
-  it('is true for a unit with a threshold row', () => {
-    expect(hasChargeMeter('cavalry')).toBe(true);
-    expect(hasChargeMeter('infantry')).toBe(true);
+describe('the charges flag, which is also the capability rule', () => {
+  it('is set for cavalry and infantry and not for artillery', () => {
+    expect(getUnitType('cavalry').charges).toBe(true);
+    expect(getUnitType('infantry').charges).toBe(true);
+    expect(getUnitType('artillery').charges).toBe(false);
   });
 
-  // ⚠️ The missing row *is* "artillery cannot charge". A `canCharge` flag beside
-  // the table would say it a second time, and the two could drift.
-  it('is false for artillery, which has no row at all', () => {
-    expect(hasChargeMeter('artillery')).toBe(false);
-    expect(CHARGE_THRESHOLD.artillery).toBeUndefined();
-  });
-
-  // ⚠️ **The ceiling on every entry.** A rear charge that reaches `MAX_HEALTH`
-  // executes a *full-health* unit -- a dead dial rather than a signature
-  // moment, and invisible in a head-on column.
-  it('keeps every entry short of executing a full-health unit from the rear', () => {
-    const reaching = Object.entries(CHARGE_THRESHOLD).flatMap(([charger, row]) =>
-      Object.entries(row)
-        .filter(([, threshold]) => threshold * CHARGE_FACING.rear >= MAX_HEALTH * 100)
-        .map(([target, threshold]) => `${charger}→${target} at ${threshold}`),
+  // ⚠️ **The ceiling a charge must stay under**, now that it reads
+  // `BASE_DAMAGE`: a rear charge that finishes a *full-health* unit is a dead
+  // dial rather than a signature moment, and raising one table entry is all it
+  // takes.
+  it('keeps every rear charge short of a full-health target', () => {
+    const chargers = (Object.keys(UNIT_TYPES) as UnitTypeId[]).filter(
+      (type) => getUnitType(type).charges,
     );
-    expect(reaching).toEqual([]);
-  });
-
-  it('keeps the deepest cover short of taking a whole charge', () => {
-    const deepest = Math.max(...Object.values(TERRAIN).map(({ defense }) => defense));
-    expect(CHARGE_COVER_PER_STAR * deepest).toBeLessThan(100);
+    const finishing = chargers.flatMap((charger) =>
+      (Object.keys(UNIT_TYPES) as UnitTypeId[])
+        .filter((target) => {
+          const state = makeState(3, [
+            { id: 'b1', col: 1, row: 1, unitTypeId: charger },
+            { id: 'r1', col: 1, row: 2, owner: 'red', unitTypeId: target, facing: 'north' },
+          ]);
+          return charge(state) >= MAX_HEALTH;
+        })
+        .map((target) => `${charger}→${target}`),
+    );
+    expect(finishing).toEqual([]);
   });
 });
 
-describe('chargeReach', () => {
-  it('is the threshold itself from the flank, in the open, at full strength', () => {
-    expect(reach(contact({ facing: 'east' }))).toBe(THRESHOLD);
-  });
-
-  // "Harder" is a smaller number: the health the target must be at or under.
-  it('always gives the defender a better chance head-on', () => {
-    const front = reach(contact({ facing: 'south' }))!;
-    const flank = reach(contact({ facing: 'east' }))!;
-    const rear = reach(contact({ facing: 'north' }))!;
-    expect(front).toBeLessThan(flank);
-    expect(flank).toBeLessThan(rear);
-  });
-
-  it('falls in a straight line with the charger’s own health', () => {
-    for (const charger of [100, 75, 50, 25]) {
-      expect(reach(contact({ facing: 'east', charger }))).toBe(
-        Math.floor((THRESHOLD * charger) / MAX_HEALTH),
-      );
+describe('chargeDamage', () => {
+  // ⚠️ **The attack formula, not a second one**: cover and the charger's own
+  // health have to work as they do in an attack, which head-on equality on every
+  // ground and at every strength is what says.
+  it('is an attack at its worst roll, head-on, on any ground and at any strength', () => {
+    for (const ground of ['.', 'f', '^']) {
+      for (const charger of [100, 70, 40]) {
+        for (const health of [100, 50, 10]) {
+          const state = contact({ ground, charger, health });
+          expect(charge(state)).toBe(worstAttack(state));
+        }
+      }
     }
   });
 
-  it('takes a share off for each star of the target’s cover', () => {
-    const open = reach(contact({ facing: 'east' }))!;
-    const wood = reach(contact({ facing: 'east', ground: 'f' }))!;
-    const peak = reach(contact({ facing: 'east', ground: '^' }))!;
-    expect(wood).toBeLessThan(open);
-    expect(peak).toBe(
-      Math.floor((THRESHOLD * (100 - TERRAIN.mountain.defense * CHARGE_COVER_PER_STAR)) / 100),
-    );
+  it('multiplies it by the side it arrives on', () => {
+    const flank = contact({ facing: 'east' });
+    const rear = contact({ facing: 'north' });
+    expect(charge(flank)).toBe(Math.floor((worstAttack(flank) * CHARGE_FACING.flank) / 100));
+    expect(charge(rear)).toBe(Math.floor((worstAttack(rear) * CHARGE_FACING.rear) / 100));
+  });
+
+  it('always gives the defender a better chance head-on', () => {
+    const front = charge(contact({ facing: 'south' }));
+    const flank = charge(contact({ facing: 'east' }));
+    const rear = charge(contact({ facing: 'north' }));
+    expect(front).toBeLessThan(flank);
+    expect(flank).toBeLessThan(rear);
   });
 
   it('reads the side from where the charger stands', () => {
     const state = contact({ facing: 'south' });
     const fromWest = { ...unit(state, 'b1'), position: at(0, 2) };
-    expect(chargeReach(state, fromWest, unit(state, 'r1'))).toBe(THRESHOLD);
-  });
-
-  it('is null for a charger with no row', () => {
-    const guns = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery' },
-      { id: 'r1', col: 1, row: 2, owner: 'red' },
-    ]);
-    expect(reach(guns)).toBeNull();
+    expect(chargeDamage(state, fromWest, unit(state, 'r1'))).toBe(
+      charge(contact({ facing: 'east' })),
+    );
   });
 });
 
 describe('refuseCharge', () => {
   const b1 = (state: GameState) => unit(state, 'b1');
 
-  // Inclusive: a target sitting exactly on the line is executed.
-  it('accepts a charge that executes', () => {
-    const state = contact({ health: reach(contact())! });
+  // Inclusive: a target left on exactly what the charge does is finished. On
+  // open ground a target's health does not move the damage, so it can be read
+  // off a full-health one.
+  it('accepts a charge that kills', () => {
+    const state = contact({ health: charge(contact()) });
     expect(refuseCharge(state, b1(state), [at(1, 1)], 'r1')).toBeNull();
   });
 
-  // ⚠️ **Not offered rather than failed.** A charge is a sure execute, so the
-  // rule that it must kill lives here, and the panel and the lit tiles follow.
-  it('refuses a charge that would not execute', () => {
-    const state = contact({ health: reach(contact())! + 1 });
+  // ⚠️ **Not offered rather than failed.** A charge is a sure kill, so the rule
+  // that it must kill lives here, and the panel and the lit tiles follow.
+  it('refuses a charge that would not kill', () => {
+    const state = contact({ health: charge(contact()) + 1 });
     expect(refuseCharge(state, b1(state), [at(1, 1)], 'r1')).toBe('they are too strong to break');
   });
 
@@ -144,8 +130,8 @@ describe('refuseCharge', () => {
   it('reads the side from where the charge ends, not where the unit started', () => {
     const state = makeState(5, [
       { id: 'b1', col: 1, row: 0, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
-      // Between what a head-on and a flank charge execute.
-      { id: 'r1', col: 2, row: 2, owner: 'red', health: THRESHOLD - 1, facing: 'south' },
+      // Just over what a head-on charge does, and so under a flank one.
+      { id: 'r1', col: 2, row: 2, owner: 'red', health: charge(contact()) + 1, facing: 'south' },
     ]);
     const toFlank = [at(1, 0), at(1, 1), at(1, 2)];
     const toFront = [at(1, 0), at(2, 0), at(2, 1)];
@@ -187,9 +173,9 @@ describe('refuseCharge', () => {
   // `terrainAdmits` is the shared half.
   //
   // ⚠️ **Nothing that can charge is barred from anywhere any more.** Only
-  // `foot` and `horse` have a `CHARGE_THRESHOLD` row, and both can enter every
-  // terrain on the board -- `wheels` is the only movement type with a `null`,
-  // and artillery cannot charge. So this asserts the *reachable* truth.
+  // `foot` and `horse` units charge, and both can enter every terrain on the
+  // board -- `wheels` is the only movement type with a `null`, and artillery
+  // cannot charge. So this asserts the *reachable* truth.
   it('allows a charge onto water', () => {
     const river = contact({ health: 1, ground: '~' });
     expect(refuseCharge(river, b1(river), [at(1, 1)], 'r1')).toBeNull();
@@ -197,8 +183,7 @@ describe('refuseCharge', () => {
 
   // ⚠️ **The guard stays despite having nothing to catch**, and cheaply: a unit
   // type that charges on `wheels`, or a terrain barred to `foot`, brings it back
-  // the same day it is added -- `CHARGE_THRESHOLD` is `Partial`, so a new
-  // charger is exactly the change that arrives quietly.
+  // the same day it is added.
   it('allows ground the attacker can stand on, enemy or not', () => {
     const wood = contact({ health: 1, ground: 'f' });
     expect(refuseCharge(wood, b1(wood), [at(1, 1)], 'r1')).toBeNull();

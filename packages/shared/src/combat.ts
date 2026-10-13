@@ -1,15 +1,7 @@
 import { attackSide, isWithinGrid, tileDistance } from './coordinate';
 import { terrainAdmits } from './movement';
-import {
-  BASE_DAMAGE,
-  CHARGE_COVER_PER_STAR,
-  CHARGE_FACING,
-  CHARGE_METER_FULL,
-  CHARGE_THRESHOLD,
-  TERRAIN_WEIGHT,
-} from './data/combat';
-import { clampHealth, getUnitType, MAX_HEALTH } from './data/unitTypes';
-import type { UnitTypeId } from './data/unitTypes';
+import { BASE_DAMAGE, CHARGE_FACING, CHARGE_METER_FULL, TERRAIN_WEIGHT } from './data/combat';
+import { clampHealth, getUnitType } from './data/unitTypes';
 import { defenseAt, getTileAt, getUnit, inContact } from './queries';
 import type { BattleResolvedEvent, Coordinate, GameState, Unit } from './types';
 
@@ -297,7 +289,7 @@ export function tilesInRange(
  * which is AW's behaviour -- nothing here asks what the defender has *done*,
  * only what it is and where it stands.
  *
- * ⚠️ **A charge never asks this.** It is a sure execute, offered only where it
+ * ⚠️ **A charge never asks this.** It is a sure kill, offered only where it
  * kills, so there is nothing left to answer with.
  */
 export function wouldCounter(defender: Unit, attacker: Unit): boolean {
@@ -359,7 +351,7 @@ export function resolveBattle(
       health: clampHealth(attacker.health - riposte),
       // Attacking is what fills it; answering fills nothing, so only this side
       // carries one.
-      chargeMeter: hasChargeMeter(attacker.unitTypeId)
+      chargeMeter: getUnitType(attacker.unitTypeId).charges
         ? Math.min(attacker.chargeMeter + 1, CHARGE_METER_FULL)
         : attacker.chargeMeter,
     },
@@ -369,55 +361,34 @@ export function resolveBattle(
 }
 
 /**
- * Whether this unit can charge at all, and so whether it has a charge meter --
- * capability is a row in `CHARGE_THRESHOLD`, never a flag on the catalog.
- *
- * ⚠️ **A missing row *is* the rule.** Artillery has none, which says "artillery
- * cannot charge" once. A `canCharge` boolean beside the table would say it
- * twice, and the two could disagree.
- */
-export function hasChargeMeter(unitTypeId: UnitTypeId): boolean {
-  return CHARGE_THRESHOLD[unitTypeId] !== undefined;
-}
-
-/**
- * The most health `defender` can have and still be executed by a charge from
- * `attacker`, standing where it charges from -- or `null` if it cannot charge.
+ * What a charge from `attacker`, standing where it charges from, does to
+ * `defender`: an attack's damage at the worst roll, multiplied by the side it
+ * arrives on.
  *
  * ```
- * reach = floor(threshold × facing × (1 − coverPerStar × stars) × health / MAX_HEALTH)
+ * charge = floor(computeDamage(state, attacker, defender, 0) × CHARGE_FACING[side] / 100)
  * ```
  *
- * ⚠️ **Linear in the charger's health**, so a weaker charger finishes less --
- * the counterpart of a wounded unit hitting softer. A smaller reach is a harder
- * charge throughout: head-on, deep cover and a worn-down charger all shrink the
- * health the target must be at or under.
- *
- * ⚠️ **Worked in whole numbers**, every factor a whole percentage and one floor
- * at the end. In floating point a reach can land a hair under a whole number
- * and floor a point short -- threshold 60 from the rear on three stars comes to
- * 62.99. Nothing in today's tables lands on one; this keeps it so as they move.
+ * ⚠️ **The attack formula, not a second one.** Cover and the charger's own
+ * health work exactly as they do in an attack, so a head-on charge finishes
+ * what an attack's worst roll kills, and the flank and rear finish more. No
+ * luck, because a charge is offered only where it kills, and that has to be
+ * known before anything is rolled.
  *
  * ⚠️ **The side is read from where the attacker will be standing**, so callers
  * hand over the unit at its charging tile -- `refuseCharge` builds it from the
  * path, and a charge's side is then the same for the server and the panel.
  */
-export function chargeReach(state: GameState, attacker: Unit, defender: Unit): number | null {
-  const threshold = CHARGE_THRESHOLD[attacker.unitTypeId]?.[defender.unitTypeId];
-  if (threshold === undefined) return null;
-
+export function chargeDamage(state: GameState, attacker: Unit, defender: Unit): number {
   const side = attackSide(defender.facing, defender.position, attacker.position);
-  const cover = 100 - CHARGE_COVER_PER_STAR * defenseAt(state, defender.position);
-  return Math.floor(
-    (threshold * CHARGE_FACING[side] * cover * attacker.health) / (100 * 100 * MAX_HEALTH),
-  );
+  return Math.floor((computeDamage(state, attacker, defender, 0) * CHARGE_FACING[side]) / 100);
 }
 
 /**
  * Why this charge is refused, or `null` if it is legal -- and a legal charge
  * kills.
  *
- * ⚠️ **Offered only where it executes.** A charge cannot fail, so the rule
+ * ⚠️ **Offered only where it kills.** A charge cannot fail, so the rule
  * that it must kill lives here rather than in the resolution: the panel offers
  * the row and lights the tile only for a target this accepts, and the server
  * resolves only what it accepted.
@@ -443,20 +414,20 @@ export function refuseCharge(
 ): string | null {
   const target = refuseTarget(state, attacker, path, targetUnitId);
   if (typeof target === 'string') return target;
-  if (!hasChargeMeter(attacker.unitTypeId)) return `${attacker.unitTypeId} cannot charge`;
+  const { charges, movementType } = getUnitType(attacker.unitTypeId);
+  if (!charges) return `${attacker.unitTypeId} cannot charge`;
   if (attacker.chargeMeter !== CHARGE_METER_FULL) return 'the charge meter is not full';
 
   const from = path[path.length - 1];
   if (tileDistance(from, target.position) !== 1) return 'a charge has to reach them';
 
-  const { movementType } = getUnitType(attacker.unitTypeId);
   const tile = getTileAt(state, target.position);
   if (!tile || !terrainAdmits(tile, movementType)) {
     return `${movementType} cannot cross ${tile ?? 'that'}`;
   }
 
-  const reach = chargeReach(state, { ...attacker, position: from }, target)!;
-  return target.health > reach ? 'they are too strong to break' : null;
+  const damage = chargeDamage(state, { ...attacker, position: from }, target);
+  return damage >= target.health ? null : 'they are too strong to break';
 }
 
 /**

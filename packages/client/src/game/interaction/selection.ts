@@ -314,7 +314,7 @@ export function canAttack(state: GameState, selection: DestinationChosen): boole
  * ⚠️ `canAttack`'s twin, and it asks `refuseCharge` for the same reason `canAttack`
  * asks `refuseAttack`: the menu row and the click that follows it must be
  * answered by one rule, or the panel offers what the board then refuses. It
- * covers capability too -- artillery has no threshold row, so this is false for
+ * covers capability too -- artillery does not charge, so this is false for
  * every target and the row never appears.
  */
 export function canCharge(state: GameState, selection: DestinationChosen): boolean {

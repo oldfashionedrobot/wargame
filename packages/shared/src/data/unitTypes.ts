@@ -70,6 +70,15 @@ export interface UnitType {
    * back on its own turn. A melee attack is still answered by whatever it hits.
    */
   melee: boolean;
+
+  /**
+   * Can charge: finish a target outright once its charge meter is full -- see
+   * `chargeDamage`. A unit that cannot charge has no meter.
+   *
+   * ⚠️ **Required**, so a new unit type has to say. A missing row in a charge
+   * table used to leave one silently unable to.
+   */
+  charges: boolean;
 }
 
 /**
@@ -125,6 +134,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     range: { min: 1, max: 2 },
     slow: false,
     melee: false,
+    charges: true,
   },
   cavalry: {
     id: 'cavalry',
@@ -138,6 +148,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     range: { min: 1, max: 1 },
     slow: false,
     melee: true,
+    charges: true,
   },
   artillery: {
     id: 'artillery',
@@ -155,6 +166,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     range: { min: 3, max: 5 },
     slow: true,
     melee: false,
+    charges: false,
   },
 };
 

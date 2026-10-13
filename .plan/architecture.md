@@ -74,7 +74,7 @@ packages/
     data/             the static content tables — unit types, terrain, combat
   shared/scripts/
     matchups.ts       prints hits-to-kill
-    charges.ts        prints the most health each charge executes
+    charges.ts        prints what each charge finishes beside an attack
   server/
     src/
       http.ts         createServer() — Bun.serve routes, /api/* plus the client build
@@ -113,7 +113,7 @@ Run from the repo root. All exit non-zero on failure.
 | `bun run format` / `format:check` | Prettier (Markdown and exported glTF are excluded) |
 | `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
 | `bun packages/shared/scripts/matchups.ts` | Tuning harness: hits-to-kill for every matchup on every terrain |
-| `bun packages/shared/scripts/charges.ts` | Tuning harness: the most health each charge executes, from all three sides, on every depth of cover, by the charger's health |
+| `bun packages/shared/scripts/charges.ts` | Tuning harness: the most health each charge finishes from all three sides, beside what an attack kills, by ground and charger health |
 | `bun packages/server/scripts/simulate.ts [games] [map] [opener] [budget] [blueArmy] [redArmy]` | Plays the game against itself with a greedy bot and reports outcomes, match length, damage by unit type, and whether each mechanic fired. An army is comma-separated rows; omitted, both sides take the default deployment |
 | `bun run preview` | `vite preview` — the built client with no `/api` proxy, so it reaches no match |
 | `bun run --filter '@wargame/server' start` | The production shape: one process serving the API and `dist` together |
@@ -286,7 +286,7 @@ Static tables keyed by `Record`, so adding a member makes every incomplete table
 a compile error. **The values are the modules' — read them there.**
 
 **`unitTypes.ts`** — `{ id, name, char, movementType, movementRange, range, slow,
-melee }` per type. `range` is `{ min, max }` tiles, inclusive, read by
+melee, charges }` per type. `range` is `{ min, max }` tiles, inclusive, read by
 `refuseAttack`, `tilesInRange` and `wouldCounter`. ⚠️ **It classifies
 nothing:** there is no direct/indirect flag, and `min: 3` describes a gun rather
 than naming a kind of one — which is what lets a single rule ask "is the
@@ -297,6 +297,8 @@ attacker inside my own range" and get an answer for every unit.
 answers an attack — see *Slow* below. `melee` governs a *weapon*: a melee unit
 fights hand to hand, so it cannot answer a ranged attacker, though its own
 attack is answered as any other is. Cavalry is melee; infantry and guns are not.
+`charges` says a unit can charge, and so has a charge meter — cavalry and
+infantry, not guns; see *Charge*. ⚠️ Required, so a new unit type has to say.
 
 `movementType` is `foot`, `horse` or `wheels`, and picks a column out of the
 terrain cost table; `movementRange` is the budget that column is spent against.
@@ -305,13 +307,12 @@ nothing varies it, so a per-instance copy would be one number written once per
 unit. ⚠️ It lives here so that the day some unit is tougher than another, it
 becomes a column of `UnitType` and the edit is local.
 
-**`combat.ts`** — every number combat reads, and nothing else. Three tables:
-`BASE_DAMAGE` (attacker → defender, as a percentage of a full-health target),
-`CHARGE_THRESHOLD` (a `Partial`, where the *missing* artillery row is how
-"artillery cannot charge" is said) and `CHARGE_FACING` (a percentage of the
-threshold per side). Then the scalars, each explained where it is used rather
-than here: `TERRAIN_WEIGHT` and `LUCK_MAX` in *Combat*; `CHARGE_COVER_PER_STAR`
-and `CHARGE_METER_FULL` in *Charge*.
+**`combat.ts`** — every number combat reads, and nothing else. Two tables:
+`BASE_DAMAGE` (attacker → defender, as a percentage of a full-health target,
+read by attacks and charges both) and `CHARGE_FACING` (what a charge's damage is
+multiplied by, per side). Then the scalars, each explained where it is used
+rather than here: `TERRAIN_WEIGHT` and `LUCK_MAX` in *Combat*;
+`CHARGE_METER_FULL` in *Charge*.
 
 ⚠️ `BASE_DAMAGE` is a matrix rather than an attack stat and a defence stat: no
 pair of scalars can express rock-paper-scissors, since any `f(attack, defence)`
@@ -547,8 +548,7 @@ refuseAttack(state, attacker, path, targetUnitId) → string | null
 refuseCharge(state, attacker, path, targetUnitId) → string | null
 tilesInRange(unit, from, gridWidth, gridHeight)   → Coordinate[]
 wouldCounter(defender, attacker)                  → boolean
-hasChargeMeter(unitTypeId)                        → boolean          // false = cannot charge
-chargeReach(state, attacker, defender)            → number | null    // null = cannot charge
+chargeDamage(state, attacker, defender)           → number
 resolveBattle(state, attacker, defender, rolls)   → BattleResolvedEvent   // attack
 resolveCharge(attacker, defender)                 → BattleResolvedEvent   // charge
 computeDamage(state, attacker, defender, roll)    → number
@@ -609,7 +609,7 @@ committed the same way on its next action.
 ### Facing
 
 **Facing does exactly two things**: an attack from directly behind goes
-unanswered, and it scales what a charge can execute. `computeDamage` cannot see
+unanswered, and it multiplies a charge's damage. `computeDamage` cannot see
 facing at all, so there is no modifier on the *outgoing* attack — position
 limits the reply, it does not sharpen the blow.
 
@@ -746,13 +746,11 @@ outcome and never its roll.
 
 ### Charge
 
-A second kind of attack, earned by attacking and offered only where it kills.
+A finisher: an attack earned by attacking, offered only where it kills.
 
 ```
-reach = floor(CHARGE_THRESHOLD[charger][target] × CHARGE_FACING[side]
-              × (100 − CHARGE_COVER_PER_STAR × stars) × chargerHealth
-              / (100 × 100 × MAX_HEALTH))
-a charge is legal  ⇔  meter = CHARGE_METER_FULL, in contact, and target health ≤ reach
+charge = floor(computeDamage(state, charger, target, roll 0) × CHARGE_FACING[side] / 100)
+a charge is legal  ⇔  charges, meter = CHARGE_METER_FULL, in contact, charge ≥ target health
 ```
 
 **The charge meter.** `Unit.chargeMeter` fills a point for every attack the unit
@@ -760,50 +758,42 @@ makes, up to `CHARGE_METER_FULL` (3), and a charge spends all of it. Answering
 an attack fills nothing, and nothing else empties it — it leaves only with the
 unit. It rides as an absolute value on the **attacker's** side of
 `battleResolved`, the only side that carries one, so the fold stays exact. ⚠️
-**A unit that cannot charge never fills one**: `hasChargeMeter` is the threshold
-row, and without one the meter stays 0. ⚠️ **Full is *equal to* full**, never
-at least, so a unit read back without the field can never charge.
+**A unit that cannot charge never fills one**: the `charges` flag decides both,
+and without it the meter stays 0. ⚠️ **Full is *equal to* full**, never at
+least, so a unit read back without the field can never charge.
 
-**A charge is a sure execute.** No roll, no failure, nothing answers it. It
-takes the target to zero health — an ordinary `battleResolved`, so the reducer's
+**A charge is a sure kill.** No roll, no failure, nothing answers it. It takes
+the target to zero health — an ordinary `battleResolved`, so the reducer's
 `health <= 0` filter removes it — leaves the charger's health as it was, and
 spends the meter. `answered` is always false. `resolveCharge` decides nothing
 and needs neither the state nor a roll, because `refuseCharge` already did.
 
-**Offered only where it executes.** `refuseCharge` refuses a charge that would
-not kill, so the panel offers the row and lights the tile only for a target it
-would break, and the server resolves only what it accepted. Either the target
-is worn down enough to send the charge in, or it is strong enough to hold.
+**Offered only where it kills.** `refuseCharge` refuses a charge whose damage
+falls short of the target's health, so the panel offers the row and lights the
+tile only for a target it would finish, and the server resolves only what it
+accepted.
 
-**`chargeReach` is the one formula**, read by `refuseCharge` and printed by the
-harness. The threshold is what a full-strength charger executes from the flank
-on open ground, and three things scale it:
-
-- **The side it arrives on** — `CHARGE_FACING` is 50 / 100 / 150 percent head-on,
-  flank and rear, so charging head-on always gives the defender a better chance.
-  Multiplied, never added, so `CHARGE_THRESHOLD` can be retuned alone.
-- **The target's cover** — each star takes `CHARGE_COVER_PER_STAR` (10%) off: a
-  wood 20%, a mountain 40%. A share rather than the damage formula's cover,
-  which shrinks with the defender's health and so would barely touch the
-  worn-down units an execute reaches.
-- **The charger's own health**, linearly — a weaker charger finishes less.
-
-A smaller reach is a harder charge throughout. ⚠️ **Worked in whole numbers**,
-every factor a percentage and one floor at the end, so no reach lands a hair
-under a whole number and floors a point short.
+**`chargeDamage` is the attack formula, not a second one**: `computeDamage` at
+roll 0, then multiplied by `CHARGE_FACING` — 100 / 125 / 150 percent head-on,
+flank and rear. Cover and the charger's own health therefore work exactly as
+in an attack. A head-on charge finishes what an attack's worst roll kills, and
+the flank and rear finish more, so getting round a unit is what a charge is
+for. No luck, because whether it kills has to be known before anything is
+rolled. The multiplier goes on the final damage, so nothing inside
+`computeDamage` changes. `refuseCharge` and the harness read it.
 
 ⚠️ **The side is read from where the attacker will be standing.** `validateMove`
 hands `refuseCharge` the unit as it stood, so `refuseCharge` builds the unit at
-the path's last tile before asking `chargeReach` — and the server and the panel
-price the same tile. This is `attackSide`'s second reader and the only one to
-consult `flank`; the counter's rear rule uses only its `rear` case.
+the path's last tile before asking `chargeDamage` — and the server and the
+panel price the same tile. This is `attackSide`'s second reader and the only
+one to consult `flank`; the counter's rear rule uses only its `rear` case.
 
-⚠️ **Capability is a missing row, not a flag.** `CHARGE_THRESHOLD` is a
-`Partial` and artillery has none, which is the only place *artillery cannot
-charge* is stated. Any unit is still a valid **target**. ⚠️ No entry may reach
-`MAX_HEALTH` from the rear, or a rear charge would execute a full-health unit —
-a dead dial rather than a signature moment; `charge.test.ts` holds every entry
-to it, and the deepest cover short of taking a whole charge.
+⚠️ **Capability is the `charges` flag.** Artillery is not flagged, which is the
+only place *artillery cannot charge* is stated. Any unit is still a valid
+**target**. ⚠️ **`BASE_DAMAGE` tunes charges too**, so no rear charge may finish
+a full-health unit — a dead dial rather than a signature moment. Cavalry into a
+gun's rear on open ground is the nearest, at 97; `charge.test.ts` holds every
+pair to it.
 
 **A charge never consults the counter rule**, and nothing answers it.
 

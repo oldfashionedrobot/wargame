@@ -357,22 +357,24 @@ more clause in the validation above.
 why: a charge was the *wounded* unit's attack, a healthy unit's charge was a
 worse shot, and infantry made half of all charges. So cavalry fights with
 sabres, as a `melee` unit that cannot answer a ranged attacker, and the charge
-is earned: three attacks fill a meter, and a full meter buys a sure execute that
-scales with the side it arrives on, the target's cover and the charger's own
-health. Earlier in the pass the repel, the attack forecast's counter and the
+is earned: three attacks fill a meter, and a full meter buys a finisher — an
+attack's worst roll times the side it arrives on, offered only where it kills.
+A first cut of it scaled a separate threshold table by cover and the charger's
+health; it never finished anything an attack would not, even from the rear, so
+it became the attack formula. Earlier in the pass the repel, the attack forecast's counter and the
 simulator's dice, exchange and distance each got one home. What it does is in
 [`architecture.md`](architecture.md); why, and what was measured, is in the
 commits.
 
 ⬜ **For play to answer:**
 
-- **The thresholds are first numbers** — cavalry 35 / 25 / 45 against infantry,
-  cavalry and guns, infantry 25 / 15 / 35 — and so is the meter's size of three
-  and cover's 10% a star. `scripts/charges.ts` prints what each executes.
-- **The simulator seldom charges**, and that is the bot: it scores a charge
-  level with a killing attack, which costs nothing either, so it rarely spends a
-  full meter — 10 charges in 50 games on `classic`. Read its charge counts with
-  that in mind.
+- **The side multipliers are first numbers** — 1× head-on, 1.25× flank, 1.5×
+  rear — and so is the meter's size of three. Head-on at 1× was chosen, so a
+  head-on charge finishes only what an attack's worst roll kills.
+  `scripts/charges.ts` prints each charge's line beside the attack's.
+- **The simulator charges more than it did** — 24 in 50 games on `classic`,
+  from 10 — though its bot still scores a charge level with a killing attack,
+  so read its counts with that in mind.
 - ⬜ Later: **dragoons**, horse with carbines — the `melee` flag is what makes
   room for them, and their model is already in `public/models/`.
 
@@ -453,15 +455,14 @@ building it.
 
 #### The dials
 
-The tables are `BASE_DAMAGE`, `CHARGE_THRESHOLD` and `CHARGE_FACING`; the
-scalars beside them are `TERRAIN_WEIGHT`, `LUCK_MAX`, `CHARGE_COVER_PER_STAR`
-and `CHARGE_METER_FULL`. The `defense` column of `terrain.ts` is a dial too, and
+The tables are `BASE_DAMAGE`, which charges read too, and `CHARGE_FACING`; the
+scalars beside them are `TERRAIN_WEIGHT`, `LUCK_MAX` and `CHARGE_METER_FULL`. The `defense` column of `terrain.ts` is a dial too, and
 turned out to be the one carrying the most weight.
 
 **Tune against the harnesses, never against a damage number.**
 `scripts/matchups.ts` prints hits-to-kill across every matchup and terrain,
-`charges.ts` prints the most health each charge executes from all three sides
-on every depth of cover, and `server/scripts/simulate.ts` plays the game against itself and
+`charges.ts` prints what each charge finishes from all three sides beside what
+an attack kills, and `server/scripts/simulate.ts` plays the game against itself and
 reports outcomes, match length, damage and kills by unit type, and whether each
 mechanic fired. ⚠️ **All three have earned themselves** — one killed a table
 where everything died in two hits, another found cavalry-into-artillery
@@ -1013,9 +1014,9 @@ argument live; this is the phase that keeps changing them.
 
 - **More unit types.** The catalog is built for this: `Record<UnitTypeId, …>`
   means adding one is a compile error in every table that needs an entry, and
-  `maps.test.ts` already checks a new movement type can cross every board. ⚠️
-  The one table that will *not* complain is `CHARGE_THRESHOLD`, which is
-  `Partial` so artillery can have no row — a new unit silently gets no charge.
+  `maps.test.ts` already checks a new movement type can cross every board. The
+  unit catalog's flags are required too, so a new unit has to say whether it is
+  slow, fights hand to hand and charges.
 - **Whatever play says next.** Three things have already moved this way, and two
   of the three turned out to be rules rather than dials.
 - ⬜ **The boards still lean, and the gun's mobility moves them more than they

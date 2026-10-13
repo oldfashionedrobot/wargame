@@ -773,7 +773,7 @@ describe('canCharge, which decides whether the panel offers it', () => {
   });
 
   // ⚠️ Capability comes through the same rule rather than a separate check:
-  // artillery has no threshold row, so `refuseCharge` says no for every target
+  // artillery does not charge, so `refuseCharge` says no for every target
   // and the row never appears.
   it('is false for artillery, which cannot charge at all', () => {
     const state = contact('artillery');
