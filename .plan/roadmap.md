@@ -219,13 +219,14 @@ interesting. Several rules have already moved on evidence from playing rather
 than from measuring, and more than one of those turned out to be a *rule*
 rather than a dial — which is the shape to expect from this epic too.
 
-⚠️ **It runs in passes: play, then tune.** Three have shipped. The first set
+⚠️ **It runs in passes: play, then tune.** Four have shipped. The first set
 terrain weighting and the first charge numbers by printing grids; the second,
 the combat pass, came from playing — see *After the combat pass*; the third
-reworked charging — see *The charging pass*. A pass's changes go to
+reworked charging — see *The charging pass*; the fourth added a general — see
+*The general's pass*. A pass's changes go to
 [`architecture.md`](architecture.md) and leave only their open questions here.
 
-⬜ **The next pass is under way** — see *The next pass*, below.
+⬜ **The next pass is planned** — see *The next pass*, below.
 
 #### Known to want attention
 
@@ -308,8 +309,77 @@ fielded — see the turn-order note under *After the combat pass*.
 
 #### The next pass
 
-⬜ **Settled as it goes.** The general, the panel at selection with its Move
-row, and panes kept on the board have shipped; more may join.
+⬜ **Planned, from playing.** Cover, the charge meter, seeing what an enemy can
+reach, and seeing who has acted. Each wants its own plan and pre-check before
+it is built; what follows is what is known so far.
+
+⬜ **Cover may need reworking: the mountain looks too strong, everything else
+too weak.** Cover is stars × the defender's health band × `TERRAIN_WEIGHT`
+(1.5), so at full health a forest cuts 30% of a hit, a mountain 60%, and road,
+bridge, plains and river nothing — two terrains of six give any cover at all.
+The dials are the `defense` column of `terrain.ts` and `TERRAIN_WEIGHT`, under
+two constraints written beside the weight: `maxStars × TERRAIN_WEIGHT < 10`,
+and the softer ceiling at 1.667 where the weakest matchup on a mountain rounds
+to zero. ⚠️ The empty 1-star slot is deliberate — a single star moved too few
+hits-to-kill to be worth drawing — so open ground gaining cover reopens that.
+⚠️ **Play decides this one, not the simulator**: its bot never chooses ground
+(see *The dials*). `matchups.ts` prints what each change does to hits-to-kill.
+
+⬜ **The charge meter per unit type.** Leaning: cavalry fills in two attacks,
+infantry in three. Later, heavy cavalry in one, and a general's ability might
+lower it for its whole army.
+
+- **One column instead of a flag and a constant.** `CHARGE_METER_FULL` is read
+  in two places — `resolveBattle` caps the meter at it, `refuseCharge` requires
+  it — and `charges` says whether a type charges at all. A meter size per type,
+  `null` for one that does not charge, says both, the way a terrain cost of
+  `null` says impassable. `charges.ts` filters on the flag and follows.
+- **Read through one function** once anything can modify it, so a general's
+  ability has one place to apply rather than two call sites to remember.
+- ⚠️ **`refuseCharge` tests `!==` full**, which a meter above a lowered size
+  fails forever — a stored match, or a general's ability arriving mid-match.
+  "At least full" is the rule to write.
+- ⚠️ **The board's counter shows the raw meter**, 1 to 3. With sizes differing,
+  a 2 is a ready cavalryman and an infantryman one attack short, so the counter
+  has to say *ready* rather than a number that means different things.
+
+⬜ **Seeing what an enemy can reach.** Today a click on an enemy clears the
+selection: `trySelect` takes only what `canSelectUnit` accepts, a unit of the
+player to move that has not acted. Wanted: the first click on an enemy shows
+its attack range, a click away clears it, a second click on it shows its
+movement range, and a third clears.
+
+- **A new member of `SelectionState`** — an enemy inspected, with which range
+  is showing. Read-only: nothing pinned, never a plan, nothing to commit.
+- **The overlays exist**: the movement range and the attack band are already
+  drawn for the player's own units, so this is choosing which to light.
+- **To decide: what "attack range" means.** The band around where it stands, or
+  everywhere it could hit after moving — Advance Wars' threat range, the band
+  around every tile it can reach. Guns are slow, so for them the two are the
+  same; for cavalry they differ by a whole move.
+- **To decide: whether the player's own spent units take the same clicks.**
+  They cannot be selected either, and showing their reach is the same view.
+
+⬜ **Marking units that have acted.** Today the only way to tell is to click a
+unit, or to remember. ⚠️ **Moved here from *UI and interaction*.** *Multiplayer*
+separately wants a "your units that can still act" indicator — the same thing
+under another name, so it should be **one** treatment rather than two.
+
+- ⚠️ **`hasActed` alone is the wrong test.** `turnEnded` refreshes only the
+  incoming player's units, so through the opponent's turn every unit of the
+  player who just moved still reads `true`. The mark is for *the player to
+  move's* units that have acted, or the whole enemy army looks spent.
+- **Each side has one material per colour**, looked up by name, so a spent look
+  is a second material per colour, swapped when units sync. Advance Wars greys
+  them.
+- The renderer has no tests, so this is checked in a browser.
+
+#### The general's pass
+
+✅ **Shipped**, from playing: a general on each side, the action panel opening
+where a unit stands with a Move row while it has not walked, and the board's
+panes kept on the board. What it does is in [`architecture.md`](architecture.md);
+the general's open questions are below.
 
 ✅ **The general.** From playing: battles ended as gun duels — the other arms
 fought it out under bombardment, and the guns were what was left. A general
@@ -326,7 +396,11 @@ so keeping it out of their reach is the game. What it does is in
   the armies are gone neither general closes. Partly the bot, but not only — a
   general is as fast as anything that could chase it. Undecided: a rule that
   settles it, such as a general with no army having lost, or a bot that fights
-  with its general once it stands alone.
+  with its general once it stands alone. ⚠️ **The rule is the favoured one,
+  pending play**, and it fits: elimination becomes "no units besides the
+  general", one clause in `victor`, and boards without a general play as now.
+  The bot would then want to ask `victor` whether a kill wins, rather than keep
+  its own copy of what winning is.
 - ⬜ **For play to answer**: whether the heal pulls the wounded back. The bot
   never retreats a unit to heal, so it healed 20 points in 100 games, and its
   generals fell in about 1% of decided matches.
@@ -511,11 +585,6 @@ terminal, and it is deliberately short until then.
   a palette rather than hunting literals. ⚠️ The *page's* own tokens exist and
   are used by nothing — a second set that never got adopted, which is either a
   job to finish or a thing to delete.
-- **Graying out acted units.** ⚠️ **Moved here out of *Out of scope for v1***,
-  where it no longer belongs: the mechanical restriction is built and only the
-  visual is missing, which is precisely this epic. *Multiplayer* separately
-  wants a "your units that can still act" indicator — the same thing under
-  another name, so it should be **one** treatment rather than two.
 - ⚠️ **The dev handle from *Open questions* belongs here**, and this is now the
   first epic where it pays. Every visual change is verified by screenshotting
   and guessing a pixel; a `tileToScreen` behind `import.meta.env.DEV` turns that
