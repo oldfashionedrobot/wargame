@@ -428,10 +428,11 @@ match claims to have been played on. A changed map gets a new id.
 camera** — row index increases north, so a map written out top-down is upside
 down in the source.
 
-**The shipped maps are 12×12, but a board may be any size that fits both
-deployment zones** — at least ten columns and four rows — and `createMatchState`
-refuses one that does not, centring the zone on whatever width it is handed. On a
-12×12 board the zone leaves one spare column a side.
+**The shipped maps are 12×12, apart from a 10×10 `tester`, and a board may be any
+size that fits both deployment zones** — at least ten columns and four rows —
+and `createMatchState` refuses one that does not, centring the zone on whatever
+width it is handed. On a 12×12 board the zone leaves one spare column a side; on
+`tester` it fills the width.
 
 **Four rules hold across every board**, and they are design rather than code —
 nothing enforces the last two but the eye:
@@ -462,6 +463,7 @@ nothing enforces the last two but the eye:
 | `lakeland` | A lake ringing a **wooded** island, and a road down the west shore. The island is where the water's price shows: infantry wades across in one turn, cavalry needs two and spends the night in open water at zero defence, and artillery never arrives at all — so it is two stars of cover no gun can ever take, only shell |
 | `meadow` | Open field with one **lateral** road straight across and a spur down to it from each side. A road across rather than along helps you redeploy along your own line more than it helps you advance, and ⚠️ **the two spurs do not line up**, so neither player has a straight run at the other |
 | `common` | Open field with the road up the middle — the fast way *at* the enemy — and a rise on one flank of each approach, ⚠️ **diagonally opposed** so the same plan does not work from both ends. A wood beside the road at the centre is the only cover anything can occupy, and it is equally far from both |
+| `tester` | A 10×10 board for playtesting: the road straight down the middle, a river across it at the midline with a single bridge, a wood beside the road on the near bank and a rise on the far one. The smallest board, so the armies meet soonest |
 
 ⚠️ **A river may only leave the board where a deployment zone is not.** The
 zones are the middle ten columns of the two rows at each end, and `wheels` cannot
