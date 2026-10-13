@@ -1,20 +1,22 @@
 /**
- * What a charge finishes, beside what an attack would.
+ * What a charge is certain to finish, beside what an attack would, and its odds
+ * against a target at full health.
  *
  *     bun packages/shared/scripts/charges.ts
  *
  * ⚠️ **The companion to `matchups.ts`, printed as kill lines rather than hits.**
- * A charge is offered only where it kills, so the question is *how worn down a
- * target has to be*: the most health a charge finishes, head-on, from the flank
- * and from the rear, next to the most an attack is sure to kill at its worst
- * roll and might kill at its best. A charge is an attack's best roll times the
- * side, so the head-on column equals the second of those, and the other two are
- * what getting round a unit buys.
+ * A charge is certain at or under its line and a gamble above it, so the
+ * question is *how worn down a target has to be*: the most health a charge is
+ * sure to finish, head-on, from the flank and from the rear, next to the most an
+ * attack is sure to kill at its worst roll and might kill at its best. A charge
+ * is an attack's best roll times the side, so the head-on line equals the second
+ * of those. The odds run down from each line to the last three columns, the
+ * chance against a full-health target -- see `chargeChance`.
  *
  * ⚠️ **Per ground and per charger health**, because both move the lines: cover
  * and the attacker's band work as they do in an attack.
  */
-import { chargeDamage, computeDamage } from '../src/combat';
+import { chargeChance, chargeDamage, computeDamage } from '../src/combat';
 import { LUCK_MAX } from '../src/data/combat';
 import { getUnitType } from '../src/data/unitTypes';
 import type { UnitTypeId } from '../src/data/unitTypes';
@@ -61,7 +63,7 @@ const killLine = (damage: (health: number) => number) => {
 };
 
 console.log(
-  'the most health each finishes: attack at worst–best roll | charge head-on / flank / rear',
+  'attack sure–might kill | charge certain head-on / flank / rear | charge odds against full health',
 );
 
 for (const attacker of TYPES.filter((type) => getUnitType(type).charges)) {
@@ -80,8 +82,12 @@ for (const attacker of TYPES.filter((type) => getUnitType(type).charges)) {
             return chargeDamage(state, state.units[0], state.units[1]);
           }),
         );
+        const odds = SIDES.map((facing) => {
+          const state = board(attacker, charger, defender, 100, facing, char);
+          return `${chargeChance(state, state.units[0], state.units[1])}%`;
+        });
         console.log(
-          `  ${`${charger}hp`.padEnd(7)}${name.padEnd(6)}${`${attack(0)}–${attack(LUCK_MAX)}`.padEnd(9)}| ${charge.join(' / ')}`,
+          `  ${`${charger}hp`.padEnd(7)}${name.padEnd(6)}${`${attack(0)}–${attack(LUCK_MAX)}`.padEnd(9)}| ${charge.join(' / ').padEnd(16)}| ${odds.join(' / ')}`,
         );
       }
     }

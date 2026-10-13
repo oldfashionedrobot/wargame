@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { at, makeState, route, unitAt } from '@wargame/shared/testing';
-import { CHARGE_METER_FULL, LUCK_MAX } from '@wargame/shared';
+import { CHARGE_METER_FULL, chargeChance, LUCK_MAX } from '@wargame/shared';
 import type { Coordinate, GameState } from '@wargame/shared';
 import {
   attackForecast,
@@ -444,11 +444,11 @@ describe('a lit tile means what the mode says', () => {
 });
 
 describe('the panel, and what it is told', () => {
-  /** Asserts there is one, so a missing forecast fails here rather than as a
-      property read off `null`. */
+  /** ⚠️ Narrows and asserts in one: a charge forecast reaching these would
+      otherwise read as a missing property rather than the wrong kind. */
   const forecastOf = (state: GameState, selection: TargetPinned) => {
     const forecast = attackForecast(state, selection);
-    if (!forecast) throw new Error('expected a forecast');
+    if (forecast?.kind !== 'attack') throw new Error('expected an attack forecast');
     return forecast;
   };
 
@@ -634,14 +634,14 @@ describe('charging, which shares every gesture with attacking', () => {
     expect(tiles).toEqual([at(1, 2)]);
   });
 
-  // A charge only ever kills, so a neighbour too strong to break is not lit.
-  it('leaves a neighbour unlit when a charge would not break it', () => {
+  // How strong a neighbour is decides the odds, not whether it lights.
+  it('lights a neighbour however strong, not only one it would finish', () => {
     const state = makeState(7, [
       { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
       { id: 'worn', col: 1, row: 2, owner: 'red', health: 5 },
       { id: 'fresh', col: 2, row: 1, owner: 'red' },
     ]);
-    expect(withB1Charging(state, at(1, 1)).step.tiles).toEqual([at(1, 2)]);
+    expect(withB1Charging(state, at(1, 1)).step.tiles).toEqual([at(1, 2), at(2, 1)]);
   });
 
   it('lights nothing when no enemy is in contact', () => {
@@ -689,11 +689,18 @@ describe('charging, which shares every gesture with attacking', () => {
 
   // ⚠️ **The bug a browser found once and the tests had not**: aiming a charge
   // showed an attack's damage, because the forecast never asked which mode it
-  // was in. A charge only ever kills, so it has nothing to forecast at all.
-  it('has no forecast once a target is pinned', () => {
-    const state = field();
-    const aim = chooseTarget(withB1Charging(state, at(1, 1)), unitAt(state, 'adjacent'));
-    expect(attackForecast(state, aim)).toBeNull();
+  // was in. And exact where an attack's is a range: no roll enters the chance,
+  // so this is the rule that will resolve it rather than an estimate of it.
+  it('forecasts the exact chance once a target is pinned', () => {
+    const state = makeState(7, [
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+    ]);
+    const aim = chooseTarget(withB1Charging(state, at(1, 1)), unitAt(state, 'r1'));
+    expect(attackForecast(state, aim)).toEqual({
+      kind: 'charge',
+      chance: chargeChance(state, unitAt(state, 'b1'), unitAt(state, 'r1')),
+    });
   });
 });
 
@@ -746,9 +753,9 @@ describe('canCharge, which decides whether the panel offers it', () => {
     expect(canCharge(state, arrived(state))).toBe(false);
   });
 
-  it('is false when the only enemy in contact is too strong to break', () => {
+  it('is true however strong the enemy in contact, since that sets only the odds', () => {
     const state = contact('cavalry', { health: 100 });
-    expect(canCharge(state, arrived(state))).toBe(false);
+    expect(canCharge(state, arrived(state))).toBe(true);
   });
 
   // ⚠️ The distinction the two rows exist for: the same board offers Attack and

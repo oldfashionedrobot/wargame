@@ -115,7 +115,7 @@ export interface MoveCommand {
    *
    * ⚠️ **It decides the resolution, not a branch inside one.** An attack
    * produces damage and a possible counter; a charge produces death and
-   * displacement, and never consults the counter rule at all. Two
+   * displacement or a repel, and never consults the counter rule at all. Two
    * self-contained resolvers, dispatched once on this.
    */
   attackKind?: AttackKind;
@@ -204,7 +204,7 @@ export interface BattleResolvedEvent {
   attacker: BattleAttacker;
   defender: BattleParticipant;
   /**
-   * The defender hit back with a counter. A charge is never answered.
+   * The defender hit back -- a counter, or a charge repelled.
    *
    * ⚠️ **A decision, not a duplicate.** It appears nowhere else, and
    * reconstructing it means re-running the counter predicate against a rebuilt

@@ -13,8 +13,9 @@ import type { GameEvent, GameState, Unit } from './types';
  * 1. **Independently applicable.** Each event must make sense against the state
  *    immediately before it, with no knowledge of its siblings. That is what
  *    lets a log be replayed to any point -- including mid-resolution -- and
- *    what lets the client fold as it animates. A charge therefore emits a
- *    `battleResolved` and then a `unitMoved`, not one compound event.
+ *    what lets the client fold as it animates. A charge that breaks through
+ *    therefore emits a `battleResolved` and then a `unitMoved`, not one
+ *    compound event.
  *
  * 2. **Absolute values, not deltas.** An event says what something *became*,
  *    never how much it changed by. That is what makes applying one twice a

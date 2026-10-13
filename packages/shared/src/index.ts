@@ -43,6 +43,7 @@ export { CHARGE_METER_FULL, LUCK_MAX } from './data/combat';
 export {
   band,
   BANDS,
+  chargeChance,
   computeDamage,
   refuseAttack,
   refuseCharge,

@@ -284,7 +284,12 @@ describe('a full turn cycle validates, resolves and folds', () => {
       if (!validation.ok) return { live, log };
       // Rolls fixed at zero, so a script with attacks in it resolves the same
       // every run.
-      const events = resolveAction(live, validation.action, { attack: 0, counter: 0 }, budget);
+      const events = resolveAction(
+        live,
+        validation.action,
+        { attack: 0, counter: 0, charge: 0 },
+        budget,
+      );
       log.push(...events);
       live = applyEvents(live, events);
     }

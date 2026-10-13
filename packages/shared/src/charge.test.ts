@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'bun:test';
-import { chargeDamage, computeDamage, refuseCharge, resolveBattle, resolveCharge } from './combat';
-import { CHARGE_FACING, CHARGE_METER_FULL, LUCK_MAX } from './data/combat';
+import {
+  chargeChance,
+  chargeDamage,
+  computeDamage,
+  refuseCharge,
+  resolveBattle,
+  resolveCharge,
+} from './combat';
+import { CHARGE_CHANCE_AT_FULL, CHARGE_FACING, CHARGE_METER_FULL, LUCK_MAX } from './data/combat';
 import { getUnitType, MAX_HEALTH } from './data/unitTypes';
 import type { UnitTypeId } from './data/unitTypes';
 import { at, makeState } from './testing';
@@ -82,39 +89,16 @@ describe('chargeDamage', () => {
 describe('refuseCharge', () => {
   const b1 = (state: GameState) => unit(state, 'b1');
 
-  // Inclusive: a target left on exactly what the charge does is finished. On
-  // open ground a target's health does not move the damage, so it can be read
-  // off a full-health one.
-  it('accepts a charge that kills', () => {
-    const state = contact({ health: charge(contact()) });
+  // ⚠️ **Offered whatever its odds.** How strong the target is decides the
+  // chance, not whether a charge may be tried.
+  it('offers a charge against a target at full health', () => {
+    const state = contact();
     expect(refuseCharge(state, b1(state), [at(1, 1)], 'r1')).toBeNull();
-  });
-
-  // ⚠️ **Not offered rather than failed.** A charge is a sure kill, so the rule
-  // that it must kill lives here, and the panel and the lit tiles follow.
-  it('refuses a charge that would not kill', () => {
-    const state = contact({ health: charge(contact()) + 1 });
-    expect(refuseCharge(state, b1(state), [at(1, 1)], 'r1')).toBe('they are too strong to break');
   });
 
   it('refuses a charger whose meter is not full', () => {
     const state = contact({ health: 1, meter: CHARGE_METER_FULL - 1 });
     expect(refuseCharge(state, b1(state), [at(1, 1)], 'r1')).toBe('the charge meter is not full');
-  });
-
-  // ⚠️ `validateMove` hands over the unit as it stood, so the side has to come
-  // from the path. Read from the unit's own tile, this would price a charge by
-  // where the ride started and the server and the panel could disagree.
-  it('reads the side from where the charge ends, not where the unit started', () => {
-    const state = makeState(5, [
-      { id: 'b1', col: 1, row: 0, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
-      // Just over what a head-on charge does, and so under a flank one.
-      { id: 'r1', col: 2, row: 2, owner: 'red', health: charge(contact()) + 1, facing: 'south' },
-    ]);
-    const toFlank = [at(1, 0), at(1, 1), at(1, 2)];
-    const toFront = [at(1, 0), at(2, 0), at(2, 1)];
-    expect(refuseCharge(state, b1(state), toFlank, 'r1')).toBeNull();
-    expect(refuseCharge(state, b1(state), toFront, 'r1')).toBe('they are too strong to break');
   });
 
   // ⚠️ Contact, never the attacker's range band. Infantry reaches two tiles, so
@@ -168,15 +152,100 @@ describe('refuseCharge', () => {
   });
 });
 
+describe('chargeChance', () => {
+  const chance = (state: GameState) => chargeChance(state, unit(state, 'b1'), unit(state, 'r1'));
+
+  // On open ground a target's health does not move the damage, so the line can
+  // be read off a full-health one.
+  it('is certain where the charge would kill, and not one point over', () => {
+    const line = charge(contact());
+    expect(chance(contact({ health: line }))).toBe(100);
+    expect(chance(contact({ health: line + 1 }))).toBeLessThan(100);
+  });
+
+  it('falls to CHARGE_CHANCE_AT_FULL against full health, head-on, at full strength', () => {
+    expect(chance(contact())).toBe(CHARGE_CHANCE_AT_FULL);
+  });
+
+  // The end is scaled by the side like everything else about a charge, so
+  // getting round a unit still pays against one at full health.
+  it('scales that end by the side the charge arrives on', () => {
+    for (const [facing, side] of [
+      ['east', 'flank'],
+      ['north', 'rear'],
+    ] as const) {
+      expect(chance(contact({ facing }))).toBe(
+        Math.floor((CHARGE_CHANCE_AT_FULL * CHARGE_FACING[side]) / 100),
+      );
+    }
+  });
+
+  it('never rises as the target gets healthier', () => {
+    for (const ground of ['.', 'f', '^']) {
+      const odds = [...Array(MAX_HEALTH).keys()].map((h) =>
+        chance(contact({ ground, health: h + 1 })),
+      );
+      expect(odds).toEqual([...odds].sort((a, b) => b - a));
+    }
+  });
+
+  // ⚠️ **Scaled across the whole curve, not only at its end**, so a wounded
+  // charger's gamble stays a long shot -- even just over its own line, which is
+  // the cliff this accepts.
+  it('scales everything over the line by the charger’s own health', () => {
+    expect(chance(contact({ charger: 60 }))).toBe(Math.floor((CHARGE_CHANCE_AT_FULL * 60) / 100));
+    const line = charge(contact({ charger: 60 }));
+    expect(chance(contact({ charger: 60, health: line + 1 }))).toBeLessThanOrEqual(60);
+  });
+
+  it('never falls under 1%', () => {
+    expect(chance(contact({ charger: 1 }))).toBe(1);
+  });
+
+  it('reads the side from where the charger stands', () => {
+    const state = contact({ facing: 'south' });
+    const fromWest = { ...unit(state, 'b1'), position: at(0, 2) };
+    expect(chargeChance(state, fromWest, unit(state, 'r1'))).toBe(
+      chance(contact({ facing: 'east' })),
+    );
+  });
+});
+
 describe('resolveCharge', () => {
-  it('kills the target, spends the meter, and costs the charger nothing', () => {
-    const state = contact({ health: 10, charger: 60 });
-    const battle = resolveCharge(unit(state, 'b1'), unit(state, 'r1'));
+  const resolve = (state: GameState, roll: number, counter = 0) =>
+    resolveCharge(state, unit(state, 'b1'), unit(state, 'r1'), {
+      attack: 0,
+      counter,
+      charge: roll,
+    });
+
+  it('kills the target, spends the meter, and costs the charger nothing when it breaks', () => {
+    const battle = resolve(contact({ charger: 60 }), 0);
     expect(battle.kind).toBe('charge');
     expect(battle.defender.health).toBe(0);
     expect(battle.attacker.health).toBe(60);
     expect(battle.attacker.chargeMeter).toBe(0);
     expect(battle.answered).toBe(false);
+  });
+
+  it('breaks through on any roll where it is certain', () => {
+    expect(resolve(contact({ health: 10 }), 99).defender.health).toBe(0);
+  });
+
+  // ⚠️ **A free attack, whatever the counter rule says**: the defender's own
+  // attack on the charger, with the counter roll.
+  it('meets a failed charge with the defender’s own attack, and still spends the meter', () => {
+    const state = contact();
+    const battle = resolve(state, CHARGE_CHANCE_AT_FULL, LUCK_MAX);
+    const free = computeDamage(state, unit(state, 'r1'), unit(state, 'b1'), LUCK_MAX);
+    expect(battle.defender.health).toBe(MAX_HEALTH);
+    expect(battle.attacker.health).toBe(MAX_HEALTH - free);
+    expect(battle.attacker.chargeMeter).toBe(0);
+    expect(battle.answered).toBe(true);
+  });
+
+  it('can kill the charger when it fails', () => {
+    expect(resolve(contact({ charger: 5 }), 99).attacker.health).toBe(0);
   });
 });
 

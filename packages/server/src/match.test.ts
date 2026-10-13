@@ -248,8 +248,8 @@ describe('submit', () => {
         ],
         { width: 1, depth: 1 },
       );
-      // A full meter and a worn-down target, so a charge is legal; an attack
-      // ignores both.
+      // A full meter and a worn-down target, so a charge is legal and certain;
+      // an attack ignores both.
       const blue = {
         ...base.units.find((u) => u.owner === BLUE)!,
         position: { col: 5, row: 0 },
@@ -285,16 +285,18 @@ describe('submit', () => {
     };
     const leaked = /"(attack|counter|charge|rolls)":/;
 
-    // ⚠️ The same pair for either kind: a charge reads neither, but the number
-    // of draws never depends on what the rules will do with them.
+    // ⚠️ The same three for either kind, whichever it reads: the number of
+    // draws never depends on what the rules will do with them.
     for (const kind of ['attack', 'charge'] as const) {
-      it(`keeps the pair ${kind === 'attack' ? 'an attack' : 'a charge'} was handed`, async () => {
+      it(`keeps the rolls ${kind === 'attack' ? 'an attack' : 'a charge'} was handed`, async () => {
         const { rolls, sent } = await attack(kind);
-        expect(Object.keys(rolls).sort()).toEqual(['attack', 'counter']);
+        expect(Object.keys(rolls).sort()).toEqual(['attack', 'charge', 'counter']);
         for (const roll of [rolls.attack, rolls.counter]) {
           expect(roll).toBeGreaterThanOrEqual(0);
           expect(roll).toBeLessThanOrEqual(LUCK_MAX);
         }
+        expect(rolls.charge).toBeGreaterThanOrEqual(0);
+        expect(rolls.charge).toBeLessThanOrEqual(99);
         expect(sent).not.toMatch(leaked);
       });
     }

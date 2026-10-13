@@ -20,11 +20,14 @@ import type { Rolls } from '@wargame/shared';
  * draw exactly as a match does. The server never passes one.
  */
 export function rollLuck(random: () => number = Math.random): Rolls {
-  const draw = () => Math.floor(random() * (LUCK_MAX + 1));
-  // ⚠️ **Both drawn for every command, whether or not either is used** -- a
-  // charge and an end of turn use neither, and a counter that never happens
-  // leaves its roll unread. Deciding first and rolling second would make the
-  // *number of draws* depend on the rules, which is the coupling that keeping
-  // randomness out of `shared/` exists to avoid.
-  return { attack: draw(), counter: draw() };
+  const luck = () => Math.floor(random() * (LUCK_MAX + 1));
+  // ⚠️ **All three drawn for every command, whether or not any is used** -- an
+  // end of turn uses none, an attack leaves the charge roll unread, and a
+  // counter that never happens leaves its own. Deciding first and rolling
+  // second would make the *number of draws* depend on the rules, which is the
+  // coupling that keeping randomness out of `shared/` exists to avoid.
+  //
+  // ⚠️ The charge roll is 0..99, not 0..LUCK_MAX: it is read against a
+  // *percentage*, and on the luck band every charge above 9% would be certain.
+  return { attack: luck(), counter: luck(), charge: Math.floor(random() * 100) };
 }

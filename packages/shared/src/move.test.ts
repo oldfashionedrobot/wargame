@@ -85,7 +85,7 @@ const lane = (enemyRow: number, unitTypeId: 'infantry' | 'artillery' = 'infantry
 const resolved = (
   state: ReturnType<typeof lane>,
   command: MoveCommand,
-  rolls: Rolls = { attack: 0, counter: 0 },
+  rolls: Rolls = { attack: 0, counter: 0, charge: 0 },
 ) => {
   const validation = validateCommand(state, command as Command, 'blue');
   if (!validation.ok) throw new Error(`expected a legal command, got: ${validation.reason}`);
@@ -364,7 +364,7 @@ describe('resolveMove', () => {
     const command = move('b1', at(0, 0), at(0, 0), 'r1');
 
     const riposte = (attack: number) => {
-      const [, battle] = resolved(board(), command, { attack, counter: 0 });
+      const [, battle] = resolved(board(), command, { attack, counter: 0, charge: 0 });
       if (battle.type !== 'battleResolved') throw new Error('expected a battle');
       return MAX_HEALTH - battle.attacker.health;
     };
@@ -388,8 +388,8 @@ describe('resolveMove', () => {
 
   it('passes the roll through, so a better one hurts more', () => {
     const command = move('b1', at(0, 0), at(0, 2), 'r1');
-    const unlucky = resolved(lane(4), command, { attack: 0, counter: 0 })[1];
-    const lucky = resolved(lane(4), command, { attack: LUCK_MAX, counter: 0 })[1];
+    const unlucky = resolved(lane(4), command, { attack: 0, counter: 0, charge: 0 })[1];
+    const lucky = resolved(lane(4), command, { attack: LUCK_MAX, counter: 0, charge: 0 })[1];
     if (unlucky.type !== 'battleResolved' || lucky.type !== 'battleResolved') throw new Error();
     expect(lucky.defender.health).toBeLessThan(unlucky.defender.health);
   });
@@ -569,14 +569,14 @@ describe('validateMove, a unit in contact', () => {
   });
 });
 
-// A full-meter cavalryman charging head-on into infantry worn down far enough
-// to break.
+// A full-meter cavalryman charging head-on into infantry -- worn down far
+// enough to break for certain, unless a test sends it into a fresh one.
 describe('resolveMove, charging', () => {
   const at_ = (col: number, row: number) => ({ col, row });
-  const field = () =>
+  const field = (health = 10, unitTypeId: 'infantry' | 'artillery' = 'infantry') =>
     makeState(7, [
       { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
-      { id: 'r1', col: 1, row: 2, owner: 'red', health: 10, facing: 'south' },
+      { id: 'r1', col: 1, row: 2, owner: 'red', health, facing: 'south', unitTypeId },
     ]);
   const charge = (): MoveCommand => ({
     type: 'move',
@@ -586,13 +586,15 @@ describe('resolveMove, charging', () => {
     targetUnitId: 'r1',
     attackKind: 'charge',
   });
-  // A charge draws on no roll, so the pair every command is handed goes unread.
-  const play = (state: ReturnType<typeof field>) => {
+  // The charge roll decides it; 0 breaks through anything the charge has a
+  // chance against, and 99 fails anything short of certain.
+  const play = (state: ReturnType<typeof field>, roll = 0) => {
     const validation = validateCommand(state, charge() as Command, 'blue');
     if (!validation.ok) throw new Error(`expected legal, got: ${validation.reason}`);
     return resolveMove(state, validation.action as Parameters<typeof resolveMove>[1], {
       attack: LUCK_MAX,
       counter: LUCK_MAX,
+      charge: roll,
     });
   };
 
@@ -634,6 +636,23 @@ describe('resolveMove, charging', () => {
       throw new Error('shape');
     expect(approach.facing).toBe('north');
     expect(displacement.facing).toBe('north');
+  });
+
+  it('emits no displacement when the charge is repelled', () => {
+    const events = play(field(MAX_HEALTH), 99);
+    expect(events.map((e) => e.type)).toEqual(['unitMoved', 'battleResolved']);
+  });
+
+  // ⚠️ A failed charge is met by a free attack whatever the counter rule says,
+  // so a defender that could never have countered still repels. Artillery is
+  // the case that proves it -- a battery answers nothing at all -- and charging
+  // one must not be free.
+  it('is repelled by artillery, which could never have countered', () => {
+    const [, battle] = play(field(MAX_HEALTH, 'artillery'), 99);
+    if (battle.type !== 'battleResolved') throw new Error('shape');
+    expect(battle.answered).toBe(true);
+    expect(battle.attacker.health).toBeLessThan(MAX_HEALTH);
+    expect(battle.attacker.chargeMeter).toBe(0);
   });
 });
 

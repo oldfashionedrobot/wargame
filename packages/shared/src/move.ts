@@ -99,11 +99,12 @@ export function resolveMove(state: GameState, action: MoveAction, rolls: Rolls):
   };
   // ⚠️ **Dispatched once, on the kind, into two self-contained resolvers.** An
   // attack produces damage and a possible counter; a charge produces death and
-  // displacement, draws on no roll, and never consults the counter rule.
+  // displacement or a repel, and never consults the counter rule.
   // Threading conditionals through one function would put two mechanics in one
   // body and make every later change ask which it belonged to.
   if (action.attackKind === 'charge') {
-    events.push(resolveCharge(moved, defender));
+    const battle = resolveCharge(state, moved, defender, rolls);
+    events.push(battle);
 
     // ⚠️ **Appended after the battle, never before it.** The defender leaves the
     // board in `applyEvents` when its health hits zero, so displacing first
@@ -114,12 +115,14 @@ export function resolveMove(state: GameState, action: MoveAction, rolls: Rolls):
     // produces. `playEvents` skips a move whose mesh already stands at the
     // destination -- true of the approach, which was previewed, and false of
     // this, which was not. The asymmetry is correct and is why it works.
-    events.push({
-      type: 'unitMoved',
-      unitId: moved.id,
-      path: [moved.position, defender.position],
-      facing: action.facing,
-    });
+    if (battle.defender.health <= 0) {
+      events.push({
+        type: 'unitMoved',
+        unitId: moved.id,
+        path: [moved.position, defender.position],
+        facing: action.facing,
+      });
+    }
     return events;
   }
 

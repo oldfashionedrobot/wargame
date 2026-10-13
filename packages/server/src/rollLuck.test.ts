@@ -36,8 +36,19 @@ describe('rollLuck', () => {
     expect(draws).toContain(LUCK_MAX);
   });
 
+  // ⚠️ 0..99, not 0..LUCK_MAX: a charge rolls against a *percentage*. Drawn on
+  // the luck band, every charge above 9% would be certain -- legal, silent, and
+  // it would read as the odds being far too generous rather than as a bug here.
+  // Missing an end across two thousand draws is about 0.99^2000.
+  it('rolls a charge across the whole percentage range', () => {
+    const charges = rolls.map(({ charge }) => charge);
+    expect(charges.every(Number.isInteger)).toBe(true);
+    expect(Math.min(...charges)).toBe(0);
+    expect(Math.max(...charges)).toBe(99);
+  });
+
   it('draws from the source it is given', () => {
-    expect(rollLuck(() => 0.999)).toEqual({ attack: LUCK_MAX, counter: LUCK_MAX });
-    expect(rollLuck(() => 0)).toEqual({ attack: 0, counter: 0 });
+    expect(rollLuck(() => 0.999)).toEqual({ attack: LUCK_MAX, counter: LUCK_MAX, charge: 99 });
+    expect(rollLuck(() => 0)).toEqual({ attack: 0, counter: 0, charge: 0 });
   });
 });

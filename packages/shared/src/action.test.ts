@@ -4,7 +4,7 @@ import { actionEndsTurn } from './turns';
 import { at, makeState, route } from './testing';
 import type { Command, MoveCommand } from './types';
 
-const NO_LUCK = { attack: 0, counter: 0 };
+const NO_LUCK = { attack: 0, counter: 0, charge: 0 };
 
 // b1 starts at (0,0). A real route, not an endpoint pair -- validatePath
 // walks every step in 6c, so a fixture describing a straight jump would be
@@ -343,7 +343,7 @@ describe('resolveAction, when a resolution ends the game', () => {
         facing: 'north',
         targetUnitId: 'r1',
       }),
-      { attack: 0, counter: 0 },
+      NO_LUCK,
     );
     expect(events.find((event) => event.type === 'gameEnded')).toEqual({
       type: 'gameEnded',

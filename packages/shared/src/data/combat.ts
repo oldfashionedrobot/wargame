@@ -74,6 +74,14 @@ export const CHARGE_FACING: Record<'front' | 'flank' | 'rear', number> = {
 };
 
 /**
+ * A full-strength charger's chance of breaking a full-health target head-on, as
+ * a percentage. The flank and rear scale it by `CHARGE_FACING`, and the
+ * charger's own health scales the lot -- see `chargeChance`, which runs a
+ * charge's odds from certain at its kill line down to this at full health.
+ */
+export const CHARGE_CHANCE_AT_FULL = 25;
+
+/**
  * The attacks it takes to earn a charge. Every attack a unit that can charge
  * makes fills its meter a point, up to this; a charge needs it full and spends
  * all of it. Answering an attack fills nothing, and nothing but a charge or the

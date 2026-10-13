@@ -24,6 +24,8 @@
 import {
   applyEvents,
   canSelectUnit,
+  chargeChance,
+  computeDamage,
   exploreMovement,
   facingToward,
   defenseAt,
@@ -124,10 +126,13 @@ function candidates(state: GameState): Scored[] {
           });
         }
 
-        // Charging: a certain kill, offered only where it is one. ⚠️ It ties a
-        // killing attack, which costs nothing either, so a full meter is often
-        // left unspent.
+        // Charging: a kill weighted by its odds, less the defender's free
+        // attack weighted by the odds of failing. ⚠️ A certain charge ties a
+        // killing attack, which costs nothing either.
         if (refuseCharge(state, moved, path, target.id) === null) {
+          const p = chargeChance(state, moved, target) / 100;
+          const mid = Math.floor(LUCK_MAX / 2);
+          const repel = computeDamage(state, target, moved, mid);
           out.push({
             command: {
               type: 'move',
@@ -137,7 +142,7 @@ function candidates(state: GameState): Scored[] {
               targetUnitId: target.id,
               attackKind: 'charge',
             },
-            score: target.health + 25,
+            score: p * (target.health + 25) - (1 - p) * repel,
           });
         }
       }
@@ -157,6 +162,7 @@ interface Stats {
   attacks: number;
   countered: number;
   charges: number;
+  chargesBroke: number;
   hitsOnCover: number;
 }
 
@@ -231,7 +237,10 @@ function record(before: GameState, events: GameEvent[], stats: Stats): void {
 
     if (event.kind === 'charge') {
       stats.charges++;
-      stats.killsBy[by] = (stats.killsBy[by] ?? 0) + 1;
+      if (event.defender.health <= 0) {
+        stats.chargesBroke++;
+        stats.killsBy[by] = (stats.killsBy[by] ?? 0) + 1;
+      }
       continue;
     }
 
@@ -283,6 +292,7 @@ const stats: Stats = {
   attacks: 0,
   countered: 0,
   charges: 0,
+  chargesBroke: 0,
   hitsOnCover: 0,
 };
 
@@ -344,4 +354,7 @@ console.log(
   `  ...onto covered ground ${stats.hitsOnCover}  ${pct(stats.hitsOnCover, stats.attacks)}`,
 );
 console.log(`  charges made           ${stats.charges}`);
+console.log(
+  `  ...broke through       ${stats.chargesBroke}  ${pct(stats.chargesBroke, stats.charges)}`,
+);
 console.log();

@@ -357,11 +357,14 @@ more clause in the validation above.
 why: a charge was the *wounded* unit's attack, a healthy unit's charge was a
 worse shot, and infantry made half of all charges. So cavalry fights with
 sabres, as a `melee` unit that cannot answer a ranged attacker, and the charge
-is earned: three attacks fill a meter, and a full meter buys a finisher — an
-attack's best roll times the side it arrives on, offered only where it kills.
-A first cut of it scaled a separate threshold table by cover and the charger's
-health; it never finished anything an attack would not, even from the rear, so
-it became the attack formula. Earlier in the pass the repel, the attack forecast's counter and the
+is earned: three attacks fill a meter, and a full meter buys a charge that is
+certain wherever an attack's best roll, times the side it arrives on, would
+kill — and a gamble above that, its odds falling to a quarter against a fresh
+unit, scaled by the side and by the charger's own health. A failed charge is
+met by a free attack from the defender. A first cut scaled a separate
+threshold table by cover and the charger's health; it never finished anything
+an attack would not, even from the rear, so the line became the attack
+formula, and offering only certain charges then gave way to odds above it. Earlier in the pass the repel, the attack forecast's counter and the
 simulator's dice, exchange and distance each got one home. What it does is in
 [`architecture.md`](architecture.md); why, and what was measured, is in the
 commits.
@@ -369,15 +372,20 @@ commits.
 ⬜ **For play to answer:**
 
 - **The side multipliers are first numbers** — 1× head-on, 1.25× flank, 1.5×
-  rear — and so is the meter's size of three. Head-on at 1× was chosen, so a
-  head-on charge is sure of what an attack's best roll might kill.
-  `scripts/charges.ts` prints each charge's line beside the attack's.
+  rear — and so are the meter's size of three and the 25% a fresh charger has
+  against a fresh unit head-on. Head-on at 1× was chosen, so a head-on charge
+  is sure of what an attack's best roll might kill. `scripts/charges.ts` prints
+  each charge's line beside the attack's, and its odds against full health.
+- **The cliff just over a wounded charger's line** — certain of a target on 38
+  and 58% against one on 40, for a charger on 60 — is the price of scaling the
+  whole curve by the charger's health, and was accepted.
 - **Cavalry into a gun's rear on open ground finishes it at any health.**
   Accepted rather than tuned away; if it reads as too much in play, the rear
   multiplier at 1.35× brings it to 99 without touching attacks.
-- **The simulator charges more than it did** — 26 in 50 games on `classic`,
-  from 10 — though its bot still scores a charge level with a killing attack,
-  so read its counts with that in mind.
+- **The simulator never gambles**: its greedy bot weighs a charge's kill by the
+  odds against the free attack it risks, and only certain charges come out
+  ahead of an attack — 22 in 50 games on `classic`, all breaking through. The
+  odds are for players to use, and the bot says nothing about them.
 - ⬜ Later: **dragoons**, horse with carbines — the `melee` flag is what makes
   room for them, and their model is already in `public/models/`.
 

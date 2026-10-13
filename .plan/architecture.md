@@ -135,7 +135,7 @@ applyEvents(state, events)              → GameState
 
 `rolls` is an argument, never a field on `Action`: `shared/` produces no
 randomness (invariant 2), so the server rolls and passes them in. `endTurn`
-and a charge ignore the argument.
+ignores the argument.
 
 | | Direction | Contents |
 |---|---|---|
@@ -675,9 +675,13 @@ how the attack roll lands. `answered` is read at the **worst** roll, so it means
 
 The client is told the shape of the outcome and never the roll.
 
-`Rolls` is `{ attack, counter }` — named members rather than a tuple. ⚠️
-**Every command draws both, whether or not either is used** — a charge and an
-end of turn use neither — so the number of draws never depends on the rules.
+`Rolls` is `{ attack, counter, charge }` — named members rather than a tuple.
+`attack` and `counter` are luck rolls on 0–`LUCK_MAX`; `charge` is 0–99, read
+against a charge's chance. ⚠️ **Every command draws all three, whether or not
+any is used** — an end of turn uses none, an attack leaves the charge roll
+unread — so the number of draws never depends on the rules. `resolveBattle`
+takes only the pair it reads, so a forecast or the bot resolving an attack
+passes two.
 
 ⚠️ **`from` is where the attacker *ends up*, not where it stands.** A command is
 move-then-attack. `validateMove` passes the last tile of the path.
@@ -748,58 +752,81 @@ outcome and never its roll.
 
 ### Charge
 
-A finisher: an attack earned by attacking, offered only where it kills.
+An attack earned by attacking: certain against a target worn down far enough,
+and a gamble against a stronger one.
 
 ```
-charge = floor(computeDamage(state, charger, target, LUCK_MAX) × CHARGE_FACING[side] / 100)
-a charge is legal  ⇔  charges, meter = CHARGE_METER_FULL, in contact, charge ≥ target health
+D      = floor(computeDamage(state, charger, target, LUCK_MAX) × CHARGE_FACING[side] / 100)
+end    = CHARGE_CHANCE_AT_FULL × CHARGE_FACING[side] / 100
+pinned = 100 − (100 − end) × (targetHealth − D) / (MAX_HEALTH − D)
+chance = targetHealth ≤ D ? 100 : max(1, floor(pinned × chargerHealth / MAX_HEALTH))
+a charge is legal  ⇔  charges, meter = CHARGE_METER_FULL, in contact, ground it can stand on
+it breaks through  ⇔  rolls.charge < chance
 ```
 
 **The charge meter.** `Unit.chargeMeter` fills a point for every attack the unit
-makes, up to `CHARGE_METER_FULL` (3), and a charge spends all of it. Answering
-an attack fills nothing, and nothing else empties it — it leaves only with the
-unit. It rides as an absolute value on the **attacker's** side of
-`battleResolved`, the only side that carries one, so the fold stays exact. ⚠️
-**A unit that cannot charge never fills one**: the `charges` flag decides both,
-and without it the meter stays 0. ⚠️ **Full is *equal to* full**, never at
-least, so a unit read back without the field can never charge.
+makes, up to `CHARGE_METER_FULL` (3), and a charge spends all of it, whether it
+breaks through or not. Answering an attack fills nothing, and nothing else
+empties it — it leaves only with the unit. It rides as an absolute value on the
+**attacker's** side of `battleResolved`, the only side that carries one, so the
+fold stays exact. ⚠️ **A unit that cannot charge never fills one**: the
+`charges` flag decides both, and without it the meter stays 0. ⚠️ **Full is
+*equal to* full**, never at least, so a unit read back without the field can
+never charge.
 
-**A charge is a sure kill.** No roll, no failure, nothing answers it. It takes
-the target to zero health — an ordinary `battleResolved`, so the reducer's
-`health <= 0` filter removes it — leaves the charger's health as it was, and
-spends the meter. `answered` is always false. `resolveCharge` decides nothing
-and needs neither the state nor a roll, because `refuseCharge` already did.
+**Breaking through** takes the target to zero health — an ordinary
+`battleResolved`, so the reducer's `health <= 0` filter removes it — leaves
+the charger's health as it was, and the charger rides onto the tile.
+`answered` is false.
 
-**Offered only where it kills.** `refuseCharge` refuses a charge whose damage
-falls short of the target's health, so the panel offers the row and lights the
-tile only for a target it would finish, and the server resolves only what it
-accepted.
+**A failed charge is met by a free attack**: the defender's own `computeDamage`
+on the charger, with the counter roll, whatever the counter rule would say —
+a gun, a melee unit and a defender charged from behind all hit back. It is the
+defence every unit has, and it can kill the charger. The target is unhurt, the
+charger stays where it charged from, and `answered` means *repelled*.
+
+**Offered whatever its odds**, which never fall under 1%. `refuseCharge` asks
+only for the flag, a full meter, contact and ground the charger can stand on;
+the target's strength sets the chance, and the chance is what the player weighs.
+
+**`chargeChance` is the one home for the odds**, read by `resolveCharge`, the
+client's forecast, the bot and the harness. Certain at or under `D`; above it a
+straight line down to `end` at full health — `CHARGE_CHANCE_AT_FULL` (25%)
+scaled by the side, so 25 / 31 / 37% head-on, flank and rear — and then the
+whole of it multiplied by the charger's own health, so a wounded charger's
+gamble is a long shot. ⚠️ **The price of scaling the whole curve is a cliff just
+over the line**: a charger on 60 is certain of a target on 38 and 58% against
+one on 40. Accepted; scaling only the end left a unit on 20 health breaking one
+on 40 most of the time. ⚠️ **Worked in whole numbers**, hundredths of a percent
+until one floor, and never rising as the target gets healthier — checked over
+every charger, target, ground, side and pair of healths.
 
 **`chargeDamage` is the attack formula, not a second one**: `computeDamage` at
 the best roll, `LUCK_MAX`, then multiplied by `CHARGE_FACING` — 100 / 125 / 150
 percent head-on, flank and rear. Cover and the charger's own health therefore
 work exactly as in an attack. A head-on charge is sure of what an attack only
 might kill, and the flank and rear finish more, so getting round a unit is
-what a charge is for. The best roll rather than a rolled one, because whether
-it kills has to be known before anything is rolled. The multiplier goes on the
-final damage, so nothing inside `computeDamage` changes. `refuseCharge` and the
-harness read it.
+what a charge is for. The best roll rather than a rolled one, because the line
+the odds fall from has to be known before anything is rolled. The multiplier
+goes on the final damage, so nothing inside `computeDamage` changes.
+`chargeChance` and the harness read it.
 
-⚠️ **The side is read from where the attacker will be standing.** `validateMove`
-hands `refuseCharge` the unit as it stood, so `refuseCharge` builds the unit at
-the path's last tile before asking `chargeDamage` — and the server and the
-panel price the same tile. This is `attackSide`'s second reader and the only
+⚠️ **The side is read from where the attacker will be standing.** `resolveMove`
+hands `resolveCharge` the unit at the path's last tile, and the client's
+forecast builds the same one — so the server and the panel price the same
+tile. This is `attackSide`'s second reader and the only
 one to consult `flank`; the counter's rear rule uses only its `rear` case.
 
 ⚠️ **Capability is the `charges` flag.** Artillery is not flagged, which is the
 only place *artillery cannot charge* is stated. Any unit is still a valid
 **target**. ⚠️ **`BASE_DAMAGE` tunes charges too**, so raising an entry raises
-what a charge finishes. ⚠️ **One charge finishes a full-health unit**: cavalry
-into a gun's rear on open ground, at 111 damage. Accepted, as what getting
+what a charge is certain of. ⚠️ **One charge is certain of a full-health
+unit**: cavalry into a gun's rear on open ground, at 111 damage. Accepted, as what getting
 behind a battery with a full meter is worth; every other pairing stays under
 `MAX_HEALTH`, the nearest being cavalry into infantry's rear at 96.
 
-**A charge never consults the counter rule**, and nothing answers it.
+**A charge never consults the counter rule**: one that breaks through kills,
+and one that fails is met by the free attack above.
 
 **Contact, not a range band.** A charge has to reach the target, whatever the
 charger's own range — infantry shoots two tiles and charges at one.
@@ -1238,8 +1265,7 @@ refusal they ask — `refuseAttack` or `refuseCharge`.
 **Buttons pick intent; tiles pick targets.** A target pins and confirms exactly
 like a route: first click pins it and opens its pane, second commits, a click on
 a different lit enemy re-pins. The pane is *informational* and carries no
-button: a pinned attack shows its forecast, and a pinned charge the route's own
-quiet *Click again to confirm*, so the two gestures read the same.
+button: a pinned attack shows its damage, and a pinned charge its odds.
 
 ⚠️ **Two rules for backing out, not a chain.** A dark click inside a mode returns
 to the panel; a dark click at the panel un-walks the ghost and returns to movement
@@ -1269,19 +1295,20 @@ the same re-pin, the same second click. The kind is read off `step.kind` at the
 single place that builds the command, rather than branched on through the
 dispatch.
 
-⚠️ **`Forecast` is an attack's alone.** An attack's damage is a *range* — the
-roll is unknown. A charge is offered only where it kills, so it has nothing to
-forecast and `attackForecast` answers `null` for one.
+⚠️ **`Forecast` is a union, because the two attacks are knowable to different
+degrees.** An attack's damage is a *range* — the roll is unknown. A charge shows
+its odds alone, which are **exact**: `chargeChance` is a pure function of state
+with no roll in it. What a failed charge would cost is not previewed.
 
 **The charge overlay lights targets, not reach** — the opposite of the attack
-band, because a charge is contact-only and has no reach to show. It lights only
-what `refuseCharge` accepts, so nothing is lit until the meter is full, and a
-neighbour too strong to break stays dark.
+band, because a charge is contact-only and has no reach to show. It lights what
+`refuseCharge` accepts, so nothing is lit until the meter is full, and then
+every enemy in contact, however strong.
 
 `canCharge` is `canAttack`'s twin and asks `refuseCharge`, the rule the click will
-ask, so the menu row and the board cannot disagree. Artillery has no threshold
-row, so the rule refuses every target and the row never appears; nor does it
-until the meter is full and a target in contact would break.
+ask, so the menu row and the board cannot disagree. Artillery does not charge,
+so the rule refuses every target and the row never appears; nor does it until
+the meter is full.
 
 **`availableActions` is the one list both the panel and the skip read.** Holding
 is always last and always present, so the list is never empty — which makes *one

@@ -1,5 +1,6 @@
 import {
   canSelectUnit,
+  chargeChance,
   refuseCharge,
   computeDamage,
   facingToward,
@@ -582,22 +583,31 @@ export function readAimClick(
 }
 
 /**
- * What the panel promises before an attack is committed.
+ * What the panel promises before you commit.
  *
- * ⚠️ **An attack's alone.** A charge is offered only where it kills, so there is
- * nothing about one left to forecast.
+ * ⚠️ **A union, because the two attacks are knowable to different degrees.** An
+ * attack's damage is a *range*, since the roll is unknown; a charge's odds are
+ * an **exact** figure, because `chargeChance` is a pure function of state with
+ * no roll in it. Flattening both into one shape would force the charge to
+ * pretend its certainty is an estimate.
  */
-export interface Forecast {
-  /** Damage at the worst roll, and at the best. The true outcome is one of them. */
-  low: number;
-  high: number;
-  /** Whether the target can strike back from where you are standing. */
-  answered: boolean;
-}
+export type Forecast =
+  | {
+      kind: 'attack';
+      /** Damage at the worst roll, and at the best. The true outcome is one of them. */
+      low: number;
+      high: number;
+      /** Whether the target can strike back from where you are standing. */
+      answered: boolean;
+    }
+  | {
+      kind: 'charge';
+      /** ⚠️ Exact, not an estimate -- no roll enters this. */
+      chance: number;
+    };
 
 /**
- * The numbers on the panel, run through the same formula the server will -- or
- * `null` for a charge, which has none.
+ * The numbers on the panel, run through the same formula the server will.
  *
  * ⚠️ **An exact range, not an estimate.** Damage only ever rises with the roll
  * -- luck joins the base, and every step after it multiplies by something
@@ -617,7 +627,6 @@ export interface Forecast {
  * which is the pessimistic reading and the right default for a warning.
  */
 export function attackForecast(state: GameState, selection: TargetPinned): Forecast | null {
-  if (selection.step.kind !== 'attacking') return null;
   const attacker = getUnit(state, selection.unitId);
   const target = getUnit(state, selection.step.target.id);
   if (!attacker || !target) return null;
@@ -627,10 +636,14 @@ export function attackForecast(state: GameState, selection: TargetPinned): Forec
   const from = destinationOf(selection);
   const moved: Unit = { ...attacker, position: from };
 
+  if (selection.step.kind === 'charging') {
+    return { kind: 'charge', chance: chargeChance(state, moved, target) };
+  }
+
   const low = computeDamage(state, moved, target, 0);
   const high = computeDamage(state, moved, target, LUCK_MAX);
   const { answered } = resolveBattle(state, moved, target, { attack: 0, counter: 0 });
-  return { low, high, answered };
+  return { kind: 'attack', low, high, answered };
 }
 
 /** Which way the unit ends up looking once it commits from the panel. */

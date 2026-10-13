@@ -2,12 +2,13 @@ import { attackSide, isWithinGrid, tileDistance } from './coordinate';
 import { terrainAdmits } from './movement';
 import {
   BASE_DAMAGE,
+  CHARGE_CHANCE_AT_FULL,
   CHARGE_FACING,
   CHARGE_METER_FULL,
   LUCK_MAX,
   TERRAIN_WEIGHT,
 } from './data/combat';
-import { clampHealth, getUnitType } from './data/unitTypes';
+import { clampHealth, getUnitType, MAX_HEALTH } from './data/unitTypes';
 import { defenseAt, getTileAt, getUnit, inContact } from './queries';
 import type { BattleResolvedEvent, Coordinate, GameState, Unit } from './types';
 
@@ -190,20 +191,23 @@ export function refuseAttack(
 
 /**
  * What the server rolls for one resolution: a luck roll for the attack and one
- * for the counter, each in `[0, LUCK_MAX]`.
+ * for the counter, each in `[0, LUCK_MAX]`, and a charge roll in `[0, 99]`.
  *
  * ⚠️ **Named, not a tuple** -- `rolls.attack` says what it is where `rolls[0]`
  * is anonymous, and an *array* would invite `rolls[2]`, which is `undefined`,
  * which is `NaN` damage: silent, and the same shape as a stored unit with no
  * health.
  *
- * ⚠️ **Every command draws the pair**, whatever it turns out to need. A charge
- * uses none of it, like an end of turn, and a counter that never happens leaves
- * its roll unread -- the number of draws must never depend on the rules.
+ * ⚠️ **Every command draws all three**, whatever it turns out to need. An end
+ * of turn uses none, an attack leaves the charge roll unread, and a counter
+ * that never happens leaves its own -- the number of draws must never depend on
+ * the rules.
  */
 export interface Rolls {
   attack: number;
   counter: number;
+  /** Against a charge's chance, as a percentage: it breaks through when under it. */
+  charge: number;
 }
 
 /**
@@ -295,8 +299,9 @@ export function tilesInRange(
  * which is AW's behaviour -- nothing here asks what the defender has *done*,
  * only what it is and where it stands.
  *
- * ⚠️ **A charge never asks this.** It is a sure kill, offered only where it
- * kills, so there is nothing left to answer with.
+ * ⚠️ **A charge never asks this.** One that breaks through kills, and one that
+ * fails is met by a free attack from the defender, whatever this would say --
+ * see `resolveCharge`.
  */
 export function wouldCounter(defender: Unit, attacker: Unit): boolean {
   if (defender.health <= 0) return false;
@@ -335,7 +340,7 @@ export function resolveBattle(
   state: GameState,
   attacker: Unit,
   defender: Unit,
-  rolls: Rolls,
+  rolls: Pick<Rolls, 'attack' | 'counter'>,
 ): BattleResolvedEvent {
   const damage = computeDamage(state, attacker, defender, rolls.attack);
   // The event says what each side *has*, so both must be numbers a rule can
@@ -367,9 +372,10 @@ export function resolveBattle(
 }
 
 /**
- * What a charge from `attacker`, standing where it charges from, does to
- * `defender`: an attack's damage at the best roll, multiplied by the side it
- * arrives on.
+ * The damage a charge from `attacker`, standing where it charges from, is
+ * certain to finish `defender` with: an attack's damage at the best roll,
+ * multiplied by the side it arrives on. At or under it a charge is certain;
+ * above it, `chargeChance` sets the odds.
  *
  * ```
  * charge = floor(computeDamage(state, attacker, defender, LUCK_MAX) × CHARGE_FACING[side] / 100)
@@ -378,12 +384,13 @@ export function resolveBattle(
  * ⚠️ **The attack formula, not a second one.** Cover and the charger's own
  * health work exactly as they do in an attack, so a head-on charge is sure of
  * what an attack only might kill, and the flank and rear finish more. The best
- * roll rather than a rolled one, because a charge is offered only where it
- * kills, and that has to be known before anything is rolled.
+ * roll rather than a rolled one, because the line the odds fall from has to be
+ * known before anything is rolled.
  *
  * ⚠️ **The side is read from where the attacker will be standing**, so callers
- * hand over the unit at its charging tile -- `refuseCharge` builds it from the
- * path, and a charge's side is then the same for the server and the panel.
+ * hand over the unit at its charging tile -- `resolveMove` and the client's
+ * forecast both build it, and a charge's side is then the same for the server
+ * and the panel.
  */
 export function chargeDamage(state: GameState, attacker: Unit, defender: Unit): number {
   const side = attackSide(defender.facing, defender.position, attacker.position);
@@ -393,13 +400,45 @@ export function chargeDamage(state: GameState, attacker: Unit, defender: Unit): 
 }
 
 /**
- * Why this charge is refused, or `null` if it is legal -- and a legal charge
- * kills.
+ * The chance a charge from `attacker`, standing where it charges from, breaks
+ * `defender`, as a whole percentage.
  *
- * ⚠️ **Offered only where it kills.** A charge cannot fail, so the rule
- * that it must kill lives here rather than in the resolution: the panel offers
- * the row and lights the tile only for a target this accepts, and the server
- * resolves only what it accepted.
+ * ```
+ * D      = chargeDamage(state, attacker, defender)
+ * end    = CHARGE_CHANCE_AT_FULL × CHARGE_FACING[side] / 100
+ * pinned = 100 − (100 − end) × (health − D) / (MAX_HEALTH − D)       // above D
+ * chance = health ≤ D ? 100 : max(1, floor(pinned × chargerHealth / MAX_HEALTH))
+ * ```
+ *
+ * ⚠️ **Certain where the charge's damage would kill**, and above that a straight
+ * line down to `end` at full health, which the side scales like everything else
+ * about a charge. Then the whole of it is multiplied by the charger's own
+ * health, so a wounded charger's gamble is a long shot -- with a cliff just over
+ * its line, where certainty gives way to its scaled odds. Scaling only the end
+ * would have left a unit on 20 health breaking one on 40 most of the time.
+ *
+ * ⚠️ **Worked in whole numbers**: hundredths of a percent until one floor at
+ * the end, so no chance lands a hair under a whole number and floors a point
+ * short. Where `D` reaches full health nothing is above it, so the division
+ * never meets a zero.
+ */
+export function chargeChance(state: GameState, attacker: Unit, defender: Unit): number {
+  const damage = chargeDamage(state, attacker, defender);
+  if (defender.health <= damage) return 100;
+
+  const side = attackSide(defender.facing, defender.position, attacker.position);
+  const end = CHARGE_CHANCE_AT_FULL * CHARGE_FACING[side];
+  const span = MAX_HEALTH - damage;
+  const pinned = 10000 * span - (10000 - end) * (defender.health - damage);
+  return Math.max(1, Math.floor((pinned * attacker.health) / (span * 100 * MAX_HEALTH)));
+}
+
+/**
+ * Why this charge is refused, or `null` if it is legal.
+ *
+ * ⚠️ **Offered whatever its odds**, which run down to 1% and never to nothing:
+ * how strong the target is decides the chance, not whether the charge may be
+ * tried. `chargeChance` is what the player weighs.
  *
  * ⚠️ **Contact, not a range band.** `refuseAttack` measures the attacker's
  * `range`, and infantry reaches two -- so reusing it would permit a "charge"
@@ -433,28 +472,44 @@ export function refuseCharge(
   if (!tile || !terrainAdmits(tile, movementType)) {
     return `${movementType} cannot cross ${tile ?? 'that'}`;
   }
-
-  const damage = chargeDamage(state, { ...attacker, position: from }, target);
-  return damage >= target.health ? null : 'they are too strong to break';
+  return null;
 }
 
 /**
- * One charge, resolved: the target dies and the meter is spent.
+ * One charge, resolved: it breaks through when the charge roll is under
+ * `chargeChance`, and the meter is spent either way.
  *
- * ⚠️ **Nothing is decided here**, because `refuseCharge` already decided it --
- * a charge it accepts kills. So this needs neither the state nor a roll.
+ * ⚠️ **Breaking through is health zero, not "it dies"**, which is what lets a
+ * charge be an ordinary `battleResolved` with no special case in the reducer --
+ * the same `health <= 0` filter removes it. The charger is untouched.
  *
- * ⚠️ **Death is expressed as health zero, not as "it dies"**, which is what lets
- * a charge be an ordinary `battleResolved` with no special case in the reducer
- * -- the same `health <= 0` filter removes it. Nothing answers, so `answered`
- * is always false.
+ * ⚠️ **A failed charge is met by a free attack**: the defender's own
+ * `computeDamage` on the charger, with the counter roll, whatever the counter
+ * rule would say -- a gun, a melee unit and a defender charged from behind all
+ * hit back. It is the defence every unit has, and it can kill the charger. The
+ * target is unhurt, and `answered` says it repelled the charge.
+ *
+ * `attacker` is the unit at its charging tile, as `resolveMove` builds it, so
+ * the chance reads the side it is charged from and the free attack reads the
+ * charger's own ground.
  */
-export function resolveCharge(attacker: Unit, defender: Unit): BattleResolvedEvent {
+export function resolveCharge(
+  state: GameState,
+  attacker: Unit,
+  defender: Unit,
+  rolls: Rolls,
+): BattleResolvedEvent {
+  const broke = rolls.charge < chargeChance(state, attacker, defender);
+  const repel = broke ? 0 : computeDamage(state, defender, attacker, rolls.counter);
   return {
     type: 'battleResolved',
     kind: 'charge',
-    attacker: { unitId: attacker.id, health: attacker.health, chargeMeter: 0 },
-    defender: { unitId: defender.id, health: 0 },
-    answered: false,
+    attacker: {
+      unitId: attacker.id,
+      health: clampHealth(attacker.health - repel),
+      chargeMeter: 0,
+    },
+    defender: { unitId: defender.id, health: broke ? 0 : defender.health },
+    answered: !broke,
   };
 }

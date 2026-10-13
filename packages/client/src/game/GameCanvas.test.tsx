@@ -366,9 +366,8 @@ describe('GameCanvas', () => {
     expect(lastOverlay()?.[1].length).toBeGreaterThan(0);
   });
 
-  // ⚠️ A charge only ever kills, so a pinned one has nothing to forecast: it
-  // gets the route's quiet pane, where a pinned attack gets its damage line.
-  it('asks only for the second click once a charge is pinned', async () => {
+  // A pinned charge quotes its odds where a pinned attack quotes its damage.
+  it('quotes the odds once a charge is pinned', async () => {
     const contested = makeState(5, [
       { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
       { id: 'r1', col: 1, row: 2, owner: 'red', health: 5 },
@@ -388,7 +387,7 @@ describe('GameCanvas', () => {
     await act(async () => clickTile({ col: 1, row: 1 })); // confirms
     await act(async () => screen.getByText('Charge').click());
     await act(async () => clickTile({ col: 1, row: 2 })); // pins the target
-    expect(screen.getByText('Click again to confirm')).toBeTruthy();
+    expect(screen.getByText(/% to break/)).toBeTruthy();
     expect(screen.queryByText(/damage/)).toBeNull();
 
     await act(async () => clickTile({ col: 4, row: 4 })); // dark: back to the panel
