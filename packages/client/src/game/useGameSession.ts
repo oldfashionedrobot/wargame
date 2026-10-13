@@ -132,12 +132,17 @@ export interface GameSession {
   /**
    * The panel's answer: enter a mode, which lights the tiles that answer for it.
    *
-   * ⚠️ **The only thing a button calls.** Everything else a player does is a
-   * tile click -- buttons pick the intent, tiles pick the target -- which is
-   * what stops a new action from being another reading a click has to be
-   * disambiguated against.
+   * ⚠️ **One of the two things a button calls**, with `chooseMove`. Everything
+   * else a player does is a tile click -- buttons pick the intent, tiles pick
+   * the target -- which is what stops a new action from being another reading a
+   * click has to be disambiguated against.
    */
   chooseAction: (kind: ActionKind) => void;
+  /**
+   * Leave the panel for the movement selection, un-walking the unit if it
+   * walked. The panel's Move row, and a dark click at the panel.
+   */
+  chooseMove: () => void;
   /** End the turn outright, without committing whatever is being planned. */
   endTurn: () => void;
 }
@@ -265,6 +270,17 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     });
   }, [server]);
 
+  // ⚠️ **Not a mode, so not `chooseAction`.** A mode is something the panel
+  // enters; this leaves it. Kept out of `ActionKind` so the panel's list, and
+  // the skip that counts it, stay about what the unit can do from here.
+  const chooseMove = useCallback((): void => {
+    if (pendingRef.current) return;
+    void callbacksRef.current.onPreview(null);
+    setSelection((current) =>
+      current.phase === 'destinationChosen' ? unpinDestination(current) : current,
+    );
+  }, []);
+
   const clickTile = useCallback(
     (coordinate: Coordinate): void => {
       if (pendingRef.current) return;
@@ -389,8 +405,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
           return;
         }
 
-        void callbacksRef.current.onPreview(null);
-        setSelection(unpinDestination(selection));
+        chooseMove();
         return;
       }
 
@@ -404,7 +419,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       const state = server.getState();
       setSelection(openInPlace(state, handleTileClick(state, selection, coordinate)));
     },
-    [server, selection, submitCommand, walking],
+    [chooseMove, server, selection, submitCommand, walking],
   );
 
   /**
@@ -439,6 +454,7 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
     walking,
     clickTile,
     chooseAction,
+    chooseMove,
     endTurn,
   };
 }

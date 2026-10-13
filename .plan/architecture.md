@@ -16,8 +16,8 @@ click a destination to pin the route there and click it again to send the unit
 walking. Where it arrives a panel asks what it is doing — hold, attack or charge,
 listing only the ones it can actually do and skipping itself when that leaves
 one; a unit that could attack or charge from where it stands gets the panel the
-moment it is selected, and a click elsewhere backs out to move it — after which a held unit is pointed somewhere, since facing decides whether
-an attack is answered. A unit beside an enemy is **in contact**: moving into
+moment it is selected, with a Move row to move it instead — after which a held
+unit is pointed somewhere, since facing decides whether an attack is answered. A unit beside an enemy is **in contact**: moving into
 contact ends the move, and a unit that starts its action in contact may move or
 attack, not both. An attack or a charge cuts away to the two units and plays the
 exchange. Every unit acts once and the
@@ -1149,8 +1149,8 @@ the next click see the same value. `pendingRef` stays a ref — it is a mutex
 against a second submit landing before the first resolves, and has to be
 synchronously current rather than rendered.
 
-`clickTile`, `chooseAction` and `endTurn` are the verbs. The panel's buttons are
-the only thing in the game that is not a tile.
+`clickTile`, `chooseAction`, `chooseMove` and `endTurn` are the verbs. The
+panel's buttons are the only thing in the game that is not a tile.
 
 Otherwise a plan is pinned, confirmed *and* abandoned by a click on the board —
 whatever is lit does something and everything else is the way out. A refused
@@ -1215,10 +1215,10 @@ unpinDestination(pinned)                      → SelectionState      // back to
 moveCommandFor(arrived, facing)               → Command
 ```
 
-⚠️ `enterMode` is the *only* thing a button reaches (through the hook's
-`chooseAction`); everything else a player
-does is a tile click. `clearStep` and `unpinDestination` are the two back-out
-rules, one per level.
+⚠️ A button reaches `enterMode` (through the hook's `chooseAction`) or
+`unpinDestination` (through `chooseMove`); everything else a player does is a
+tile click. `clearStep` and `unpinDestination` are the two back-out rules, one
+per level.
 
 ⚠️ **`canAttack` decides whether the panel offers Attack at all, and it asks
 `refuseAttack`** — the server's own rule — rather than counting what stands in
@@ -1355,9 +1355,15 @@ passes every tile click's result through `openInPlace`, which acts only on a
 unit just selected: it pins the unit's own tile and confirms it — the
 walk-to-its-own-tile gesture, made for the player — and keeps the panel when
 `availableActions` offers more than Hold, the skip's own test. Otherwise the
-movement selection stands. There is no Move row: a dark click at the panel
-backs out to the movement selection, as it does after a walk, and the panel's
-hint line says so. Nothing walks, so no preview is started.
+movement selection stands. Nothing walks, so no preview is started.
+
+**A Move row heads the panel while the unit has not walked** — a one-tile path,
+so the panel opened in place or the unit's own tile confirmed. After a walk the
+move is made, and a dark click un-walks it. ⚠️ **Move is not an `ActionKind`**:
+a mode is something the panel enters and Move leaves it, so the panel renders
+the row beside `availableActions` rather than from it, and *one action* still
+means *nothing to attack* to the skip and to `openInPlace`. The hook's
+`chooseMove` is the row, and the dark click at the panel calls it too.
 
 Either pinned phase is a **plan, not a submission** — nothing has been sent, and
 a click that means nothing else discards it without the server hearing. `path[0]`

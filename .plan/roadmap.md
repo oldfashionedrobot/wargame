@@ -308,8 +308,8 @@ fielded — see the turn-order note under *After the combat pass*.
 
 #### The next pass
 
-⬜ **Settled as it goes.** The general, the panel at selection and panes kept
-on the board have shipped; more may join.
+⬜ **Settled as it goes.** The general, the panel at selection with its Move
+row, and panes kept on the board have shipped; more may join.
 
 ✅ **The general.** From playing: battles ended as gun duels — the other arms
 fought it out under bombardment, and the guns were what was left. A general

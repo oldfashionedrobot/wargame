@@ -284,6 +284,14 @@ describe('useGameSession', () => {
       act(() => result.current.clickTile(at(4, 4)));
       expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
     });
+
+    it('backs out to the movement selection on Move', async () => {
+      const { result } = renderSession(fakeServer(adjacent));
+      await act(async () => {});
+      act(() => result.current.clickTile(at(1, 1)));
+      act(() => result.current.chooseMove());
+      expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
+    });
   });
 
   // ⚠️ **The ordering a damage animation is built on.** The renderer records the

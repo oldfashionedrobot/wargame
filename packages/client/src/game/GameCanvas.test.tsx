@@ -331,6 +331,35 @@ describe('GameCanvas', () => {
     expect(screen.queryByText('Charge')).toBeNull();
   });
 
+  // ⚠️ **Move is offered only before a walk.** On the panel opened where the unit
+  // stands it is the way to move instead; after a walk the move has been made,
+  // and the dark click that un-walks it is the way back.
+  it('offers Move until the unit has walked, and Move returns to the movement selection', async () => {
+    const contested = makeState(5, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 3, owner: 'red' },
+    ]);
+    await renderCanvas(
+      fakeServer({
+        getState: () => contested,
+        subscribe: vi.fn((onUpdate) => {
+          onUpdate([], contested);
+          return () => {};
+        }),
+      }),
+    );
+
+    await act(async () => clickTile({ col: 1, row: 1 })); // opens the panel in place
+    await act(async () => screen.getByText('Move').click());
+    expect(screen.queryByText('Hold')).toBeNull();
+    expect(vi.mocked(renderer.setRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
+
+    await act(async () => clickTile({ col: 1, row: 2 })); // pins
+    await act(async () => clickTile({ col: 1, row: 2 })); // confirms
+    expect(screen.getByText('Attack')).toBeTruthy();
+    expect(screen.queryByText('Move')).toBeNull();
+  });
+
   // ⚠️ **Exactly one overlay is lit, and the mode is what guarantees it.** With
   // three attack-ish sets now -- the attack band, the charge targets, the
   // facing tiles -- "they never coincide" stops being obvious by inspection, and
@@ -557,7 +586,7 @@ describe('GameCanvas', () => {
     expect(screen.queryByText(/click again to confirm/i)).toBeNull();
     // ⚠️ The panel's own hint, not a mode's: at the panel no tile does anything
     // but back out.
-    expect(screen.getByText(/click elsewhere to move/i)).toBeTruthy();
+    expect(screen.getByText(/click elsewhere to go back/i)).toBeTruthy();
     expect(screen.queryByText(/click a tile beside the unit/i)).toBeNull();
 
     await act(async () => screen.getByText('Hold').click());

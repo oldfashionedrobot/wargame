@@ -43,11 +43,10 @@ import type {
  * ⚠️ At `choosing` *nothing* is lit, and that is deliberate rather than a gap:
  * the buttons are the whole affordance there, so a lit tile would promise a
  * choice that is not being offered yet. "Lit does something" survives by
- * nothing being lit, and its hint says what a dark click does instead -- the
- * only way to move a unit whose panel opened where it stood.
+ * nothing being lit, and its hint says what a dark click does instead.
  */
 const STEP_UI: Record<MenuStep['kind'], { overlay: StepOverlay | null; hint: string }> = {
-  choosing: { overlay: null, hint: 'Choose an action, or click elsewhere to move instead.' },
+  choosing: { overlay: null, hint: 'Choose an action, or click elsewhere to go back.' },
   holding: {
     overlay: 'facing',
     hint: 'Click a tile beside the unit to face that way, or the unit to keep its facing.',
@@ -263,7 +262,7 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
     [],
   );
 
-  const { gameState, rejection, selection, walking, clickTile, chooseAction, endTurn } =
+  const { gameState, rejection, selection, walking, clickTile, chooseAction, chooseMove, endTurn } =
     useGameSession(server, {
       onEvents,
       onSnap,
@@ -470,6 +469,9 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
                 Each entry is there because the rule that will answer the click
                 said so -- `canCharge` asks `refuseCharge` -- rather than because
                 a tile set happened to be non-empty. */}
+            {/* ⚠️ Only while the unit has not walked. After a walk the move is
+                chosen, and the dark click that un-walks it is the way back. */}
+            {selection.path.length === 1 && <MenuItem label="Move" onClick={chooseMove} />}
             {availableActions(gameState, selection).map((kind) => (
               <MenuItem key={kind} label={ACTION_LABEL[kind]} onClick={() => chooseAction(kind)} />
             ))}
