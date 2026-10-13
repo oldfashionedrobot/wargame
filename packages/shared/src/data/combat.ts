@@ -50,10 +50,10 @@ import type { UnitTypeId } from './unitTypes';
  * other mechanics: terrain stops changing hit counts, and units stop lingering
  * at the health where a charge can finish them.
  *
- * ⚠️ **A charge reads it too**, at an attack's worst roll times the side it
- * arrives on -- see `chargeDamage`. Raising an entry raises what a charge
- * finishes, and `charge.test.ts` holds every rear charge short of a full-health
- * target.
+ * ⚠️ **A charge reads it too**, at an attack's best roll times the side it
+ * arrives on -- see `chargeDamage` -- so raising an entry raises what a charge
+ * finishes. Cavalry into a gun's rear on open ground finishes it at any health:
+ * accepted, as what getting behind a battery with a full meter is worth.
  */
 export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
   infantry: { infantry: 45, cavalry: 35, artillery: 45 },
@@ -103,11 +103,11 @@ export const LUCK_MAX = 9;
 
 /**
  * What a charge's damage is multiplied by for the side of the target it arrives
- * on, as a percentage: an attack's worst roll head-on, a quarter more on the
+ * on, as a percentage: an attack's best roll head-on, a quarter more on the
  * flank and half again from the rear. Getting round a unit is what a charge is
  * for.
  *
- * ⚠️ **On the final damage**, so a charge is `computeDamage` at roll 0 with
+ * ⚠️ **On the final damage**, so a charge is `computeDamage` at `LUCK_MAX` with
  * nothing changed inside it -- see `chargeDamage`.
  *
  * ⚠️ **Multiplied, never added**, so `BASE_DAMAGE` can be retuned without

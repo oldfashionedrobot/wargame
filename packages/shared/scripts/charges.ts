@@ -7,8 +7,8 @@
  * A charge is offered only where it kills, so the question is *how worn down a
  * target has to be*: the most health a charge finishes, head-on, from the flank
  * and from the rear, next to the most an attack is sure to kill at its worst
- * roll and might kill at its best. A charge is an attack's worst roll times the
- * side, so the head-on column equals the first of those, and the other two are
+ * roll and might kill at its best. A charge is an attack's best roll times the
+ * side, so the head-on column equals the second of those, and the other two are
  * what getting round a unit buys.
  *
  * ⚠️ **Per ground and per charger health**, because both move the lines: cover

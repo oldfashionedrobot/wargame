@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { chargeDamage, computeDamage, refuseCharge, resolveBattle, resolveCharge } from './combat';
-import { CHARGE_FACING, CHARGE_METER_FULL } from './data/combat';
-import { getUnitType, MAX_HEALTH, UNIT_TYPES } from './data/unitTypes';
+import { CHARGE_FACING, CHARGE_METER_FULL, LUCK_MAX } from './data/combat';
+import { getUnitType, MAX_HEALTH } from './data/unitTypes';
 import type { UnitTypeId } from './data/unitTypes';
 import { at, makeState } from './testing';
 import type { Facing, GameState, Unit } from './types';
@@ -29,8 +29,8 @@ const contact = ({
   );
 
 const charge = (state: GameState) => chargeDamage(state, unit(state, 'b1'), unit(state, 'r1'));
-const worstAttack = (state: GameState) =>
-  computeDamage(state, unit(state, 'b1'), unit(state, 'r1'), 0);
+const bestAttack = (state: GameState) =>
+  computeDamage(state, unit(state, 'b1'), unit(state, 'r1'), LUCK_MAX);
 
 describe('the charges flag, which is also the capability rule', () => {
   it('is set for cavalry and infantry and not for artillery', () => {
@@ -38,40 +38,18 @@ describe('the charges flag, which is also the capability rule', () => {
     expect(getUnitType('infantry').charges).toBe(true);
     expect(getUnitType('artillery').charges).toBe(false);
   });
-
-  // ⚠️ **The ceiling a charge must stay under**, now that it reads
-  // `BASE_DAMAGE`: a rear charge that finishes a *full-health* unit is a dead
-  // dial rather than a signature moment, and raising one table entry is all it
-  // takes.
-  it('keeps every rear charge short of a full-health target', () => {
-    const chargers = (Object.keys(UNIT_TYPES) as UnitTypeId[]).filter(
-      (type) => getUnitType(type).charges,
-    );
-    const finishing = chargers.flatMap((charger) =>
-      (Object.keys(UNIT_TYPES) as UnitTypeId[])
-        .filter((target) => {
-          const state = makeState(3, [
-            { id: 'b1', col: 1, row: 1, unitTypeId: charger },
-            { id: 'r1', col: 1, row: 2, owner: 'red', unitTypeId: target, facing: 'north' },
-          ]);
-          return charge(state) >= MAX_HEALTH;
-        })
-        .map((target) => `${charger}→${target}`),
-    );
-    expect(finishing).toEqual([]);
-  });
 });
 
 describe('chargeDamage', () => {
   // ⚠️ **The attack formula, not a second one**: cover and the charger's own
   // health have to work as they do in an attack, which head-on equality on every
   // ground and at every strength is what says.
-  it('is an attack at its worst roll, head-on, on any ground and at any strength', () => {
+  it('is an attack at its best roll, head-on, on any ground and at any strength', () => {
     for (const ground of ['.', 'f', '^']) {
       for (const charger of [100, 70, 40]) {
         for (const health of [100, 50, 10]) {
           const state = contact({ ground, charger, health });
-          expect(charge(state)).toBe(worstAttack(state));
+          expect(charge(state)).toBe(bestAttack(state));
         }
       }
     }
@@ -80,8 +58,8 @@ describe('chargeDamage', () => {
   it('multiplies it by the side it arrives on', () => {
     const flank = contact({ facing: 'east' });
     const rear = contact({ facing: 'north' });
-    expect(charge(flank)).toBe(Math.floor((worstAttack(flank) * CHARGE_FACING.flank) / 100));
-    expect(charge(rear)).toBe(Math.floor((worstAttack(rear) * CHARGE_FACING.rear) / 100));
+    expect(charge(flank)).toBe(Math.floor((bestAttack(flank) * CHARGE_FACING.flank) / 100));
+    expect(charge(rear)).toBe(Math.floor((bestAttack(rear) * CHARGE_FACING.rear) / 100));
   });
 
   it('always gives the defender a better chance head-on', () => {

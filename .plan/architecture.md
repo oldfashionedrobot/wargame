@@ -749,7 +749,7 @@ outcome and never its roll.
 A finisher: an attack earned by attacking, offered only where it kills.
 
 ```
-charge = floor(computeDamage(state, charger, target, roll 0) × CHARGE_FACING[side] / 100)
+charge = floor(computeDamage(state, charger, target, LUCK_MAX) × CHARGE_FACING[side] / 100)
 a charge is legal  ⇔  charges, meter = CHARGE_METER_FULL, in contact, charge ≥ target health
 ```
 
@@ -774,13 +774,14 @@ tile only for a target it would finish, and the server resolves only what it
 accepted.
 
 **`chargeDamage` is the attack formula, not a second one**: `computeDamage` at
-roll 0, then multiplied by `CHARGE_FACING` — 100 / 125 / 150 percent head-on,
-flank and rear. Cover and the charger's own health therefore work exactly as
-in an attack. A head-on charge finishes what an attack's worst roll kills, and
-the flank and rear finish more, so getting round a unit is what a charge is
-for. No luck, because whether it kills has to be known before anything is
-rolled. The multiplier goes on the final damage, so nothing inside
-`computeDamage` changes. `refuseCharge` and the harness read it.
+the best roll, `LUCK_MAX`, then multiplied by `CHARGE_FACING` — 100 / 125 / 150
+percent head-on, flank and rear. Cover and the charger's own health therefore
+work exactly as in an attack. A head-on charge is sure of what an attack only
+might kill, and the flank and rear finish more, so getting round a unit is
+what a charge is for. The best roll rather than a rolled one, because whether
+it kills has to be known before anything is rolled. The multiplier goes on the
+final damage, so nothing inside `computeDamage` changes. `refuseCharge` and the
+harness read it.
 
 ⚠️ **The side is read from where the attacker will be standing.** `validateMove`
 hands `refuseCharge` the unit as it stood, so `refuseCharge` builds the unit at
@@ -790,10 +791,11 @@ one to consult `flank`; the counter's rear rule uses only its `rear` case.
 
 ⚠️ **Capability is the `charges` flag.** Artillery is not flagged, which is the
 only place *artillery cannot charge* is stated. Any unit is still a valid
-**target**. ⚠️ **`BASE_DAMAGE` tunes charges too**, so no rear charge may finish
-a full-health unit — a dead dial rather than a signature moment. Cavalry into a
-gun's rear on open ground is the nearest, at 97; `charge.test.ts` holds every
-pair to it.
+**target**. ⚠️ **`BASE_DAMAGE` tunes charges too**, so raising an entry raises
+what a charge finishes. ⚠️ **One charge finishes a full-health unit**: cavalry
+into a gun's rear on open ground, at 111 damage. Accepted, as what getting
+behind a battery with a full meter is worth; every other pairing stays under
+`MAX_HEALTH`, the nearest being cavalry into infantry's rear at 96.
 
 **A charge never consults the counter rule**, and nothing answers it.
 

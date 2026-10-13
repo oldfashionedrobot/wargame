@@ -358,7 +358,7 @@ why: a charge was the *wounded* unit's attack, a healthy unit's charge was a
 worse shot, and infantry made half of all charges. So cavalry fights with
 sabres, as a `melee` unit that cannot answer a ranged attacker, and the charge
 is earned: three attacks fill a meter, and a full meter buys a finisher — an
-attack's worst roll times the side it arrives on, offered only where it kills.
+attack's best roll times the side it arrives on, offered only where it kills.
 A first cut of it scaled a separate threshold table by cover and the charger's
 health; it never finished anything an attack would not, even from the rear, so
 it became the attack formula. Earlier in the pass the repel, the attack forecast's counter and the
@@ -370,9 +370,12 @@ commits.
 
 - **The side multipliers are first numbers** — 1× head-on, 1.25× flank, 1.5×
   rear — and so is the meter's size of three. Head-on at 1× was chosen, so a
-  head-on charge finishes only what an attack's worst roll kills.
+  head-on charge is sure of what an attack's best roll might kill.
   `scripts/charges.ts` prints each charge's line beside the attack's.
-- **The simulator charges more than it did** — 24 in 50 games on `classic`,
+- **Cavalry into a gun's rear on open ground finishes it at any health.**
+  Accepted rather than tuned away; if it reads as too much in play, the rear
+  multiplier at 1.35× brings it to 99 without touching attacks.
+- **The simulator charges more than it did** — 26 in 50 games on `classic`,
   from 10 — though its bot still scores a charge level with a killing attack,
   so read its counts with that in mind.
 - ⬜ Later: **dragoons**, horse with carbines — the `melee` flag is what makes

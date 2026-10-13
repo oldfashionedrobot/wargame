@@ -1,6 +1,12 @@
 import { attackSide, isWithinGrid, tileDistance } from './coordinate';
 import { terrainAdmits } from './movement';
-import { BASE_DAMAGE, CHARGE_FACING, CHARGE_METER_FULL, TERRAIN_WEIGHT } from './data/combat';
+import {
+  BASE_DAMAGE,
+  CHARGE_FACING,
+  CHARGE_METER_FULL,
+  LUCK_MAX,
+  TERRAIN_WEIGHT,
+} from './data/combat';
 import { clampHealth, getUnitType } from './data/unitTypes';
 import { defenseAt, getTileAt, getUnit, inContact } from './queries';
 import type { BattleResolvedEvent, Coordinate, GameState, Unit } from './types';
@@ -362,18 +368,18 @@ export function resolveBattle(
 
 /**
  * What a charge from `attacker`, standing where it charges from, does to
- * `defender`: an attack's damage at the worst roll, multiplied by the side it
+ * `defender`: an attack's damage at the best roll, multiplied by the side it
  * arrives on.
  *
  * ```
- * charge = floor(computeDamage(state, attacker, defender, 0) × CHARGE_FACING[side] / 100)
+ * charge = floor(computeDamage(state, attacker, defender, LUCK_MAX) × CHARGE_FACING[side] / 100)
  * ```
  *
  * ⚠️ **The attack formula, not a second one.** Cover and the charger's own
- * health work exactly as they do in an attack, so a head-on charge finishes
- * what an attack's worst roll kills, and the flank and rear finish more. No
- * luck, because a charge is offered only where it kills, and that has to be
- * known before anything is rolled.
+ * health work exactly as they do in an attack, so a head-on charge is sure of
+ * what an attack only might kill, and the flank and rear finish more. The best
+ * roll rather than a rolled one, because a charge is offered only where it
+ * kills, and that has to be known before anything is rolled.
  *
  * ⚠️ **The side is read from where the attacker will be standing**, so callers
  * hand over the unit at its charging tile -- `refuseCharge` builds it from the
@@ -381,7 +387,9 @@ export function resolveBattle(
  */
 export function chargeDamage(state: GameState, attacker: Unit, defender: Unit): number {
   const side = attackSide(defender.facing, defender.position, attacker.position);
-  return Math.floor((computeDamage(state, attacker, defender, 0) * CHARGE_FACING[side]) / 100);
+  return Math.floor(
+    (computeDamage(state, attacker, defender, LUCK_MAX) * CHARGE_FACING[side]) / 100,
+  );
 }
 
 /**
