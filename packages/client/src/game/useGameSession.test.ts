@@ -223,9 +223,7 @@ describe('useGameSession', () => {
       result: ReturnType<typeof renderSession>['result'],
       kind: 'attacking' | 'charging',
     ) => {
-      act(() => result.current.clickTile(at(1, 1)));
-      await act(async () => result.current.clickTile(at(1, 1)));
-      await act(async () => result.current.clickTile(at(1, 1)));
+      act(() => result.current.clickTile(at(1, 1))); // opens the panel in place
       act(() => result.current.chooseAction(kind));
       act(() => result.current.clickTile(at(1, 2)));
       await act(async () => result.current.clickTile(at(1, 2)));
@@ -251,6 +249,40 @@ describe('useGameSession', () => {
       expect(fake.submissions).toEqual([
         expect.objectContaining({ targetUnitId: 'r1', attackKind: 'charge' }),
       ]);
+    });
+  });
+
+  describe('selecting a unit', () => {
+    const adjacent = makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+    ]);
+
+    it('opens the panel where it stands when it could attack from there', async () => {
+      const { result } = renderSession(fakeServer(adjacent));
+      await act(async () => {});
+      act(() => result.current.clickTile(at(1, 1)));
+      expect(result.current.selection).toMatchObject({
+        phase: 'destinationChosen',
+        path: [at(1, 1)],
+        step: { kind: 'choosing' },
+      });
+    });
+
+    it('goes to the movement selection when it has nothing to fight', async () => {
+      const { result } = renderSession(fakeServer(contestedBoard));
+      await act(async () => {});
+      act(() => result.current.clickTile(at(1, 1)));
+      expect(result.current.selection.phase).toBe('unitSelected');
+    });
+
+    // The way to move a unit whose panel opened in place.
+    it('backs out to the movement selection on a click elsewhere', async () => {
+      const { result } = renderSession(fakeServer(adjacent));
+      await act(async () => {});
+      act(() => result.current.clickTile(at(1, 1)));
+      act(() => result.current.clickTile(at(4, 4)));
+      expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
     });
   });
 

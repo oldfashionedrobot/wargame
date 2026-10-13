@@ -19,6 +19,7 @@ import {
   isTargetPinned,
   isAttacking,
   isPlan,
+  openInPlace,
   facingForTarget,
   moveCommandFor,
   destinationOf,
@@ -398,8 +399,10 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
       // nothing: it picks a destination, and the menu decides from there.
       // Nothing commits here: a click picks or moves a pin, and the second
       // click on it decides. ⚠️ No walk is started on this path at all, which
-      // is what retired the identity check that used to guard it.
-      setSelection(handleTileClick(server.getState(), selection, coordinate));
+      // is what retired the identity check that used to guard it. A unit it
+      // selects opens the panel where it stands if it has something to fight.
+      const state = server.getState();
+      setSelection(openInPlace(state, handleTileClick(state, selection, coordinate)));
     },
     [server, selection, submitCommand, walking],
   );

@@ -317,12 +317,10 @@ describe('GameCanvas', () => {
       }),
     );
 
-    // ⚠️ Held in place rather than walked forward: stepping to (1,2) would put
+    // ⚠️ Opened in place rather than walked forward: stepping to (1,2) would put
     // the unit *next* to the enemy, and then a charge is available too, which is
     // the opposite of what this is checking.
     await act(async () => clickTile({ col: 1, row: 1 }));
-    await act(async () => clickTile({ col: 1, row: 1 })); // pins its own tile
-    await act(async () => clickTile({ col: 1, row: 1 })); // confirms
     expect(screen.getByText('Attack')).toBeTruthy();
     expect(screen.getByText('Hold')).toBeTruthy();
     // ⚠️ **Charge is omitted rather than greyed**, following AW — the enemy is
@@ -352,9 +350,7 @@ describe('GameCanvas', () => {
       });
     await renderCanvas(serve());
 
-    await act(async () => clickTile({ col: 1, row: 1 }));
-    await act(async () => clickTile({ col: 1, row: 1 })); // pins
-    await act(async () => clickTile({ col: 1, row: 1 })); // confirms
+    await act(async () => clickTile({ col: 1, row: 1 })); // opens the panel in place
 
     await act(async () => screen.getByText('Charge').click());
     expect(lastOverlay()).toEqual(['charge', [{ col: 1, row: 2 }]]);
@@ -382,9 +378,7 @@ describe('GameCanvas', () => {
       }),
     );
 
-    await act(async () => clickTile({ col: 1, row: 1 }));
-    await act(async () => clickTile({ col: 1, row: 1 })); // pins
-    await act(async () => clickTile({ col: 1, row: 1 })); // confirms
+    await act(async () => clickTile({ col: 1, row: 1 })); // opens the panel in place
     await act(async () => screen.getByText('Charge').click());
     await act(async () => clickTile({ col: 1, row: 2 })); // pins the target
     expect(screen.getByText(/% to break/)).toBeTruthy();
@@ -561,8 +555,9 @@ describe('GameCanvas', () => {
     await act(async () => clickTile({ col: 1, row: 3 })); // confirms
     expect(screen.getByText('Hold')).toBeTruthy();
     expect(screen.queryByText(/click again to confirm/i)).toBeNull();
-    // ⚠️ No hint yet: at the panel there is nothing to say about tiles, because
-    // no tile does anything.
+    // ⚠️ The panel's own hint, not a mode's: at the panel no tile does anything
+    // but back out.
+    expect(screen.getByText(/click elsewhere to move/i)).toBeTruthy();
     expect(screen.queryByText(/click a tile beside the unit/i)).toBeNull();
 
     await act(async () => screen.getByText('Hold').click());

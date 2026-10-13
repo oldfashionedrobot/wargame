@@ -43,10 +43,11 @@ import type {
  * ⚠️ At `choosing` *nothing* is lit, and that is deliberate rather than a gap:
  * the buttons are the whole affordance there, so a lit tile would promise a
  * choice that is not being offered yet. "Lit does something" survives by
- * nothing being lit.
+ * nothing being lit, and its hint says what a dark click does instead -- the
+ * only way to move a unit whose panel opened where it stood.
  */
-const STEP_UI: Record<MenuStep['kind'], { overlay: StepOverlay | null; hint: string | null }> = {
-  choosing: { overlay: null, hint: null },
+const STEP_UI: Record<MenuStep['kind'], { overlay: StepOverlay | null; hint: string }> = {
+  choosing: { overlay: null, hint: 'Choose an action, or click elsewhere to move instead.' },
   holding: {
     overlay: 'facing',
     hint: 'Click a tile beside the unit to face that way, or the unit to keep its facing.',

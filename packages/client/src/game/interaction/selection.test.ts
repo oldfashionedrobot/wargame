@@ -22,6 +22,7 @@ import {
   handleTileClick,
   initialSelectionState,
   moveCommandFor,
+  openInPlace,
   unpinDestination,
   holdFacing,
 } from './selection';
@@ -213,6 +214,37 @@ describe('handleTileClick, a unit selected', () => {
 // ⚠️ A pinned route is still being chosen, so unlike the phases after the walk
 // it keeps answering tile clicks as *tile* clicks. That is what makes the second click a confirm
 // rather than a commit: nothing has moved, and every reachable tile is live.
+describe('openInPlace', () => {
+  const adjacent = (): GameState =>
+    makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+    ]);
+
+  it('opens the panel where a freshly selected unit stands when it could attack', () => {
+    const state = adjacent();
+    expect(openInPlace(state, withB1Selected(state))).toMatchObject({
+      phase: 'destinationChosen',
+      unitId: 'b1',
+      path: [at(1, 1)],
+      step: { kind: 'choosing' },
+    });
+  });
+
+  it('leaves the movement selection when the panel would offer only Hold', () => {
+    const state = board();
+    const selected = withB1Selected(state);
+    expect(openInPlace(state, selected)).toBe(selected);
+  });
+
+  it('passes through anything but a unit just selected', () => {
+    const state = adjacent();
+    const pinned = withB1Pinned(state, at(2, 1));
+    expect(openInPlace(state, initialSelectionState)).toBe(initialSelectionState);
+    expect(openInPlace(state, pinned)).toBe(pinned);
+  });
+});
+
 describe('a route pinned', () => {
   it('re-pins to another reachable tile', () => {
     const state = board();

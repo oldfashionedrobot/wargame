@@ -15,7 +15,8 @@ move to a winner. Select a unit and see the tiles it can reach across terrain;
 click a destination to pin the route there and click it again to send the unit
 walking. Where it arrives a panel asks what it is doing — hold, attack or charge,
 listing only the ones it can actually do and skipping itself when that leaves
-one — after which a held unit is pointed somewhere, since facing decides whether
+one; a unit that could attack or charge from where it stands gets the panel the
+moment it is selected, and a click elsewhere backs out to move it — after which a held unit is pointed somewhere, since facing decides whether
 an attack is answered. A unit beside an enemy is **in contact**: moving into
 contact ends the move, and a unit that starts its action in contact may move or
 attack, not both. An attack or a charge cuts away to the two units and plays the
@@ -1204,6 +1205,7 @@ A failing animation or snap is caught and logged; the commit always happens.
 handleTileClick(state, selection, coordinate) → SelectionState
 destinationOf(pinned)                         → Coordinate
 confirmRoute(routePinned)                     → DestinationChosen
+openInPlace(state, selection)                 → SelectionState      // the panel at selection
 enterMode(state, arrived, kind)               → DestinationChosen   // a mode's tiles
 readAimClick(state, attacking, coordinate)    → Unit | null        // attack or charge
 readHoldClick(state, arrived, coordinate)     → Facing | null
@@ -1347,6 +1349,15 @@ predicate is a constant `true`, so *always available* is a fact in the table.
 
 **A one-row panel is skipped, in both directions** — on the way in, and on the
 way out, since its single row is the mode just left.
+
+**A unit with something to fight opens the panel where it stands.** The session
+passes every tile click's result through `openInPlace`, which acts only on a
+unit just selected: it pins the unit's own tile and confirms it — the
+walk-to-its-own-tile gesture, made for the player — and keeps the panel when
+`availableActions` offers more than Hold, the skip's own test. Otherwise the
+movement selection stands. There is no Move row: a dark click at the panel
+backs out to the movement selection, as it does after a walk, and the panel's
+hint line says so. Nothing walks, so no preview is started.
 
 Either pinned phase is a **plan, not a submission** — nothing has been sent, and
 a click that means nothing else discards it without the server hearing. `path[0]`

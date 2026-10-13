@@ -502,6 +502,24 @@ export function handleTileClick(
 }
 
 /**
+ * A unit just selected, with the panel already open where it stands when it
+ * could attack or charge from there. Anything else comes back unchanged.
+ *
+ * ⚠️ **The walk-to-its-own-tile gesture, made for the player** -- the unit's
+ * own tile pinned, then confirmed -- so the panel it opens is the one that
+ * gesture builds, and aiming, Hold and backing out work on it unchanged. Kept
+ * only when the panel would offer more than Hold, the arrival skip's own test:
+ * with nothing to attack, moving is the only thing to do.
+ */
+export function openInPlace(state: GameState, selection: SelectionState): SelectionState {
+  if (selection.phase !== 'unitSelected') return selection;
+  const pinned = handleTileClick(state, selection, selection.position);
+  if (pinned.phase !== 'routePinned') return selection;
+  const opened = confirmRoute(pinned);
+  return availableActions(state, opened).length > 1 ? opened : selection;
+}
+
+/**
  * Which way this click means, or null if it was not one of the four.
  *
  * The four tiles are drawn around `destinationOf` and clipped to the board by

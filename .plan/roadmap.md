@@ -225,8 +225,7 @@ the combat pass, came from playing — see *After the combat pass*; the third
 reworked charging — see *The charging pass*. A pass's changes go to
 [`architecture.md`](architecture.md) and leave only their open questions here.
 
-⬜ **The next pass is under way** — see *The next pass*, below. Its general
-has shipped.
+⬜ **The next pass is under way** — see *The next pass*, below.
 
 #### Known to want attention
 
@@ -309,8 +308,8 @@ fielded — see the turn-order note under *After the combat pass*.
 
 #### The next pass
 
-⬜ **Settled as it goes.** The general has shipped; the panel at selection and
-panes staying on the board are next.
+⬜ **Settled as it goes.** The general and the panel at selection have shipped;
+panes staying on the board is next.
 
 ✅ **The general.** From playing: battles ended as gun duels — the other arms
 fought it out under bombardment, and the guns were what was left. A general
@@ -334,37 +333,6 @@ so keeping it out of their reach is the game. What it does is in
 - ⬜ **Later, global bonuses**, as Advance Wars' commanders give. Both sides
   field the same general for now; a commander chosen per player can carry
   modifiers later without the unit changing.
-
-⬜ **The panel at selection.** Selecting a unit opens the movement selection
-today, so a unit that means to attack from where it stands has to be walked to
-its own tile and confirmed before the panel offers anything. Instead: **if it
-could attack or charge from where it stands, selecting it opens the panel
-there**; if there is nothing to attack or charge, it goes straight to the
-movement selection as now, since moving is the only thing to do. **To move
-instead, click elsewhere** — a dark click at the panel already backs out to the
-movement selection, and the panel's hint line says so.
-
-- **Built from what exists.** The panel in place is exactly what the
-  walk-to-its-own-tile gesture builds: the selection's own tile pinned and
-  confirmed. So one small function in `selection.ts` composes `handleTileClick`
-  on the unit's tile with `confirmRoute`, and keeps the result when
-  `availableActions` offers more than Hold — the same test the menu-skip
-  already uses. The session applies it when a click selects a unit;
-  `handleTileClick` itself is untouched.
-- **No Move row.** A row for it was the first idea, and it costs more than it
-  looks: a new `ActionKind`, a branch in `chooseAction`, since moving leaves the
-  panel rather than entering a mode, and a menu-skip that can no longer count
-  rows, since *one row* would stop meaning *nothing to attack*. Clicking off
-  the panel already does it, and the hint line makes it findable.
-
-⚠️ **Pre-checked against the code.** The selection tests' helpers select
-through `handleTileClick` and then pin a route, so they stand as they are. The
-new function gets its own tests, and the session and canvas tests whose
-fixtures select a unit already beside its target — committing an attack in
-`useGameSession.test.ts`, and the overlay and charge-odds tests in
-`GameCanvas.test.tsx` — open the panel at once and drop their pin-and-confirm
-clicks. The panel's step has no hint line today; it gains one. Docs: the
-architecture doc's panel section.
 
 ⬜ **Panes stay on the board.** The menu, the forecast and the confirm prompt
 are anchored above a tile: `placeAnchor` projects a point a tile above it every
