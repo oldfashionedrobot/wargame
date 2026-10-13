@@ -4,52 +4,6 @@ import type { UnitTypeId } from './unitTypes';
  * What each attacker does to each defender, as a percentage of a **full-health**
  * target. Attacker down the side.
  *
- * ⚠️ **There is no attack stat and no defence stat**, following AW, which has
- * neither: a unit's toughness is not a property of the unit, it is every
- * attacker's column against it. Defence comes from terrain and nowhere else.
- *
- * ⚠️ **A matrix is not a stylistic choice here, it is arithmetic.** Give every
- * unit an attack `A` and a defence `D` and let damage be any `f(A, D)`, and the
- * ordering that falls out is *transitive*: if infantry beats cavalry and cavalry
- * beats artillery, then infantry beats artillery, necessarily. Rock-paper-
- * scissors is non-transitive, so no pair of scalars can express one. The only
- * options are a matrix or a class system, and at three unit types a class system
- * is more machinery than the nine numbers it would save.
- *
- * Nested `Record`s, so adding a `UnitTypeId` turns every incomplete row into a
- * compile error rather than a silent gap -- the property `TERRAIN` and
- * `UNIT_TYPES` already have.
- *
- * ⚠️ **Untuned, but no longer arbitrary.** A first cut ran 40-90 and
- * `scripts/matchups.ts` killed it: everything died in two hits, so terrain
- * became a rounding error, the nine numbers produced two distinct outcomes, and
- * luck moved nothing. It also starved 10a -- a unit went 100 to 45 to dead
- * without ever passing through the health band where a charge is legal.
- *
- * The spread here is taken from AW, whose nine analogous cells (Infantry,
- * Recon, Artillery) run 12 to 90. ⚠️ **The range transfers; the shape must
- * not.** AW's 12 and 15 encode *armour penetration* -- a rifle cannot hurt a
- * vehicle -- and there is no armour in a horse-and-musket war. Importing them
- * would say infantry cannot hurt horses and leave cavalry untouchable.
- *
- * ⚠️ **Cavalry fights with sabres, and hits hardest at close quarters.** It
- * pays in reach and reply instead: one tile, and as a `melee` unit it cannot
- * answer a ranged attacker.
- *
- * ⚠️ **Artillery's row is kept below what its range would suggest**, because
- * nothing answers a gun: it fires from beyond every reply and `slow` means it
- * never counters, so its damage is pure profit.
- *
- * ⚠️ The two sides of an exchange use one formula, so there is no dial for
- * "counters hit softer" and there should not be: the whole asymmetry is that a
- * counter is computed on the defender's **post-damage** health, the same as
- * Advance Wars. Hit harder and the defender loses more bands before answering,
- * so the counter shrinks while the attack grows.
- *
- * ⚠️ **Not pushed toward AW's steeper first strikes**, because it costs two
- * other mechanics: terrain stops changing hit counts, and units stop lingering
- * at the health where a charge can finish them.
- *
  * ⚠️ **A charge reads it too**, at an attack's best roll times the side it
  * arrives on -- see `chargeDamage` -- so raising an entry raises what a charge
  * finishes. Cavalry into a gun's rear on open ground finishes it at any health:
