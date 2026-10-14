@@ -292,11 +292,13 @@ fielded — see the turn-order note under *After the combat pass*.
 
 #### The next pass
 
-⬜ **Planned, and pre-checked three times against the code.** Seven commits, in
-this order: a dev handle for tiles; the simulator's new tallies; the charge
-meter per unit type; `mountain` renamed `hills`; cover on Advance Wars' scale;
-inspecting a unit; greying the units that have acted. Each passes the gate —
-`tsc -b --force` included — and lands with its docs.
+⬜ **Under way, pre-checked three times against the code.** The dev handle for
+tiles has shipped; six commits remain, in this order: the simulator's new
+tallies; the charge meter per unit type; `mountain` renamed `hills`; cover on
+Advance Wars' scale; inspecting a unit; greying the units that have acted. Each
+passes the gate — `tsc -b --force` included — and lands with its docs. Three of
+them are checked in a browser through the handle: the charge counter,
+inspecting, and greying.
 
 ⚠️ **Comments, docs and test titles that quote a value, or anything else a
 change can move, are removed rather than updated**, and tests read a size from
@@ -311,40 +313,6 @@ before the win rates: charges by type, hits by ground, unfinished matches, wins
 by general. The composition sweep runs once after cover, without `common`
 (where the opener wins whatever it fields); the table under *Armies* and the
 cover figures in *The dials* are removed then, keeping their conclusions.
-
-⬜ **A dev handle for tiles**, moved here from *UI and interaction*. The
-renderer is WebGL and has no unit tests, so a browser is its only check — and
-nothing can ask where a tile lands on screen, so every check guesses a pixel,
-and a guess that misses looks like a bug. First, because three of the items
-after it are checked in a browser: the charge counter, inspecting, and greying.
-
-- **`tileToScreen(coordinate)` on the renderer's interface**: the tile's
-  surface projected through the **board camera's own** view and projection —
-  not the scene's current matrix, which is unset before the first frame and
-  belongs to the close-up's camera during a battle — and returned in
-  **viewport** coordinates, the canvas's on-screen rectangle added, since a
-  browser clicks in those. `null` for a coordinate off the grid. A plain
-  method: there is nothing in it for the production build to strip.
-- **`window.__board`**, behind `import.meta.env.DEV`, installed by `GameCanvas`
-  once the renderer is ready and removed in the effect's cleanup — not by the
-  renderer, because StrictMode builds two in dev and the stale one could
-  overwrite or delete it. Its one member is `tileToScreen`. A `declare global`
-  types it, optional, so the cleanup can delete it.
-- ⚠️ **What still takes a click meant for a tile**: a taller tile in front —
-  picking tries the tallest surface first; the menu and forecast panes, which
-  float above a tile and take clicks; and the close-up, which swallows every
-  click until dismissed. A tile panned off the canvas projects outside it. So
-  a caller asks just before each click and never caches.
-- **The run-app skill**: *Clicking tiles* moves to the handle — wait for it,
-  row 0 is blue's bottom rank — and *What to assert*, already stale, catches
-  up: a move is pin, confirm, then the panel or Hold and a facing; a unit with
-  something in reach opens the panel when selected; a close-up waits for a
-  click.
-- **Tests**: the typed renderer fake in `GameCanvas.test.tsx` gains the method;
-  new, the handle appears once the renderer is ready, delegates to it, and is
-  gone after unmount.
-- **Docs**: the renderer interface, `GameCanvas`'s paragraph on dev-only
-  chrome, and *Testing*'s note on what is not covered.
 
 ⬜ **The simulator's new tallies**, in before the first run reads them:
 **charges made by unit type**, beside kills by type, so cavalry's rise shows

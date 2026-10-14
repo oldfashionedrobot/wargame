@@ -65,6 +65,7 @@ beforeEach(() => {
     dismissCutaway: vi.fn(),
     previewMove: vi.fn(() => Promise.resolve()),
     cancelPreview: vi.fn(),
+    tileToScreen: vi.fn(() => ({ x: 10, y: 20 })),
     toggleInspector: vi.fn(),
     dispose: vi.fn(),
   };
@@ -129,6 +130,15 @@ describe('GameCanvas', () => {
     expect(createGameRenderer).toHaveBeenCalledTimes(1);
     unmount();
     expect(renderer.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  // A browser check reaches tiles through this; Vitest runs as a dev build.
+  it('offers the dev tile handle while the renderer is up', async () => {
+    const { unmount } = await renderCanvas(fakeServer());
+    expect(window.__board?.tileToScreen({ col: 1, row: 2 })).toEqual({ x: 10, y: 20 });
+    expect(renderer.tileToScreen).toHaveBeenCalledWith({ col: 1, row: 2 });
+    unmount();
+    expect(window.__board).toBeUndefined();
   });
 
   // The mirror of MatchRoute's late-connect case: models load asynchronously,

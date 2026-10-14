@@ -21,6 +21,16 @@ import type {
   StepOverlay,
 } from './render/renderer';
 
+declare global {
+  interface Window {
+    /**
+     * Dev builds only: lets a browser check address a tile rather than guess a
+     * pixel. Present once the board's renderer is ready.
+     */
+    __board?: Pick<GameRenderer, 'tileToScreen'>;
+  }
+}
+
 // Pushes a selection to the renderer. Module-level so there's one place that
 // knows how a selection is displayed -- attacking adds a third overlay here.
 // A pure projection of the selection: everything it draws is on the snapshot,
@@ -339,12 +349,20 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
       rendererRef.current = renderer;
       renderer.onTileClick((coordinate) => clickTileRef.current(coordinate));
       renderer.onCutaway(setCutaway);
+      // ⚠️ Installed here rather than by the renderer: StrictMode builds two in
+      // dev, and the stale one could overwrite the handle or delete it.
+      if (import.meta.env.DEV) {
+        window.__board = {
+          tileToScreen: (coordinate) => rendererRef.current?.tileToScreen(coordinate) ?? null,
+        };
+      }
     });
 
     return () => {
       disposed = true;
       rendererRef.current?.dispose();
       rendererRef.current = null;
+      if (import.meta.env.DEV) delete window.__board;
     };
   }, [server]);
 

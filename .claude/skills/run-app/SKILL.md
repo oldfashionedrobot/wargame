@@ -60,37 +60,45 @@ await browser.close();
 
 ## Clicking tiles
 
-Tiles are canvas pixels, not DOM — there are no selectors. The reliable
-workflow is **screenshot first, measure by eye, then click**: take a
-screenshot, read it, note the pixel centre of the unit or tile you want, and
-issue `page.mouse.click(x, y)` in a second run.
+Tiles are canvas pixels, not DOM — there are no selectors. Dev builds expose
+`window.__board.tileToScreen({ col, row })`, which answers in viewport
+coordinates — exactly what `page.mouse.click` takes — or `null` off the grid.
+Row 0 is the bottom rank, where blue deploys. It appears once the board's
+renderer is ready, so wait for it:
 
-At viewport 1280×800 (canvas is 100vw × 90vh = 1280×720) a **12×12** board —
-every shipped map is that size; a smaller one draws smaller — renders at roughly
-**x 375–907, y 197–528**, columns
-~44px wide, rows narrower toward the top (isometric tilt). Column *c*'s centre
-is about `397 + 44.3c`; the bottom rank (row 0, where blue deploys) has its tile
-centres near **y 512**, not at the figures' bodies around y 490 — clicking the
-figure lands a row short. These drift if the camera or grid changes — trust the
-screenshot, not these numbers.
+```js
+await page.waitForFunction(() => window.__board);
+const click = async (col, row) => {
+  const at = await page.evaluate((c) => window.__board.tileToScreen(c), { col, row });
+  await page.mouse.click(at.x, at.y);
+};
+```
 
-⚠️ **Measured 2026-09: these were wrong for a long time**, describing an 8×8
-board that no map has been for several phases. A stale coordinate costs two
-screenshot round-trips and reads exactly like a bug in the app, so re-measure
-here rather than re-deriving it every session.
+⚠️ **Ask just before each click; never cache an answer.** Zoom and pan move
+every tile. And some things still take a click meant for a tile:
+
+- a taller tile drawn in front — picking tries the tallest surface first;
+- the menu and the forecast panes, which float above a tile and take clicks;
+- the battle close-up, which swallows every click until it is dismissed with
+  one of its own.
 
 What to assert:
 
 - Selection: click a friendly unit → its tile gets the **yellow** highlight
-  and the **blue-tinted** movement-range overlay appears. Verify by
-  screenshot; canvas pixels can't be read from page JS
+  and the **blue-tinted** movement-range overlay appears — unless it could
+  attack or charge from where it stands, when the action panel opens there
+  instead. Verify by screenshot; canvas pixels can't be read from page JS
   (`preserveDrawingBuffer` is off).
-- Move: click a tinted tile → the unit animates (~1–2s; `waitForTimeout(2000)`
-  before the screenshot) and the selection clears.
+- Move: click a tinted tile to pin the route, click it again to confirm → the
+  unit walks (~1–2s; `waitForTimeout(2000)`), then the panel opens, or straight
+  to Hold's facing tiles when there is nothing to attack; a facing click
+  commits.
+- Battle: an attack or a charge opens the close-up, which waits for a click
+  before the board takes clicks again.
 - Map viewer: `page.click('text=Browse maps')` from the start screen → `/maps`,
-  a `select` of every map over a 620×580 canvas. Switching the `select` rebuilds
-  the scene; `page.selectOption('select', 'lakeland')` then screenshot. No tile
-  clicking — the viewer registers no click handler.
+  a `select` of every map. Switching the `select` rebuilds the scene;
+  `page.selectOption('select', 'lakeland')` then screenshot. No tile clicking —
+  the viewer registers no click handler and installs no `__board`.
 - Turn: `page.click('text=End Turn')` →
   `waitForSelector("text=Red Army's turn")`. The turn label is real DOM.
 - Always print collected page errors — a clean run reports `none`.

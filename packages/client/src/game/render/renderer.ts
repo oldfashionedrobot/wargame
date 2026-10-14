@@ -20,7 +20,7 @@ import type {
   PlayerColor,
   UnitTypeId,
 } from '@wargame/shared';
-import { applyEvents, defenseAt } from '@wargame/shared';
+import { applyEvents, defenseAt, isWithinGrid } from '@wargame/shared';
 import { TILE_SIZE, tileToWorld } from './coordinates';
 import { fitPane } from './fitPane';
 import { createGridLines } from './gridLines';
@@ -293,6 +293,14 @@ export interface GameRenderer {
   previewMove(unitId: string, path: Coordinate[]): Promise<void>;
   /** Put a previewed unit back where it really stands. */
   cancelPreview(): void;
+  /**
+   * Where a tile's surface is in the viewport, or null off the grid -- what a
+   * browser check clicks, so it addresses a tile rather than guessing a pixel.
+   *
+   * ⚠️ Viewport, not canvas: the canvas's own rectangle is added, because the
+   * page around it is not at the origin.
+   */
+  tileToScreen(coordinate: Coordinate): { x: number; y: number } | null;
   toggleInspector(): void;
   dispose(): void;
 }
@@ -685,11 +693,15 @@ export async function createGameRenderer(
   // Render-buffer pixels to CSS pixels. ⚠️ They are equal today
   // (`adaptToDeviceRatio` is off, so the scaling level is 1) and would silently
   // diverge on a retina display the day it is not.
+  //
+  // ⚠️ **Through the board camera's own matrices**, not the scene's current
+  // one: that is set only while a frame renders, so it is empty before the
+  // first, and during a battle it is left holding the close-up's camera.
   const project = (point: Vector3): { x: number; y: number } => {
     const screen = Vector3.Project(
       point,
       Matrix.Identity(),
-      scene.getTransformMatrix(),
+      camera.getViewMatrix().multiply(camera.getProjectionMatrix()),
       camera.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight()),
     );
     const scale = engine.getHardwareScalingLevel();
@@ -909,6 +921,13 @@ export async function createGameRenderer(
         if (preview?.settle === settle) arrivePreview();
       });
       return settled;
+    },
+    tileToScreen(coordinate) {
+      if (!isWithinGrid(coordinate, gridWidth, gridHeight)) return null;
+      const { x, z } = tileToWorld(coordinate, gridWidth, gridHeight);
+      const onCanvas = project(new Vector3(x, surfaceAt(coordinate), z));
+      const { left, top } = canvas.getBoundingClientRect();
+      return { x: left + onCanvas.x, y: top + onCanvas.y };
     },
     cancelPreview() {
       const previewed = preview;

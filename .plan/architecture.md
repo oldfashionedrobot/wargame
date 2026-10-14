@@ -1389,7 +1389,11 @@ step to read. The renderer clips the four to the board.
 **`game/GameCanvas.tsx`** — the canvas ref, the renderer lifecycle, and the
 chrome around it: the turn label, End Turn, the rejection reason, the
 reconnecting banner, and a Toggle Inspector button under an
-`import.meta.env.DEV` guard, plus a hint line during action selection. End
+`import.meta.env.DEV` guard, plus a hint line during action selection. Under the
+same guard it installs `window.__board`, whose `tileToScreen` passes through to
+the renderer, once the renderer is ready, and removes it on unmount — there
+rather than in the renderer, since StrictMode builds two in dev and the stale
+one could overwrite or delete it. End
 Turn is disabled while *either* kind of plan is open, since ending the turn
 there would submit around one the player has not answered for.
 
@@ -1439,8 +1443,15 @@ anchorTo(element | null, coordinate | null)
 playEvents(events): Promise<void>
 syncUnits(state)          previewMove(unitId, path): Promise<void>
 onCutaway(handler)        dismissCutaway()
-cancelPreview()           toggleInspector()          dispose()
+cancelPreview()           tileToScreen(coordinate) → { x, y } | null
+toggleInspector()         dispose()
 ```
+
+`tileToScreen` is where a tile's surface lands in the viewport — the canvas's
+rectangle added — for a browser check to click. ⚠️ It projects through the
+board camera's own view and projection, as `placeAnchor` does, never the
+scene's current matrix: that is set only while a frame renders, so it is empty
+before the first, and during a battle it holds the close-up's camera.
 
 ⚠️ **`onCutaway` and `dismissCutaway` are the staged close-up's half of the
 seam** — the renderer raises the views and hands the caller what it would
@@ -1874,7 +1885,8 @@ Every package is tested. `bun test` runs `shared` and `server`, Vitest runs
   `server/` a resolution error.
 
 **Not covered:** the renderer itself, which is WebGL — a browser is its only
-check, and the `/run-app` skill drives the app headlessly for that. `App.tsx` is
+check, and the `/run-app` skill drives the app headlessly for that, addressing
+tiles through the dev build's `window.__board` rather than guessing pixels. `App.tsx` is
 a route table with no logic of its own.
 
 ⚠️ **Every test file is typechecked**, `shared`'s included — `tsconfig.dev.json`
