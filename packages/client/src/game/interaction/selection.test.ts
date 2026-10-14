@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { at, fullMeter, makeState, route, unitAt } from '@wargame/shared/testing';
-import { chargeChance, LUCK_MAX } from '@wargame/shared';
+import { chargeChance, LUCK_MAX, tilesInRange } from '@wargame/shared';
 import type { Coordinate, GameState } from '@wargame/shared';
 import {
   attackForecast,
@@ -132,16 +132,127 @@ describe('handleTileClick, nothing selected', () => {
     expect(selection).toEqual(initialSelectionState);
   });
 
-  it('ignores an enemy unit', () => {
-    const selection = handleTileClick(board(), initialSelectionState, at(6, 6));
-    expect(selection).toEqual(initialSelectionState);
+  it('inspects an enemy unit, lighting the band it could fire into from where it stands', () => {
+    const state = board();
+    const selection = handleTileClick(state, initialSelectionState, at(6, 6));
+    expect(selection).toMatchObject({
+      phase: 'inspecting',
+      unitId: 'r1',
+      position: at(6, 6),
+      view: 'attack',
+    });
+    if (selection.phase !== 'inspecting') return;
+    expect(selection.tiles).toEqual(tilesInRange(unitAt(state, 'r1'), at(6, 6), 7, 7));
   });
 
   // Selection is a preview of a game rule, not a UI whim -- canSelectUnit is
-  // the same predicate the server enforces.
-  it('ignores an own unit that has already acted', () => {
+  // the same predicate the server enforces, so what it refuses is inspected.
+  it('inspects an own unit that has already acted rather than selecting it', () => {
     const selection = handleTileClick(board(), initialSelectionState, at(5, 5));
-    expect(selection).toEqual(initialSelectionState);
+    expect(selection).toMatchObject({ phase: 'inspecting', unitId: 'b2', view: 'attack' });
+  });
+});
+
+describe('inspecting a unit', () => {
+  // Blue to move. r1 is an enemy horseman, r2 an enemy footman, b2 a blue unit
+  // that has acted.
+  const board9 = (): GameState =>
+    makeState(9, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'b2', col: 7, row: 1, hasActed: true },
+      { id: 'r1', col: 4, row: 6, owner: 'red', unitTypeId: 'cavalry' },
+      { id: 'r2', col: 7, row: 7, owner: 'red' },
+    ]);
+  const inspectR1 = (state: GameState) => handleTileClick(state, initialSelectionState, at(4, 6));
+
+  it('shows the movement range on a second click, the one it shows when selected', () => {
+    const state = board9();
+    const second = handleTileClick(state, inspectR1(state), at(4, 6));
+    const selected = handleTileClick(
+      { ...state, currentTurn: 'red' },
+      initialSelectionState,
+      at(4, 6),
+    );
+    if (second.phase !== 'inspecting' || selected.phase !== 'unitSelected') throw new Error();
+    expect(second.view).toBe('movement');
+    expect(second.tiles).toEqual(selected.movement.settled);
+  });
+
+  it('clears on a third click', () => {
+    const state = board9();
+    const second = handleTileClick(state, inspectR1(state), at(4, 6));
+    expect(handleTileClick(state, second, at(4, 6))).toEqual(initialSelectionState);
+  });
+
+  it('clears on a click elsewhere', () => {
+    const state = board9();
+    expect(handleTileClick(state, inspectR1(state), at(0, 8))).toEqual(initialSelectionState);
+  });
+
+  it('inspects another unit that cannot act, or selects one that can', () => {
+    const state = board9();
+    expect(handleTileClick(state, inspectR1(state), at(7, 7))).toMatchObject({
+      phase: 'inspecting',
+      unitId: 'r2',
+      view: 'attack',
+    });
+    expect(handleTileClick(state, inspectR1(state), at(1, 1))).toMatchObject({
+      phase: 'unitSelected',
+      unitId: 'b1',
+    });
+  });
+
+  it('inspects an enemy clicked while a unit is selected or a route pinned', () => {
+    const state = board9();
+    for (const selection of [withB1Selected(state), withB1Pinned(state, at(1, 2))]) {
+      expect(handleTileClick(state, selection, at(4, 6))).toMatchObject({
+        phase: 'inspecting',
+        unitId: 'r1',
+      });
+    }
+  });
+
+  // The enemy's search on blue's turn: it passes its own side's units and
+  // stops at the other's, whoever is to move.
+  it('runs the search for the unit’s owner, not the player to move', () => {
+    const state = makeState(7, [
+      { id: 'r1', col: 0, row: 0, owner: 'red', unitTypeId: 'cavalry' },
+      { id: 'r3', col: 1, row: 0, owner: 'red' },
+      { id: 'b1', col: 0, row: 2 },
+    ]);
+    const first = handleTileClick(state, initialSelectionState, at(0, 0));
+    const second = handleTileClick(state, first, at(0, 0));
+    if (second.phase !== 'inspecting') throw new Error();
+    expect(second.tiles).toContainEqual(at(2, 0));
+    expect(second.tiles).not.toContainEqual(at(0, 2));
+  });
+
+  it('lights a gun’s band without the tiles too near it to fire on', () => {
+    const state = makeState(9, [
+      { id: 'b1', col: 0, row: 0 },
+      { id: 'r1', col: 4, row: 4, owner: 'red', unitTypeId: 'artillery' },
+    ]);
+    const selection = handleTileClick(state, initialSelectionState, at(4, 4));
+    if (selection.phase !== 'inspecting') throw new Error();
+    expect(selection.tiles).not.toContainEqual(at(4, 5));
+    expect(selection.tiles).toContainEqual(at(4, 7));
+  });
+
+  it('shows a unit in contact walking out of it', () => {
+    const state = makeState(9, [
+      { id: 'b1', col: 4, row: 3 },
+      { id: 'r1', col: 4, row: 4, owner: 'red' },
+    ]);
+    const first = handleTileClick(state, initialSelectionState, at(4, 4));
+    const second = handleTileClick(state, first, at(4, 4));
+    if (second.phase !== 'inspecting') throw new Error();
+    expect(second.tiles).toContainEqual(at(4, 6));
+  });
+
+  it('falls through to a fresh click once the inspected unit has gone', () => {
+    const state = board9();
+    const gone = { ...state, units: state.units.filter((unit) => unit.id !== 'r1') };
+    expect(handleTileClick(gone, inspectR1(state), at(4, 6))).toEqual(initialSelectionState);
   });
 });
 
@@ -193,13 +304,13 @@ describe('handleTileClick, a unit selected', () => {
     expect(selection).toMatchObject({ phase: 'unitSelected', unitId: 'b3' });
   });
 
-  it('does not offer a move onto an enemy', () => {
+  it('does not offer a move onto an enemy, inspecting it instead', () => {
     const state = makeState(7, [
       { id: 'b1', col: 1, row: 1 },
       { id: 'r1', col: 1, row: 2, owner: 'red' },
     ]);
     const selection = handleTileClick(state, withB1Selected(state), at(1, 2));
-    expect(selection).toEqual(initialSelectionState);
+    expect(selection).toMatchObject({ phase: 'inspecting', unitId: 'r1' });
   });
 
   it('recovers if the selected unit has vanished from state', () => {
@@ -240,8 +351,10 @@ describe('openInPlace', () => {
   it('passes through anything but a unit just selected', () => {
     const state = adjacent();
     const pinned = withB1Pinned(state, at(2, 1));
+    const inspected = handleTileClick(state, initialSelectionState, at(1, 2));
     expect(openInPlace(state, initialSelectionState)).toBe(initialSelectionState);
     expect(openInPlace(state, pinned)).toBe(pinned);
+    expect(openInPlace(state, inspected)).toBe(inspected);
   });
 });
 
@@ -611,6 +724,7 @@ describe('the panel, and what it is told', () => {
     expect(isPlan(withB1Arrived(state, at(1, 1)))).toBe(true);
     expect(isPlan(initialSelectionState)).toBe(false);
     expect(isPlan(withB1Selected(state))).toBe(false);
+    expect(isPlan(handleTileClick(state, initialSelectionState, at(1, 3)))).toBe(false);
   });
 });
 

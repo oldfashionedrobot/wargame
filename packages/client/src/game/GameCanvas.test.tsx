@@ -369,6 +369,34 @@ describe('GameCanvas', () => {
     expect(screen.queryByText('Move')).toBeNull();
   });
 
+  // An enemy's attack band, then its reach, then nothing -- each with its own
+  // hint, and the board never offering a pane, a menu or a reason to block the
+  // turn from ending.
+  it('inspects an enemy: its band, then its reach, then nothing', async () => {
+    await renderCanvas(contested());
+
+    await act(async () => clickTile({ col: 1, row: 4 }));
+    expect(lastOverlay()?.[0]).toBe('attack');
+    expect(lastOverlay()?.[1].length).toBeGreaterThan(0);
+    expect(renderer.setSelectedTile).toHaveBeenLastCalledWith({ col: 1, row: 4 });
+    expect(renderer.setRange).toHaveBeenLastCalledWith([]);
+    expect(screen.getByText(/what it can attack/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'End Turn' })).toHaveProperty('disabled', false);
+    expect(screen.queryByText('Hold')).toBeNull();
+    expect(screen.queryByText(/click again to confirm/i)).toBeNull();
+
+    await act(async () => clickTile({ col: 1, row: 4 }));
+    expect(lastOverlay()).toEqual([null, []]);
+    expect(vi.mocked(renderer.setRange).mock.lastCall?.[0].length).toBeGreaterThan(0);
+    expect(screen.getByText(/where it can move/i)).toBeTruthy();
+
+    await act(async () => clickTile({ col: 1, row: 4 }));
+    expect(lastOverlay()).toEqual([null, []]);
+    expect(renderer.setRange).toHaveBeenLastCalledWith([]);
+    expect(renderer.setSelectedTile).toHaveBeenLastCalledWith(null);
+    expect(screen.queryByText(/where it can move/i)).toBeNull();
+  });
+
   // ⚠️ **Exactly one overlay is lit, and the mode is what guarantees it.** With
   // three attack-ish sets now -- the attack band, the charge targets, the
   // facing tiles -- "they never coincide" stops being obvious by inspection, and

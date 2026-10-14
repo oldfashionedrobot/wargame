@@ -294,11 +294,10 @@ fielded — see the turn-order note under *After the combat pass*.
 
 ⬜ **Under way, pre-checked three times against the code.** The dev handle for
 tiles, the simulator's new tallies, the charge meter per unit type, `mountain`
-renamed `hills`, and cover on Advance Wars' scale have shipped; two commits
-remain, in this order: inspecting a unit; greying the units that have acted.
+renamed `hills`, cover on Advance Wars' scale and inspecting a unit have
+shipped; one commit remains: greying the units that have acted.
 Each passes the gate — `tsc -b --force` included — and lands with its docs.
-Two of them are checked in a browser through the handle: inspecting, and
-greying.
+It is checked in a browser through the handle.
 
 ⚠️ **Comments, docs and test titles that quote a value, or anything else a
 change can move, are removed rather than updated**, and tests read a size from
@@ -313,71 +312,6 @@ before the win rates: charges by type, hits by ground, unfinished matches, wins
 by general. The composition sweep runs once after cover, without `common`
 (where the opener wins whatever it fields); the table under *Armies* and the
 cover figures in *The dials* are removed then, keeping their conclusions.
-
-⬜ **Inspecting a unit.** Today a click on a unit that cannot act clears the
-selection: `trySelect` takes only what `canSelectUnit` accepts. **Decided**:
-any unit it refuses — the enemy's, and the player's own that have acted — can
-be inspected. The first click shows its attack range, a second click on it its
-movement range, and a third clears. A click elsewhere clears, and a click on
-another unit selects or inspects that one, as selection does — so an enemy
-clicked while a unit is selected replaces the selection with the inspection.
-Inside the panel and its modes, clicks keep their meanings: at the panel an
-enemy is the dark click back, and the next click inspects; in a mode a lit
-enemy is a target or a facing.
-
-- ⚠️ **The attack range is the band around where it stands, not Advance Wars'
-  threat range**, deliberately: working out what a move adds to it is the
-  player's job. For a gun, which is slow, and for any unit that starts in
-  contact, the two are the same anyway.
-- **A new phase, `inspecting`**: `{ unitId, position, view: 'attack' |
-  'movement', tiles }`. ⚠️ **The tiles, not the movement search**: a member
-  carrying `movement` would compile straight through `handleTileClick`'s
-  pinning path, and a second click on the enemy would pin a route *for the
-  enemy*. Its branch sits right after the idle check; the second and third
-  clicks are read against the stored position.
-- **One constructor, `inspect(state, unit, view)`**, called by `trySelect` for
-  the first click and by `handleTileClick` for the second, building each view's
-  tiles when it is entered, as `enterMode` does. The attack view is
-  `attackTilesFor` at the unit's position; the movement view is the search
-  `trySelect` runs, pulled into one local helper — so a unit cannot show one
-  range selected and another inspected.
-- **Read-only**: no path, so never a plan, and End Turn — disabled for a plan
-  or a finished game — stays enabled.
-- ⚠️ **A board update clears it to idle.** The subscription unpins a plan back
-  to its selected unit; an inspection's snapshot has nothing to fall back to.
-  In multiplayer every opponent action is one, which *Multiplayer* notes.
-- **A small table keyed by view**, shaped like `STEP_UI`, gives each view's
-  overlay and hint. ⚠️ Both hints say a click clears: the movement view's tint
-  is the blue that means *move here*, and the attack view's red means *click
-  to target* in attacking mode. The highlight sits on the unit's own tile; a
-  browser checks it does not read as *yours* on an enemy.
-- **Where it lands**: `showSelection` — the highlight, the overlay and the
-  range — the hint line, and the subscription. Checked and unchanged:
-  `isAwaitingConfirm`, `menuOpen`, the anchor effect, `submitCommand`'s
-  rollback, `chooseMove` and `PINNED_PHASES`.
-- **Tests.**
-  - Rewritten: `selection.test`'s *ignores an enemy unit* and *ignores an own
-    unit that has already acted*, which now inspect, and *does not offer a
-    move onto an enemy*, which asserts the phase.
-  - Extended: *counts as an uncommitted plan, like every other phase carrying a
-    path* (an inspection is not), and `openInPlace`'s *passes through anything
-    but a unit just selected* (an inspection passes).
-  - New, `selection.test`: an enemy click shows the band where it stands; a
-    second, the movement view, equal to the settled set the same unit shows
-    when selected; a third clears; a click elsewhere clears; another enemy is
-    inspected in turn; an own ready unit is selected; an own acted unit is
-    inspectable; an enemy clicked while a unit is selected or a route pinned is
-    inspected; the search runs for the unit's owner, not the player to move; a
-    gun's band skips its near tiles; a unit in contact can walk out; and a
-    vanished inspected unit falls through to `trySelect`.
-  - New, `useGameSession.test` — each settling the first board update before
-    clicking, or it clears the inspection: a click inspects; a board update
-    clears it; an enemy at the panel still backs out; End Turn while
-    inspecting submits and clears.
-  - New, `GameCanvas.test`: each view's overlay, highlight and hint; the third
-    click clears everything; End Turn enabled; no pane and no menu.
-- **Docs**: the architecture doc's selection API and `SelectionState` union, its
-  count of phases, and `GameCanvas`'s hint-line and handover passages.
 
 ⬜ **Greying the units that have acted.** Today the only way to tell is to
 click a unit, or to remember. **Decided**: grey them, as Advance Wars does —

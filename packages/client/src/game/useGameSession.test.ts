@@ -251,6 +251,52 @@ describe('useGameSession', () => {
     });
   });
 
+  describe('inspecting a unit', () => {
+    const adjacent = makeState(7, [
+      { id: 'b1', col: 1, row: 1 },
+      { id: 'r1', col: 1, row: 2, owner: 'red' },
+      { id: 'r2', col: 5, row: 5, owner: 'red' },
+    ]);
+
+    // ⚠️ Each settles the first board update before clicking, which would
+    // otherwise arrive afterwards and clear the inspection.
+    it('inspects a unit that cannot act', async () => {
+      const { result } = renderSession(fakeServer(adjacent));
+      await act(async () => {});
+      act(() => result.current.clickTile(at(5, 5)));
+      expect(result.current.selection).toMatchObject({ phase: 'inspecting', unitId: 'r2' });
+    });
+
+    it('clears an inspection when the board moves under it', async () => {
+      const fake = fakeServer(adjacent);
+      const { result } = renderSession(fake);
+      await act(async () => {});
+      act(() => result.current.clickTile(at(5, 5)));
+      await act(async () => fake.push([], adjacent));
+      expect(result.current.selection.phase).toBe('idle');
+    });
+
+    // At the panel an enemy is still a click on the dark: it backs out first.
+    it('leaves an enemy clicked at the panel to back out to movement', async () => {
+      const { result } = renderSession(fakeServer(adjacent));
+      await act(async () => {});
+      act(() => result.current.clickTile(at(1, 1))); // opens the panel in place
+      act(() => result.current.clickTile(at(1, 2)));
+      expect(result.current.selection).toMatchObject({ phase: 'unitSelected', unitId: 'b1' });
+    });
+
+    it('ends the turn from an inspection, clearing it', async () => {
+      const fake = fakeServer(adjacent);
+      const { result } = renderSession(fake);
+      await act(async () => {});
+      fake.respond({ ok: true, seq: 1, events: [], state: adjacent });
+      act(() => result.current.clickTile(at(5, 5)));
+      await act(async () => result.current.endTurn());
+      expect(fake.submissions).toEqual([{ type: 'endTurn' }]);
+      expect(result.current.selection.phase).toBe('idle');
+    });
+  });
+
   describe('selecting a unit', () => {
     const adjacent = makeState(7, [
       { id: 'b1', col: 1, row: 1 },

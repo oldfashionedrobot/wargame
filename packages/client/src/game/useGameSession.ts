@@ -264,7 +264,16 @@ export function useGameSession(server: GameServer, callbacks: GameSessionCallbac
         // correct together: outside the queue the menu would vanish while the
         // ghost kept standing until a batch finished animating. An
         // uncommitted plan does not survive the board moving under it.
-        setSelection((current) => (isPlan(current) ? unpinDestination(current) : current));
+        // ⚠️ An inspection goes altogether: its tiles are a snapshot of a board
+        // that has just moved, and unlike a plan it has no selection to fall
+        // back to.
+        setSelection((current) =>
+          isPlan(current)
+            ? unpinDestination(current)
+            : current.phase === 'inspecting'
+              ? initialSelectionState
+              : current,
+        );
         setGameState(state);
       });
     });

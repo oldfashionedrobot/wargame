@@ -1247,6 +1247,7 @@ nothing more. The phase dispatch that decides whether a click commits lives in
 | { phase: 'unitSelected'; unitId; position; movement }
 | { phase: 'routePinned'; unitId; path; movement }
 | { phase: 'destinationChosen'; unitId; path; movement; step }
+| { phase: 'inspecting'; unitId; position; view; tiles }   // 'attack' | 'movement'
 
 MenuStep
   | { kind: 'choosing' }                     // panel up, nothing lit
@@ -1272,11 +1273,25 @@ of phase names, so a phase with a path joins it by existing.
 `never` assertion beside it rejects a phase left *out*, which `satisfies` cannot
 see. Same trick `applyEvents` uses on its event union.
 
-**Four phases, and the menu's steps are a field rather than more of them.**
+**Five phases, and the menu's steps are a field rather than more of them.**
 `unitSelected` and `routePinned` both light the range and answer clicks
 identically, which is why pinning and re-pinning are one code path.
 `destinationChosen` is everything after the walk, with `step` saying which
 question is being asked.
+
+**`inspecting` is a unit that cannot act, looked at** — the enemy's, or the
+player's own that have acted: whatever `canSelectUnit` refuses, `trySelect`
+inspects rather than dropping. Its first view lights the band it could fire
+into **from where it stands** — `attackTilesFor` at its position, not Advance
+Wars' threat range, so what a move adds is the player's to work out. A second
+click on it lights its reach, from the same search a selection snapshots; a
+third clears, as does a click elsewhere, and a click on another unit selects or
+inspects that one. Clicks the panel and its modes answer first keep their
+meanings. ⚠️ **It stores the tiles, not the search**: a member carrying
+`movement` would compile through `handleTileClick`'s pinning path, and a second
+click on an enemy would pin a route *for the enemy*. No path, so never a plan —
+End Turn stays enabled — and a board update clears it to idle, since its
+snapshot has nothing to fall back to.
 
 #### The panel picks the intent
 
@@ -1386,7 +1401,9 @@ step to read. The renderer clips the four to the board.
 **`game/GameCanvas.tsx`** — the canvas ref, the renderer lifecycle, and the
 chrome around it: the turn label, End Turn, the rejection reason, the
 reconnecting banner, and a Toggle Inspector button under an
-`import.meta.env.DEV` guard, plus a hint line during action selection. Under the
+`import.meta.env.DEV` guard, plus a hint line during action selection and while
+a unit is inspected — `INSPECT_UI` gives each view its overlay and hint, as
+`STEP_UI` does for the panel's steps, and both hints say a click clears. Under the
 same guard it installs `window.__board`, whose `tileToScreen` passes through to
 the renderer, once the renderer is ready, and removes it on unmount — there
 rather than in the renderer, since StrictMode builds two in dev and the stale
@@ -1412,7 +1429,7 @@ since `Vector3.Project` does not: a tile zoom has pushed off screen would
 otherwise position an absolute child outside the viewport and add scrollbars.
 
 The hint line and the pane **hand over rather than overlap**: the pane belongs
-to movement selection, the hint to action selection.
+to movement selection, the hint to action selection and to inspecting.
 
 Its two callbacks read the renderer ref at call time, so a queue task resolving
 after unmount finds `null` rather than a disposed renderer.

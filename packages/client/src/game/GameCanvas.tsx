@@ -10,7 +10,13 @@ import {
   isPlan,
   destinationOf,
 } from './interaction/selection';
-import type { ActionKind, MenuStep, Pinned, SelectionState } from './interaction/selection';
+import type {
+  ActionKind,
+  InspectView,
+  MenuStep,
+  Pinned,
+  SelectionState,
+} from './interaction/selection';
 import type { ConnectionStatus } from '../net/gameServer';
 import { PLAYER_HEX } from './render/playerColors';
 import { createGameRenderer } from './render/renderer';
@@ -72,6 +78,26 @@ const STEP_UI: Record<MenuStep['kind'], { overlay: StepOverlay | null; hint: str
 };
 
 /**
+ * What each inspection view lights and says, as `STEP_UI` does for the panel's
+ * steps. The movement view's tiles go on the range overlay rather than a step
+ * overlay, so it names none.
+ *
+ * ⚠️ **Both hints say a click clears**, because both tints mean something else
+ * while a unit of your own is selected -- blue *move here*, red *click to
+ * target* -- and here a click on them does neither.
+ */
+const INSPECT_UI: Record<InspectView, { overlay: StepOverlay | null; hint: string }> = {
+  attack: {
+    overlay: 'attack',
+    hint: 'What it can attack from where it stands. Click it again for where it can move, or elsewhere to clear.',
+  },
+  movement: {
+    overlay: null,
+    hint: 'Where it can move. Click it again, or elsewhere, to clear.',
+  },
+};
+
+/**
  * Is a drawn route still waiting to be confirmed?
  *
  * ⚠️ **One place, because it was two.** The rule lived in `showSelection` and
@@ -92,9 +118,15 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
   // were three independent setters with the rule in a comment above them, so
   // every update had to remember to clear the other two.
   const step = selection.phase === 'destinationChosen' ? selection.step : null;
+  const inspected = selection.phase === 'inspecting' ? selection : null;
+  const overlay = step
+    ? STEP_UI[step.kind].overlay
+    : inspected
+      ? INSPECT_UI[inspected.view].overlay
+      : null;
   renderer.setStepTiles(
-    step ? STEP_UI[step.kind].overlay : null,
-    step && 'tiles' in step ? step.tiles : [],
+    overlay,
+    step && 'tiles' in step ? step.tiles : inspected && overlay ? inspected.tiles : [],
   );
 
   // ⚠️ The unit's own tile, never the pin. A pinned route has not been walked,
@@ -104,7 +136,7 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
   const highlight =
     selection.phase === 'idle'
       ? null
-      : selection.phase === 'unitSelected'
+      : selection.phase === 'unitSelected' || selection.phase === 'inspecting'
         ? selection.position
         : selection.path[pinned ? 0 : selection.path.length - 1];
 
@@ -117,8 +149,12 @@ function showSelection(renderer: GameRenderer, selection: SelectionState, walkin
   // punched in it where a friendly unit happens to stand reads as out of range
   // rather than as occupied. Not every lit tile is clickable, which is fine --
   // `handleTileClick` asks `reachable`, and a click on a friend selects it.
+  //
+  // An inspection's movement view lights the same overlay, from the same search.
   const ranged = selection.phase === 'unitSelected' || pinned;
-  renderer.setRange(ranged ? selection.movement.settled : []);
+  renderer.setRange(
+    ranged ? selection.movement.settled : inspected?.view === 'movement' ? inspected.tiles : [],
+  );
   renderer.setRoute(isAwaitingConfirm(selection, walking) ? selection.path : []);
 }
 
@@ -316,7 +352,12 @@ export function GameCanvas({ server, connection }: GameCanvasProps) {
   const menuOpen = selection.phase === 'destinationChosen' && selection.step.kind === 'choosing';
   // The same table the overlays come from, so a step's tiles and its
   // instruction cannot describe two different things.
-  const hint = selection.phase === 'destinationChosen' ? STEP_UI[selection.step.kind].hint : null;
+  const hint =
+    selection.phase === 'destinationChosen'
+      ? STEP_UI[selection.step.kind].hint
+      : selection.phase === 'inspecting'
+        ? INSPECT_UI[selection.view].hint
+        : null;
   const aiming = isTargetPinned(selection) ? selection : null;
   const forecast = aiming ? attackForecast(server.getState(), aiming) : null;
 

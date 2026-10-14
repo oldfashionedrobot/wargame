@@ -61,7 +61,23 @@ export type SelectionState =
       path: Coordinate[];
       movement: Movement;
       step: MenuStep;
+    }
+  // A unit that cannot act, looked at: the band it could fire into from where it
+  // stands, or the tiles it could reach. Nothing pinned, nothing to commit.
+  //
+  // ⚠️ **The tiles, not the movement search.** A member carrying `movement`
+  // would pass straight through `handleTileClick`'s pinning path, and a second
+  // click on an enemy would pin a route *for the enemy*.
+  | {
+      phase: 'inspecting';
+      unitId: string;
+      position: Coordinate;
+      view: InspectView;
+      tiles: Coordinate[];
     };
+
+/** Which of an inspected unit's ranges is lit. */
+export type InspectView = 'attack' | 'movement';
 
 /**
  * Which question the menu is asking, and therefore what a tile click means.
@@ -416,13 +432,44 @@ export function confirmRoute(selection: RoutePinned): DestinationChosen {
 
 export const initialSelectionState: SelectionState = { phase: 'idle' };
 
+/**
+ * A unit's whole movement search -- what a selection snapshots, and what an
+ * inspection's movement view lights, so the two cannot show different ranges.
+ */
+function movementOf(state: GameState, unit: Unit): Movement {
+  const { movementRange, movementType } = getUnitType(unit.unitTypeId);
+  return exploreMovement(state, unit, movementRange, movementType);
+}
+
+/**
+ * An inspection of a unit that cannot act, built for one view when it is
+ * entered, as `enterMode` builds a mode's tiles.
+ *
+ * ⚠️ **The band where it stands, not Advance Wars' threat range**, deliberately:
+ * working out what a move adds to it is the player's job. For a gun, and for a
+ * unit that starts in contact, which may move or attack but not both, the two
+ * are the same anyway.
+ */
+function inspect(state: GameState, unit: Unit, view: InspectView): SelectionState {
+  return {
+    phase: 'inspecting',
+    unitId: unit.id,
+    position: unit.position,
+    view,
+    tiles:
+      view === 'attack'
+        ? attackTilesFor(state, unit, unit.position)
+        : movementOf(state, unit).settled,
+  };
+}
+
 // The one constructor of the selected phase, so the snapshot is taken in one
-// place: a selectable unit under the click becomes the selection, anything
-// else clears it.
+// place: a selectable unit under the click becomes the selection, any other
+// unit is inspected, and an empty tile clears it.
 function trySelect(state: GameState, coordinate: Coordinate): SelectionState {
   const unit = getUnitAt(state, coordinate);
-  if (!unit || !canSelectUnit(state, unit)) return initialSelectionState;
-  const { movementRange, movementType } = getUnitType(unit.unitTypeId);
+  if (!unit) return initialSelectionState;
+  if (!canSelectUnit(state, unit)) return inspect(state, unit, 'attack');
   return {
     phase: 'unitSelected',
     unitId: unit.id,
@@ -430,7 +477,7 @@ function trySelect(state: GameState, coordinate: Coordinate): SelectionState {
     // The whole search, not just its tiles: `pathTo` builds the path a move
     // command carries, and the path a pinned route draws. ⚠️ The renderer no
     // longer holds this -- it is given tiles to light, not a search to query.
-    movement: exploreMovement(state, unit, movementRange, movementType),
+    movement: movementOf(state, unit),
   };
 }
 
@@ -461,6 +508,16 @@ export function handleTileClick(
   // carries exactly what `unitSelected` does, and nothing below wants anything
   // else. Moving a pin runs the code that set it.
   if (selection.phase === 'idle') return trySelect(state, coordinate);
+
+  // An inspection cycles on its own unit's tile -- the band, then the reach,
+  // then nothing -- read against the position it was taken at. Any other click
+  // falls through to `trySelect`, as on an empty board.
+  if (selection.phase === 'inspecting') {
+    if (!coordinatesEqual(coordinate, selection.position)) return trySelect(state, coordinate);
+    const unit = getUnit(state, selection.unitId);
+    if (!unit) return trySelect(state, coordinate);
+    return selection.view === 'attack' ? inspect(state, unit, 'movement') : initialSelectionState;
+  }
 
   const selectedUnit = getUnit(state, selection.unitId);
 
