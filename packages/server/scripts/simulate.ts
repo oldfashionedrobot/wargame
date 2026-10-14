@@ -28,7 +28,6 @@ import {
   computeDamage,
   exploreMovement,
   facingToward,
-  defenseAt,
   getUnit,
   getUnitType,
   isOver,
@@ -173,8 +172,14 @@ interface Stats {
   attacks: number;
   countered: number;
   charges: number;
+  chargesBy: Record<string, number>;
   chargesBroke: number;
-  hitsOnCover: number;
+  /**
+   * Attacks by the ground the defender stood on. ⚠️ By ground rather than by
+   * stars of cover, so a run before a change to the cover table and one after it
+   * count the same tiles.
+   */
+  hitsByGround: Record<string, number>;
   wonByGeneral: number;
   healed: number;
 }
@@ -265,6 +270,7 @@ function record(before: GameState, events: GameEvent[], stats: Stats): void {
 
     if (event.kind === 'charge') {
       stats.charges++;
+      stats.chargesBy[by] = (stats.chargesBy[by] ?? 0) + 1;
       if (event.defender.health <= 0) {
         stats.chargesBroke++;
         stats.killsBy[by] = (stats.killsBy[by] ?? 0) + 1;
@@ -273,8 +279,8 @@ function record(before: GameState, events: GameEvent[], stats: Stats): void {
     }
 
     stats.attacks++;
-    const defense = defenseAt(before, defender.position);
-    if (defense > 0) stats.hitsOnCover++;
+    const ground = before.grid[defender.position.row][defender.position.col];
+    stats.hitsByGround[ground] = (stats.hitsByGround[ground] ?? 0) + 1;
     stats.damageBy[by] = (stats.damageBy[by] ?? 0) + (defender.health - event.defender.health);
     if (event.defender.health <= 0) stats.killsBy[by] = (stats.killsBy[by] ?? 0) + 1;
     if (event.answered && event.attacker.health < attacker.health) stats.countered++;
@@ -320,8 +326,9 @@ const stats: Stats = {
   attacks: 0,
   countered: 0,
   charges: 0,
+  chargesBy: {},
   chargesBroke: 0,
-  hitsOnCover: 0,
+  hitsByGround: {},
   wonByGeneral: 0,
   healed: 0,
 };
@@ -371,22 +378,23 @@ console.log(
   `  actions  mean ${mean(stats.actions).toFixed(1)}   median ${sortedActions[Math.floor(sortedActions.length / 2)]}   min ${sortedActions[0]}   max ${sortedActions[sortedActions.length - 1]}`,
 );
 
-console.log('\ndamage and kills, by who dealt it');
+console.log('\ndamage, kills and charges, by who dealt them');
 const types: UnitTypeId[] = ['infantry', 'cavalry', 'artillery', 'general'];
 const totalDamage = types.reduce((a, t) => a + (stats.damageBy[t] ?? 0), 0);
 for (const t of types) {
   const d = stats.damageBy[t] ?? 0;
   console.log(
-    `  ${t.padEnd(10)} ${String(d).padStart(7)} damage  ${pct(d, totalDamage).padStart(6)} of all   ${String(stats.killsBy[t] ?? 0).padStart(4)} kills`,
+    `  ${t.padEnd(10)} ${String(d).padStart(7)} damage  ${pct(d, totalDamage).padStart(6)} of all   ${String(stats.killsBy[t] ?? 0).padStart(4)} kills   ${String(stats.chargesBy[t] ?? 0).padStart(4)} charges`,
   );
 }
 
 console.log('\ndid the mechanics fire at all');
 console.log(`  attacks made           ${stats.attacks}`);
 console.log(`  ...answered            ${stats.countered}  ${pct(stats.countered, stats.attacks)}`);
-console.log(
-  `  ...onto covered ground ${stats.hitsOnCover}  ${pct(stats.hitsOnCover, stats.attacks)}`,
-);
+console.log("  ...by the defender's ground");
+for (const [ground, n] of Object.entries(stats.hitsByGround).sort(([, a], [, b]) => b - a)) {
+  console.log(`       ${ground.padEnd(17)}${String(n).padStart(5)}  ${pct(n, stats.attacks)}`);
+}
 console.log(`  health healed          ${stats.healed}`);
 console.log(`  charges made           ${stats.charges}`);
 console.log(

@@ -293,8 +293,8 @@ fielded — see the turn-order note under *After the combat pass*.
 #### The next pass
 
 ⬜ **Under way, pre-checked three times against the code.** The dev handle for
-tiles has shipped; six commits remain, in this order: the simulator's new
-tallies; the charge meter per unit type; `mountain` renamed `hills`; cover on
+tiles and the simulator's new tallies have shipped; five commits remain, in
+this order: the charge meter per unit type; `mountain` renamed `hills`; cover on
 Advance Wars' scale; inspecting a unit; greying the units that have acted. Each
 passes the gate — `tsc -b --force` included — and lands with its docs. Three of
 them are checked in a browser through the handle: the charge counter,
@@ -313,15 +313,6 @@ before the win rates: charges by type, hits by ground, unfinished matches, wins
 by general. The composition sweep runs once after cover, without `common`
 (where the opener wins whatever it fields); the table under *Armies* and the
 cover figures in *The dials* are removed then, keeping their conclusions.
-
-⬜ **The simulator's new tallies**, in before the first run reads them:
-**charges made by unit type**, beside kills by type, so cavalry's rise shows
-apart from infantry's; and **hits by the ground the defender stood on**,
-replacing `defense > 0`, which plains' coming star would turn into nearly every
-hit. By ground rather than by stars, because the cover change moves what each
-star count means. The scripts are typechecked and untested. Docs: the
-simulator's row in the architecture doc; *The dials*' paragraph that reads the
-old count keeps its conclusion and loses its figures.
 
 ⬜ **The charge meter per unit type.** **Decided**: cavalry and the general
 fill in two attacks, infantry in three. Later, heavy cavalry in one, and a
@@ -786,10 +777,10 @@ values ground: it never *chooses* terrain, so what it reports is where fights
 happened to land rather than what either side thought ground was worth.
 ⚠️ **What it will say is whether cover is anywhere near the fighting**, and that
 turned out to be worth having — moving the boards' broken ground off the
-deployment edges and into the contested middle took hits landing on cover from
-under one percent to **9% on `common` and 16% on `lakeland`**, with no change to
-the bot at all. A number that low is a board nobody fights over; it is a
-geometry check, not a verdict on the terrain.
+deployment edges and into the contested middle took the attacks landing on it
+from almost none to a real share, with no change to the bot at all. It counts
+attacks by the defender's ground, so a board nobody fights over shows as one;
+it is a geometry check, not a verdict on the terrain.
 ⚠️ **What it says robustly is asymmetry**: both sides run the identical policy,
 so any departure from an even split is the map or the deployment rather than
 the bot.
