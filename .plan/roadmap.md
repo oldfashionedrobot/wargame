@@ -274,10 +274,12 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 
 #### The next pass
 
-⬜ **Planned and pre-checked, from playing.** Ten commits, in this order: the
-default army as it is being played; losing the army as well as the general;
-the spent grey a little more saturated; a map's size beside its name; each map
-declaring where its armies deploy; and four boards at 20×20, a commit each.
+⬜ **Planned and pre-checked, from playing.** Fourteen commits, in this order:
+the default army as it is being played; losing the army as well as the
+general; the spent grey a little more saturated; a new terrain failing to
+compile until it is drawn; sea; structure; a map's size beside its name; each
+map declaring where its armies deploy; a frame around every board; and four
+boards at 20×20, a commit each, drawn with sea and structures.
 Each passes the gate — `tsc -b --force` included — and lands with its docs.
 Comments, docs and test titles that quote a value, or anything else a change
 can move, are removed rather than updated.
@@ -380,6 +382,121 @@ nothing is centred, as every board is today.
   their stale lines. The architecture doc's *Maps* passages on the centred zone,
   its margin, its rotation and the middle ten columns.
 
+⬜ **A new terrain fails to compile until it is drawn.** Today it compiles and
+draws as plains: `composeTerrain`'s `baseCell` ends in a `default` that
+returns grass, and no client table is keyed by `TileType`, so the comment in
+`terrain.ts` promising "the renderer's colours" become a compile error is
+stale. The `default` becomes `case 'plains'` with the `never` check
+`applyEvents` uses, and the comment is reworded. Its own commit, ahead of the
+two types below, which it then forces through the renderer.
+
+⬜ **Sea**: water nobody can enter yet, so Advance Wars' island maps — a third
+to a half sea — can be drawn closer to their originals.
+
+- **Rules**: `w`, cost `null` for every movement type, defense 0, which is
+  never read since nobody stands there. Nothing else is needed: `entryCost`
+  refuses it, a charge cannot ride onto it, deployment zones cannot hold it,
+  and fire crosses it, as in Advance Wars.
+- **Models**: there is no sea or coast model in the shipped subset of the
+  Kenney nature kit, nor any Kenney pack on this machine — but the river
+  pieces already tile a body of water by its neighbours, so sea **is** that
+  body. `isWater` counts sea with river and bridge, so a river mouth opens into
+  the sea with no bank across it, and the board's edge counts as water as it
+  does today.
+- ⚠️ **It must not look like river**, which foot and horse wade. A sea cell
+  carries a paint the river does not, read where the models are coloured, so
+  its water takes a deep teal-navy of its own — one more draw call. Not the
+  blue army's colour, or blue pieces vanish against it. The banks stay as they
+  are, which reads as a beach. The close-up builds its ground the same way, so
+  it gets the paint for free.
+- ⚠️ **A bridge over sea** draws river-coloured water under its deck, since a
+  bridge takes no paint; it is painted from its water neighbours.
+- **`maps.test`'s crossability threshold** — wheels reaching more than half the
+  board — fails by construction on a board more than half sea; it is measured
+  against land, the tiles some movement type can enter. Its comment that the
+  check only has teeth for wheels stops being true: sea strands every arm.
+- ⚠️ **The bot will stall at a coast**: it approaches by distance as the crow
+  flies, so it parks at the nearest shore. Its approach reads the movement
+  search's own path length instead, before any sea board's numbers are read —
+  and `lakeland`'s unfinished matches may be the same thing already.
+- **Tests**: in `movement.test`, sea refused to every movement type and a strait
+  not crossed; in `composeTerrain.test`, sea joining river with no bank, sea
+  cells painted and river cells not, and sea running off the board. Existing
+  sweeps over `TERRAIN` cover it unchanged. `maps.test`'s threshold, and a
+  sea-heavy fixture passing it while an unreachable island fails.
+
+⬜ **Structure**: a generic building, a grey box on its tile for now, giving
+four stars of cover.
+
+- **Rules**: `#`, defense 4. ⚠️ **Open: what it costs to enter.** Advance Wars
+  charges every ground unit 1 for a city, as for road — which makes it the
+  first four-star ground a gun can hold. Plains' costs keep guns paying more.
+  Four stars passes the *no living attacker is harmless* sweep; the floor
+  comes at seven. Whether it may sit in a deployment zone is open too —
+  `maps.test` would not refuse it.
+- **Model**: a box built in code and registered beside the kit's models, so it
+  is measured, merged, instantiated and staged in the close-up like any of
+  them, and real art later is a change of one name. A unit stands on top, as on
+  a mesa: about four fifths of a tile across, so neighbouring buildings stay
+  apart, and low enough that its top sits under the stand-height ceiling and
+  below a mesa's. No scenery is scattered on it. Its grey differs clearly from
+  road gravel and mesa stone; a browser decides.
+- **Tests**: in `composeTerrain.test`, a structure is grass with one centred
+  prop a unit stands on and nothing scattered; the existing prop fixtures gain
+  one. In `combat.test`, a defender on a structure takes less than one on
+  hills, as an ordering rather than a value.
+- **Docs, for both**: `terrain.ts`'s comments — hills stop being the best cover;
+  the architecture doc's terrain, zone, water, prop and recolour passages; and
+  the roadmap's *New terrain is worse than nothing until a number reads it*,
+  which both pass, and its count of distinct terrains.
+- **DRY**: `charges.ts` lists its grounds by hand, so a structure would be
+  silently missing — it reads them off `TERRAIN`, as `matchups.ts` does. The
+  legend comment copied into all seven maps contradicts `terrain.ts`'s "the
+  legend lives here and nowhere else", and goes.
+
+⬜ **A frame around every board**, four tiles wide, continuing the board's edges
+outward so the board reads as a piece of a larger land. No grid lines, no
+hover or click, no overlays; the camera frames and pans on the board alone.
+
+- **Built from what exists**: one pure function extends the grid by four on
+  every side, each frame tile taking the nearest edge tile and each corner
+  block the corner tile, and the extended grid is composed and drawn whole, so
+  rivers and roads autotile across the seam. The board's own cells are sliced
+  back out for everything that asks about the board — standing heights,
+  picking levels, the close-up. It never enters `GameState`, so no rule, the
+  server or a unit can reach it. Picking already ignores an off-board tile, so
+  the frame takes no clicks with no change to picking.
+- **What copies and what does not**: a road continues only where it crosses
+  the edge, or a road along the edge would widen into a plaza; a bridge
+  continues as road where its road leaves the board — a causeway — and as river
+  where its river does; a structure becomes plains rather than a wall of boxes;
+  sea, river, forest and hills copy. A table keyed by `TileType` holds this, so
+  a new terrain has to say.
+- ⚠️ **The camera keeps the board's rectangle** for its fit — today it measures
+  the slab's bounding box, which would swallow the frame — and its radius
+  grows to the framed board's, or at the shallow tilt turned 45° the frame's
+  near corner falls behind the near plane on a 12×12.
+- **Measured**: about twice the instantiations on today's boards, the same
+  draw calls — the frame uses only models the board already has — and a
+  forest-heavy edge as the worst case for build time, which the browser check
+  of canvas-ready time covers.
+- **Tests**: in `composeTerrain.test`, the board unchanged inside its frame;
+  edges and corners continuing; a road crossing the edge running to the rim
+  and its edge tile composing as a straight; a road along the edge not
+  widening; a bridge continuing as road or river; a river keeping its channel;
+  sea continuing and a structure not. Picking is checked in a browser, as are
+  the seams at all four edges, framing at two window sizes, the shallow tilt
+  turned 45° on the tester, and the map viewer.
+- **Docs**: the architecture doc's camera, slab, grid lines and woods bullets,
+  and a new one for the frame.
+- **Open**: at the default zoom four tiles still leave the backdrop showing
+  beyond them, so the edge is a hard one over the slab — a diorama — unless a
+  fade is wanted, which is a small shader on the terrain materials; whether
+  roads end at the rim or run off it; scenery reshuffling once, as every seed
+  shifts by four, or seeds keyed on board coordinates; frame trees in front of
+  the near row; and the one-line picking fix for a pointer just past the far
+  edge, which the frame makes visible.
+
 ⬜ **Four boards at 20×20.** **Decided**: maps come in different sizes rather
 than one standard; the small ones stay as skirmishes; four new boards at
 20×20, two rotated 180° and two not, each taking its shape from a known
@@ -403,12 +520,15 @@ Advance Wars map; and how many units a side a board holds is **not codified**
     side, funnelling into a single road through broken ground on the other.
     **Missile Plains**, already exactly 20×20: three ridges of hills across the
     board, each with one gap, staggered, so wheels zigzag and foot climbs.
-  - Rivers stand in for sea and shoal, and hills for mountains and cities. A
-    river one tile wide is forded in one move; two wide costs a night in the
-    water — width is the dial between a ford and a commitment.
+  - Sea is drawn as sea, structures stand in for cities and bases, and hills
+    for mountains; pipes and silo walls become ridges of hills. Shoals and
+    reefs become river where they are fordable in spirit. ⚠️ **Open: true size
+    or 20×20** — only Missile Plains is 20×20; Twin Isle is 22×16, Duo Falls
+    33×13 and The Trident 19×19, and with sizes now free a board can be drawn
+    at its original's.
 - **What a board must pass**: both zones standable by every movement type, so
-  no river or hills under them; wheels able to cross between the zones and to
-  reach more than half the board, which rules out the sea-heavy layouts; and
+  no river, sea or hills under them; wheels able to cross between the zones
+  and to reach more than half the land; and
   the written conventions — zones on plains or road, roads one tile wide, a
   road into each zone, broken ground in the middle. Off-centre zones use the
   declared field.
