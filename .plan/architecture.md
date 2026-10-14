@@ -20,12 +20,15 @@ moment it is selected, with a Move row to move it instead — after which a held
 unit is pointed somewhere, since facing decides whether an attack is answered. A unit beside an enemy is **in contact**: moving into
 contact ends the move, and a unit that starts its action in contact may move or
 attack, not both. An attack or a charge cuts away to the two units and plays the
-exchange. Every unit acts once and the
-turn ends when the last of them has gone; when a player has nothing left, the
+exchange; a charge is earned by attacking, faster for horse than for foot. A
+unit that cannot act — the enemy's, or one of yours that has acted — can be
+inspected: what it could attack from where it stands, then where it could move.
+Every unit acts once, greyed once it has, and the turn ends when the last of
+them has gone; when a player has nothing left, or loses their general, the
 match is over and says so.
 
-Two players, a rank of eight each — two guns, two horse, four foot — on a map
-chosen when the match is created. `/maps` shows the boards without starting
+Two players, nine units each — a general, two guns, two horse, four foot — on a
+map chosen when the match is created. `/maps` shows the boards without starting
 one.
 
 ## Packages
@@ -70,7 +73,7 @@ packages/
     victory.ts        who has won, and whether anyone has
     applyEvents.ts    the event fold
     protocol.ts       the GameServer interface, the wire shapes, and parsing
-    testing.ts        fixtures (makeState, route, at, unitAt), tests only
+    testing.ts        fixtures (makeState, route, at, unitAt, fullMeter), tests only
     index.ts          the barrel
     data/             the static content tables — unit types, terrain, combat
   shared/scripts/
@@ -491,7 +494,8 @@ than kept by hand** — see `maps.test.ts` above.
 omitting it takes `DEFAULT_MAP_ID`.
 
 The test fixture `makeState` accepts either map rows or a size, and a size
-generates a plains character map and parses that.
+generates a plains character map and parses that. ⚠️ Plains carry a star of
+cover, so a test that means *no cover* draws its own rows with road.
 
 ## Movement
 
@@ -1185,7 +1189,7 @@ on update (events, state):
 ⚠️ **An uncommitted plan does not survive that commit** — either kind, pinned or
 arrived, is dropped back to the unit selected, because the board it was drawn
 against has moved. This is the first thing to suspect when a pin seems to vanish
-on its own.
+on its own. An inspection goes altogether, having no selection to fall back to.
 
 `worthAnimating` is false for an empty batch, while the tab is hidden, and for
 a batch of more than **five events**.

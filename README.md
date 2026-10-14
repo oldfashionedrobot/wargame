@@ -29,12 +29,14 @@ click a destination to pin the route there, and click it again to send the unit
 walking. Where it arrives a panel asks what it is doing: hold, attack or charge
 — a charge is earned by attacking: certain against a worn-down unit, and
 a gamble against a stronger one.
-An attack or a charge cuts away to the two units and plays the exchange. Every
-unit acts once, the turn ends when the last of them has gone, and a player with
-nothing left has lost.
+An attack or a charge cuts away to the two units and plays the exchange. Click
+an enemy, or a unit of yours that has acted, to see what it could attack and
+where it could move. Every unit acts once, greyed once it has, the turn ends
+when the last of them has gone, and a player with nothing left, or without
+their general, has lost.
 
-Two players, a rank of eight each — two guns, two horse, four foot — on one of
-six maps, chosen when the match is created. `/maps` shows the boards without
+Two players, nine units each — a general, two guns, two horse, four foot — on a
+map chosen when the match is created. `/maps` shows the boards without
 starting one.
 
 ## Layout
