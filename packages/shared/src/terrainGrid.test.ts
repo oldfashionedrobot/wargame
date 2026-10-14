@@ -8,7 +8,7 @@ describe('parseTerrainGrid', () => {
     // Deliberately not square, so a transposition cannot pass.
     const grid = parseTerrainGrid(['..^', '~-=']);
     expect(grid).toEqual([
-      ['plains', 'plains', 'mountain'],
+      ['plains', 'plains', 'hills'],
       ['river', 'road', 'bridge'],
     ]);
     expect(grid[1][0]).toBe('river'); // row 1, col 0 -- not col 1, row 0

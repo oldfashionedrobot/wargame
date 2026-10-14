@@ -18,7 +18,7 @@ export const classic: GameMap = {
   id: 'classic',
   name: 'Classic',
 
-  // . plains   - road   = bridge   ~ river   ^ mountain   f forest
+  // . plains   - road   = bridge   ~ river   ^ hills   f forest
   rows: [
     '.....-......',
     '.....-......',

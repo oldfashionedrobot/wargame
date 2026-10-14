@@ -57,7 +57,7 @@ export const DEPLOYMENT_ZONE: DeploymentZone = { width: 10, depth: 2 };
  * twice mid-playtest, and it is the thing most likely to move again.
  *
  * ⚠️ **A map may not put water or rock under the zone.** `wheels` cannot enter
- * river or mountain at any price, so a board that draws either into a
+ * river or hills at any price, so a board that draws either into a
  * deployment square strands a gun wherever a player puts one. `maps.test.ts` is
  * what catches it, and it now checks the *zone* rather than this army -- which
  * is the stronger property, because the zone is what a player may fill.

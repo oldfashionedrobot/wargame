@@ -13,7 +13,7 @@ import type { Scene } from '@babylonjs/core/scene';
 // is TILE_SIZE, so the board needs no scaling. Their tops are *not* all level
 // and nothing here assumes they are: grass and every riverbank sit at -0.05 and
 // open water at -0.10, with no bank to speak of. That is what `topOf` is for --
-// and it measures props too, since a mountain is a mesa standing on grass and
+// and it measures props too, since hills are a mesa standing on grass and
 // what a unit stands on there is the rock's own top.
 //
 // ⚠️ Those numbers do not match the position accessors, because every model in
@@ -84,7 +84,7 @@ export interface TerrainModels {
    * drift out of step with the art -- swap the model and the height follows.
    * The same discipline as `entryCost` being the only cost model.
    *
-   * Asked about props as well as ground: a mountain is a mesa standing on
+   * Asked about props as well as ground: hills are a mesa standing on
    * grass, and what a unit stands on there is the rock's own top.
    *
    * ⚠️ Bounded by `MAX_STAND_HEIGHT`, which explains why; `warnIfTooTall` is

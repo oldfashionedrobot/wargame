@@ -186,7 +186,7 @@ identity, then terminal state, then the per-command check.
 
 ```ts
 Coordinate  { col, row }
-TileType    'plains' | 'road' | 'bridge' | 'forest' | 'mountain' | 'river'
+TileType    'plains' | 'road' | 'bridge' | 'forest' | 'hills' | 'river'
 Facing      'north' | 'east' | 'south' | 'west'      // read by the counter rule; see Combat
 PlayerId    string                                   // never a union of colours
 PlayerColor 'blue' | 'red' | 'green' | 'yellow'      // the renderer keys on it
@@ -342,12 +342,12 @@ map is drawn with; `defense` is stars of cover, read by `computeDamage` and
 scaled there by `TERRAIN_WEIGHT` — a star is worth 15% at full defender health,
 and the column itself does not know that. ⚠️ **Open ground carries none**: road,
 bridge, plains and river are all 0, cover starts at `forest` 2 and tops out at
-`mountain` 4, and **no terrain sits at 1 star** — a single star moves the hit
+`hills` 4, and **no terrain sits at 1 star** — a single star moves the hit
 count in two matchups of nine, so it would draw a `★` the arithmetic cannot pay
 out. `cost` is
 movement points to *enter*, one per movement type, with `null` for impassable —
 which makes a river a wall to wheels, a toll to boots, and most of a turn to a
-horse. Costly and impassable are different answers: a mountain is expensive for
+horse. Costly and impassable are different answers: hills are expensive for
 horse and `null` for wheels.
 
 ⚠️ **`road` and `bridge` are identical in *both* columns**, so they are
@@ -433,7 +433,7 @@ parses, stores and replays while being wrong from the first frame. The depth
 check sums the zones rather than doubling one.
 
 **What a map owes a player is a zone they can fill.** `wheels` cannot enter river
-or mountain at any price, so a board that draws either inside a zone strands
+or hills at any price, so a board that draws either inside a zone strands
 whatever gun is put there. ⚠️ **`maps.test.ts` checks every square of both
 zones, for every movement type the terrain table prices** — not the squares one
 army happens to occupy. That is the stronger property, and it caught a pond
@@ -737,7 +737,7 @@ last band cannot luck its way into an extra tenth. A dead attacker needs no guar
 it never does.** The bound is `maxStars × TERRAIN_WEIGHT < 10` — at 4 stars and
 1.5 the worst case is 60 — and past that line terrain would heal the unit
 standing on it. A second, tighter ceiling sits at 1.667, where the weakest
-matchup on a mountain rounds to zero and the *no living attacker is harmless*
+matchup on hills rounds to zero and the *no living attacker is harmless*
 sweep in `combat.test.ts` fires. Both are tested rather than merely written
 down.
 
@@ -1575,7 +1575,7 @@ unavailable action is omitted — so hover is the only state a row has.
     different question — how far a tile reaches *down* — which only anything
     positioning itself under the board has any use for.
   - `TerrainCell.standOnProp` — the index of a prop a unit stands **on top of**,
-    whose height is likewise measured. A mountain is this: an ordinary grass
+    whose height is likewise measured. Hills are this: an ordinary grass
     tile with a mesa standing on it.
   - `TerrainCell.standOn` — a *declared* offset, for the one case measurement
     gets wrong: standing **partway up** a prop. A bridge deck is 0.15 on a model
@@ -1670,7 +1670,7 @@ unavailable action is omitted — so hover is the only state a row has.
   it does *not* bind are the ones a unit stands **on**: a bridge deck and a
   mesa, both dead centre on purpose. Everything is placed from a deterministic
   per-tile value stream, so the board never reshuffles between scene builds.
-- A **mountain is a mesa on an ordinary tile**, not raised ground. The trade is
+- **Hills are a mesa on an ordinary tile**, not raised ground. The trade is
   deliberate: a block fills its square and keeps every overlay flush but reads
   as masonry, while a rock does not fill a square — the hover and range tints
   sit at the mesa's height and float past its sloping edges — and reads as
@@ -1699,8 +1699,8 @@ unavailable action is omitted — so hover is the only state a row has.
 - **Open ground carries light scenery** — grass tufts, a small bush, the odd
   flower, on about a third of plains tiles. ⚠️ None of it means anything: a tile
   with a flower plays exactly like one without.
-- Grid lines are **one flat grid at the board's floor**, mid grey at 7%. A
-  mountain raises a *rock*, not its ground, so every tile's floor is the same
+- Grid lines are **one flat grid at the board's floor**, mid grey at 7%. Hills
+  raise a *rock*, not their ground, so every tile's floor is the same
   plane. Long spans draw each interior edge once rather than twice, so the alpha
   means what it says.
 - **A slab under the board** — `boardBase.ts`, sized to the grid exactly, 0.8

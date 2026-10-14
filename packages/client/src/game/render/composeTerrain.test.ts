@@ -201,7 +201,7 @@ describe('bridges', () => {
 });
 
 describe('ground cover', () => {
-  it('stands a tree on grass and a mesa on a mountain', () => {
+  it('stands a tree on grass and a mesa on hills', () => {
     const cells = compose('f^.');
     expect(cells[0][0].ground).toBe('ground_grass');
     // A wood is several trees now, and which ones is the tile's own business --
@@ -210,7 +210,7 @@ describe('ground cover', () => {
     expect(cells[0][0].props.length).toBeGreaterThan(1);
     expect(cells[0][0].props.every((prop) => prop.model.startsWith('tree_'))).toBe(true);
 
-    // ⚠️ A mountain does **not** raise its ground: the tile stays flat grass
+    // ⚠️ Hills do **not** raise their ground: the tile stays flat grass
     // and a rock stands on it, which is the whole shape of the thing. How high
     // a unit ends up is the rock's own top, so it is pointed at rather than
     // stated -- `standOnProp`, never `standOn`.

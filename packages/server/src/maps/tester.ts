@@ -4,7 +4,7 @@ export const tester: GameMap = {
   id: 'tester',
   name: 'Tester',
 
-  // . plains   - road   = bridge   ~ river   ^ mountain   f forest
+  // . plains   - road   = bridge   ~ river   ^ hills   f forest
   rows: [
     '....-.....',
     '....-.....',

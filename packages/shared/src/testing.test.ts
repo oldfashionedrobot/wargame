@@ -63,7 +63,7 @@ describe('makeState', () => {
   // The point of the map form: terrain fixtures read like the board.
   it('builds a board from map rows, through the same parser production uses', () => {
     const state = makeState(['..^', '~..'], [{ id: 'b1', col: 0, row: 0 }]);
-    expect(state.grid[0][2]).toBe('mountain');
+    expect(state.grid[0][2]).toBe('hills');
     expect(state.grid[1][0]).toBe('river');
   });
 

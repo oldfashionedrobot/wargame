@@ -38,7 +38,7 @@ const LINE_ALPHA = 1;
  *
  * ⚠️ This was briefly a square per tile at each tile's *own* surface, because a
  * raised tile would otherwise have the line running through it. That is no
- * longer a case that arises: a mountain is a mesa standing on an ordinary tile,
+ * longer a case that arises: hills are a mesa standing on an ordinary tile,
  * so the **ground is flat everywhere** and only props rise above it. The grid
  * marks the board's floor, and the floor is one plane.
  *

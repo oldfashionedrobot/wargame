@@ -241,17 +241,17 @@ describe('exploreMovement: terrain costs', () => {
   });
 
   it('refuses terrain its movement type cannot enter at all', () => {
-    // A mountain wall across the middle: foot may cross it, wheels may not.
+    // A wall of hills across the middle: foot may cross it, wheels may not.
     const state = makeState(['...', '^^^', '...'], [{ id: 'b1', col: 1, row: 0 }]);
     expect(has(explore(state, 'b1', 4, 'foot').reachable, 1, 2)).toBe(true);
     expect(has(explore(state, 'b1', 4, 'wheels').reachable, 1, 2)).toBe(false);
     expect(has(explore(state, 'b1', 4, 'wheels').reachable, 1, 1)).toBe(false);
   });
 
-  // Expensive and impassable are different answers, and the mountain is where
-  // that difference is tuned. Written against cavalry's real range, because
-  // what decides anything is the ratio of the climb to the budget, not the 4.
-  it('lets a horse onto a mountain, but only from close by', () => {
+  // Expensive and impassable are different answers, and hills are where that
+  // difference is tuned. Written against cavalry's real range, because what
+  // decides anything is the ratio of the climb to the budget.
+  it('lets a horse onto hills, but only from close by', () => {
     // ⚠️ Cavalry's real budget, and it said 5 while the catalog said 4 -- a
     // number that had drifted and was being read as the thing under test. The
     // ford test beside this one had it right, which is what made the pair
@@ -433,7 +433,7 @@ describe('validatePath', () => {
   // The same terrain table the search spends -- entryCost decides both.
   it('refuses terrain this movement type cannot cross', () => {
     const walk = board(['.^.', '...'], [{ id: 'b1', col: 1, row: 1 }]);
-    expect(walk([at(1, 1), at(1, 0)], 4, 'wheels')).toBe('wheels cannot cross mountain');
+    expect(walk([at(1, 1), at(1, 0)], 4, 'wheels')).toBe('wheels cannot cross hills');
     expect(walk([at(1, 1), at(1, 0)], 4, 'foot')).toBeNull();
   });
 

@@ -265,7 +265,7 @@ function scatterWood(group: Coordinate[], cells: TerrainCell[][]): void {
 // --- peaks -----------------------------------------------------------------
 
 /**
- * A mountain is a **mesa standing on an ordinary tile**, not raised ground.
+ * Hills are a **mesa standing on an ordinary tile**, not raised ground.
  *
  * ⚠️ Which means the tile under it stays flat grass and only the rock rises.
  * That is the difference between this and the elevated block it replaced, and
@@ -604,7 +604,7 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
       // Left empty here and filled by `scatterWood` once every cell exists: a
       // wood is placed across the tiles it covers, not one tile at a time.
       return { ground: 'ground_grass', turns: 0, props: [] };
-    case 'mountain':
+    case 'hills':
       return {
         ground: 'ground_grass',
         turns: 0,

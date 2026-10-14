@@ -149,7 +149,7 @@ option, and both cost a few lines against a table's seeding machinery.
   an absent event to desync.
 - **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
 - **Buildings.** A terrain type — a garrison — carrying the most cover: four stars, once cover is on Advance Wars' scale. Holding one is the capture-points question under *Tuning*, where presence is possession, so nothing beyond the tile's type is stored and there is no capture meter.
-- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — the mountain is the best cover on the board and dear to reach, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
+- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — hills are the best cover on the board and dear to reach, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
 
   ⚠️ Two findings worth keeping if it is ever reopened. `entryCost` takes a *destination*; height would make it take a **step**, which is a real signature change but a contained one — `exploreMovement` and `validatePath` are its only callers, and invariant 10 is what guarantees that. And if height ever did enter combat, the door is an **attack** bonus for striking downhill rather than a defence bonus for standing high, because terrain does not express the former and already expresses the latter.
 - **Manual routing.** Dragging out a deliberately non-optimal path. Unblocked by the protocol carrying a path and the server validating it — purely a matter of building the UI for it. ⚠️ The substrate now exists and did not before: a route is **pinned, re-pinnable, and drawn as an arrow**, so waypoints have something to hang off rather than needing the whole idea built at once.
@@ -293,9 +293,10 @@ fielded — see the turn-order note under *After the combat pass*.
 #### The next pass
 
 ⬜ **Under way, pre-checked three times against the code.** The dev handle for
-tiles, the simulator's new tallies and the charge meter per unit type have
-shipped; four commits remain, in this order: `mountain` renamed `hills`; cover
-on Advance Wars' scale; inspecting a unit; greying the units that have acted.
+tiles, the simulator's new tallies, the charge meter per unit type and
+`mountain` renamed `hills` have shipped; three commits remain, in this order:
+cover on Advance Wars' scale; inspecting a unit; greying the units that have
+acted.
 Each passes the gate — `tsc -b --force` included — and lands with its docs.
 Two of them are checked in a browser through the handle: inspecting, and
 greying.
@@ -314,30 +315,6 @@ by general. The composition sweep runs once after cover, without `common`
 (where the opener wins whatever it fields); the table under *Armies* and the
 cover figures in *The dials* are removed then, keeping their conclusions.
 
-⬜ **`mountain` becomes `hills`**, its own commit, moving no balance. The id
-only: "peak", "climb" and the like stay unless they say *mountain*.
-
-- **The rules**: the `TileType` union and the `TERRAIN` key in `terrain.ts`.
-  The map character `^` stays, so no map row changes, and a refusal's wording
-  is built from the id and follows on its own.
-- **The renderer**: `composeTerrain.ts`'s `case 'mountain'`, which stands the
-  mesa — the one code reference; TypeScript refuses a leftover case — and
-  comments there and in `gridLines.ts`, `renderer.ts` and `terrainModels.ts`.
-- **The maps**: the legend comment in all seven; comments in `matchState.ts`
-  and `data/combat.ts`.
-- ⚠️ **Stored matches are dumped, not migrated** — *Known compromises* says
-  old matches are expendable, and migrations stay schema-only. Their boards
-  still load, but play breaks on the six maps with `^`. So the dev server's
-  supervisor is stopped, all three of `packages/server/wargame.db`, `-wal` and
-  `-shm` are deleted — a leftover log can replay old pages into a fresh file —
-  and the server rebuilds the schema when it next boots.
-- **Tests**: `terrainGrid.test` and `testing.test` assert the parsed id;
-  `movement.test` the refusal's wording, a test title and comments;
-  `combat.test` a `MOUNTAIN` board and its uses; `composeTerrain.test` a title
-  and a comment; `terrain.test` a comment, whose stale costs are removed.
-- **Docs**: eight places in the architecture doc, and this file's descriptions
-  of what is current.
-
 ⬜ **Cover on Advance Wars' scale.** **Decided**: 10% a star at full health —
 AW's formula exactly, stars × the defender's health band — with road, bridge
 and river 0, plains 1, forest 2 and hills 3. Buildings, out of scope, would be
@@ -345,8 +322,8 @@ and river 0, plains 1, forest 2 and hills 3. Buildings, out of scope, would be
 
 - **The numbers**, mean hits to kill over the nine matchups, no luck: open 2.67,
   plains 2.78, forest 3.00, hills 3.11, a building 3.67 — where today a forest
-  is 3.11 and a mountain 4.56. A cut stretches a fight by about one over what
-  is left of a hit, which is why today's mountain does several times what the
+  is 3.11 and hills 4.56. A cut stretches a fight by about one over what is
+  left of a hit, which is why today's hills do several times what the
   forest does.
 - **What it changes**: cover weaker everywhere it was, and present on plains,
   which is most of every board. ⚠️ **Cover is the only protection from guns**,
@@ -397,7 +374,7 @@ and river 0, plains 1, forest 2 and hills 3. Buildings, out of scope, would be
     *The charging pass*); the charger-on-60 figures in the architecture doc and
     the roadmap; the roadmap's count of charges in fifty games.
   - comments quoting values: `combat.ts`'s "4-star peak" and half-point notes;
-    `combat.test`'s "a mountain would heal" arithmetic; `charge.test`'s note
+    `combat.test`'s "hills would heal" arithmetic; `charge.test`'s note
     that health does not move damage on open ground, and its `contact`
     description; `move.test`'s luck-spread and plains-star comments;
     `terrain.ts`'s notes on open ground, the 1-star slot and the weight.

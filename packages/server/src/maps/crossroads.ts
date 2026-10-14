@@ -19,7 +19,7 @@ export const crossroads: GameMap = {
   id: 'crossroads',
   name: 'Crossroads',
 
-  // . plains   - road   = bridge   ~ river   ^ mountain   f forest
+  // . plains   - road   = bridge   ~ river   ^ hills   f forest
   rows: [
     '..-......-..',
     '..-......-..',

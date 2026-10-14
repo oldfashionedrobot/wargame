@@ -33,7 +33,7 @@ export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
  * terrain starts healing the unit standing on it.
  *
  * ⚠️ **And a second, softer ceiling at 1.667**, where the weakest matchup on a
- * mountain rounds to zero and the *no living attacker is harmless* sweep in
+ * hills rounds to zero and the *no living attacker is harmless* sweep in
  * `combat.test.ts` fires -- so this constant and the table's lowest entry move
  * together downward, though never upward.
  */

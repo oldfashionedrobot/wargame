@@ -22,7 +22,7 @@ export const meadow: GameMap = {
   id: 'meadow',
   name: 'Meadow',
 
-  // . plains   - road   = bridge   ~ river   ^ mountain   f forest
+  // . plains   - road   = bridge   ~ river   ^ hills   f forest
   rows: [
     '..-.........',
     '..-.........',

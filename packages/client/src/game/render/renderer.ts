@@ -338,7 +338,7 @@ async function toggleInspector(scene: Scene): Promise<void> {
  * browser is this renderer's only check anyway.
  */
 function warnIfTooTall(cells: TerrainCell[][], surfaceAt: (at: Coordinate) => number): void {
-  // One complaint per offending ground, not per tile: a range of mountains
+  // One complaint per offending ground, not per tile: a range of hills
   // would otherwise say the same thing thirty times.
   const tall = new Map<TerrainModel, number>();
   cells.forEach((cellRow, row) =>
@@ -453,8 +453,8 @@ export async function createGameRenderer(
   warnIfTooTall(cells, surfaceAt);
 
   createTerrainMesh(scene, terrainModels, cells);
-  // The board's floor, which every tile shares -- a mountain raises a rock, not
-  // its ground. Taken from the models rather than assumed to be zero.
+  // The board's floor, which every tile shares -- hills raise a rock, not their
+  // ground. Taken from the models rather than assumed to be zero.
   const groundLevel = Math.max(...cells.flat().map((cell) => terrainModels.topOf(cell.ground)));
   createGridLines(scene, groundLevel, gridWidth, gridHeight);
   // Under the floor, so the board is an object rather than geometry that stops.

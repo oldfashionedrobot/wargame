@@ -5,7 +5,7 @@ import type { MovementType } from './unitTypes';
 // is content vocabulary -- the set of things a map can be made of -- and this
 // table is what gives each of them meaning.
 
-export type TileType = 'plains' | 'road' | 'bridge' | 'forest' | 'mountain' | 'river';
+export type TileType = 'plains' | 'road' | 'bridge' | 'forest' | 'hills' | 'river';
 
 export interface Terrain {
   /**
@@ -55,7 +55,7 @@ export const TERRAIN: Record<TileType, Terrain> = {
   // close by, at most one step of approach, and never takes one in passing.
   // That is the shape of the decision: cavalry is fast *in the open*, not fast
   // everywhere. A gun carriage does not go up a rock face at any price.
-  mountain: { char: '^', defense: 4, cost: { foot: 2, horse: 3, wheels: null } },
+  hills: { char: '^', defense: 4, cost: { foot: 2, horse: 3, wheels: null } },
   river: { char: '~', defense: 0, cost: { foot: 2, horse: 3, wheels: null } },
 };
 

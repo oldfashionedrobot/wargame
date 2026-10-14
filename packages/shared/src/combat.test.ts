@@ -34,7 +34,7 @@ function fight(
   return { state, a: state.units[0], d: state.units[1] };
 }
 
-const MOUNTAIN = ['.^', '..']; // the defender stands on the peak
+const HILLS = ['.^', '..']; // the defender stands on the peak
 const ROAD = ['.-', '..']; // zero defence, so the terrain term vanishes
 
 describe('computeDamage', () => {
@@ -63,9 +63,9 @@ describe('computeDamage', () => {
 
   // ⚠️ The sign check that matters. AW's published formula divides HP by 10
   // because its HP is 1-10; taken literally here it yields 100 - 400 = -300, and
-  // a mountain would heal. Anything negative means the rescale was dropped.
+  // hills would heal. Anything negative means the rescale was dropped.
   it('reduces damage on defended terrain rather than inverting it', () => {
-    const { state, a, d } = fight(MOUNTAIN);
+    const { state, a, d } = fight(HILLS);
     const open = fight(ROAD);
     const defended = computeDamage(state, a, d, 0);
 
@@ -79,8 +79,8 @@ describe('computeDamage', () => {
   // Cover scales by *defender* health, which is what stops a damaged unit
   // turtling on a peak: the worse it gets, the less the ground does for it.
   it('gives a wounded defender less cover than a healthy one', () => {
-    const healthy = fight(MOUNTAIN);
-    const wounded = fight(MOUNTAIN, {}, { health: 20 });
+    const healthy = fight(HILLS);
+    const wounded = fight(HILLS, {}, { health: 20 });
     expect(computeDamage(wounded.state, wounded.a, wounded.d, 0)).toBeGreaterThan(
       computeDamage(healthy.state, healthy.a, healthy.d, 0),
     );
@@ -119,7 +119,7 @@ describe('computeDamage', () => {
       const { state, a, d } = fight(rows);
       return computeDamage(state, a, d, LUCK_MAX) - computeDamage(state, a, d, 0);
     };
-    expect(spread(MOUNTAIN)).toBeLessThan(spread(ROAD));
+    expect(spread(HILLS)).toBeLessThan(spread(ROAD));
   });
 
   // ⚠️ **The clamp that is not there.** `computeDamage` subtracts cover from
@@ -148,7 +148,7 @@ describe('computeDamage', () => {
   });
 
   it('never returns a negative number', () => {
-    const { state, a, d } = fight(MOUNTAIN, { health: 1 }, { unitTypeId: 'artillery' });
+    const { state, a, d } = fight(HILLS, { health: 1 }, { unitTypeId: 'artillery' });
     expect(computeDamage(state, a, d, 0)).toBeGreaterThanOrEqual(0);
   });
 
