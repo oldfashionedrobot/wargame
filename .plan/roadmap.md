@@ -148,8 +148,8 @@ option, and both cost a few lines against a table's seeding machinery.
   additive when it comes, because nothing in `GameState` marks elimination for
   an absent event to desync.
 - **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
-- **Buildings / capture points.** A terrain type with attached `{ owner, captureProgress }`, not a separate object layered on a tile.
-- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — `mountain` is `defense: 4` and costs a horse 4, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
+- **Buildings.** A terrain type — a garrison — carrying the most cover: four stars, once cover is on Advance Wars' scale. Holding one is the capture-points question under *Tuning*, where presence is possession, so nothing beyond the tile's type is stored and there is no capture meter.
+- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — the mountain is the best cover on the board and dear to reach, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
 
   ⚠️ Two findings worth keeping if it is ever reopened. `entryCost` takes a *destination*; height would make it take a **step**, which is a real signature change but a contained one — `exploreMovement` and `validatePath` are its only callers, and invariant 10 is what guarantees that. And if height ever did enter combat, the door is an **attack** bonus for striking downhill rather than a defence bonus for standing high, because terrain does not express the former and already expresses the latter.
 - **Manual routing.** Dragging out a deliberately non-optimal path. Unblocked by the protocol carrying a path and the server validating it — purely a matter of building the UI for it. ⚠️ The substrate now exists and did not before: a route is **pinned, re-pinnable, and drawn as an arrow**, so waypoints have something to hang off rather than needing the whole idea built at once.
@@ -292,46 +292,141 @@ fielded — see the turn-order note under *After the combat pass*.
 
 #### The next pass
 
-⬜ **Planned and pre-checked, from playing.** Built one at a time, each in its
-own commit, in this order: the charge meter per unit type, cover on Advance
-Wars' scale, a dev handle for tiles, inspecting a unit, and darkening the units
-that have acted. ⚠️ **The first two each move balance**, so each gets a
-simulator run before and after, apart, and the composition sweep is re-run once
-both are in — otherwise neither effect can be told from the other.
+⬜ **Planned, and pre-checked twice against the code.** Seven commits, in this
+order: a dev handle for tiles; the simulator's new tallies; the charge meter
+per unit type; `mountain` renamed `hills`; cover on Advance Wars' scale;
+inspecting a unit; greying the units that have acted. Each passes the gate —
+`tsc -b --force` included — and lands with its docs.
 
-⬜ **The charge meter per unit type.** **Decided**: cavalry and the general fill
-in two attacks, infantry in three. Later, heavy cavalry in one, and a general's
-ability might lower it for its whole army.
+⚠️ **Comments and docs that quote a value, or anything else a change can move,
+are removed rather than updated.** Every item below meets some; the lists say
+*remove* where they do.
 
-- **One catalog column replaces the `charges` flag and `CHARGE_METER_FULL`**:
-  the attacks to fill, `null` for a type that does not charge, the way a terrain
-  cost of `null` says impassable. Named apart from the unit's own
-  `chargeMeter` — `chargeAfter`, say.
-- **Two shared functions, built now**: the size for a unit, which the meter's
-  cap in `resolveBattle` reads, and `chargeReady(unit)`, which `refuseCharge`
-  and the board's counter both read — otherwise "full" is written once in the
-  rules and again in the renderer. A general's ability later is a state
-  argument on the first.
-- ⚠️ **Ready means at least full**, where `refuseCharge` tests `!==` today: a
-  meter above a lowered size — a stored match, or an ability arriving — would
-  never charge again.
-- **The counter**: the count until full, then a distinct *ready* disc, the same
-  on every type, since a 2 would otherwise be a ready cavalryman and an
-  infantryman one attack short.
-- ⚠️ **Pre-checked.** `CHARGE_METER_FULL` has eleven users, most of them test
-  fixtures in all three packages — `GameCanvas.test`, `useGameSession.test`,
-  `selection.test`, `charge.test`, `move.test`, `match.test` — and an export that
-  exists for them; they take the exported size instead. The replay test's meter
-  sequence, 1, 2, 3, 0, changes with cavalry's size. `charges.ts` filters on the
-  flag. Docs: the catalog's flag, *Charge*, the combat data, the counter's "1 to
-  3" in `chargeCounter.ts` and in rendering, and *The dials*.
-- Cavalry charging every second attack is a large buff: the simulator's charge
-  counts are the number to read.
+⚠️ **Two items move balance — the charge meter and cover — so they are
+measured apart.** The simulator's settings are fixed before the first run —
+which maps, how many games, both openers — and written in each commit body.
+Three runs: before the charge meter, after it (which is cover's *before*), and
+after cover. Read the mechanic counts before the win rates: charges by type,
+hits by stars of cover, unfinished matches, wins by general. The composition
+sweep runs once after cover, without `common` (where the opener wins whatever
+it fields), and its results replace the table under *Armies*.
+
+⬜ **A dev handle for tiles**, moved here from *UI and interaction*. The
+renderer is WebGL and has no unit tests, so a browser is its only check — and
+nothing can ask where a tile lands on screen, so every check guesses a pixel,
+and a guess that misses looks like a bug. First, because three of the items
+after it are checked in a browser: the charge counter, inspecting, and greying.
+
+- **`tileToScreen` on the renderer's interface**, dev-only as
+  `toggleInspector` is, built on the projection `placeAnchor` already does, at
+  the tile's surface, and returning **page** pixels — the canvas's own offset
+  added, since a browser clicks in page coordinates.
+- **The window handle is installed by `GameCanvas`**, behind
+  `import.meta.env.DEV`, reading the current renderer when called and removed
+  in the effect's cleanup — not by the renderer, because StrictMode builds two
+  in dev and the stale one could overwrite or delete it. A `declare global`
+  types it. Named for what it exposes, not for the product.
+- ⚠️ **A taller tile in front takes the click** — picking tries the tallest
+  surface first — and a tile panned off the canvas projects outside it, so a
+  caller asks just before each click and never caches.
+- **The run-app skill**: *Clicking tiles* moves to the handle — wait for it to
+  exist, row 0 is blue's bottom rank — and *What to assert*, already stale,
+  catches up: a move is pin, confirm, then the panel or Hold and a facing, and
+  a unit with something in reach opens the panel when selected.
+- **Tests**: the typed renderer fake in `GameCanvas.test.tsx` gains the method;
+  new, the handle is there after mount, delegates to the renderer, and is gone
+  after unmount.
+- **Docs**: the renderer interface, *Testing*'s note on what is not covered,
+  and the note on what the DEV guard strips.
+
+⬜ **The simulator's new tallies**, in before the first run reads them:
+**charges made by unit type**, beside kills by type, so cavalry's rise shows
+apart from infantry's; and **hits on cover by stars** rather than `defense >
+0`, which plains' coming star would turn into nearly every hit — taking *The
+dials*' geometry check, which reads that count, with it. The scripts are
+typechecked and untested.
+
+⬜ **The charge meter per unit type.** **Decided**: cavalry and the general
+fill in two attacks, infantry in three. Later, heavy cavalry in one, and a
+general's ability might lower it for its whole army.
+
+- **One catalog column, `attacksToCharge`**, replaces the `charges` flag and
+  `CHARGE_METER_FULL`: `null` for a type that does not charge, the way a
+  terrain cost of `null` says impassable.
+- **Two functions in the rules.** The size for a unit, internal, which the
+  meter's cap in `resolveBattle` and `refuseCharge`'s capability check read;
+  and `chargeReady(unit)`, exported, which `refuseCharge` and the board's
+  counter read, so *full* is not written again in the renderer. A general's
+  ability later is a state argument on both.
+- ⚠️ **`chargeReady` is `size !== null && meter >= size`.** The `null` guard is
+  needed — `0 >= null` is true in JavaScript — and *at least* full rather than
+  `!==`, so a stored cavalryman on a meter above his new size is ready rather
+  than refused until his next attack caps him. A meter missing from a stored
+  unit still never charges, since `undefined >= n` is false;
+  `refuseCharge`'s comment flips to say so. A stored meter above the size drops
+  to it on the next attack, which `Unit.chargeMeter`'s "nothing else empties
+  it" has to allow.
+- **`CHARGE_METER_FULL`'s export goes with no replacement**: tests read the
+  catalog column.
+- **The counter counts up**, then shows a distinct *ready* disc at full.
+  **Decided**, knowing a digit then means a different distance on each type —
+  the roster under *UI and interaction* is where a better reading goes. Its
+  setter takes the meter and readiness; the ready disc caches its own
+  material beside the digits'.
+- **Tests.**
+  - Behaviour changes: `charge.test`'s *refuses a charger whose meter is not
+    full* and `selection.test`'s *is false until the meter is full* use one
+    below the type's size; `charge.test`'s *fills a point for every attack, up
+    to full* goes per type; `applyEvents.test`'s *folds a charge meter through
+    three attacks and a charge* becomes two attacks and a charge, meters 1, 2,
+    0, and is renamed.
+  - Replaced: `charge.test`'s flag test becomes a capability test — artillery
+    `null`, the others not — without pinning the sizes.
+  - Fixtures only, the constant going: `charge.test`, `move.test` (its
+    `engaged` helper per type), `match.test`, `GameCanvas.test.tsx` (two),
+    `useGameSession.test.ts`, and `selection.test.ts` (several). ⚠️ Artillery
+    fixtures keep a nonzero meter, so *artillery cannot charge* is refused for
+    capability rather than for an empty meter.
+  - New: in `unitTypes.test`, every size is `null` or a whole number of at
+    least one — a size of nought would make a fresh unit ready; in
+    `charge.test`, cavalry and the general ready after two attacks and
+    infantry after three, the cap bringing a meter above the size down to it,
+    `chargeReady` below, at and above the size, for artillery whatever its
+    meter and for a missing meter, and `refuseCharge` accepting a meter above
+    the size.
+  - Harness: `charges.ts` filters on the column.
+- **Docs**: the architecture doc's catalog field list and flags paragraph, the
+  general's "cavalry's flags", the combat signatures, *Charge*'s capability and
+  refusal passages, the combat data, and rendering's counter. Comments:
+  `refuseCharge`, `Unit.chargeMeter`, `testing.ts` and `index.ts`; the note
+  beside `CHARGE_METER_FULL` moves to the column. Roadmap: *The dials*, and
+  *The charging pass*'s mention of the meter's size.
+
+⬜ **`mountain` becomes `hills`**, its own commit, moving no balance.
+
+- **The rules**: the `TileType` union and the `TERRAIN` key in `terrain.ts`.
+  The map character `^` stays, so no map row changes, and a refusal's wording
+  is built from the id and follows on its own.
+- **The renderer**: `composeTerrain.ts`'s `case 'mountain'`, which stands the
+  mesa — the one code reference; TypeScript refuses a leftover case — and
+  comments there and in `gridLines.ts`, `renderer.ts` and `terrainModels.ts`.
+- **The maps**: the legend comment in all seven, and a comment in
+  `matchState.ts`.
+- ⚠️ **Stored matches are dumped, not migrated** — *Known compromises* already
+  says old matches are expendable, and migrations stay schema-only. Their
+  boards still load, but play breaks on any map with `^`, so the dev database
+  is deleted when this lands, with the dev server stopped first.
+- **Tests**: `terrainGrid.test` and `testing.test` assert the parsed id;
+  `movement.test` the refusal's wording, a test title and comments;
+  `combat.test` a `MOUNTAIN` board and its uses; `composeTerrain.test` a title
+  and a comment; `terrain.test` a comment, whose stale costs are removed.
+- **Docs**: eight places in the architecture doc, and this file's descriptions
+  of what is current.
 
 ⬜ **Cover on Advance Wars' scale.** **Decided**: 10% a star at full health —
 AW's formula exactly, stars × the defender's health band — with road, bridge
-and river 0, plains 1, forest 2, the mountain 3 and renamed hills, and buildings
-4 when garrisons arrive, which is not now. `TERRAIN_WEIGHT` goes.
+and river 0, plains 1, forest 2 and hills 3. Buildings, which are out of scope,
+would be 4. `TERRAIN_WEIGHT` goes.
 
 - **The numbers**, mean hits to kill over the nine matchups, no luck: open 2.67,
   plains 2.78, forest 3.00, hills 3.11, a building 3.67 — where today a forest
@@ -342,115 +437,159 @@ and river 0, plains 1, forest 2, the mountain 3 and renamed hills, and buildings
   which is most of every board. ⚠️ **Cover is the only protection from guns**,
   which nothing answers, so a gun hits harder in cover and softer in the open —
   with gun duels the complaint, the simulator's kills by type are the number to
-  read first. Charges' certain lines fall on plains and rise in cover.
+  read first. Charges' certain lines fall on plains and rise in cover: a
+  charge into a gun's rear on plains stops being certain at full health.
 - ⚠️ **Accepted: plains' star rarely saves a hit.** At full health it moves one
   matchup of nine, while the close-up shows a ★ on almost every fight. AW
   accepts the same — the cut still lowers the damage and leaves more health.
-  The test that forbade a 1-star terrain, which guarded exactly this, goes.
-- ⚠️ **Pre-checked by running the suites with the values in: seven tests
-  fail**, all on old numbers — `combat.test`'s 1-star rule and its pinned 60%
-  mountain, `move.test`'s single point of counter from a peak, two in
-  `charge.test` that read plains as open ground, `applyEvents.test`'s replayed
-  meter sequence, and the client forecast's luck-band width on plains. The
-  cause is that `makeState` fills a board with plains, so a test's open ground
-  gains a star: a test that means no cover says road. Changing the default
-  instead would move wheels' costs under the movement tests.
-- **The limits beside the weight become one on the stars**: six at most, where
-  the *no living attacker is harmless* sweep fails at seven. Readers of the
-  weight: `combat.ts`, its test, comments in `terrain.ts` and `data/combat.ts`,
-  the architecture doc (four), and *The dials*. `terrain.ts`'s notes on open
-  ground carrying none and on the empty 1-star slot go.
-- **`mountain` becomes `hills`**, everywhere it lives:
-  - the `TileType` union and `TERRAIN` key in `terrain.ts`. The map character
-    `^` stays, so no map row changes, and a refusal's wording — "wheels cannot
-    cross mountain" — is built from the id and follows on its own.
-  - `composeTerrain.ts`'s `case 'mountain'`, which stands the mesa — the one
-    code reference in the renderer — and comments there and in `gridLines.ts`,
-    `renderer.ts` (two) and `terrainModels.ts` (two). No model file is named
-    for it.
-  - the legend comment in all seven maps, and a comment in `matchState.ts`.
-  - tests: `terrainGrid.test.ts` and `testing.test.ts` assert the parsed id;
-    `movement.test.ts` the refusal, a test title and two comments;
-    `combat.test.ts` a `MOUNTAIN` board; `composeTerrain.test.ts` a title and a
-    comment; `terrain.test.ts` a comment.
-  - eight places in the architecture doc, and this file's descriptions of what
-    is current.
-  - ⚠️ **Stored matches.** `matches.initial_state` and `current_state` hold the
-    board as JSON, tile ids and all, and `getTerrain` throws on an unknown id,
-    so every stored match would stop loading; resolutions carry none. A custom
-    Drizzle migration rewriting `"mountain"` to `"hills"` in those two columns,
-    generated from the repo root, keeps them loading — and the server migrates
-    on boot, so it applies at the next start.
-
-⬜ **A dev handle for tiles**, moved here from *UI and interaction*. The
-renderer is WebGL and has no unit tests, so a browser is its only check — and
-nothing can ask where a tile lands on screen, so every check guesses a pixel,
-and a guess that misses looks like a bug. A `tileToScreen` on a window handle,
-built on the projection `placeAnchor` already does, turns that into addressing
-a tile. ⚠️ Test-only surface on a production object, so it sits behind
-`import.meta.env.DEV`, which the production build strips, and is named for what
-it exposes rather than for the product. Built before the two items checked in
-a browser — this pass's design patched one into scratch builds twice. The
-run-app skill's *Clicking tiles* section, which teaches pixel-guessing, moves to
-it.
+- **The limit on stars is the *no living attacker is harmless* sweep**, as it
+  is today, and is written nowhere as a number: it follows from the damage
+  table's lowest entry.
+- **Tests** — six fail once the charge meter has rewritten the replay test.
+  They switch to road, which stays at nought, where they mean no cover:
+  `makeState` fills a sized board with plains, and `testing.test` asserts that,
+  while six of the failing tests build their own rows anyway, so changing the
+  default would fix only one.
+  - Removed: `combat.test`'s *gives no terrain exactly one star*, with its
+    comment; and *keeps cover under 100%*, which the sweep already covers.
+  - `combat.test`'s *reduces damage on defended terrain rather than inverting
+    it*: the expectation recomputed from the formula on hills, its value
+    comments removed.
+  - `move.test`'s *lands something on a flanked counter, even from the lowest
+    band*: road under the defender, so it is still the lowest band, asserted as
+    head-on equal to flank and above nought rather than as a number.
+  - `charge.test`'s *is certain where the charge would kill, and not one point
+    over* and *scales everything over the line by the charger's own health*:
+    `contact`'s default ground becomes road, which fixes both.
+  - `selection.test`'s *forecasts a range whose width is the luck band*: its own
+    board with road under the target — the shared `field()` stays, since
+    another test compares against plains.
+  - Comments that go from passing tests: `move.test`'s about open ground and
+    plains losing its star, and `charge.test`'s description of `contact`.
+  - New: none needed — the recomputed hills value pins the cut, and the sweep
+    the limit.
+- **Harnesses**: `charges.ts` prints road, plains, forest and hills rather than
+  labelling plains open; `matchups.ts`'s first-hit table is read on road, where
+  it still shows the table itself.
+- **Removed, being values or claims the change makes false**: "cavalry into a
+  gun's rear on open ground is certain" (`data/combat.ts`, the architecture
+  doc's *Charge*, the roadmap's *The charging pass*); the star counts in
+  `classic.ts`, `common.ts` and `meadow.ts`; "the only cover anything can
+  occupy" (`common.ts`, the architecture doc); the architecture doc's "open
+  ground carries none", "no terrain sits at 1 star", "plains and river match
+  them on defense" and deployment zones carrying no cover; `combat.ts`'s
+  "4-star peak" and half-point notes; `terrain.ts`'s notes on open ground and
+  the 1-star slot; and *The dials*' weight, whose cover-geometry check is
+  re-read by stars.
+- **Docs**: the architecture doc's formula, *Content* and *Combat*.
 
 ⬜ **Inspecting a unit.** Today a click on a unit that cannot act clears the
 selection: `trySelect` takes only what `canSelectUnit` accepts. **Decided**:
 any unit it refuses — the enemy's, and the player's own that have acted — can
 be inspected. The first click shows its attack range, a second click on it its
 movement range, and a third clears. A click elsewhere clears, and a click on
-another unit selects or inspects that one, as selection does — so an enemy
-clicked while a unit is selected is inspected rather than dropping the
-selection.
+another unit selects or inspects that one — so an enemy clicked while a unit
+is selected replaces the selection with the inspection. At the panel a click
+on an enemy is still the dark click back to movement, and the next one
+inspects.
 
 - ⚠️ **The attack range is the band around where it stands, not Advance Wars'
   threat range**, deliberately: working out what a move adds to it is the
-  player's job. For guns, which are slow, the two are the same anyway.
-- **A new member of `SelectionState`**, snapshotted like the others: the unit,
-  where it stands, which view is up and the tiles it lights. Read-only — no
-  path, so never a plan, and End Turn, disabled only while a plan is up, stays
-  enabled.
-- **`trySelect` is the one constructor**, so it gains the inspect branch, and
-  every click that falls through to it — on an idle board, off a route, on
-  another unit — inspects for free. The second and third clicks are a click on
-  the inspected unit's own tile, which `handleTileClick` reads. ⚠️ Clicks the
-  panel and the attack modes answer first are unchanged: an enemy at the panel
-  is still a click on the dark, and a lit enemy in an attack mode a target.
-- **One source for each range**: the attack view uses the attack mode's band
-  function, and the movement view the same search a selection snapshots,
-  pulled into one helper — so a unit cannot show one range selected and another
-  inspected. Lit on the existing overlays, with the selection highlight on the
-  unit and a hint line per view.
-- **Where it lands**: `showSelection` and the hint line in `GameCanvas` read
-  only the panel's steps today, and both gain the case. Docs: the architecture
-  doc's `SelectionState` and selection section.
-- ⚠️ **A board update clears it.** The snapshot goes stale when the unit moves
-  or dies, so the subscription drops an inspection beside the plan it already
-  drops.
+  player's job. For a gun, which is slow, and for any unit that starts in
+  contact, the two are the same anyway.
+- **A new member of `SelectionState`** — the unit, where it stands, which view
+  is up, and the tiles it lights. ⚠️ **The tiles, not the movement search**: a
+  member carrying `movement` would compile straight through
+  `handleTileClick`'s pinning path, and a second click on the enemy would pin a
+  route *for the enemy*. Its branch sits right after the idle check, and after
+  the early return for an arrived unit.
+- **One constructor**, called by `trySelect` for the first click and by
+  `handleTileClick` for the second, building each view's tiles when it is
+  entered, as `enterMode` does. The attack view is `attackTilesFor` at the
+  unit's position; the movement view is the search `trySelect` runs, pulled
+  into one local helper — so a unit cannot show one range selected and another
+  inspected.
+- **Read-only**: no path, so never a plan, and End Turn — disabled for a plan
+  or a finished game — stays enabled.
+- ⚠️ **A board update clears it to idle.** The subscription unpins a plan back
+  to its selected unit; an inspection's snapshot has nothing to fall back to.
+- ⚠️ **The movement view's tint is the blue that means *move here***, and a
+  click on it clears. The hint line has to carry that.
+- **Where it lands**: `showSelection` — the highlight, the overlay and the
+  range — a small hint table beside `STEP_UI`, keyed by view, and the
+  subscription. Checked and unchanged: `isAwaitingConfirm`, `menuOpen`, the
+  anchor effect, `submitCommand`'s rollback, `chooseMove` and `PINNED_PHASES`.
+- **Tests.**
+  - Rewritten: `selection.test`'s *ignores an enemy unit* and *ignores an own
+    unit that has already acted*, which now inspect, and *does not offer a
+    move onto an enemy*, which asserts the phase.
+  - Extended: *counts as an uncommitted plan…* (an inspection is not), and
+    `openInPlace`'s *passes through anything…* (an inspection passes).
+  - New, `selection.test`: an enemy click shows the band where it stands; a
+    second, the movement view, equal to the settled set the same unit shows
+    when selected; a third clears; a click elsewhere clears; another enemy is
+    inspected in turn; an own ready unit is selected; an own acted unit is
+    inspectable; an enemy clicked while a unit is selected or a route pinned is
+    inspected; the search runs for the unit's owner, not the player to move; a
+    gun's band skips its near tiles; a unit in contact can walk out; and a
+    vanished inspected unit falls through to `trySelect`.
+  - New, `useGameSession.test`: a click inspects; a board update clears it; an
+    enemy at the panel still backs out; End Turn while inspecting submits and
+    clears.
+  - New, `GameCanvas.test`: each view's overlay, highlight and hint; the third
+    click clears everything; End Turn enabled; no pane and no menu.
+- **Docs**: the architecture doc's selection API and `SelectionState` union,
+  its count of phases, the hint-line passages, and rendering's handover.
 
-⬜ **Darkening the units that have acted.** Today the only way to tell is to
-click a unit, or to remember. **Decided**: darken them, as Advance Wars greys
-them — the simple form for now; a roster of cards, under *UI and interaction*,
-is the fuller one later, and *Multiplayer*'s "units that can still act"
-indicator is the same thing, so they are designed together.
+⬜ **Greying the units that have acted.** Today the only way to tell is to
+click a unit, or to remember. **Decided**: grey them, as Advance Wars does —
+the side's colour desaturated, and how far, with how much darkening, is for a
+look in a browser. The simple form for now: a roster of cards, under *UI and
+interaction*, is the fuller one later.
 
 - ⚠️ **`hasActed` alone is the wrong test.** `turnEnded` refreshes only the
   incoming player's units, so through the opponent's turn every unit of the
-  player who just moved still reads `true`. The test reads `canSelectUnit`
-  instead — a unit of the player to move that it refuses is spent — so the mark
-  and the click cannot disagree. Nothing is darkened once the game is over.
-- **A material swap**: the side's material darkened, built by the same function
-  as the plain one with a flag, and swapped in when units sync — no extra draw
-  and no extra pass. Units are clones, so each takes its own, and the
-  close-up's staged models keep the plain material.
-- **How dark is for a look**: the diffuse colour and the glow floor scaled
-  together, starting around half, checked in a browser. Docs: rendering.
+  player who just moved still reads `true`. **A shared `isSpent(state, unit)`**
+  beside `canSelectUnit` says it: a unit of the player to move that has acted.
+  The renderer greys nothing once the game is over.
+- **A material swap**: the side's material greyed, built by the same function
+  as the plain one with a flag — two cached per colour — and swapped in, with
+  no extra draw and no extra pass. Units are clones, so each unit's meshes take
+  their own assignment, and the close-up's staged models keep the plain
+  material.
+- ⚠️ **Only the model's meshes**, recorded when the unit is built: the health
+  ring and the charge counter are children of the same node, and
+  `getChildMeshes` would grey them too.
+- ⚠️ **One per-unit update, called by the build loop and by `syncUnits`.** The
+  first board sync arrives before the renderer exists, so a reload mid-turn
+  would otherwise show nothing grey; the same helper takes the ring and counter
+  lines the two loops already repeat. The side's colour is kept from the
+  build, since the sync has no owner-to-colour map.
+- **When**: a unit greys at the snap after its walk and close-up. The last
+  action of a turn arrives with `turnEnded`, so the army goes back to plain
+  together.
+- **Multiplayer**: greying needs no identity — the opponent watches the mover's
+  units grey. *Multiplayer*'s "*your* units that can still act" depends on who
+  is looking, and is the roster's half.
+- **Tests**: new, `legality.test` — an own acted unit on its turn is spent, an
+  own unit that has not acted is not, the outgoing player's acted units after
+  `turnEnded` are not, nothing is spent once the game has a winner, and the
+  opponent's units never are. None in the renderer, so a browser checks: a
+  unit greys after its walk and close-up, all go plain at the turn's end, a
+  reload keeps the grey, the ring and counter keep their colours, nothing is
+  grey after the game ends, and the tile highlight still reads under a grey
+  model.
+- **Docs**: rendering's material bullets — one material per colour, shared by
+  every unit of it — and its note that units are clones; *Victory*'s surfaces,
+  since this is a new reader of `isOver`; comments in `units.ts`,
+  `unitModels.ts` and `renderer.ts`; and the roster bullet under *UI and
+  interaction*.
 - ⚠️ **Highlighting the ready units instead was tried and set aside.** A
   Fresnel rim lit whole flat-shaded facets, washing a unit out or reading only
   as paler; Babylon's mesh outline broke into shards, each flat face pushed
   along its own normal; a screen-space outline was clean but a line was too
   much; a glow layer was not it either. Each costs a pass or more every frame,
-  where darkening costs none.
+  where a material swap costs none.
 
 #### The general's pass
 
@@ -664,9 +803,10 @@ terminal, and it is deliberately short until then.
   are used by nothing — a second set that never got adopted, which is either a
   job to finish or a thing to delete.
 - **A roster of cards per player**, one card a unit, marking which can still
-  act. It is the fuller form of the darkened units in the next tuning pass,
-  which stand in until then, and of *Multiplayer*'s "units that can still act"
-  indicator — one treatment, so the two should be designed together.
+  act. It is the fuller form of the greyed units in the next tuning pass, which
+  stand in until then, and the place for a charge counter that reads the same
+  on every unit type. *Multiplayer*'s "*your* units that can still act" is the
+  half that depends on who is looking, so the two are designed together.
 
 ⚠️ **Interaction is where play is the authority, the same as tuning.** The
 usability work already done was found by reading the code; what is left will be

@@ -462,8 +462,8 @@ nothing enforces the last two but the eye:
   road — it was two roads — and it doubled the width of every corridor it drew.
   The renderer does not care: `bridgeTurns` reads *strictly* road neighbours and
   so answers correctly at any width.
-- **Every board has road reaching into both zones.** `wheels` pays 1 to enter
-  road and 2 to enter plains, so a road multiplies a gun's reach for the turn —
+- **Every board has road reaching into both zones.** `wheels` pays less to
+  enter road than plains, so a road multiplies a gun's reach for the turn —
   which makes where the road goes the same question as where artillery can be,
   and a board with no road one that arm cannot play. ⚠️ **The multiplier is not
   a fixed number**: it falls out of `movementRange` against those costs, so
@@ -1786,7 +1786,8 @@ unavailable action is omitted — so hover is the only state a row has.
   other two at a glance. `getHierarchyBoundingVectors` is how the proportions are
   read. ⚠️ Keyed on `UnitTypeId`, so the key is `artillery` while the model file
   is `cannon.gltf` — a mismatch silently scales a mesh by `undefined`.
-- Unit meshes are built once at startup; there is no add or remove.
+- Unit meshes are built at startup and never added mid-match; `syncUnits`, below,
+  removes the dead.
 - `playEvents` walks `unitMoved` paths one tween per tile, at
   `FRAMES_PER_TILE` over `FRAME_RATE` in `units.ts` — one dial for every unit's
   pace. Each step turns the mesh before it moves, so a unit walks the
