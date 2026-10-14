@@ -210,7 +210,7 @@ reworked charging — see *The charging pass*; the fourth added a general — se
 the charge per unit — see *The cover pass*. A pass's changes go to
 [`architecture.md`](architecture.md) and leave only their open questions here.
 
-⬜ **The next pass is being written up** — see *The next pass*, below.
+⬜ **The next pass is planned** — see *The next pass*, below.
 
 #### Known to want attention
 
@@ -274,10 +274,10 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 
 #### The next pass
 
-⬜ **Being written up, from playing.** Losing the army as well as the general;
-the spent grey a little more saturated; and an exploration of map design, from
-research into how Advance Wars sizes and composes its boards. The first two
-are planned and pre-checked; the third is an investigation, not yet a plan.
+⬜ **Planned and pre-checked, from playing.** Losing the army as well as the
+general; the spent grey a little more saturated; maps of any size, starting
+with four at 20×20; each map declaring where its armies deploy; and a map's
+size shown beside its name.
 
 ⬜ **Losing your army loses the match, as losing your general does.**
 **Decided**: a player left with nothing but its general has lost, so a match
@@ -315,61 +315,83 @@ lone generals never finish*, under *The general's pass*, which goes with it.
 so a spent unit keeps a little more of its side's colour. Checked in a
 browser beside the current look; no comment names the value.
 
-⬜ **Map design, explored.** Play has outgrown the boards: seven of them, all
-12×12 but the 10×10 tester, drawn as developer fixtures. Research into
-Advance Wars says why they feel small, and what a larger board would need.
+⬜ **Maps of any size, starting with four at 20×20.** **Decided**: boards come
+in different sizes rather than one standard; the small ones stay as
+skirmishes; four new boards at 20×20 are drawn, two of them rotated 180° and
+two not, each taking its shape from a known Advance Wars map. How many units a
+side a board holds is **not codified** for now: the new boards take the
+default army, and play says what that is like.
 
-- **What Advance Wars does**, as reference rather than target:
-  - **Size**: its tutorials and single-screen missions are 15×10 to 16×12;
-    its real battles run about 16×16 to 21×21, and the competitive pool's
-    median is about 21×21. The community's own guide calls under 15×15 small,
-    and says such boards tend to stall.
-  - **Density**: its pre-deployed missions hold one unit to every six to
-    fifteen tiles, around nine at the median. Today's 12×12 with nine a side is
-    inside that band; the tester is denser than any of them.
-  - **Symmetry**: every competitive map is a 180° rotation — none is mirrored —
-    which gives each side a strong flank and a weak one; mirrored boards are
-    said to wall up and stall. None of ours is strictly either.
-  - **Composition**: about half the land open, forest sparing, rivers and high
-    ground shaping two or three lanes, and heavy cover kept off the front,
-    since guns behind chokepoints stall a match.
-  - **First-turn advantage**: the second player is given about half a turn's
-    worth — usually one extra infantry — and units placed where they can strike
-    on the first turn are the cause of the edge, not the cure.
-- **What it asks of this game**:
-  - **Bigger boards need bigger armies.** At AW's density a 16×16 holds about
-    thirteen a side and a 20×20 about twenty; nine a side on a 20×20 is a long
-    walk to contact. So board size and army size are one question — and army
-    size is *Content*'s army budget, so the two are designed together.
-  - **No production makes the opener's edge worse**, because every unit can
-    act on the first turn. Spacing the armies so cavalry cannot strike on it,
-    and the main bodies meet on the second or third, is the board's half of
-    the answer, and *After the combat pass* already watches it.
-  - **A skirmish size and a standard size** is the shape this suggests: the
-    small boards kept as skirmishes, and larger ones as the main game.
-- ⚠️ **Pre-checked: what a larger board touches.**
-  - **The deployment zone is a fixed ten by two**, centred on each edge, and
-    the default army is drawn ten wide. A wider board leaves it as a strip in
-    the middle, so the zone grows with the board or a map declares its own —
-    which was set aside earlier, and a larger board reopens.
-  - **The camera fits the whole board** at its default zoom, so a larger board
-    draws every tile smaller until zoomed; wheel zoom and panning clamped to
-    the board already exist, and need a look at the new sizes.
-  - **Scenery is placed per tile**, so a board two or three times the area
-    draws two or three times the props; a browser checks the frame rate.
-  - **The simulator's action cap** was sized for a small roster, and grows with
-    the armies; its comment quotes the roster and goes.
-  - **Maps are code**, a row of characters each. A board of twenty rows by
-    twenty is where hand-writing them starts to cost, which is the case for
-    the editor under *Content* arriving sooner.
-- **Next, to settle before it is planned**: the sizes to aim for, whether the
-  skirmish boards stay, rotational symmetry as the rule, how the zone scales,
-  and how many units a side a standard board holds before the army budget
-  exists. Then one board of each new size drawn, simulated and played.
-- Sources: the Advance Wars By Web map pool and API
-  (awbw.amarriner.com), the AWBW mapmaking guide
-  (github.com/TheGamerASD/AWBW-Mapmaking-Guide), Wars Wiki (warswiki.org),
-  and the Wargroove wiki on first-turn advantage.
+- **Each borrows a structure** from an Advance Wars map — a river island, a
+  plateau, lanes split by water and high ground — chosen when it is drawn,
+  with the source named in its comment. Rivers stand in for sea and shoal, and
+  hills for mountains and cities, since this game has neither ships nor
+  properties.
+- **Each is new content under a new id**, added to the registry; `maps.test`
+  already sweeps every registered board for standable zones and crossability,
+  so the four are checked with no new test.
+- **Each is simulated** from both openers before it lands, and the simulator's
+  action cap is read against them — it was sized for small boards, its comment
+  quotes the roster and goes, and longer walks to contact may need it raised.
+- ⚠️ **Pre-checked: what a 20×20 touches.** The camera fits the whole board at
+  its default zoom, so tiles draw smaller until zoomed — wheel zoom and panning
+  clamped to the board already exist. Scenery is placed per tile, so a board
+  nearly three times the area draws nearly three times the props. A browser
+  checks the framing, the frame rate and picking on one of them.
+- **Reference, from research into Advance Wars**: its single-screen missions
+  are 15×10 to 16×12, its battles about 16×16 to 21×21, and the competitive
+  pool's median about 21×21, with under 15×15 called small and prone to stall.
+  Its pre-deployed missions hold a unit to every six to fifteen tiles, about
+  nine at the median — the default army on 20×20 is far sparser, which is the
+  thing play will feel. Every competitive map is a 180° rotation, giving each
+  side a strong flank and a weak one; composition runs about half open land,
+  forest sparing, rivers and high ground shaping two or three lanes, and heavy
+  cover off the front. Player two is usually given half a turn's worth —
+  commonly one extra infantry — since units able to strike on the first turn
+  are what make the opener's edge. Sources: the Advance Wars By Web map pool
+  and API (awbw.amarriner.com), the AWBW mapmaking guide
+  (github.com/TheGamerASD/AWBW-Mapmaking-Guide), Wars Wiki (warswiki.org), and
+  the Wargroove wiki on first-turn advantage.
+
+⬜ **A map declares where its armies deploy.** **Decided**: the zone stays ten
+wide and two deep against the board's edge — the near edge for the first seat,
+the far edge for the second — and each map says where along that edge its two
+zones sit: to a side, centred, or anywhere between. A map that says nothing is
+centred, as every board is today.
+
+- **The map gives each seat's zone by the board column where it starts**, in
+  board coordinates, so the two can sit anywhere independently. The far
+  army is still drawn from its own left: placed into its zone rotated, as
+  `createMatchState` already places it, but into the declared columns rather
+  than the centred ones.
+- **A zone that does not fit is refused**, as a board too small for its zones
+  is today, rather than clamped.
+- ⚠️ **Pre-checked.** `createMatchState` computes one centred margin and rotates
+  the far army about the board's centre; it takes each seat's start instead,
+  defaulting to the centred one. `DEPLOYMENT_ZONE` keeps the size. `maps.test`
+  validates the zones through `createMatchState`, so a declared zone over water
+  or rock fails it with no change, and the map preview shows it the same way.
+  New in `matchState.test`: a declared zone places each army where the map
+  says, the far one still from its own left; an undeclared one is centred; a
+  zone off the board is refused.
+- **Docs**: the architecture doc's *Maps* and `matchState`, and the map type's
+  own comment.
+
+⬜ **A map's size beside its name**, in the start screen's picker and in the
+map viewer's. `MapSummary` gains the board's width and height, worked out from
+its rows where the list is served, so the size cannot disagree with the board;
+one helper on the client labels a map for both pickers.
+
+- ⚠️ **Pre-checked.** The list endpoint's comment says rows are nobody else's
+  business, which stays true — only their count leaves. `http.test`'s list case
+  checks every map has a size; the route tests' map fixtures gain one, and
+  `MapViewer.test`'s two option assertions follow the label rather than the
+  bare name. Docs: the architecture doc's protocol and the two routes.
+
+⬜ **Order**: the army rule and the grey first, as small and separate; then
+the size beside the name and declared zones, which the new boards use; then
+the four boards, a commit each, each simulated and the set checked in a
+browser.
 
 #### The cover pass
 
