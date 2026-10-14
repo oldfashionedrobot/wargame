@@ -62,7 +62,7 @@ export {
   tileDistance,
 } from './coordinate';
 export { defenseAt, getCurrentPlayer, getUnit, getUnitAt } from './queries';
-export { canSelectUnit } from './legality';
+export { canSelectUnit, isSpent } from './legality';
 export { isOver } from './victory';
 export { exploreMovement } from './movement';
 export type { Movement } from './movement';

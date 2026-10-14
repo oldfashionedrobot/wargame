@@ -58,7 +58,7 @@ packages/
     types.ts          every shared type: coordinates, units, state, commands, events
     coordinate.ts     grid arithmetic, directions, distance, and neighbours
     queries.ts        lookups over a GameState
-    legality.ts       what may be selected
+    legality.ts       what may be selected, and what has acted
     movement.ts       the search, the path check, and the cost model both call
     terrainGrid.ts    character rows into a tile grid
     armyGrid.ts       character rows into unit placements
@@ -970,6 +970,10 @@ reads the **live** state rather than the rendered copy.
 Neither is the rule — `validateCommand` is what refuses. These stop the round
 trip and the rejection banner.
 
+⚠️ **Greying reads it too**: `isSpent` is false of everything once the game has
+a winner, since `gameEnded` leaves `currentTurn` where it was and the winning
+side's acted units would otherwise stay grey on the final board.
+
 ⚠️ **The status bar asks `isOver`, not whether the winner resolved to a player.**
 Asking `isOver` first also keeps `getCurrentPlayer` out of a terminal render,
 which matters because it *throws* when `currentTurn` names nobody and runs every
@@ -1757,9 +1761,10 @@ unavailable action is omitted — so hover is the only state a row has.
   `chargeReady`, the same on every type, since a digit is a different distance
   from a charge on each. **Absent at 0**, so a unit that cannot charge never
   shows one. ⚠️ A number rather than three segments around
-  the health ring, which has no room outside it on infantry. Made, removed on
-  death and synced beside the health ring, by the same three lines, and like it
-  parented to the unit node and scaled by `PIECE_SCALE`. ⚠️ **Billboarded**,
+  the health ring, which has no room outside it on infantry. Made and removed
+  with the health ring, and kept current by the same per-unit update that sets
+  the ring and the grey; like the ring, parented to the unit node and scaled by
+  `PIECE_SCALE`. ⚠️ **Billboarded**,
   which in Babylon keeps the parent's position and scale but not its turn, so
   the digit faces the camera and an offset baked sideways into its own plane
   holds it to the figure's right on screen whichever way the unit looks. One
@@ -1783,7 +1788,9 @@ unavailable action is omitted — so hover is the only state a row has.
   anyway, since a flush end is what lets one tile's segment meet the next
   without a seam.
 - Units are glTF models from `public/models/`, one per unit type, loaded once
-  into `AssetContainer`s and instantiated per unit. Each instance is parented to
+  into `AssetContainer`s and **cloned** per unit — Babylon's default there, and
+  ⚠️ what lets a unit wear a material of its own when it is greyed, since
+  instances share their source's. Each clone is parented to
   a `TransformNode` of ours: the loader's own `__root__` carries the
   right-handed-to-left-handed conversion as a negative scale, and a facing
   rotation set on that node would compose with the flip and turn the unit the
@@ -1791,9 +1798,16 @@ unavailable action is omitted — so hover is the only state a row has.
   Cavalry's rider holds a sabre; `dragoon.gltf`, the same rider with a carbine,
   stands in for the general, at cavalry's scale, until it has a model of its
   own.
-- One `StandardMaterial` per player colour, looked up by name so the scene is
-  the cache. The models arrive untextured and near-white, so colour is the whole
-  of a side's identity. Matte like the terrain — specular is zeroed — plus a
+- Two `StandardMaterial`s per player colour, plain and spent, looked up by name
+  so the scene is the cache. The models arrive untextured and near-white, so
+  colour is the whole of a side's identity. ⚠️ **A unit the player to move has
+  acted with is greyed** — `isSpent`, beside `canSelectUnit` — its colour and
+  its glow faded toward grey and darkened a little, as Advance Wars greys a
+  unit that has waited. The swap reaches only the model's meshes, recorded when
+  the unit is built: the health ring and the charge counter hang off the same
+  node and keep their own colours. One per-unit update sets the ring, the
+  counter and the grey, from the build as well as from `syncUnits`, because the
+  first board sync arrives before the renderer exists. Matte like the terrain — specular is zeroed — plus a
   floor of `emissiveColor` (`UNIT_GLOW`): ⚠️ units are mostly vertical and the
   only light is hemispheric from above, so without it their sides fall into
   shadow exactly where the silhouette has to read.
@@ -1826,8 +1840,8 @@ unavailable action is omitted — so hover is the only state a row has.
   a mesh by id that must not be disposed mid-tween.
   ⚠️ **Removal only, never creation.** Nothing can add a unit to a match — units
   enter state once, in `createMatchState`, before the renderer is built.
-  ⚠️ Disposal passes `dispose(false, false)`: every unit of a colour shares one
-  material cached on the scene by name, and disposing it with the first casualty
+  ⚠️ Disposal passes `dispose(false, false)`: every unit of a colour shares the
+  materials cached on the scene by name, and disposing it with the first casualty
   would leave the rest of that army untextured.
 - **The preview** is one nullable `{ unitId, origin, facing, settle }`. The
   record outlives the walk, because a cancel *after* the unit lands still needs

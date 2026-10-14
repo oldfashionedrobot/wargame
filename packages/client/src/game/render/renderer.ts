@@ -18,9 +18,10 @@ import type {
   GameEvent,
   GameState,
   PlayerColor,
+  Unit,
   UnitTypeId,
 } from '@wargame/shared';
-import { applyEvents, chargeReady, defenseAt, isWithinGrid } from '@wargame/shared';
+import { applyEvents, chargeReady, defenseAt, isSpent, isWithinGrid } from '@wargame/shared';
 import { TILE_SIZE, tileToWorld } from './coordinates';
 import { fitPane } from './fitPane';
 import { createGridLines } from './gridLines';
@@ -40,7 +41,13 @@ import { MAX_STAND_HEIGHT, composeTerrain } from './composeTerrain';
 import type { TerrainCell } from './composeTerrain';
 import { loadTerrainModels } from './terrainModels';
 import type { TerrainModel } from './terrainModels';
-import { animateUnitAlongPath, createUnitMesh, getUnitFacing, setUnitFacing } from './units';
+import {
+  animateUnitAlongPath,
+  createUnitMesh,
+  getUnitFacing,
+  setUnitFacing,
+  setUnitSpent,
+} from './units';
 import { loadUnitModels } from './unitModels';
 
 /**
@@ -619,17 +626,25 @@ export async function createGameRenderer(
   // these maps need clearing.
   const healthRings = new Map<string, HealthRing>();
   const chargeCounters = new Map<string, ChargeCounter>();
+
+  // What a unit's state shows on its node besides where it stands: its health,
+  // its charge meter, and whether it is spent. ⚠️ Called by the build as well as
+  // by `syncUnits`, because the first board sync arrives before this renderer
+  // exists -- a reload mid-turn would otherwise show nothing grey.
+  const showUnit = (state: GameState, unit: Unit, node: TransformNode): void => {
+    healthRings.get(unit.id)?.setHealth(unit.health);
+    chargeCounters.get(unit.id)?.setMeter(unit.chargeMeter, chargeReady(unit));
+    setUnitSpent(scene, node, isSpent(state, unit));
+  };
+
   for (const unit of initialState.units) {
     const owner = initialState.players.find((player) => player.id === unit.owner);
     if (!owner) throw new Error(`unit ${unit.id} has unknown owner ${unit.owner}`);
     const node = createUnitMesh(scene, models, unit, owner.color, surfaceAt, gridWidth, gridHeight);
     unitMeshes.set(unit.id, node);
-    const ring = createHealthRing(scene, node);
-    ring.setHealth(unit.health);
-    healthRings.set(unit.id, ring);
-    const counter = createChargeCounter(scene, node);
-    counter.setMeter(unit.chargeMeter, chargeReady(unit));
-    chargeCounters.set(unit.id, counter);
+    healthRings.set(unit.id, createHealthRing(scene, node));
+    chargeCounters.set(unit.id, createChargeCounter(scene, node));
+    showUnit(initialState, unit, node);
   }
 
   // The whole ghost: which unit is displaced, where it really stands, and the
@@ -991,8 +1006,7 @@ export async function createGameRenderer(
         // tween belongs in `playEvents` and this stays the corrector -- and it
         // will need stopping the ring's own animation, which
         // `scene.stopAnimation(mesh)` above does *not* reach.
-        healthRings.get(unit.id)?.setHealth(unit.health);
-        chargeCounters.get(unit.id)?.setMeter(unit.chargeMeter, chargeReady(unit));
+        showUnit(state, unit, mesh);
       }
     },
     toggleInspector() {

@@ -294,10 +294,8 @@ fielded — see the turn-order note under *After the combat pass*.
 
 ⬜ **Under way, pre-checked three times against the code.** The dev handle for
 tiles, the simulator's new tallies, the charge meter per unit type, `mountain`
-renamed `hills`, cover on Advance Wars' scale and inspecting a unit have
-shipped; one commit remains: greying the units that have acted.
-Each passes the gate — `tsc -b --force` included — and lands with its docs.
-It is checked in a browser through the handle.
+renamed `hills`, cover on Advance Wars' scale, inspecting a unit, and greying
+the units that have acted have all shipped.
 
 ⚠️ **Comments, docs and test titles that quote a value, or anything else a
 change can move, are removed rather than updated**, and tests read a size from
@@ -313,56 +311,12 @@ by general. The composition sweep runs once after cover, without `common`
 (where the opener wins whatever it fields); the table under *Armies* and the
 cover figures in *The dials* are removed then, keeping their conclusions.
 
-⬜ **Greying the units that have acted.** Today the only way to tell is to
-click a unit, or to remember. **Decided**: grey them, as Advance Wars does —
-the side's colour desaturated, its glow with it, and how far, with how much
-darkening, is for a look in a browser. The simple form for now: a roster of
-cards, under *UI and interaction*, is the fuller one later.
-
-- ⚠️ **`hasActed` alone is the wrong test.** `turnEnded` refreshes only the
-  incoming player's units, so through the opponent's turn every unit of the
-  player who just moved still reads `true`. **`isSpent(state, unit)`**, beside
-  `canSelectUnit` and exported, says it: a unit of the player to move that has
-  acted, while the game is on.
-- **A material swap**: the side's material greyed, built by `unitMaterial` with
-  a flag and cached as its own name — two per colour — with no extra draw and
-  no extra pass. Units are clones, so each unit's meshes take their own
-  assignment, and the close-up's staged models keep the plain material.
-- ⚠️ **Only the model's meshes.** `createUnitMesh` records them, with the side's
-  colour, when it builds the unit, before the health ring and the charge
-  counter are attached to the same node — `getChildMeshes` would grey those
-  too. A setter in `units.ts` swaps them.
-- ⚠️ **One per-unit update, called by the build loop and by `syncUnits`.** The
-  first board sync arrives before the renderer exists, so a reload mid-turn
-  would otherwise show nothing grey; the same helper takes the ring and
-  counter lines the two loops already repeat.
-- **When**: a unit greys at the snap after its walk and close-up. The last
-  action of a turn arrives with `turnEnded`, so the army goes back to plain
-  together.
-- **Multiplayer**: greying needs no identity — the opponent watches the mover's
-  units grey. *Multiplayer*'s "*your* units that can still act" depends on who
-  is looking, and is the roster's half.
-- **Tests**: new, `legality.test` — an own acted unit on its turn is spent, an
-  own unit that has not acted is not, the outgoing player's acted units after
-  `turnEnded` are not, nothing is spent once the game has a winner, and the
-  opponent's units never are. None in the renderer, so a browser checks: a
-  unit greys after its walk and close-up, all go plain at the turn's end, a
-  reload keeps the grey, the ring and counter keep their colours, nothing is
-  grey after the game ends, and the tile highlight still reads under a grey
-  model.
-- **Docs**: the architecture doc's rendering bullets on materials — one per
-  colour, shared by every unit of it — its "instantiated per unit", which reads
-  as instances where greying needs clones, and its counter bullet's repeated
-  lines; *Victory*'s surfaces, a new reader of `isOver`; `legality.ts`'s
-  one-line summary; comments in `units.ts` and `renderer.ts`, and one in
-  `unitModels.ts` saying the swap needs clones; and the roster bullet under
-  *UI and interaction*.
-- ⚠️ **Highlighting the ready units instead was tried and set aside.** A
-  Fresnel rim lit whole flat-shaded facets, washing a unit out or reading only
-  as paler; Babylon's mesh outline broke into shards, each flat face pushed
-  along its own normal; a screen-space outline was clean but a line was too
-  much; a glow layer was not it either. Each costs a pass or more every frame,
-  where a material swap costs none.
+⚠️ **Highlighting the ready units, instead of greying the spent ones, was tried
+and set aside.** A Fresnel rim lit whole flat-shaded facets, washing a unit out
+or reading only as paler; Babylon's mesh outline broke into shards, each flat
+face pushed along its own normal; a screen-space outline was clean but a line
+was too much; a glow layer was not it either. Each costs a pass or more every
+frame, where a material swap costs none.
 
 #### The general's pass
 
@@ -576,8 +530,7 @@ terminal, and it is deliberately short until then.
   are used by nothing — a second set that never got adopted, which is either a
   job to finish or a thing to delete.
 - **A roster of cards per player**, one card a unit, marking which can still
-  act. It is the fuller form of the greyed units in the next tuning pass, which
-  stand in until then, and the place for a charge counter that reads the same
+  act. It is the fuller form of the greyed units, which stand in until then, and the place for a charge counter that reads the same
   on every unit type. *Multiplayer*'s "*your* units that can still act" is the
   half that depends on who is looking, so the two are designed together.
 

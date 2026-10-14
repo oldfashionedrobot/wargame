@@ -4,6 +4,7 @@ import { Animation } from '@babylonjs/core/Animations/animation';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Scene } from '@babylonjs/core/scene';
 import { directionBetween } from '@wargame/shared';
@@ -75,25 +76,61 @@ const FACING_ROTATION: Record<Facing, number> = {
 const UNIT_GLOW = 0.28;
 
 /**
- * One material per player colour, not per unit -- the models arrive untextured
- * and near-white, so a flat diffuse colour is the whole of a side's identity.
- * The scene is the cache: looking the material up by name keeps this a plain
- * function with no state of its own.
+ * How far a spent unit's colour goes toward grey, and how much of its
+ * brightness it keeps -- the look Advance Wars gives a unit that has waited.
+ * Tuned by eye in a browser.
  */
-function unitMaterial(scene: Scene, color: PlayerColor): StandardMaterial {
-  const name = `unit-${color}`;
+const SPENT_GREY = 0.85;
+const SPENT_BRIGHTNESS = 0.8;
+
+/** A side's colour, or the grey it fades to once the unit is spent. */
+function lookOf(color: PlayerColor, spent: boolean): Color3 {
+  const base = PLAYER_COLORS[color];
+  if (!spent) return base;
+  const grey = base.toLuminance();
+  return Color3.Lerp(base, new Color3(grey, grey, grey), SPENT_GREY).scale(SPENT_BRIGHTNESS);
+}
+
+/**
+ * Two materials per player colour -- plain, and spent -- not one per unit: the
+ * models arrive untextured and near-white, so a flat diffuse colour is the
+ * whole of a side's identity. The scene is the cache: looking the material up
+ * by name keeps this a plain function with no state of its own.
+ */
+function unitMaterial(scene: Scene, color: PlayerColor, spent = false): StandardMaterial {
+  const name = spent ? `unit-${color}-spent` : `unit-${color}`;
   const existing = scene.getMaterialByName(name);
   if (existing) return existing as StandardMaterial;
 
+  const look = lookOf(color, spent);
   const material = new StandardMaterial(name, scene);
-  material.diffuseColor = PLAYER_COLORS[color];
-  material.emissiveColor = PLAYER_COLORS[color].scale(UNIT_GLOW);
+  material.diffuseColor = look;
+  // The glow greys with the rest, or a spent unit keeps its side's hue in it.
+  material.emissiveColor = look.scale(UNIT_GLOW);
   // Matte, like the ground. Terrain kills its own specular and the kit's
   // materials define only a diffuse colour, so a unit left at the default white
   // highlight reads as being made of a different substance from the board it
   // stands on.
   material.specularColor = new Color3(0, 0, 0);
   return material;
+}
+
+/** What `setUnitSpent` needs, kept on a unit's node when it is built. */
+interface UnitLook {
+  /**
+   * The model's own meshes. ⚠️ Recorded before the health ring and the charge
+   * counter are attached to the same node, which `getChildMeshes` would
+   * otherwise grey along with them.
+   */
+  meshes: AbstractMesh[];
+  color: PlayerColor;
+}
+
+/** Greys a unit that has acted, or gives it back its colour. */
+export function setUnitSpent(scene: Scene, node: TransformNode, spent: boolean): void {
+  const { meshes, color } = node.metadata as UnitLook;
+  const material = unitMaterial(scene, color, spent);
+  for (const mesh of meshes) mesh.material = material;
 }
 
 export function createUnitMesh(
@@ -107,8 +144,10 @@ export function createUnitMesh(
 ): TransformNode {
   const node = models.instantiate(unit.unitTypeId, `unit-${unit.id}`);
 
+  const meshes = node.getChildMeshes();
   const material = unitMaterial(scene, color);
-  for (const mesh of node.getChildMeshes()) mesh.material = material;
+  for (const mesh of meshes) mesh.material = material;
+  node.metadata = { meshes, color } satisfies UnitLook;
 
   // Uniform, and on our own node rather than the loader's `__root__` -- same
   // reason the facing rotation goes here. Safe to compose with that rotation:

@@ -53,6 +53,8 @@ export async function loadUnitModels(scene: Scene): Promise<UnitModels> {
       // with the flip and turns the unit the wrong way. Rotating a parent of
       // it leaves the conversion alone.
       const holder = new TransformNode(name, scene);
+      // ⚠️ Clones, which is Babylon's default here, not instances: a spent unit
+      // takes a material of its own, and instances share their source's.
       const entries = container.instantiateModelsToScene(
         (source) => `${name}-${source}`,
         // Materials are ours -- one per player colour, assigned by the caller.
