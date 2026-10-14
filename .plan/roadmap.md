@@ -148,7 +148,7 @@ option, and both cost a few lines against a table's seeding machinery.
   additive when it comes, because nothing in `GameState` marks elimination for
   an absent event to desync.
 - **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
-- **Buildings.** A terrain type — a garrison — carrying the most cover: four stars. Holding one is the capture-points question under *Tuning*, where presence is possession, so nothing beyond the tile's type is stored and there is no capture meter.
+- **Buildings.** A terrain type — a garrison — carrying the most cover: four stars, with nothing beyond the tile's type stored.
 - **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — hills are the best cover on the board and dear to reach, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
 
   ⚠️ Two findings worth keeping if it is ever reopened. `entryCost` takes a *destination*; height would make it take a **step**, which is a real signature change but a contained one — `exploreMovement` and `validatePath` are its only callers, and invariant 10 is what guarantees that. And if height ever did enter combat, the door is an **attack** bonus for striking downhill rather than a defence bonus for standing high, because terrain does not express the former and already expresses the latter.
@@ -210,12 +210,10 @@ reworked charging — see *The charging pass*; the fourth added a general — se
 the charge per unit — see *The cover pass*. A pass's changes go to
 [`architecture.md`](architecture.md) and leave only their open questions here.
 
-⬜ **No pass is planned yet** — the next one comes from playing.
+⬜ **The next pass is being written up** — see *The next pass*, below.
 
 #### Known to want attention
 
-- ⬜ **Capture points**, sketched and parked: presence is possession, so a point
-  is held by standing on it and there is no capture meter to build.
 - ⬜ **How much lands before the other player answers.** Uncapped, a whole army
   can fall on one unit before it gets a reply. ⚠️ **That is how the tabletop
   games this is modelled on work**, so it is a dislike rather than a defect —
@@ -273,6 +271,105 @@ pass. ⚠️ **It says as much about the bot as the armies**: a greedy bot never
 screens, and screening is the manoeuvre horse needs, so the horse figures are
 a floor. ⚠️ **`common` says nothing about composition**: the opener wins there
 whatever it fields — see the turn-order note under *After the combat pass*.
+
+#### The next pass
+
+⬜ **Being written up, from playing.** Losing the army as well as the general;
+the spent grey a little more saturated; and an exploration of map design, from
+research into how Advance Wars sizes and composes its boards. The first two
+are planned and pre-checked; the third is an investigation, not yet a plan.
+
+⬜ **Losing your army loses the match, as losing your general does.**
+**Decided**: a player left with nothing but its general has lost, so a match
+is won by destroying either the enemy's army or its general. It settles *two
+lone generals never finish*, under *The general's pass*, which goes with it.
+
+- **One clause in `victor`**: a player stands while it has a unit besides its
+  general, as well as while its general has not fallen. A board without a
+  general plays as now, since a unit besides the general is then any unit. An
+  `isGeneral(unit)` query beside `generalOf`, which `generalOf` then reads,
+  keeps the type named in one place in the rules.
+- **Still one loss per resolution**: a battle kills one unit, so the last
+  soldier and a general never fall together.
+- ⚠️ **An army of a general alone loses on the first resolution.** Armies are
+  not validated, so nothing stops one; accepted as a degenerate army.
+- **The bot asks `victor` whether a kill wins**, rather than keeping a bonus of
+  its own for a general: a kill scores as winning when the board without its
+  target has the bot's side as victor. Its own `isGeneral` goes for the shared
+  one. ⚠️ Its *won by general* count reads "the loser still had units", which
+  a loser down to its general would now pass; it reads whether the loser's
+  general fell instead.
+- **Tests** — two change, found by running the suites with the rule in:
+  - `victory.test`'s *is nobody while both generals stand, whatever else
+    falls*: each side gains a second soldier, so a loss leaves an army.
+  - `action.test`'s *does not heal a unit the turn's last action killed*: red
+    gains a soldier out of reach, or the kill would end the match.
+  - New in `victory.test`: a player left with only its general has lost, and
+    that loss and a general's fall are each enough alone. New in
+    `action.test`: killing the last soldier beside a standing general ends the
+    match.
+- **Docs**: the architecture doc's *Victory* and its opening summary, and the
+  README. The simulator's unfinished matches are read before and after.
+
+⬜ **The spent grey, a little more saturated.** `SPENT_GREY` comes down a step,
+so a spent unit keeps a little more of its side's colour. Checked in a
+browser beside the current look; no comment names the value.
+
+⬜ **Map design, explored.** Play has outgrown the boards: seven of them, all
+12×12 but the 10×10 tester, drawn as developer fixtures. Research into
+Advance Wars says why they feel small, and what a larger board would need.
+
+- **What Advance Wars does**, as reference rather than target:
+  - **Size**: its tutorials and single-screen missions are 15×10 to 16×12;
+    its real battles run about 16×16 to 21×21, and the competitive pool's
+    median is about 21×21. The community's own guide calls under 15×15 small,
+    and says such boards tend to stall.
+  - **Density**: its pre-deployed missions hold one unit to every six to
+    fifteen tiles, around nine at the median. Today's 12×12 with nine a side is
+    inside that band; the tester is denser than any of them.
+  - **Symmetry**: every competitive map is a 180° rotation — none is mirrored —
+    which gives each side a strong flank and a weak one; mirrored boards are
+    said to wall up and stall. None of ours is strictly either.
+  - **Composition**: about half the land open, forest sparing, rivers and high
+    ground shaping two or three lanes, and heavy cover kept off the front,
+    since guns behind chokepoints stall a match.
+  - **First-turn advantage**: the second player is given about half a turn's
+    worth — usually one extra infantry — and units placed where they can strike
+    on the first turn are the cause of the edge, not the cure.
+- **What it asks of this game**:
+  - **Bigger boards need bigger armies.** At AW's density a 16×16 holds about
+    thirteen a side and a 20×20 about twenty; nine a side on a 20×20 is a long
+    walk to contact. So board size and army size are one question — and army
+    size is *Content*'s army budget, so the two are designed together.
+  - **No production makes the opener's edge worse**, because every unit can
+    act on the first turn. Spacing the armies so cavalry cannot strike on it,
+    and the main bodies meet on the second or third, is the board's half of
+    the answer, and *After the combat pass* already watches it.
+  - **A skirmish size and a standard size** is the shape this suggests: the
+    small boards kept as skirmishes, and larger ones as the main game.
+- ⚠️ **Pre-checked: what a larger board touches.**
+  - **The deployment zone is a fixed ten by two**, centred on each edge, and
+    the default army is drawn ten wide. A wider board leaves it as a strip in
+    the middle, so the zone grows with the board or a map declares its own —
+    which was set aside earlier, and a larger board reopens.
+  - **The camera fits the whole board** at its default zoom, so a larger board
+    draws every tile smaller until zoomed; wheel zoom and panning clamped to
+    the board already exist, and need a look at the new sizes.
+  - **Scenery is placed per tile**, so a board two or three times the area
+    draws two or three times the props; a browser checks the frame rate.
+  - **The simulator's action cap** was sized for a small roster, and grows with
+    the armies; its comment quotes the roster and goes.
+  - **Maps are code**, a row of characters each. A board of twenty rows by
+    twenty is where hand-writing them starts to cost, which is the case for
+    the editor under *Content* arriving sooner.
+- **Next, to settle before it is planned**: the sizes to aim for, whether the
+  skirmish boards stay, rotational symmetry as the rule, how the zone scales,
+  and how many units a side a standard board holds before the army budget
+  exists. Then one board of each new size drawn, simulated and played.
+- Sources: the Advance Wars By Web map pool and API
+  (awbw.amarriner.com), the AWBW mapmaking guide
+  (github.com/TheGamerASD/AWBW-Mapmaking-Guide), Wars Wiki (warswiki.org),
+  and the Wargroove wiki on first-turn advantage.
 
 #### The cover pass
 
