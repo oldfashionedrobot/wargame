@@ -85,13 +85,13 @@ function table(title: string, columns: string[], rows: Array<[string, string[]]>
 console.log('Combat tables, as played. Attacker at full health.');
 
 table(
-  `First hit, on plains — no luck (and the spread luck adds, 0..${LUCK_MAX})`,
+  `First hit, on road — no cover, no luck (and the spread luck adds, 0..${LUCK_MAX})`,
   TYPES,
   TYPES.map((a) => [
     a,
     TYPES.map((d) => {
-      const low = damageAt('.', a, d, MAX_HEALTH, 0);
-      const high = damageAt('.', a, d, MAX_HEALTH, LUCK_MAX);
+      const low = damageAt('-', a, d, MAX_HEALTH, 0);
+      const high = damageAt('-', a, d, MAX_HEALTH, LUCK_MAX);
       return `${low}-${high}`;
     }),
   ]),

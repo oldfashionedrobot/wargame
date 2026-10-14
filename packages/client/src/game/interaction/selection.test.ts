@@ -497,10 +497,18 @@ describe('the panel, and what it is told', () => {
   const panel = (state: GameState) => withB1Targeting(state, at(1, 1), 'r1');
 
   // ⚠️ An exact range, not an estimate: damage only rises with the roll, so the
-  // zero-roll result is the floor. A full-strength attacker into the open is the
-  // one case where nothing scales luck, so there the width is exactly LUCK_MAX.
+  // zero-roll result is the floor. A full-strength attacker onto ground with no
+  // cover is the one case where nothing scales luck, so there the width is
+  // exactly LUCK_MAX -- hence road under the target, where `field()` has plains.
   it('forecasts a range whose width is the luck band', () => {
-    const state = field();
+    const row = '.......';
+    const state = makeState(
+      [row, row, row, '.-.....', row, row, row],
+      [
+        { id: 'b1', col: 1, row: 1 },
+        { id: 'r1', col: 1, row: 3, owner: 'red', facing: 'south' },
+      ],
+    );
     const forecast = forecastOf(state, panel(state));
     expect(forecast.high - forecast.low).toBe(LUCK_MAX);
     expect(forecast.low).toBeGreaterThan(0);

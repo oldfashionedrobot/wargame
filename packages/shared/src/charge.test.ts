@@ -17,14 +17,14 @@ import type { Facing, GameState, Unit } from './types';
 const unit = (state: GameState, id: string): Unit => state.units.find((u) => u.id === id)!;
 
 /**
- * A full-meter cavalryman just south of an infantryman, the target on plains
- * unless told otherwise. ⚠️ The target looks `south` by default -- straight at
+ * A full-meter cavalryman just south of an infantryman, the target on road --
+ * no cover -- unless told otherwise. ⚠️ The target looks `south` by default -- straight at
  * the charger -- so a charge is head-on unless a test turns it.
  */
 const contact = ({
   health = MAX_HEALTH,
   facing = 'south' as Facing,
-  ground = '.',
+  ground = '-',
   charger = MAX_HEALTH,
   meter = fullMeter('cavalry'),
 } = {}) =>
@@ -81,7 +81,7 @@ describe('chargeDamage', () => {
   // health have to work as they do in an attack, which head-on equality on every
   // ground and at every strength is what says.
   it('is an attack at its best roll, head-on, on any ground and at any strength', () => {
-    for (const ground of ['.', 'f', '^']) {
+    for (const ground of ['-', '.', 'f', '^']) {
       for (const charger of [100, 70, 40]) {
         for (const health of [100, 50, 10]) {
           const state = contact({ ground, charger, health });
@@ -191,7 +191,7 @@ describe('refuseCharge', () => {
 describe('chargeChance', () => {
   const chance = (state: GameState) => chargeChance(state, unit(state, 'b1'), unit(state, 'r1'));
 
-  // On open ground a target's health does not move the damage, so the line can
+  // With no cover a target's health does not move the damage, so the line can
   // be read off a full-health one.
   it('is certain where the charge would kill, and not one point over', () => {
     const line = charge(contact());
@@ -217,7 +217,7 @@ describe('chargeChance', () => {
   });
 
   it('never rises as the target gets healthier', () => {
-    for (const ground of ['.', 'f', '^']) {
+    for (const ground of ['-', '.', 'f', '^']) {
       const odds = [...Array(MAX_HEALTH).keys()].map((h) =>
         chance(contact({ ground, health: h + 1 })),
       );

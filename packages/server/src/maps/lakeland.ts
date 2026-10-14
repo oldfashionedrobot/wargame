@@ -10,8 +10,7 @@ import type { GameMap } from './types';
  * standing in open water at zero defence. Artillery cannot enter water at any
  * price and never reaches the island at all.
  *
- * ⚠️ **So the island is a wood no gun can ever take.** Two stars of cover,
- * reachable on foot, and unreachable by the one arm that could dig an occupant
+ * ⚠️ **So the island is a wood no gun can ever take.** Cover reachable on foot, and unreachable by the one arm that could dig an occupant
  * out at range -- which leaves shelling it from the shore as the answer, and
  * makes holding it worth the walk.
  *

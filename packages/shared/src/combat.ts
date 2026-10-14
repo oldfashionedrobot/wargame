@@ -1,12 +1,6 @@
 import { attackSide, isWithinGrid, tileDistance } from './coordinate';
 import { terrainAdmits } from './movement';
-import {
-  BASE_DAMAGE,
-  CHARGE_CHANCE_AT_FULL,
-  CHARGE_FACING,
-  LUCK_MAX,
-  TERRAIN_WEIGHT,
-} from './data/combat';
+import { BASE_DAMAGE, CHARGE_CHANCE_AT_FULL, CHARGE_FACING, LUCK_MAX } from './data/combat';
 import { clampHealth, getUnitType, MAX_HEALTH } from './data/unitTypes';
 import { defenseAt, getTileAt, getUnit, inContact } from './queries';
 import type { BattleResolvedEvent, Coordinate, GameState, Unit } from './types';
@@ -64,14 +58,14 @@ export function band(health: number): number {
  * cover. So **a wounded unit's luck shrinks with it** -- one on its last band
  * cannot luck its way into an extra tenth -- and cover takes its share of luck
  * the way it takes its share of everything else. The full band of luck belongs
- * to a full-strength unit firing into the open.
+ * to a full-strength unit firing onto ground with no cover.
  *
  * Three behaviours fall out rather than needing rules:
  *
  * - **A wounded attacker hits softer**, by band.
  * - **A wounded defender loses its cover**, because the terrain term scales by
- *   *defender* band. A 4-star peak protects a full unit far more than a
- *   nearly-dead one, which stops damaged units turtling on good ground.
+ *   *defender* band. Hills protect a full unit far more than a nearly-dead
+ *   one, which stops damaged units turtling on good ground.
  * - **Striking first compounds.** You hit them, they are weaker, and their
  *   counter is weaker for it -- most of AW's exchange calculus, for free.
  *
@@ -105,16 +99,13 @@ export function computeDamage(
   const base = BASE_DAMAGE[attacker.unitTypeId][defender.unitTypeId];
 
   const defense = defenseAt(state, defender.position);
-  // Cover is worth less the less there is left to cover, and a star is worth
-  // more than it reads -- see `TERRAIN_WEIGHT`.
+  // Cover is worth less the less there is left to cover: a star takes a point
+  // off per band of the defender's health, Advance Wars' scale.
   //
-  // ⚠️ **No clamp is needed, and what guarantees that is now two constants
-  // rather than one column.** The bound is `maxStars × TERRAIN_WEIGHT < 10`:
-  // at 4 stars and 1.5 the worst case is 60 against 10 bands, so the factor
-  // below cannot go negative and terrain cannot heal anyone. Raise either past
-  // the line and it can. ⚠️ An odd star count leaves `cover` on a half-point,
-  // which the final floor absorbs; nothing here needs to round it.
-  const cover = defense * band(defender.health) * TERRAIN_WEIGHT;
+  // ⚠️ **No clamp is needed** while cover stays under a whole hit, and the *no
+  // living attacker is harmless* sweep in `combat.test.ts` fails well before it
+  // could reach one -- so that sweep is the limit on stars.
+  const cover = defense * band(defender.health);
 
   // ⚠️ **Luck goes in with the base**, so the attacker's band and the
   // defender's cover scale it like the rest -- AW's order. That also makes a

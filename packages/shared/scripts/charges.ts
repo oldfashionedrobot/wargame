@@ -26,9 +26,10 @@ import type { Facing } from '../src/types';
 const TYPES: UnitTypeId[] = ['infantry', 'cavalry', 'artillery', 'general'];
 const CHARGERS = [100, 70, 40];
 const GROUNDS = [
-  ['open', '.'],
-  ['wood', 'f'],
-  ['peak', '^'],
+  ['road', '-'],
+  ['plains', '.'],
+  ['forest', 'f'],
+  ['hills', '^'],
 ] as const;
 
 /**
@@ -87,7 +88,7 @@ for (const attacker of TYPES.filter((type) => getUnitType(type).attacksToCharge 
           return `${chargeChance(state, state.units[0], state.units[1])}%`;
         });
         console.log(
-          `  ${`${charger}hp`.padEnd(7)}${name.padEnd(6)}${`${attack(0)}–${attack(LUCK_MAX)}`.padEnd(9)}| ${charge.join(' / ').padEnd(16)}| ${odds.join(' / ')}`,
+          `  ${`${charger}hp`.padEnd(7)}${name.padEnd(8)}${`${attack(0)}–${attack(LUCK_MAX)}`.padEnd(9)}| ${charge.join(' / ').padEnd(16)}| ${odds.join(' / ')}`,
         );
       }
     }

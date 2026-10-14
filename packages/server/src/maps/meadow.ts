@@ -14,8 +14,8 @@ import type { GameMap } from './types';
  * whichever side you are, and what you do with it afterwards is the decision.
  *
  * ⚠️ **One wood and one rise, both off the road and on opposite sides of it.**
- * The wood is cover anything can occupy; the rise is four stars that no gun can
- * climb. Each sits nearer one player than the other, so the pair are worth
+ * The wood is cover anything can occupy; the rise is stouter cover that no gun
+ * can climb. Each sits nearer one player than the other, so the pair are worth
  * taking for different reasons and at different moments.
  */
 export const meadow: GameMap = {

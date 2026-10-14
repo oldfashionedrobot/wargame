@@ -15,14 +15,12 @@ export interface Terrain {
    */
   char: string;
   /**
-   * Stars of cover, read through `defenseAt` and scaled in `computeDamage` by
-   * `TERRAIN_WEIGHT` -- a star is worth 15% at full defender HP, not 10%, and
-   * this column deliberately does not know that.
+   * Stars of cover, read through `defenseAt`: each takes a point off a hit per
+   * band of the defender's health, Advance Wars' scale -- see `computeDamage`.
    *
-   * ⚠️ **No terrain sits at 1 star, and that is a rule rather than a gap.** A
-   * single star moves the hit count in two matchups of nine, so it draws a `★`
-   * in the cutaway that the arithmetic cannot pay out. Cover starts at 2; 3 and
-   * 5 are free for ground that does not exist yet.
+   * ⚠️ How many the stoutest ground may carry is the *no living attacker is
+   * harmless* sweep in `combat.test.ts`, which fails before cover could reach a
+   * whole hit. No limit is written here: it follows from the damage table.
    */
   defense: number;
   /**
@@ -43,11 +41,7 @@ export const TERRAIN: Record<TileType, Terrain> = {
   // `movementRange` and moves when the gun is tuned.
   road: { char: '-', defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
   bridge: { char: '=', defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
-  // ⚠️ Open ground carries **no** cover, the same as road and bridge. A star
-  // here gave an open field the protection of a wood, and it was what made the
-  // forest column of the hits-to-kill table identical to the plains column in
-  // all nine matchups -- a wood cost movement and bought nothing.
-  plains: { char: '.', defense: 0, cost: { foot: 1, horse: 1, wheels: 1.5 } },
+  plains: { char: '.', defense: 1, cost: { foot: 1, horse: 1, wheels: 1.5 } },
   forest: { char: 'f', defense: 2, cost: { foot: 1.5, horse: 2, wheels: 3 } },
   // Rough ground, and the best cover on the board. A man climbs it at a price
   // and a horse can be led up it -- but 3 against cavalry's range of 4 means
@@ -55,7 +49,7 @@ export const TERRAIN: Record<TileType, Terrain> = {
   // close by, at most one step of approach, and never takes one in passing.
   // That is the shape of the decision: cavalry is fast *in the open*, not fast
   // everywhere. A gun carriage does not go up a rock face at any price.
-  hills: { char: '^', defense: 4, cost: { foot: 2, horse: 3, wheels: null } },
+  hills: { char: '^', defense: 3, cost: { foot: 2, horse: 3, wheels: null } },
   river: { char: '~', defense: 0, cost: { foot: 2, horse: 3, wheels: null } },
 };
 

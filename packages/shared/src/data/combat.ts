@@ -6,8 +6,7 @@ import type { UnitTypeId } from './unitTypes';
  *
  * ⚠️ **A charge reads it too**, at an attack's best roll times the side it
  * arrives on -- see `chargeDamage` -- so raising an entry raises what a charge
- * finishes. Cavalry into a gun's rear on open ground finishes it at any health:
- * accepted, as what getting behind a battery with a full meter is worth.
+ * finishes.
  */
 export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
   infantry: { infantry: 45, cavalry: 35, artillery: 45, general: 35 },
@@ -18,35 +17,14 @@ export const BASE_DAMAGE: Record<UnitTypeId, Record<UnitTypeId, number>> = {
 };
 
 /**
- * What a star of cover is multiplied by before it is taken off a hit: 15% at
- * full defender health rather than the 10% the raw column reads as.
- *
- * ⚠️ **It exists because a star was below the resolution of the system.** Hits
- * to kill is an integer, so most single-star changes moved nothing at all: at
- * 10% the step from 1 star to 2 moved **0 cells of 9**, and 3 to 4 moved 1. At
- * 15% the same steps move 5 and 6. Weighting the term and emptying the 1-star
- * slot are two halves of one change -- either alone leaves cover decorative.
- *
- * ⚠️ **The invariant is `maxStars × TERRAIN_WEIGHT < 10`**, which is what keeps
- * `computeDamage` from needing a clamp. At 1.5 that caps terrain at **6 stars**;
- * the table's stoutest ground is 4. Past the line, cover exceeds 100% and
- * terrain starts healing the unit standing on it.
- *
- * ⚠️ **And a second, softer ceiling at 1.667**, where the weakest matchup on a
- * hills rounds to zero and the *no living attacker is harmless* sweep in
- * `combat.test.ts` fires -- so this constant and the table's lowest entry move
- * together downward, though never upward.
- */
-export const TERRAIN_WEIGHT = 1.5;
-
-/**
  * The widest the luck bonus ever gets: AW's standard range, from AW1 through
  * Dual Strike. Days of Ruin widened it to 0-10.
  *
  * ⚠️ **Added to the base before anything scales it**, as AW does -- see
- * `computeDamage`. So the full width belongs to a full-strength unit firing into
- * the open: an attacker on half its health has about half the range, one on its
- * last band has next to none, and cover trims luck along with the rest.
+ * `computeDamage`. So the full width belongs to a full-strength unit firing onto
+ * ground with no cover: an attacker on half its health has about half the range,
+ * one on its last band has next to none, and cover trims luck along with the
+ * rest.
  *
  * ⚠️ **Never negative.** Base AW luck is a bonus only -- "bad luck" belongs to
  * particular COs -- so a table value is a *floor* on what an attack does, not

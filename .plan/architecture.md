@@ -331,20 +331,18 @@ beside it, a fifth of it.
 `BASE_DAMAGE` (attacker → defender, as a percentage of a full-health target,
 read by attacks and charges both; the general's row and column copy cavalry's) and `CHARGE_FACING` (what a charge's damage is
 multiplied by, per side). Then the scalars, each explained where it is used
-rather than here: `TERRAIN_WEIGHT` and `LUCK_MAX` in *Combat*.
+rather than here: `LUCK_MAX` in *Combat*.
 
 ⚠️ `BASE_DAMAGE` is a matrix rather than an attack stat and a defence stat: no
 pair of scalars can express rock-paper-scissors, since any `f(attack, defence)`
 is transitive.
 
 **`terrain.ts`** — `{ char, defense, cost }` per terrain. `char` is the symbol a
-map is drawn with; `defense` is stars of cover, read by `computeDamage` and
-scaled there by `TERRAIN_WEIGHT` — a star is worth 15% at full defender health,
-and the column itself does not know that. ⚠️ **Open ground carries none**: road,
-bridge, plains and river are all 0, cover starts at `forest` 2 and tops out at
-`hills` 4, and **no terrain sits at 1 star** — a single star moves the hit
-count in two matchups of nine, so it would draw a `★` the arithmetic cannot pay
-out. `cost` is
+map is drawn with; `defense` is stars of cover, read by `computeDamage` on
+Advance Wars' scale — each takes a point off a hit per band of the defender's
+health. Road, bridge and river carry none. ⚠️ **How many stars ground may carry
+is written nowhere as a number**: the *no living attacker is harmless* sweep is
+the limit, and it follows from the damage table. `cost` is
 movement points to *enter*, one per movement type, with `null` for impassable —
 which makes a river a wall to wheels, a toll to boots, and most of a turn to a
 horse. Costly and impassable are different answers: hills are expensive for
@@ -352,8 +350,7 @@ horse and `null` for wheels.
 
 ⚠️ **`road` and `bridge` are identical in *both* columns**, so they are
 indistinguishable to every rule that reads them — the split exists only so the
-renderer can draw a crossing over water. Plains and river match them on
-`defense` alone and differ on `cost`.
+renderer can draw a crossing over water.
 
 `getUnitType` and `getTerrain` throw on an unknown id.
 
@@ -456,9 +453,9 @@ width it is handed. On a 12×12 board the zone leaves one spare column a side; o
 **Four rules hold across every board**, and they are design rather than code —
 nothing enforces the last two but the eye:
 
-- **Deployment zones carry nothing but plains and road.** Cover at the start is
-  cover nobody fought for, and `maps.test.ts` refuses ground a unit cannot stand
-  on there.
+- **Deployment zones carry nothing but plains and road**, so no side starts in
+  a wood or on hills, and `maps.test.ts` refuses ground a unit cannot stand on
+  there.
 - ⚠️ **Roads are one tile wide, everywhere.** A two-lane road was never a wider
   road — it was two roads — and it doubled the width of every corridor it drew.
   The renderer does not care: `bridgeTurns` reads *strictly* road neighbours and
@@ -479,9 +476,9 @@ nothing enforces the last two but the eye:
 | `classic` | A river across the middle with a single crossing. Infantry ford anywhere, cavalry at a price, and `wheels` not at all — so the bridge is the whole board. ⚠️ **The approaches are different ground**: a wood beside the road on the near bank, a rise beside it on the far one |
 | `crossroads` | A road network closed into a figure of eight, with a wood in two of its cells. No water and no high ground, so nothing is impassable and cost is the only thing shaping a move — which makes it the board artillery likes. The woods sit diagonally opposite, one per player |
 | `two-bridges` | One river bent through a right angle with a crossing on each arm. ⚠️ The only board carrying **both deck orientations**, so it is the only one that exercises all of `bridgeTurns`. Broken ground is all on the east side, leaving the west a road corridor |
-| `lakeland` | A lake ringing a **wooded** island, and a road down the west shore. The island is where the water's price shows: infantry wades across in one turn, cavalry needs two and spends the night in open water at zero defence, and artillery never arrives at all — so it is two stars of cover no gun can ever take, only shell |
+| `lakeland` | A lake ringing a **wooded** island, and a road down the west shore. The island is where the water's price shows: infantry wades across in one turn, cavalry needs two and spends the night in open water at zero defence, and artillery never arrives at all — so it is cover no gun can ever take, only shell |
 | `meadow` | Open field with one **lateral** road straight across and a spur down to it from each side. A road across rather than along helps you redeploy along your own line more than it helps you advance, and ⚠️ **the two spurs do not line up**, so neither player has a straight run at the other |
-| `common` | Open field with the road up the middle — the fast way *at* the enemy — and a rise on one flank of each approach, ⚠️ **diagonally opposed** so the same plan does not work from both ends. A wood beside the road at the centre is the only cover anything can occupy, and it is equally far from both |
+| `common` | Open field with the road up the middle — the fast way *at* the enemy — and a rise on one flank of each approach, ⚠️ **diagonally opposed** so the same plan does not work from both ends. A wood beside the road at the centre is the only real cover anything can occupy, and it is equally far from both |
 | `tester` | A 10×10 board for playtesting: the road straight down the middle, a river across it at the midline with a single bridge, a wood beside the road on the near bank and a rise on the far one. The smallest board, so the armies meet soonest |
 
 ⚠️ **A river may only leave the board where a deployment zone is not.** The
@@ -689,8 +686,8 @@ paints its overlay from it.
 **The client previews the same formula.** `attackForecast` runs `computeDamage`
 at roll 0 and at `LUCK_MAX`, which is an **exact range**: damage only ever rises
 with the roll, so those are the true floor and ceiling. ⚠️ The width is
-`LUCK_MAX` only for a full-strength attacker into the open; a weakened attacker
-or a defender in cover narrows it. The counter's *magnitude* is
+`LUCK_MAX` only for a full-strength attacker onto ground with no cover; a
+weakened attacker or a defender in cover narrows it. The counter's *magnitude* is
 absent — it is computed on the defender's post-damage health, so it depends on
 how the attack roll lands. `answered` is read at the **worst** roll, so it means
 *they will counter attack unless you kill them*.
@@ -716,7 +713,7 @@ All three are pure and take the roll as an **input**.
 ```
 band(hp) = ceil(hp / 10)                    // 1..10, never 0 while alive
 damage   = floor(floor((base + luck) × band(attackerHP) / 10)
-                 × (100 − stars × band(defenderHP) × TERRAIN_WEIGHT) / 100)
+                 × (100 − stars × band(defenderHP)) / 100)
 ```
 
 **Health is stored and shown 0–100.**
@@ -733,13 +730,10 @@ luck with the rest, so a wounded unit's luck shrinks with it and a unit on its
 last band cannot luck its way into an extra tenth. A dead attacker needs no guard:
 `band(0)` zeroes the luck along with the base.
 
-⚠️ **No clamp stops cover exceeding 100%, and two constants are what guarantee
-it never does.** The bound is `maxStars × TERRAIN_WEIGHT < 10` — at 4 stars and
-1.5 the worst case is 60 — and past that line terrain would heal the unit
-standing on it. A second, tighter ceiling sits at 1.667, where the weakest
-matchup on hills rounds to zero and the *no living attacker is harmless*
-sweep in `combat.test.ts` fires. Both are tested rather than merely written
-down.
+⚠️ **No clamp stops cover exceeding a whole hit**, and none is needed: the *no
+living attacker is harmless* sweep in `combat.test.ts` fails as soon as cover
+floors the weakest hit to nothing, which comes well before cover could reach a
+whole hit and heal. That sweep is the limit on stars.
 
 Three behaviours fall out rather than being rules: a wounded attacker hits
 softer, a wounded defender loses its cover (the terrain term scales by *defender*
@@ -819,8 +813,8 @@ straight line down to `end` at full health — `CHARGE_CHANCE_AT_FULL` (25%)
 scaled by the side, so 25 / 31 / 37% head-on, flank and rear — and then the
 whole of it multiplied by the charger's own health, so a wounded charger's
 gamble is a long shot. ⚠️ **The price of scaling the whole curve is a cliff just
-over the line**: a charger on 60 is certain of a target on 38 and 58% against
-one on 40. Accepted; scaling only the end left a unit on 20 health breaking one
+over the line**: a wounded charger certain of one target is a long shot against
+one a few points healthier. Accepted; scaling only the end left a unit on 20 health breaking one
 on 40 most of the time. ⚠️ **Worked in whole numbers**, hundredths of a percent
 until one floor, and never rising as the target gets healthier — checked over
 every charger, target, ground, side and pair of healths.
@@ -844,10 +838,9 @@ one to consult `flank`; the counter's rear rule uses only its `rear` case.
 ⚠️ **Capability is `attacksToCharge`.** Artillery's is `null`, which is the only
 place *artillery cannot charge* is stated. Any unit is still a valid
 **target**. ⚠️ **`BASE_DAMAGE` tunes charges too**, so raising an entry raises
-what a charge is certain of. ⚠️ **One charge is certain of a full-health
-unit**: cavalry into a gun's rear on open ground, at 111 damage. Accepted, as what getting
-behind a battery with a full meter is worth; every other pairing stays under
-`MAX_HEALTH`, the nearest being cavalry into infantry's rear at 96.
+what a charge is certain of — and a charge from the rear can be certain of a
+full-health unit, which is accepted as what getting behind it with a full meter
+is worth.
 
 **A charge never consults the counter rule**: one that breaks through kills,
 and one that fails is met by the free attack above.

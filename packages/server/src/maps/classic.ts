@@ -9,8 +9,8 @@ import type { GameMap } from './types';
  * exactly one way across and both players know where it is.
  *
  * ⚠️ **The two approaches are not the same ground, deliberately.** A wood stands
- * beside the road on the near bank and a rise beside it on the far one: two
- * stars of cover anything can walk into, against four that no gun can hold.
+ * beside the road on the near bank and a rise beside it on the far one: cover
+ * anything can walk into, against stouter cover no gun can hold.
  * Whoever crosses first does it past the other's strongpoint, and which kind of
  * strongpoint that is depends on which side of the river you started.
  */

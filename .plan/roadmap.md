@@ -148,7 +148,7 @@ option, and both cost a few lines against a table's seeding machinery.
   additive when it comes, because nothing in `GameState` marks elimination for
   an absent event to desync.
 - **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
-- **Buildings.** A terrain type — a garrison — carrying the most cover: four stars, once cover is on Advance Wars' scale. Holding one is the capture-points question under *Tuning*, where presence is possession, so nothing beyond the tile's type is stored and there is no capture meter.
+- **Buildings.** A terrain type — a garrison — carrying the most cover: four stars. Holding one is the capture-points question under *Tuning*, where presence is possession, so nothing beyond the tile's type is stored and there is no capture meter.
 - **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — hills are the best cover on the board and dear to reach, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
 
   ⚠️ Two findings worth keeping if it is ever reopened. `entryCost` takes a *destination*; height would make it take a **step**, which is a real signature change but a contained one — `exploreMovement` and `validatePath` are its only callers, and invariant 10 is what guarantees that. And if height ever did enter combat, the door is an **attack** bonus for striking downhill rather than a defence bonus for standing high, because terrain does not express the former and already expresses the latter.
@@ -293,10 +293,9 @@ fielded — see the turn-order note under *After the combat pass*.
 #### The next pass
 
 ⬜ **Under way, pre-checked three times against the code.** The dev handle for
-tiles, the simulator's new tallies, the charge meter per unit type and
-`mountain` renamed `hills` have shipped; three commits remain, in this order:
-cover on Advance Wars' scale; inspecting a unit; greying the units that have
-acted.
+tiles, the simulator's new tallies, the charge meter per unit type, `mountain`
+renamed `hills`, and cover on Advance Wars' scale have shipped; two commits
+remain, in this order: inspecting a unit; greying the units that have acted.
 Each passes the gate — `tsc -b --force` included — and lands with its docs.
 Two of them are checked in a browser through the handle: inspecting, and
 greying.
@@ -314,79 +313,6 @@ before the win rates: charges by type, hits by ground, unfinished matches, wins
 by general. The composition sweep runs once after cover, without `common`
 (where the opener wins whatever it fields); the table under *Armies* and the
 cover figures in *The dials* are removed then, keeping their conclusions.
-
-⬜ **Cover on Advance Wars' scale.** **Decided**: 10% a star at full health —
-AW's formula exactly, stars × the defender's health band — with road, bridge
-and river 0, plains 1, forest 2 and hills 3. Buildings, out of scope, would be
-4. `TERRAIN_WEIGHT` goes.
-
-- **The numbers**, mean hits to kill over the nine matchups, no luck: open 2.67,
-  plains 2.78, forest 3.00, hills 3.11, a building 3.67 — where today a forest
-  is 3.11 and hills 4.56. A cut stretches a fight by about one over what is
-  left of a hit, which is why today's hills do several times what the
-  forest does.
-- **What it changes**: cover weaker everywhere it was, and present on plains,
-  which is most of every board. ⚠️ **Cover is the only protection from guns**,
-  which nothing answers, so a gun hits harder in cover and softer in the open —
-  with gun duels the complaint, the simulator's kills by type are the number to
-  read first. Charges' certain lines fall on plains and rise in cover: a
-  charge into a gun's rear on plains stops being certain at full health.
-- ⚠️ **Accepted: plains' star rarely saves a hit.** At full health it moves one
-  matchup of nine, while the close-up shows a ★ on almost every fight. AW
-  accepts the same — the cut still lowers the damage and leaves more health.
-- **The limit on stars is the *no living attacker is harmless* sweep**, as it
-  is today, written nowhere as a number: it follows from the damage table's
-  lowest entry. The "no clamp is needed" note in `computeDamage` and the
-  `defense` field's doc point at the sweep.
-- **Tests** — six fail once the charge meter has rewritten the replay test.
-  They switch to road, which stays at nought, where they mean no cover:
-  `makeState` fills a sized board with plains, and `testing.test` asserts that;
-  of the six, four build their own rows anyway, so changing the default would
-  fix only one.
-  - Removed: `combat.test`'s *gives no terrain exactly one star*, with its
-    comment; and *keeps cover under 100%, which is what lets the formula go
-    unclamped*, which the sweep already covers and whose import goes with the
-    weight.
-  - `combat.test`'s *reduces damage on defended terrain rather than inverting
-    it*: the expectation computed from the terrain table on hills; the value
-    comments around it removed.
-  - `move.test`'s *lands something on a flanked counter, even from the lowest
-    band*: road under the defender, so it is still the lowest band, asserted as
-    head-on equal to flank and above nought rather than as a number.
-  - `charge.test`'s *is certain where the charge would kill, and not one point
-    over* and *scales everything over the line by the charger’s own health*:
-    `contact`'s default ground becomes road, which fixes both. Its ground
-    loops gain road, so they still include a ground with no cover.
-  - `selection.test`'s *forecasts a range whose width is the luck band*: its own
-    board with road under the target — the shared `field()` stays, since
-    another test compares against plains.
-  - New: none needed — the hills expectation pins the cut, and the sweep the
-    limit.
-- **Harnesses**: `charges.ts` prints road, plains, forest and hills, its
-  columns widened; `matchups.ts`'s first-hit table is read on road, where it
-  still shows the table itself.
-- **Claims the change makes false**, removed, or cut to what stays true:
-  - "a full-strength attacker into the open gets the full luck band" — in
-    `combat.ts`, `LUCK_MAX`'s doc, the architecture doc and a `selection.test`
-    comment — true now only on ground with no cover.
-  - "cavalry into a gun's rear on open ground is certain", and its "nearest"
-    figure (`data/combat.ts`, the architecture doc's *Charge*, the roadmap's
-    *The charging pass*); the charger-on-60 figures in the architecture doc and
-    the roadmap; the roadmap's count of charges in fifty games.
-  - comments quoting values: `combat.ts`'s "4-star peak" and half-point notes;
-    `combat.test`'s "hills would heal" arithmetic; `charge.test`'s note
-    that health does not move damage on open ground, and its `contact`
-    description; `move.test`'s luck-spread and plains-star comments;
-    `terrain.ts`'s notes on open ground, the 1-star slot and the weight.
-  - star counts in `classic.ts`, `common.ts`, `meadow.ts` and `lakeland.ts`,
-    the architecture doc's *Content* and lakeland row; "the only cover anything
-    can occupy" (`common.ts`, the architecture doc); "plains and river match
-    them on defense".
-  - the deployment zones' reason — cover at the start being cover nobody
-    fought for — while the rule that they hold no forest or hills stays.
-  - the weight in the architecture doc and *The dials*, and the
-    out-of-scope buildings note's "once cover is on Advance Wars' scale".
-- **Docs**: the architecture doc's formula, *Content* and *Combat*.
 
 ⬜ **Inspecting a unit.** Today a click on a unit that cannot act clears the
 selection: `trySelect` takes only what `canSelectUnit` accepts. **Decided**:
@@ -563,16 +489,15 @@ measured, is in the commits.
   against a fresh unit head-on. Head-on at 1× was chosen, so a head-on charge
   is sure of what an attack's best roll might kill. `scripts/charges.ts` prints
   each charge's line beside the attack's, and its odds against full health.
-- **The cliff just over a wounded charger's line** — certain of a target on 38
-  and 58% against one on 40, for a charger on 60 — is the price of scaling the
+- **The cliff just over a wounded charger's line** — certain of one target and
+  a long shot against one a few points healthier — is the price of scaling the
   whole curve by the charger's health, and was accepted.
-- **Cavalry charging a gun's rear on open ground is certain of it at any
-  health.** Accepted rather than tuned away; if it reads as too much in play,
-  the rear multiplier at 1.35× brings it to 99 without touching attacks.
-- **The simulator never gambles**: its greedy bot weighs a charge's kill by the
-  odds against the free attack it risks, and only certain charges come out
-  ahead of an attack — 22 in 50 games on `classic`, all breaking through. The
-  odds are for players to use, and the bot says nothing about them.
+- **A rear charge can be certain of a full-health unit** where there is no
+  cover. Accepted rather than tuned away; the rear multiplier is the dial if it
+  reads as too much in play.
+- **The simulator's bot weighs a charge's kill by its odds** against the free
+  attack it risks, so it charges at odds when nothing else scores better. What
+  it does with the odds says little about what a player would.
 - ⬜ Later: **dragoons**, horse with carbines — the `melee` flag is what makes
   room for them, and their model is already in `public/models/`.
 
@@ -664,8 +589,8 @@ building it.
 #### The dials
 
 The tables are `BASE_DAMAGE`, which charges read too, and `CHARGE_FACING`; the
-scalars beside them are `TERRAIN_WEIGHT`, `LUCK_MAX` and `CHARGE_CHANCE_AT_FULL`,
-and the catalog's `attacksToCharge` sets each type's meter. The `defense`
+scalars beside them are `LUCK_MAX` and `CHARGE_CHANCE_AT_FULL`, and the
+catalog's `attacksToCharge` sets each type's meter. The `defense`
 column of `terrain.ts` is a dial too,
 and turned out to be the one carrying the most weight.
 

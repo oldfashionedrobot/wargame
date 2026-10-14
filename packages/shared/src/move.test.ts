@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { validateCommand } from './action';
 import { resolveMove, validateMove } from './move';
+import { band } from './combat';
 import type { Rolls } from './combat';
 import { LUCK_MAX } from './data/combat';
 import { MAX_HEALTH } from './data/unitTypes';
@@ -283,9 +284,10 @@ describe('resolveMove', () => {
   // *No living attacker is harmless* holds for counters too: a defender in the
   // lowest band, answering an attacker on a peak, still lands something.
   it('lands something on a flanked counter, even from the lowest band', () => {
+    // Road under the defender, so no cover keeps it out of the lowest band.
     const peak = (facing: 'south' | 'west') =>
       makeState(
-        ['^.', '..'],
+        ['^-', '..'],
         [
           { id: 'b1', col: 0, row: 0 },
           { id: 'r1', col: 1, row: 0, owner: 'red', health: 55, facing },
@@ -299,9 +301,12 @@ describe('resolveMove', () => {
       if (battle.type !== 'battleResolved') throw new Error('expected a battle');
       return battle;
     };
-    expect(fight('west').attacker.health).toBe(MAX_HEALTH - 1); // head-on: a single point
-    expect(fight('south').answered).toBe(true);
-    expect(fight('south').attacker.health).toBe(MAX_HEALTH - 1); // flanked: the same point
+    const headOn = fight('west');
+    const flanked = fight('south');
+    expect(band(headOn.defender.health)).toBe(1);
+    expect(headOn.attacker.health).toBeLessThan(MAX_HEALTH);
+    expect(flanked.answered).toBe(true);
+    expect(flanked.attacker.health).toBe(headOn.attacker.health);
   });
 
   // A melee unit cannot answer a ranged attacker: infantry may fire point-blank
@@ -346,15 +351,11 @@ describe('resolveMove', () => {
   // ⚠️ **The defender's starting health is chosen, not incidental.** The reply
   // is scaled by `band()`, so a luckier blow only softens it when the extra
   // damage pushes the defender across a *band boundary* -- inside one band the
-  // counter is identical and this asserts nothing. At 70 the luck spread lands
-  // the defender between 25 and 16, which straddles one.
+  // counter is identical and this asserts nothing. The starting health is
+  // picked so the luck spread straddles one.
   //
   // ⚠️ **Anything that moves damage moves where that happens, and this test is
-  // how you find out.** It has now failed twice for that reason: on the jump in
-  // `BASE_DAMAGE` from 30 to 45, where rolls 0 and 9 both left the defender in
-  // band 6, and again when plains lost its star -- the board here is open
-  // ground, so dropping that star raised every blow by four and closed the gap
-  // at the 65 this used to use.
+  // how you find out** -- it has failed for that reason before.
   it('counters on post-damage health, so striking first compounds', () => {
     const board = () =>
       makeState(8, [
