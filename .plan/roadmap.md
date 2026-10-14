@@ -40,23 +40,6 @@ at the wrong thing, and moving *Presentation* to the front broke every surviving
 number in the section below. A name survives a reorder; a number is something
 somebody has to remember to recount, and nobody does.
 
-## Open questions
-
-- ⚠️ **Nothing can ask where a tile is on screen, and a browser is the only check
-  the renderer has.** It is WebGL, so it has no unit tests at all; every visual
-  verification therefore means screenshotting, measuring by eye, and clicking a
-  guessed pixel. A guess that misses is indistinguishable from a bug, which makes
-  the workflow trial-and-error by construction — and it is how a real bug
-  (`POINTERPICK`) got found by accident rather than by method.
-
-  The fix is small and already half-built: `anchorTo` projects a tile to screen
-  pixels every frame. Exposing that in dev — a `tileToScreen` on the renderer, or
-  a `window.__board` handle behind `import.meta.env.DEV` — named for what it
-  exposes rather than for the product, so a rename never reaches it — turns every future check
-  from *guess a pixel* into *address a tile*. ⚠️ It is test-only surface on a
-  production object, which is the reason to think before building it rather than
-  the reason not to. *UI and interaction* is where it would pay for itself fastest.
-
 ## Known compromises
 
 Deliberate limits of the current design, and what each would take to lift. Distinct from *Out of scope for v1* below, which is unbuilt features rather than accepted limits.
@@ -309,113 +292,107 @@ fielded — see the turn-order note under *After the combat pass*.
 
 #### The next pass
 
-⬜ **Planned, from playing.** Cover, the charge meter, inspecting a unit that
-cannot act, and seeing who has acted. Each wants its own plan and pre-check before
-it is built; what follows is what is known so far.
+⬜ **Planned and pre-checked, from playing.** Built one at a time, each in its
+own commit, in this order: the charge meter per unit type, cover on Advance
+Wars' scale, a dev handle for tiles, inspecting a unit, and darkening the units
+that have acted. ⚠️ **The first two each move balance**, so each gets a
+simulator run before and after, apart, and the composition sweep is re-run once
+both are in — otherwise neither effect can be told from the other.
 
-⬜ **Cover may need reworking: the mountain looks too strong, everything else
-too weak.** Cover is stars × the defender's health band × `TERRAIN_WEIGHT`
-(1.5), so at full health a forest cuts 30% of a hit, a mountain 60%, and road,
-bridge, plains and river nothing — two terrains of six give any cover at all.
-The dials are the `defense` column of `terrain.ts` and `TERRAIN_WEIGHT`, under
-two constraints written beside the weight: `maxStars × TERRAIN_WEIGHT < 10`,
-and the softer ceiling at 1.667 where the weakest matchup on a mountain rounds
-to zero. ⚠️ The empty 1-star slot is deliberate — a single star moved too few
-hits-to-kill to be worth drawing — so open ground gaining cover reopens that.
-⚠️ **Play decides this one, not the simulator**: its bot never chooses ground
-(see *The dials*). `matchups.ts` prints what each change does to hits-to-kill.
+⬜ **The charge meter per unit type.** **Decided**: cavalry and the general fill
+in two attacks, infantry in three. Later, heavy cavalry in one, and a general's
+ability might lower it for its whole army.
 
-- **Measured**, mean hits to kill over the nine matchups, no luck: open 2.67,
-  forest 3.11 (+17%), mountain 4.56 (+71%). A forest adds a hit in four
-  matchups of nine; a mountain adds two in eight. Twice the stars, four times
-  the effect, because a cut of *c* stretches a fight by about 1/(1−*c*): 30% is
-  ×1.4, 60% is ×2.5.
-- **By star**, the same mean: 2.67, 3.00, 3.11, 3.78, 4.56 for 0 to 4. ⚠️ The
-  step from one star to two buys almost nothing, so a forest at 2 is barely
-  better than one star would be.
-- ⚠️ **Four stars is the ceiling at this weight**, not six: at five, a cut of
-  75% leaves a 1-health infantryman's hit on cavalry at zero, which the *no
-  living attacker is harmless* sweep refuses. More range needs a lower weight.
-- ⚠️ **A stale claim to fix with it**: `terrain.ts` and the architecture doc
-  say one star moves two matchups of nine; at today's table it moves three.
-- **Against Advance Wars**: the same formula. AW cuts 1% per star per displayed
-  HP — 10% a star at full health — and the band *is* the displayed HP; luck is
-  the same 0–9. The difference is `TERRAIN_WEIGHT`: at 1.5 a forest cuts what
-  AW's 3 stars would and a mountain 60%, half again AW's strongest cover. AW's
-  stars: road, bridge and river 0, plains 1, woods 2, properties 3, mountain and
-  HQ 4.
-- **Decided: AW's scale.** 10% a star at full health, and road, bridge and
-  river 0, plains 1, forest 2, mountain 3 — hills, in this setting — and
-  buildings 4 when garrisons arrive, which is not now. Mean hits to kill: open
-  2.67, plains 2.78, forest 3.00, mountain 3.11, a building 3.67. Weighted at 1.5
-  the same stars would give 3.00, 3.11, 3.78 and 4.56; 1.25 clumps, one star
-  buying what two do.
-- **What it changes**, to measure rather than argue: cover is weaker
-  everywhere it existed — a mountain stretches a fight by 17% rather than 71% —
-  and present where it was not, since most of every board is plains.
-  ⚠️ **Cover is the only protection from guns**, which nothing answers, so a gun
-  hits harder in a forest or on a mountain and softer in the open; with gun
-  duels being the complaint, the simulator's kills by type are the number to
-  read before and after. Charges' certain lines fall on plains and rise in
-  cover, through the same formula. Every simulator figure and the composition
-  sweep move with it.
-- ⚠️ **Pre-checked.** At 1.0 `TERRAIN_WEIGHT` multiplies by one, so it goes,
-  and cover is AW's stars × band. The two limits written beside it become one
-  on the stars: six at most, where the *no living attacker is harmless* sweep
-  would fail at seven — four, for buildings, is well inside. `terrain.ts`'s
-  comments on open ground carrying none and the empty 1-star slot are history
-  the change reverses, and go. Readers: `combat.ts` (four), its test (three),
-  the architecture doc (four), and *The dials* above.
-- **Decided: `mountain` becomes `hills`**, the setting's word for it, in the
-  same change. Searched; every place it lives:
-  - **The rules**: the `TileType` union and the `TERRAIN` key in
-    `shared/src/data/terrain.ts`. The map character `^` stays, so **no map row
-    changes**. A refusal's wording is built from the id — "wheels cannot cross
-    mountain" — so it follows on its own.
-  - **The renderer**: `composeTerrain.ts`'s `case 'mountain'`, which stands the
-    mesa on the tile — the one code reference — and comments in
-    `composeTerrain.ts`, `gridLines.ts`, `renderer.ts` (two) and
-    `terrainModels.ts` (two). No model file is named for it.
-  - **The maps**: the legend comment in all seven, `^ mountain`; and a comment
-    in `matchState.ts`.
-  - **Tests**: `terrainGrid.test.ts` and `testing.test.ts` assert the parsed
-    id; `movement.test.ts` asserts the refusal's wording and names a test and
-    two comments for it; `combat.test.ts` has a `MOUNTAIN` board and comments;
-    `composeTerrain.test.ts` a test title and a comment; `terrain.test.ts` a
-    comment. `data/combat.ts`'s mention goes with `TERRAIN_WEIGHT`.
-  - **Docs**: eight places in the architecture doc — the state model's
-    `TileType`, *Content*, deployment, *Combat* and three in rendering — and
-    this file's descriptions of what is current.
+- **One catalog column replaces the `charges` flag and `CHARGE_METER_FULL`**:
+  the attacks to fill, `null` for a type that does not charge, the way a terrain
+  cost of `null` says impassable. Named apart from the unit's own
+  `chargeMeter` — `chargeAfter`, say.
+- **Two shared functions, built now**: the size for a unit, which the meter's
+  cap in `resolveBattle` reads, and `chargeReady(unit)`, which `refuseCharge`
+  and the board's counter both read — otherwise "full" is written once in the
+  rules and again in the renderer. A general's ability later is a state
+  argument on the first.
+- ⚠️ **Ready means at least full**, where `refuseCharge` tests `!==` today: a
+  meter above a lowered size — a stored match, or an ability arriving — would
+  never charge again.
+- **The counter**: the count until full, then a distinct *ready* disc, the same
+  on every type, since a 2 would otherwise be a ready cavalryman and an
+  infantryman one attack short.
+- ⚠️ **Pre-checked.** `CHARGE_METER_FULL` has eleven users, most of them test
+  fixtures in all three packages — `GameCanvas.test`, `useGameSession.test`,
+  `selection.test`, `charge.test`, `move.test`, `match.test` — and an export that
+  exists for them; they take the exported size instead. The replay test's meter
+  sequence, 1, 2, 3, 0, changes with cavalry's size. `charges.ts` filters on the
+  flag. Docs: the catalog's flag, *Charge*, the combat data, the counter's "1 to
+  3" in `chargeCounter.ts` and in rendering, and *The dials*.
+- Cavalry charging every second attack is a large buff: the simulator's charge
+  counts are the number to read.
+
+⬜ **Cover on Advance Wars' scale.** **Decided**: 10% a star at full health —
+AW's formula exactly, stars × the defender's health band — with road, bridge
+and river 0, plains 1, forest 2, the mountain 3 and renamed hills, and buildings
+4 when garrisons arrive, which is not now. `TERRAIN_WEIGHT` goes.
+
+- **The numbers**, mean hits to kill over the nine matchups, no luck: open 2.67,
+  plains 2.78, forest 3.00, hills 3.11, a building 3.67 — where today a forest
+  is 3.11 and a mountain 4.56. A cut of *c* stretches a fight by about
+  1/(1−*c*), which is why today's 60% mountain does four times what the 30%
+  forest does.
+- **What it changes**: cover weaker everywhere it was, and present on plains,
+  which is most of every board. ⚠️ **Cover is the only protection from guns**,
+  which nothing answers, so a gun hits harder in cover and softer in the open —
+  with gun duels the complaint, the simulator's kills by type are the number to
+  read first. Charges' certain lines fall on plains and rise in cover.
+- ⚠️ **Accepted: plains' star rarely saves a hit.** At full health it moves one
+  matchup of nine, while the close-up shows a ★ on almost every fight. AW
+  accepts the same — the cut still lowers the damage and leaves more health.
+  The test that forbade a 1-star terrain, which guarded exactly this, goes.
+- ⚠️ **Pre-checked by running the suites with the values in: seven tests
+  fail**, all on old numbers — `combat.test`'s 1-star rule and its pinned 60%
+  mountain, `move.test`'s single point of counter from a peak, two in
+  `charge.test` that read plains as open ground, `applyEvents.test`'s replayed
+  meter sequence, and the client forecast's luck-band width on plains. The
+  cause is that `makeState` fills a board with plains, so a test's open ground
+  gains a star: a test that means no cover says road. Changing the default
+  instead would move wheels' costs under the movement tests.
+- **The limits beside the weight become one on the stars**: six at most, where
+  the *no living attacker is harmless* sweep fails at seven. Readers of the
+  weight: `combat.ts`, its test, comments in `terrain.ts` and `data/combat.ts`,
+  the architecture doc (four), and *The dials*. `terrain.ts`'s notes on open
+  ground carrying none and on the empty 1-star slot go.
+- **`mountain` becomes `hills`**, everywhere it lives:
+  - the `TileType` union and `TERRAIN` key in `terrain.ts`. The map character
+    `^` stays, so no map row changes, and a refusal's wording — "wheels cannot
+    cross mountain" — is built from the id and follows on its own.
+  - `composeTerrain.ts`'s `case 'mountain'`, which stands the mesa — the one
+    code reference in the renderer — and comments there and in `gridLines.ts`,
+    `renderer.ts` (two) and `terrainModels.ts` (two). No model file is named
+    for it.
+  - the legend comment in all seven maps, and a comment in `matchState.ts`.
+  - tests: `terrainGrid.test.ts` and `testing.test.ts` assert the parsed id;
+    `movement.test.ts` the refusal, a test title and two comments;
+    `combat.test.ts` a `MOUNTAIN` board; `composeTerrain.test.ts` a title and a
+    comment; `terrain.test.ts` a comment.
+  - eight places in the architecture doc, and this file's descriptions of what
+    is current.
   - ⚠️ **Stored matches.** `matches.initial_state` and `current_state` hold the
-    board as JSON, tile ids and all, and `getTerrain` throws on an unknown id —
-    so every stored match would stop loading. Resolutions carry no tile ids.
-    A custom Drizzle migration rewriting `"mountain"` to `"hills"` in those two
-    columns keeps them loading — `db:generate --custom`, from the repo root.
-    Earlier shape changes left dev data alone, but they left a field missing;
-    this one breaks the load.
+    board as JSON, tile ids and all, and `getTerrain` throws on an unknown id,
+    so every stored match would stop loading; resolutions carry none. A custom
+    Drizzle migration rewriting `"mountain"` to `"hills"` in those two columns,
+    generated from the repo root, keeps them loading — and the server migrates
+    on boot, so it applies at the next start.
 
-⬜ **The charge meter per unit type.** **Decided**: cavalry fills in two
-attacks, infantry in three, and the general in two, as the cavalry it is in all
-but name. Later, heavy cavalry in one, and a general's ability might lower it
-for its whole army. The approach below is agreed.
-
-- **One column instead of a flag and a constant.** `CHARGE_METER_FULL` is read
-  in two places — `resolveBattle` caps the meter at it, `refuseCharge` requires
-  it — and `charges` says whether a type charges at all. A meter size per type,
-  `null` for one that does not charge, says both, the way a terrain cost of
-  `null` says impassable. `charges.ts` filters on the flag and follows.
-- **Read through one function** once anything can modify it, so a general's
-  ability has one place to apply rather than two call sites to remember.
-- ⚠️ **`refuseCharge` tests `!==` full**, which a meter above a lowered size
-  fails forever — a stored match, or a general's ability arriving mid-match.
-  "At least full" is the rule to write.
-- ⚠️ **The board's counter shows the raw meter**, 1 to 3. With sizes differing,
-  a 2 is a ready cavalryman and an infantryman one attack short, so the counter
-  has to say *ready* rather than a number that means different things.
-  **Decided**: the count until full, then a distinct *ready* disc, the same on
-  every type.
-- **Cavalry charging every second attack is a large buff**, so the simulator's
-  charge counts are worth reading before and after.
+⬜ **A dev handle for tiles**, moved here from *UI and interaction*. The
+renderer is WebGL and has no unit tests, so a browser is its only check — and
+nothing can ask where a tile lands on screen, so every check guesses a pixel,
+and a guess that misses looks like a bug. A `tileToScreen` on a window handle,
+built on the projection `placeAnchor` already does, turns that into addressing
+a tile. ⚠️ Test-only surface on a production object, so it sits behind
+`import.meta.env.DEV`, which the production build strips, and is named for what
+it exposes rather than for the product. Built before the two items checked in
+a browser — this pass's design patched one into scratch builds twice. The
+run-app skill's *Clicking tiles* section, which teaches pixel-guessing, moves to
+it.
 
 ⬜ **Inspecting a unit.** Today a click on a unit that cannot act clears the
 selection: `trySelect` takes only what `canSelectUnit` accepts. **Decided**:
@@ -424,56 +401,56 @@ be inspected. The first click shows its attack range, a second click on it its
 movement range, and a third clears. A click elsewhere clears, and a click on
 another unit selects or inspects that one, as selection does — so an enemy
 clicked while a unit is selected is inspected rather than dropping the
-selection. The approach below is agreed.
+selection.
 
 - ⚠️ **The attack range is the band around where it stands, not Advance Wars'
   threat range**, deliberately: working out what a move adds to it is the
   player's job. For guns, which are slow, the two are the same anyway.
 - **A new member of `SelectionState`**, snapshotted like the others: the unit,
   where it stands, which view is up and the tiles it lights. Read-only — no
-  path, so never a plan, and End Turn stays enabled.
+  path, so never a plan, and End Turn, disabled only while a plan is up, stays
+  enabled.
 - **`trySelect` is the one constructor**, so it gains the inspect branch, and
   every click that falls through to it — on an idle board, off a route, on
   another unit — inspects for free. The second and third clicks are a click on
   the inspected unit's own tile, which `handleTileClick` reads. ⚠️ Clicks the
   panel and the attack modes answer first are unchanged: an enemy at the panel
   is still a click on the dark, and a lit enemy in an attack mode a target.
-- **The overlays exist**: the attack view lights the attack band
-  (`tilesInRange`, the function the attack mode reads) and the movement view
-  the range overlay from `exploreMovement`'s `settled`, as a selection does.
-  The inspected unit's tile takes the selection highlight. A hint line per view.
+- **One source for each range**: the attack view uses the attack mode's band
+  function, and the movement view the same search a selection snapshots,
+  pulled into one helper — so a unit cannot show one range selected and another
+  inspected. Lit on the existing overlays, with the selection highlight on the
+  unit and a hint line per view.
+- **Where it lands**: `showSelection` and the hint line in `GameCanvas` read
+  only the panel's steps today, and both gain the case. Docs: the architecture
+  doc's `SelectionState` and selection section.
 - ⚠️ **A board update clears it.** The snapshot goes stale when the unit moves
   or dies, so the subscription drops an inspection beside the plan it already
   drops.
 
-⬜ **Marking units that have acted.** Today the only way to tell is to click a
-unit, or to remember. ⚠️ **Moved here from *UI and interaction*.** *Multiplayer*
-separately wants a "your units that can still act" indicator — the same thing
-under another name, so it should be **one** treatment rather than two.
+⬜ **Darkening the units that have acted.** Today the only way to tell is to
+click a unit, or to remember. **Decided**: darken them, as Advance Wars greys
+them — the simple form for now; a roster of cards, under *UI and interaction*,
+is the fuller one later, and *Multiplayer*'s "units that can still act"
+indicator is the same thing, so they are designed together.
 
 - ⚠️ **`hasActed` alone is the wrong test.** `turnEnded` refreshes only the
   incoming player's units, so through the opponent's turn every unit of the
-  player who just moved still reads `true`. The mark is for *the player to
-  move's* units that have acted, or the whole enemy army looks spent.
-- **Proposed: darken the units that have acted**, as Advance Wars greys them —
-  the simple form for now; a roster of cards, under *UI and interaction*, is
-  the fuller one later.
-  A second material per colour, the side's colour darkened, swapped in when
-  units sync — no extra draw and no extra pass, so nothing per frame. Units are
-  clones, so each takes its own, and the close-up's staged models keep the base
-  material untouched.
-- **The test reads `canSelectUnit`**, the rule that says who may act, so the
-  mark and the click cannot disagree: a unit of the player to move that it
-  refuses is spent. Nothing is darkened once the game is over.
+  player who just moved still reads `true`. The test reads `canSelectUnit`
+  instead — a unit of the player to move that it refuses is spent — so the mark
+  and the click cannot disagree. Nothing is darkened once the game is over.
+- **A material swap**: the side's material darkened, built by the same function
+  as the plain one with a flag, and swapped in when units sync — no extra draw
+  and no extra pass. Units are clones, so each takes its own, and the
+  close-up's staged models keep the plain material.
 - **How dark is for a look**: the diffuse colour and the glow floor scaled
-  together, starting around half.
+  together, starting around half, checked in a browser. Docs: rendering.
 - ⚠️ **Highlighting the ready units instead was tried and set aside.** A
   Fresnel rim lit whole flat-shaded facets, washing a unit out or reading only
   as paler; Babylon's mesh outline broke into shards, each flat face pushed
   along its own normal; a screen-space outline was clean but a line was too
   much; a glow layer was not it either. Each costs a pass or more every frame,
   where darkening costs none.
-- The renderer has no tests, so this is checked in a browser.
 
 #### The general's pass
 
@@ -690,11 +667,6 @@ terminal, and it is deliberately short until then.
   act. It is the fuller form of the darkened units in the next tuning pass,
   which stand in until then, and of *Multiplayer*'s "units that can still act"
   indicator — one treatment, so the two should be designed together.
-- ⚠️ **The dev handle from *Open questions* belongs here**, and this is now the
-  first epic where it pays. Every visual change is verified by screenshotting
-  and guessing a pixel; a `tileToScreen` behind `import.meta.env.DEV` turns that
-  into addressing a tile. It has cost real time more than once, including a
-  check abandoned rather than finished.
 
 ⚠️ **Interaction is where play is the authority, the same as tuning.** The
 usability work already done was found by reading the code; what is left will be
