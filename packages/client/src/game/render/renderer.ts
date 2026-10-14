@@ -20,7 +20,7 @@ import type {
   PlayerColor,
   UnitTypeId,
 } from '@wargame/shared';
-import { applyEvents, defenseAt, isWithinGrid } from '@wargame/shared';
+import { applyEvents, chargeReady, defenseAt, isWithinGrid } from '@wargame/shared';
 import { TILE_SIZE, tileToWorld } from './coordinates';
 import { fitPane } from './fitPane';
 import { createGridLines } from './gridLines';
@@ -628,7 +628,7 @@ export async function createGameRenderer(
     ring.setHealth(unit.health);
     healthRings.set(unit.id, ring);
     const counter = createChargeCounter(scene, node);
-    counter.setMeter(unit.chargeMeter);
+    counter.setMeter(unit.chargeMeter, chargeReady(unit));
     chargeCounters.set(unit.id, counter);
   }
 
@@ -992,7 +992,7 @@ export async function createGameRenderer(
         // will need stopping the ring's own animation, which
         // `scene.stopAnimation(mesh)` above does *not* reach.
         healthRings.get(unit.id)?.setHealth(unit.health);
-        chargeCounters.get(unit.id)?.setMeter(unit.chargeMeter);
+        chargeCounters.get(unit.id)?.setMeter(unit.chargeMeter, chargeReady(unit));
       }
     },
     toggleInspector() {

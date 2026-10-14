@@ -8,8 +8,12 @@ import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Scene } from '@babylonjs/core/scene';
 
 // How close a unit is to a charge: its charge meter as a small number beside
-// it, 1 to 3, and nothing at 0. A unit that cannot charge never leaves 0, so it
-// never shows one.
+// it, counting up, then a disc of its own once the meter is full, and nothing
+// at 0. A unit that cannot charge never leaves 0, so it never shows one.
+//
+// ⚠️ **The ready disc is not the next digit**, because sizes differ by type: a
+// digit is a different distance from a charge on each, and *ready* has to read
+// the same on all of them.
 //
 // ⚠️ **A number, not a ring.** Three segments around the health ring were the
 // first idea, and there is no room for them: infantry's ring already reaches
@@ -30,19 +34,36 @@ const INK = '#ffffff';
 const FONT = 38;
 
 export interface ChargeCounter {
-  /** Shows `meter`, or hides the counter at 0. */
-  setMeter(meter: number): void;
+  /** Shows `meter`, or the ready disc once `ready`, and nothing at 0. */
+  setMeter(meter: number, ready: boolean): void;
 }
 
+/** What a counter's disc shows: its text, fill and ring, and its cache name. */
+interface Face {
+  name: string;
+  text: string;
+  fill: string;
+  ring: string;
+}
+
+const digitFace = (digit: number): Face => ({
+  name: `charge-counter-${digit}`,
+  text: String(digit),
+  fill: DISC,
+  ring: EDGE,
+});
+
+/** Inverted, so *ready* stands apart from the count at a glance. */
+const READY: Face = { name: 'charge-counter-ready', text: '!', fill: EDGE, ring: INK };
+
 /**
- * One material per digit, cached on the scene by name.
+ * One material per face, cached on the scene by name.
  *
  * ⚠️ The health ring's arrangement and its hazard: whatever disposes a counter
  * must not take the material with it. Counters are children of unit nodes, and
  * `syncUnits` disposes those with `disposeMaterialAndTextures: false`.
  */
-function digitMaterial(scene: Scene, digit: number): StandardMaterial {
-  const name = `charge-counter-${digit}`;
+function faceMaterial(scene: Scene, { name, text, fill, ring }: Face): StandardMaterial {
   const existing = scene.getMaterialByName(name);
   if (existing) return existing as StandardMaterial;
 
@@ -52,16 +73,16 @@ function digitMaterial(scene: Scene, digit: number): StandardMaterial {
   context.clearRect(0, 0, TEXTURE, TEXTURE);
   context.beginPath();
   context.arc(middle, middle, middle - 4, 0, Math.PI * 2);
-  context.fillStyle = DISC;
+  context.fillStyle = fill;
   context.fill();
   context.lineWidth = 5;
-  context.strokeStyle = EDGE;
+  context.strokeStyle = ring;
   context.stroke();
   texture.hasAlpha = true;
   // Null placement centres it both ways, and this also uploads the canvas.
   // ⚠️ A whole pixel size: `drawText` reads the size back out of the font by
   // dropping every non-digit, so a fractional one lands the digit off the disc.
-  texture.drawText(String(digit), null, null, `bold ${FONT}px sans-serif`, INK, null);
+  texture.drawText(text, null, null, `bold ${FONT}px sans-serif`, INK, null);
 
   // Unlit, so the number reads the same under every light on the board.
   const material = new StandardMaterial(name, scene);
@@ -91,12 +112,12 @@ export function createChargeCounter(scene: Scene, parent: TransformNode): Charge
   mesh.isVisible = false;
 
   return {
-    setMeter(meter) {
-      if (meter <= 0) {
+    setMeter(meter, ready) {
+      if (!ready && meter <= 0) {
         mesh.isVisible = false;
         return;
       }
-      mesh.material = digitMaterial(scene, meter);
+      mesh.material = faceMaterial(scene, ready ? READY : digitFace(meter));
       mesh.isVisible = true;
     },
   };

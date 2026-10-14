@@ -2,7 +2,7 @@
 // is not part of the package's public surface -- server/ and client/ have no
 // reason to build game states by hand.
 import { TERRAIN } from './data/terrain';
-import { MAX_HEALTH } from './data/unitTypes';
+import { getUnitType, MAX_HEALTH } from './data/unitTypes';
 import type { UnitTypeId } from './data/unitTypes';
 import { parseTerrainGrid } from './terrainGrid';
 import type { Coordinate, Facing, GameState, PlayerId, Unit } from './types';
@@ -24,7 +24,7 @@ export interface UnitSpec {
    *  Anything asserting a counter should say which way the defender looks
    *  rather than inherit it. */
   facing?: Facing;
-  /** Defaults to empty. A charging test fills it to `CHARGE_METER_FULL`. */
+  /** Defaults to empty; `fullMeter` gives a charging test its type's full one. */
   chargeMeter?: number;
   hasActed?: boolean;
 }
@@ -124,3 +124,14 @@ export const unitAt = (state: GameState, id: string): Unit => {
   if (!unit) throw new Error(`no unit ${id} in fixture`);
   return unit;
 };
+
+/**
+ * A full charge meter for this type -- what a charging test stages, read from
+ * the catalog so no test pins a size. Throws for a type that cannot charge:
+ * a test giving one a meter means to, and says so with a number of its own.
+ */
+export function fullMeter(unitTypeId: UnitTypeId): number {
+  const size = getUnitType(unitTypeId).attacksToCharge;
+  if (size === null) throw new Error(`${unitTypeId} cannot charge`);
+  return size;
+}

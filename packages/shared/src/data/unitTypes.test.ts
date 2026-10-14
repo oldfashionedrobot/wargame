@@ -21,6 +21,15 @@ describe('getUnitType', () => {
     }
   });
 
+  // A size of nought would make a fresh unit ready to charge.
+  it('gives every unit type a charge meter of at least one attack, or none', () => {
+    for (const { attacksToCharge } of Object.values(UNIT_TYPES)) {
+      if (attacksToCharge === null) continue;
+      expect(Number.isInteger(attacksToCharge)).toBe(true);
+      expect(attacksToCharge).toBeGreaterThanOrEqual(1);
+    }
+  });
+
   it('gives every unit type a coherent attack range', () => {
     for (const { range } of Object.values(UNIT_TYPES)) {
       expect(Number.isInteger(range.min)).toBe(true);

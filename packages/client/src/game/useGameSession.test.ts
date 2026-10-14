@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { at, makeState, route } from '@wargame/shared/testing';
+import { at, fullMeter, makeState, route } from '@wargame/shared/testing';
 import type {
   Command,
   CommandResult,
@@ -9,7 +9,6 @@ import type {
   GameState,
   UpdateListener,
 } from '@wargame/shared';
-import { CHARGE_METER_FULL } from '@wargame/shared';
 import { isTargetPinned } from './interaction/selection';
 import { useGameSession } from './useGameSession';
 import type { GameSessionCallbacks } from './useGameSession';
@@ -216,7 +215,7 @@ describe('useGameSession', () => {
   describe('committing an attack', () => {
     // A full meter and a worn-down target, so both modes are on offer.
     const contested = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: fullMeter('cavalry') },
       { id: 'r1', col: 1, row: 2, owner: 'red', health: 5 },
     ]);
     const aimAt = async (

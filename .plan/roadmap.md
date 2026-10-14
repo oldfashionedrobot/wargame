@@ -293,12 +293,12 @@ fielded — see the turn-order note under *After the combat pass*.
 #### The next pass
 
 ⬜ **Under way, pre-checked three times against the code.** The dev handle for
-tiles and the simulator's new tallies have shipped; five commits remain, in
-this order: the charge meter per unit type; `mountain` renamed `hills`; cover on
-Advance Wars' scale; inspecting a unit; greying the units that have acted. Each
-passes the gate — `tsc -b --force` included — and lands with its docs. Three of
-them are checked in a browser through the handle: the charge counter,
-inspecting, and greying.
+tiles, the simulator's new tallies and the charge meter per unit type have
+shipped; four commits remain, in this order: `mountain` renamed `hills`; cover
+on Advance Wars' scale; inspecting a unit; greying the units that have acted.
+Each passes the gate — `tsc -b --force` included — and lands with its docs.
+Two of them are checked in a browser through the handle: inspecting, and
+greying.
 
 ⚠️ **Comments, docs and test titles that quote a value, or anything else a
 change can move, are removed rather than updated**, and tests read a size from
@@ -313,72 +313,6 @@ before the win rates: charges by type, hits by ground, unfinished matches, wins
 by general. The composition sweep runs once after cover, without `common`
 (where the opener wins whatever it fields); the table under *Armies* and the
 cover figures in *The dials* are removed then, keeping their conclusions.
-
-⬜ **The charge meter per unit type.** **Decided**: cavalry and the general
-fill in two attacks, infantry in three. Later, heavy cavalry in one, and a
-general's ability might lower it for its whole army.
-
-- **One catalog column, `attacksToCharge`**, replaces the `charges` flag and
-  `CHARGE_METER_FULL`: `null` for a type that does not charge, the way a
-  terrain cost of `null` says impassable.
-- **Two functions in `combat.ts`.** `chargeMeterSize(unit)`, internal, which the
-  meter's cap in `resolveBattle` and `refuseCharge`'s capability check read;
-  and `chargeReady(unit)`, exported, which `refuseCharge` and the board's
-  counter read, so *full* is not written again in the renderer. A general's
-  ability later is a state argument on both.
-- ⚠️ **`chargeReady` is `size !== null && meter >= size`.** The `null` guard is
-  needed — `0 >= null` is true in JavaScript — and *at least* full rather than
-  `!==`, so a stored cavalryman on a meter above his new size is ready rather
-  than refused until his next attack caps him. A meter missing from a stored
-  unit still never charges, since `undefined >= n` is false; `refuseCharge`'s
-  comment flips to say so. A stored meter above the size drops to it on the
-  next attack, so "nothing but a charge or death empties it" loosens wherever
-  it is said — `Unit.chargeMeter`, the note beside `CHARGE_METER_FULL` (which
-  moves to the column), and the architecture doc.
-- **`CHARGE_METER_FULL`'s export goes with no replacement.** A test helper in
-  `testing.ts` gives a type's full meter from the column, throwing for a type
-  that does not charge; artillery fixtures use an explicit nonzero meter, so
-  *cannot charge* is refused for capability rather than for an empty meter.
-- **The counter counts up**, then shows a distinct *ready* disc at full.
-  **Decided**, knowing a digit then means a different distance on each type —
-  the roster under *UI and interaction* is where a better reading goes.
-  `setMeter` takes the meter and readiness; the ready disc caches its own
-  material beside the digits'.
-- **Tests.**
-  - Behaviour changes: `charge.test`'s *refuses a charger whose meter is not
-    full* and `selection.test`'s *is false until the meter is full* use one
-    below the type's size; `charge.test`'s *fills a point for every attack, up
-    to full* runs per charging type, to its size; `applyEvents.test`'s *folds a
-    charge meter through three attacks and a charge* fills cavalry's meter
-    from its size and charges, retitled without a count, its comment removed.
-  - Replaced: `charge.test`'s flag test becomes a capability test — artillery
-    `null`, the others not.
-  - Fixtures, the constant going: `charge.test`, `move.test` (`engaged` per
-    type, and the charging `field`), `match.test`, `GameCanvas.test.tsx` (two),
-    `useGameSession.test.ts`, and `selection.test.ts` (ten sites, its
-    `contact` helper per type). ⚠️ The infantry fixtures — `charge.test`'s and
-    two in `selection.test` — take infantry's size, or they pass for the wrong
-    reason.
-  - New: in `unitTypes.test`, every size is `null` or a whole number of at
-    least one — a size of nought would make a fresh unit ready; in
-    `charge.test`, each charging type ready once its size of attacks is in,
-    the cap bringing a meter above the size down to it, `chargeReady` below,
-    at and above the size, for artillery whatever its meter and for a missing
-    meter (a cast), and `refuseCharge` accepting a meter above the size.
-  - Harness: `charges.ts` filters on the column.
-  - A browser checks the counter: cavalry shows one point then the ready disc,
-    infantry one, two, then the disc; artillery nothing; the disc clears after
-    a charge.
-- **Removed, being values**: `README.md`'s count of attacks; "1 to 3" in
-  `chargeCounter.ts`'s header and in the architecture doc's counter bullet;
-  the architecture doc's `CHARGE_METER_FULL (3)`; the roadmap's two mentions of
-  the meter's size under *The charging pass*.
-- **Docs**: the architecture doc's catalog field list and flags paragraph, the
-  general's "cavalry's flags", the combat signatures, *Charge*'s meter,
-  capability and refusal passages and its formula line, and the combat data.
-  Comments: `refuseCharge`, `Unit.chargeMeter`, the column's doc in
-  `unitTypes.ts`, `chargeCounter.ts`'s `setMeter`, `testing.ts` and `index.ts`.
-  Roadmap: *The dials*.
 
 ⬜ **`mountain` becomes `hills`**, its own commit, moving no balance. The id
 only: "peak", "climb" and the like stay unless they say *mountain*.
@@ -633,7 +567,7 @@ so keeping it out of their reach is the game. What it does is in
 why: a charge was the *wounded* unit's attack, a healthy unit's charge was a
 worse shot, and infantry made half of all charges. So cavalry fights with
 sabres, as a `melee` unit that cannot answer a ranged attacker, and the charge
-is earned: three attacks fill a meter, and a full meter buys a charge that is
+is earned: attacks fill a meter, and a full meter buys a charge that is
 certain wherever an attack's best roll, times the side it arrives on, would kill
 — and a gamble above that, its odds falling to a quarter against a fresh unit,
 scaled by the side and by the charger's own health. A failed charge is met by a
@@ -648,7 +582,7 @@ measured, is in the commits.
 ⬜ **For play to answer:**
 
 - **The side multipliers are first numbers** — 1× head-on, 1.25× flank, 1.5×
-  rear — and so are the meter's size of three and the 25% a fresh charger has
+  rear — and so are each type's meter size and the 25% a fresh charger has
   against a fresh unit head-on. Head-on at 1× was chosen, so a head-on charge
   is sure of what an attack's best roll might kill. `scripts/charges.ts` prints
   each charge's line beside the attack's, and its odds against full health.
@@ -753,8 +687,9 @@ building it.
 #### The dials
 
 The tables are `BASE_DAMAGE`, which charges read too, and `CHARGE_FACING`; the
-scalars beside them are `TERRAIN_WEIGHT`, `LUCK_MAX`, `CHARGE_CHANCE_AT_FULL`
-and `CHARGE_METER_FULL`. The `defense` column of `terrain.ts` is a dial too,
+scalars beside them are `TERRAIN_WEIGHT`, `LUCK_MAX` and `CHARGE_CHANCE_AT_FULL`,
+and the catalog's `attacksToCharge` sets each type's meter. The `defense`
+column of `terrain.ts` is a dial too,
 and turned out to be the one carrying the most weight.
 
 **Tune against the harnesses, never against a damage number.**

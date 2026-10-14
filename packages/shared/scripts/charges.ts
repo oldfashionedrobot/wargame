@@ -66,7 +66,7 @@ console.log(
   'attack sure–might kill | charge certain head-on / flank / rear | charge odds against full health',
 );
 
-for (const attacker of TYPES.filter((type) => getUnitType(type).charges)) {
+for (const attacker of TYPES.filter((type) => getUnitType(type).attacksToCharge !== null)) {
   for (const defender of TYPES) {
     console.log(`\n${attacker} → ${defender}`);
     for (const charger of CHARGERS) {

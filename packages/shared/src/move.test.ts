@@ -2,9 +2,9 @@ import { describe, expect, it } from 'bun:test';
 import { validateCommand } from './action';
 import { resolveMove, validateMove } from './move';
 import type { Rolls } from './combat';
-import { CHARGE_METER_FULL, LUCK_MAX } from './data/combat';
+import { LUCK_MAX } from './data/combat';
 import { MAX_HEALTH } from './data/unitTypes';
-import { at, makeState, route } from './testing';
+import { at, fullMeter, makeState, route } from './testing';
 import type { Command, Facing, MoveCommand } from './types';
 
 // validateMove asks three separate questions -- does the unit exist, may it
@@ -476,7 +476,7 @@ describe('validateMove, a slow unit', () => {
 describe('validateMove, a unit in contact', () => {
   const engaged = (unitTypeId: 'infantry' | 'cavalry' = 'infantry') =>
     makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId, chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId, chargeMeter: fullMeter(unitTypeId) },
       { id: 'r1', col: 1, row: 2, owner: 'red', health: 5 },
       { id: 'r2', col: 4, row: 1, owner: 'red' },
     ]);
@@ -575,7 +575,7 @@ describe('resolveMove, charging', () => {
   const at_ = (col: number, row: number) => ({ col, row });
   const field = (health = 10, unitTypeId: 'infantry' | 'artillery' = 'infantry') =>
     makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: fullMeter('cavalry') },
       { id: 'r1', col: 1, row: 2, owner: 'red', health, facing: 'south', unitTypeId },
     ]);
   const charge = (): MoveCommand => ({

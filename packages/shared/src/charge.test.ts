@@ -2,15 +2,16 @@ import { describe, expect, it } from 'bun:test';
 import {
   chargeChance,
   chargeDamage,
+  chargeReady,
   computeDamage,
   refuseCharge,
   resolveBattle,
   resolveCharge,
 } from './combat';
-import { CHARGE_CHANCE_AT_FULL, CHARGE_FACING, CHARGE_METER_FULL, LUCK_MAX } from './data/combat';
+import { CHARGE_CHANCE_AT_FULL, CHARGE_FACING, LUCK_MAX } from './data/combat';
 import { getUnitType, MAX_HEALTH } from './data/unitTypes';
 import type { UnitTypeId } from './data/unitTypes';
-import { at, makeState } from './testing';
+import { at, fullMeter, makeState } from './testing';
 import type { Facing, GameState, Unit } from './types';
 
 const unit = (state: GameState, id: string): Unit => state.units.find((u) => u.id === id)!;
@@ -25,7 +26,7 @@ const contact = ({
   facing = 'south' as Facing,
   ground = '.',
   charger = MAX_HEALTH,
-  meter = CHARGE_METER_FULL,
+  meter = fullMeter('cavalry'),
 } = {}) =>
   makeState(
     ['...', '.-.', `.${ground}.`],
@@ -39,12 +40,39 @@ const charge = (state: GameState) => chargeDamage(state, unit(state, 'b1'), unit
 const bestAttack = (state: GameState) =>
   computeDamage(state, unit(state, 'b1'), unit(state, 'r1'), LUCK_MAX);
 
-describe('the charges flag, which is also the capability rule', () => {
-  it('is set for cavalry, infantry and the general, and not for artillery', () => {
-    expect(getUnitType('cavalry').charges).toBe(true);
-    expect(getUnitType('infantry').charges).toBe(true);
-    expect(getUnitType('general').charges).toBe(true);
-    expect(getUnitType('artillery').charges).toBe(false);
+describe('attacksToCharge, which is also the capability rule', () => {
+  it('is set for every type but artillery', () => {
+    for (const type of ['infantry', 'cavalry', 'general'] as const) {
+      expect(getUnitType(type).attacksToCharge).not.toBeNull();
+    }
+    expect(getUnitType('artillery').attacksToCharge).toBeNull();
+  });
+});
+
+describe('chargeReady', () => {
+  const cavalry = (chargeMeter: number) =>
+    unit(makeState(3, [{ id: 'b1', col: 0, row: 0, unitTypeId: 'cavalry', chargeMeter }]), 'b1');
+
+  it('is ready at its type’s size and above it, and not below', () => {
+    const full = fullMeter('cavalry');
+    expect(chargeReady(cavalry(full - 1))).toBe(false);
+    expect(chargeReady(cavalry(full))).toBe(true);
+    expect(chargeReady(cavalry(full + 1))).toBe(true);
+  });
+
+  it('is never ready for a type that cannot charge, whatever its meter', () => {
+    for (const chargeMeter of [0, 1, 99]) {
+      const gun = makeState(3, [
+        { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery', chargeMeter },
+      ]);
+      expect(chargeReady(unit(gun, 'b1'))).toBe(false);
+    }
+  });
+
+  it('is never ready for a meter read back without the field', () => {
+    const stored: Partial<Unit> = { ...cavalry(fullMeter('cavalry')) };
+    delete stored.chargeMeter;
+    expect(chargeReady(stored as Unit)).toBe(false);
   });
 });
 
@@ -98,23 +126,30 @@ describe('refuseCharge', () => {
   });
 
   it('refuses a charger whose meter is not full', () => {
-    const state = contact({ health: 1, meter: CHARGE_METER_FULL - 1 });
+    const state = contact({ health: 1, meter: fullMeter('cavalry') - 1 });
     expect(refuseCharge(state, b1(state), [at(1, 1)], 'r1')).toBe('the charge meter is not full');
+  });
+
+  // A match stored before a size came down holds a meter above it.
+  it('accepts a meter above its type’s size', () => {
+    const state = contact({ meter: fullMeter('cavalry') + 1 });
+    expect(refuseCharge(state, b1(state), [at(1, 1)], 'r1')).toBeNull();
   });
 
   // ⚠️ Contact, never the attacker's range band. Infantry reaches two tiles, so
   // reusing `refuseAttack` here would permit a "charge" from a distance.
   it('refuses anything that is not contact', () => {
     const apart = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'infantry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'infantry', chargeMeter: fullMeter('infantry') },
       { id: 'r1', col: 1, row: 3, owner: 'red', health: 1 },
     ]);
     expect(refuseCharge(apart, b1(apart), [at(1, 1)], 'r1')).toBe('a charge has to reach them');
   });
 
-  it('refuses a charger with no row', () => {
+  // A meter of its own, so the refusal is for what it is and not an empty meter.
+  it('refuses a type that cannot charge', () => {
     const guns = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'artillery', chargeMeter: 1 },
       { id: 'r1', col: 1, row: 2, owner: 'red', health: 1 },
     ]);
     expect(refuseCharge(guns, b1(guns), [at(1, 1)], 'r1')).toBe('artillery cannot charge');
@@ -122,7 +157,7 @@ describe('refuseCharge', () => {
 
   it('refuses a friend and refuses itself', () => {
     const friendly = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: fullMeter('cavalry') },
       { id: 'b2', col: 1, row: 2, health: 1 },
     ]);
     expect(refuseCharge(friendly, b1(friendly), [at(1, 1)], 'b2')).toBe('that unit is yours');
@@ -260,10 +295,19 @@ describe('the charge meter', () => {
     return resolveBattle(state, unit(state, 'b1'), unit(state, 'r1'), rolls).attacker.chargeMeter;
   };
 
-  it('fills a point for every attack, up to full', () => {
-    expect(meterAfterAttacking('cavalry', 0)).toBe(1);
-    expect(meterAfterAttacking('infantry', CHARGE_METER_FULL - 1)).toBe(CHARGE_METER_FULL);
-    expect(meterAfterAttacking('cavalry', CHARGE_METER_FULL)).toBe(CHARGE_METER_FULL);
+  it('fills a point for every attack, up to its type’s size', () => {
+    for (const type of ['infantry', 'cavalry', 'general'] as const) {
+      const full = fullMeter(type);
+      expect(meterAfterAttacking(type, 0)).toBe(1);
+      expect(meterAfterAttacking(type, full - 1)).toBe(full);
+      expect(meterAfterAttacking(type, full)).toBe(full);
+    }
+  });
+
+  // A match stored before a size came down holds a meter above it.
+  it('brings a meter above its type’s size down to it', () => {
+    const full = fullMeter('cavalry');
+    expect(meterAfterAttacking('cavalry', full + 1)).toBe(full);
   });
 
   it('never fills for a unit that cannot charge', () => {

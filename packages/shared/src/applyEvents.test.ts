@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { resolveAction, validateCommand } from './action';
 import { applyEvents } from './applyEvents';
-import { makeState, route, unitAt } from './testing';
+import { fullMeter, makeState, route, unitAt } from './testing';
 import type {
   AttackKind,
   Command,
@@ -345,10 +345,10 @@ describe('a full turn cycle validates, resolves and folds', () => {
     expect(applyEvents(initial, log)).toEqual(live);
   });
 
-  // ⚠️ The meter is state, so it has to fold like health: three attacks fill it,
-  // a charge spends it, and the log replays to the same place. r1 stands on a
-  // peak so it outlasts the three; r2 is worn down enough to break.
-  it('folds a charge meter through three attacks and a charge', () => {
+  // ⚠️ The meter is state, so it has to fold like health: attacks fill it, a
+  // charge spends it, and the log replays to the same place. r1 stands on a
+  // peak so it outlasts them; r2 is worn down enough to break.
+  it('folds a charge meter through filling it and a charge', () => {
     const initial = makeState(
       ['....', '....', '.^..', '....'],
       [
@@ -365,25 +365,18 @@ describe('a full turn cycle validates, resolves and folds', () => {
       targetUnitId,
       attackKind,
     });
-    const attack = hit('attack', 'r1', 'north');
-    const { live, log } = play(
-      initial,
-      [
-        [attack, 'blue'],
-        [{ type: 'endTurn' }, 'red'],
-        [attack, 'blue'],
-        [{ type: 'endTurn' }, 'red'],
-        [attack, 'blue'],
-        [{ type: 'endTurn' }, 'red'],
-        [hit('charge', 'r2', 'west'), 'blue'],
-      ],
-      null,
-    );
+    const full = fullMeter('cavalry');
+    const script: [Command, PlayerId][] = [];
+    for (let i = 0; i < full; i++) {
+      script.push([hit('attack', 'r1', 'north'), 'blue'], [{ type: 'endTurn' }, 'red']);
+    }
+    script.push([hit('charge', 'r2', 'west'), 'blue']);
+    const { live, log } = play(initial, script, null);
 
     const meters = log.flatMap((e) =>
       e.type === 'battleResolved' ? [e.attacker.chargeMeter] : [],
     );
-    expect(meters).toEqual([1, 2, 3, 0]);
+    expect(meters).toEqual([...Array.from({ length: full }, (_, i) => i + 1), 0]);
     expect(live.units.map((unit) => unit.id)).toEqual(['b1', 'r1']);
     expect(applyEvents(initial, log)).toEqual(live);
   });

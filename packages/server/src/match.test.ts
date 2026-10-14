@@ -1,13 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
-import { route } from '@wargame/shared/testing';
+import { fullMeter, route } from '@wargame/shared/testing';
 import type { Command, Coordinate } from '@wargame/shared';
-import {
-  CHARGE_METER_FULL,
-  exploreMovement,
-  facingToward,
-  getUnitType,
-  LUCK_MAX,
-} from '@wargame/shared';
+import { exploreMovement, facingToward, getUnitType, LUCK_MAX } from '@wargame/shared';
 import { createDb, migrate } from './db';
 import { createMatchStore } from './match';
 import type { MatchStore } from './match';
@@ -253,7 +247,7 @@ describe('submit', () => {
       const blue = {
         ...base.units.find((u) => u.owner === BLUE)!,
         position: { col: 5, row: 0 },
-        chargeMeter: CHARGE_METER_FULL,
+        chargeMeter: fullMeter('cavalry'),
       };
       const red = {
         ...base.units.find((u) => u.owner === RED)!,

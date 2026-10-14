@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { Coordinate, GameEvent, GameServer, GameState } from '@wargame/shared';
-import { CHARGE_METER_FULL } from '@wargame/shared';
 import type { ConnectionStatus } from '../net/gameServer';
-import { makeState } from '@wargame/shared/testing';
+import { fullMeter, makeState } from '@wargame/shared/testing';
 import { GameCanvas } from './GameCanvas';
 import type { CutawayScene, GameRenderer } from './render/renderer';
 
@@ -376,7 +375,7 @@ describe('GameCanvas', () => {
   // a second lit set would read as a board offering two questions at once.
   it('lights one tile set per mode and clears the others', async () => {
     const contested = makeState(5, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: fullMeter('cavalry') },
       { id: 'r1', col: 1, row: 2, owner: 'red', health: 5 },
     ]);
     const serve = () =>
@@ -404,7 +403,7 @@ describe('GameCanvas', () => {
   // A pinned charge quotes its odds where a pinned attack quotes its damage.
   it('quotes the odds once a charge is pinned', async () => {
     const contested = makeState(5, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: fullMeter('cavalry') },
       { id: 'r1', col: 1, row: 2, owner: 'red', health: 5 },
     ]);
     await renderCanvas(

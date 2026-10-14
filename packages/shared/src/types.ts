@@ -44,10 +44,9 @@ export interface Unit {
    */
   health: number;
   /**
-   * Points toward a charge: one for every attack this unit makes, up to
-   * `CHARGE_METER_FULL`, and all of them spent by a charge. Answering an attack
-   * fills nothing, and nothing else empties it -- the meter leaves only with
-   * the unit. Always 0 on a unit that cannot charge.
+   * Points toward a charge: one for every attack this unit makes, up to its
+   * type's `attacksToCharge`, and all of them spent by a charge. Answering an
+   * attack fills nothing. Always 0 on a unit that cannot charge.
    *
    * ⚠️ Absolute in the event that changes it, like `health`.
    */

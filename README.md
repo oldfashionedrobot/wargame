@@ -27,7 +27,7 @@ Hot-seat against a real server — two people at one device — from the opening
 move to a winner. Select a unit and see the tiles it can reach across terrain;
 click a destination to pin the route there, and click it again to send the unit
 walking. Where it arrives a panel asks what it is doing: hold, attack or charge
-— a charge is earned by three attacks: certain against a worn-down unit, and
+— a charge is earned by attacking: certain against a worn-down unit, and
 a gamble against a stronger one.
 An attack or a charge cuts away to the two units and plays the exchange. Every
 unit acts once, the turn ends when the last of them has gone, and a player with

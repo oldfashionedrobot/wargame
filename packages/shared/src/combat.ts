@@ -4,7 +4,6 @@ import {
   BASE_DAMAGE,
   CHARGE_CHANCE_AT_FULL,
   CHARGE_FACING,
-  CHARGE_METER_FULL,
   LUCK_MAX,
   TERRAIN_WEIGHT,
 } from './data/combat';
@@ -353,6 +352,7 @@ export function resolveBattle(
   const survivor: Unit = { ...defender, health: defenderHealth };
   const answered = wouldCounter(survivor, attacker);
   const riposte = answered ? computeDamage(state, survivor, attacker, rolls.counter) : 0;
+  const meterSize = chargeMeterSize(attacker);
 
   return {
     type: 'battleResolved',
@@ -362,9 +362,8 @@ export function resolveBattle(
       health: clampHealth(attacker.health - riposte),
       // Attacking is what fills it; answering fills nothing, so only this side
       // carries one.
-      chargeMeter: getUnitType(attacker.unitTypeId).charges
-        ? Math.min(attacker.chargeMeter + 1, CHARGE_METER_FULL)
-        : attacker.chargeMeter,
+      chargeMeter:
+        meterSize === null ? attacker.chargeMeter : Math.min(attacker.chargeMeter + 1, meterSize),
     },
     defender: { unitId: defender.id, health: defenderHealth },
     answered,
@@ -433,6 +432,26 @@ export function chargeChance(state: GameState, attacker: Unit, defender: Unit): 
   return Math.max(1, Math.floor((pinned * attacker.health) / (span * 100 * MAX_HEALTH)));
 }
 
+/** How many attacks fill this unit's meter, or `null` if it cannot charge. */
+function chargeMeterSize(unit: Unit): number | null {
+  return getUnitType(unit.unitTypeId).attacksToCharge;
+}
+
+/**
+ * Whether this unit's charge meter is full -- what `refuseCharge` asks, and
+ * what the board's counter shows.
+ *
+ * ⚠️ **At least full, not equal to it**, so a meter above its size -- a match
+ * stored before the size came down -- is ready rather than refused until an
+ * attack caps it. A meter read back without the field is never ready, since
+ * `undefined >= n` is false. The `null` check is not optional: `0 >= null` is
+ * true.
+ */
+export function chargeReady(unit: Unit): boolean {
+  const size = chargeMeterSize(unit);
+  return size !== null && unit.chargeMeter >= size;
+}
+
 /**
  * Why this charge is refused, or `null` if it is legal.
  *
@@ -449,9 +468,6 @@ export function chargeChance(state: GameState, attacker: Unit, defender: Unit): 
  * `entryCost` answers it, and also refuses the tile for being enemy-held --
  * which is exactly the tile being charged -- so the terrain half is asked
  * through `terrainAdmits` instead, which both share.
- *
- * ⚠️ **A full meter is *equal to* full**, never at least full, so a unit read
- * back without the field can never charge.
  */
 export function refuseCharge(
   state: GameState,
@@ -461,9 +477,9 @@ export function refuseCharge(
 ): string | null {
   const target = refuseTarget(state, attacker, path, targetUnitId);
   if (typeof target === 'string') return target;
-  const { charges, movementType } = getUnitType(attacker.unitTypeId);
-  if (!charges) return `${attacker.unitTypeId} cannot charge`;
-  if (attacker.chargeMeter !== CHARGE_METER_FULL) return 'the charge meter is not full';
+  if (chargeMeterSize(attacker) === null) return `${attacker.unitTypeId} cannot charge`;
+  if (!chargeReady(attacker)) return 'the charge meter is not full';
+  const { movementType } = getUnitType(attacker.unitTypeId);
 
   const from = path[path.length - 1];
   if (tileDistance(from, target.position) !== 1) return 'a charge has to reach them';

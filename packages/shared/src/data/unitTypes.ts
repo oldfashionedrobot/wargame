@@ -72,13 +72,15 @@ export interface UnitType {
   melee: boolean;
 
   /**
-   * Can charge: finish a target outright once its charge meter is full -- see
-   * `chargeDamage`. A unit that cannot charge has no meter.
+   * The attacks it takes to earn a charge, or `null` for a type that cannot
+   * charge -- see `chargeDamage` and `chargeReady`. Every attack fills the
+   * unit's meter a point, up to this; a charge needs it full and spends all of
+   * it, and answering an attack fills nothing.
    *
    * ⚠️ **Required**, so a new unit type has to say. A missing row in a charge
    * table used to leave one silently unable to.
    */
-  charges: boolean;
+  attacksToCharge: number | null;
 }
 
 /**
@@ -140,7 +142,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     range: { min: 1, max: 2 },
     slow: false,
     melee: false,
-    charges: true,
+    attacksToCharge: 3,
   },
   cavalry: {
     id: 'cavalry',
@@ -154,7 +156,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     range: { min: 1, max: 1 },
     slow: false,
     melee: true,
-    charges: true,
+    attacksToCharge: 2,
   },
   artillery: {
     id: 'artillery',
@@ -172,7 +174,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     range: { min: 3, max: 5 },
     slow: true,
     melee: false,
-    charges: false,
+    attacksToCharge: null,
   },
   // ⚠️ **Cavalry in all but name for now**, to be tuned in play -- what makes it
   // a general is not here but in the rules that name it: losing it loses the
@@ -187,7 +189,7 @@ export const UNIT_TYPES: Record<UnitTypeId, UnitType> = {
     range: { min: 1, max: 1 },
     slow: false,
     melee: true,
-    charges: true,
+    attacksToCharge: 2,
   },
 };
 

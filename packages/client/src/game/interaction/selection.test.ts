@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { at, makeState, route, unitAt } from '@wargame/shared/testing';
-import { CHARGE_METER_FULL, chargeChance, LUCK_MAX } from '@wargame/shared';
+import { at, fullMeter, makeState, route, unitAt } from '@wargame/shared/testing';
+import { chargeChance, LUCK_MAX } from '@wargame/shared';
 import type { Coordinate, GameState } from '@wargame/shared';
 import {
   attackForecast,
@@ -651,7 +651,7 @@ describe('charging, which shares every gesture with attacking', () => {
   // tiles off.
   const field = () =>
     makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: fullMeter('cavalry') },
       { id: 'adjacent', col: 1, row: 2, owner: 'red', health: 5 },
       { id: 'distant', col: 1, row: 3, owner: 'red', health: 5 },
     ]);
@@ -669,7 +669,7 @@ describe('charging, which shares every gesture with attacking', () => {
   // How strong a neighbour is decides the odds, not whether it lights.
   it('lights a neighbour however strong, not only one it would finish', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: fullMeter('cavalry') },
       { id: 'worn', col: 1, row: 2, owner: 'red', health: 5 },
       { id: 'fresh', col: 2, row: 1, owner: 'red' },
     ]);
@@ -678,7 +678,7 @@ describe('charging, which shares every gesture with attacking', () => {
 
   it('lights nothing when no enemy is in contact', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: fullMeter('cavalry') },
       { id: 'distant', col: 1, row: 3, owner: 'red', health: 5 },
     ]);
     expect(withB1Charging(state, at(1, 1)).step.tiles).toEqual([]);
@@ -699,7 +699,7 @@ describe('charging, which shares every gesture with attacking', () => {
   // two and charges at one.
   it('refuses an enemy the attack band would have accepted', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, chargeMeter: fullMeter('infantry') },
       { id: 'distant', col: 1, row: 3, owner: 'red', health: 5 },
     ]);
     expect(readAimClick(state, withB1Charging(state, at(1, 1)), at(1, 3))).toBeNull();
@@ -708,7 +708,7 @@ describe('charging, which shares every gesture with attacking', () => {
 
   it('pins and re-pins exactly as attacking does', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: fullMeter('cavalry') },
       { id: 'r1', col: 1, row: 2, owner: 'red', health: 5 },
       { id: 'r2', col: 2, row: 1, owner: 'red', health: 5 },
     ]);
@@ -725,7 +725,7 @@ describe('charging, which shares every gesture with attacking', () => {
   // so this is the rule that will resolve it rather than an estimate of it.
   it('forecasts the exact chance once a target is pinned', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: fullMeter('cavalry') },
       { id: 'r1', col: 1, row: 2, owner: 'red' },
     ]);
     const aim = chooseTarget(withB1Charging(state, at(1, 1)), unitAt(state, 'r1'));
@@ -765,10 +765,11 @@ describe('canAttack, for a slow unit', () => {
 describe('canCharge, which decides whether the panel offers it', () => {
   const arrived = (state: GameState) => withB1Arrived(state, at(1, 1));
   // A charger beside a target, its meter full and the target worn down unless a
-  // test says otherwise.
+  // test says otherwise. ⚠️ Artillery has no full meter, so it takes one of its
+  // own and is refused for what it is rather than for an empty meter.
   const contact = (
     unitTypeId: 'infantry' | 'cavalry' | 'artillery' = 'cavalry',
-    { meter = CHARGE_METER_FULL, health = 5 } = {},
+    { meter = unitTypeId === 'artillery' ? 1 : fullMeter(unitTypeId), health = 5 } = {},
   ) =>
     makeState(7, [
       { id: 'b1', col: 1, row: 1, unitTypeId, chargeMeter: meter },
@@ -781,7 +782,7 @@ describe('canCharge, which decides whether the panel offers it', () => {
   });
 
   it('is false until the meter is full', () => {
-    const state = contact('cavalry', { meter: CHARGE_METER_FULL - 1 });
+    const state = contact('cavalry', { meter: fullMeter('cavalry') - 1 });
     expect(canCharge(state, arrived(state))).toBe(false);
   });
 
@@ -796,7 +797,7 @@ describe('canCharge, which decides whether the panel offers it', () => {
   // always appear and disappear together.
   it('is false when the only enemy is a tile too far, where Attack is true', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, chargeMeter: fullMeter('infantry') },
       { id: 'r1', col: 1, row: 3, owner: 'red', health: 5 },
     ]);
     expect(canCharge(state, arrived(state))).toBe(false);
@@ -821,7 +822,7 @@ describe('canCharge, which decides whether the panel offers it', () => {
 
   it('is false when the neighbour is a friend', () => {
     const state = makeState(7, [
-      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: CHARGE_METER_FULL },
+      { id: 'b1', col: 1, row: 1, unitTypeId: 'cavalry', chargeMeter: fullMeter('cavalry') },
       { id: 'b2', col: 1, row: 2, health: 5 },
     ]);
     expect(canCharge(state, arrived(state))).toBe(false);

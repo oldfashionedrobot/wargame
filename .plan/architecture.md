@@ -297,7 +297,7 @@ Static tables keyed by `Record`, so adding a member makes every incomplete table
 a compile error. **The values are the modules' — read them there.**
 
 **`unitTypes.ts`** — `{ id, name, char, movementType, movementRange, range, slow,
-melee, charges }` per type. `range` is `{ min, max }` tiles, inclusive, read by
+melee, attacksToCharge }` per type. `range` is `{ min, max }` tiles, inclusive, read by
 `refuseAttack`, `tilesInRange` and `wouldCounter`. ⚠️ **It classifies
 nothing:** there is no direct/indirect flag, and `min: 3` describes a gun rather
 than naming a kind of one — which is what lets a single rule ask "is the
@@ -308,10 +308,12 @@ attacker inside my own range" and get an answer for every unit.
 answers an attack — see *Slow* below. `melee` governs a *weapon*: a melee unit
 fights hand to hand, so it cannot answer a ranged attacker, though its own
 attack is answered as any other is. Cavalry and the general are melee; infantry
-and guns are not. `charges` says a unit can charge, and so has a charge meter —
-everyone but guns; see *Charge*. ⚠️ Required, so a new unit type has to say.
+and guns are not. `attacksToCharge` is how many attacks fill a unit's charge
+meter, or `null` for a type that cannot charge — guns; see *Charge*. ⚠️
+Required, so a new unit type has to say.
 
-**The general** is cavalry in all but name: a horse, cavalry's range and flags,
+**The general** is cavalry in all but name: a horse, cavalry's range, flags and
+charge meter,
 and cavalry's row and column in `BASE_DAMAGE`. What sets it apart is outside the
 catalog — losing it loses the match (see *Victory*), and units beside it heal as
 their turn begins (see the hand-over above). `generalOf` in `queries.ts` is the
@@ -329,8 +331,7 @@ beside it, a fifth of it.
 `BASE_DAMAGE` (attacker → defender, as a percentage of a full-health target,
 read by attacks and charges both; the general's row and column copy cavalry's) and `CHARGE_FACING` (what a charge's damage is
 multiplied by, per side). Then the scalars, each explained where it is used
-rather than here: `TERRAIN_WEIGHT` and `LUCK_MAX` in *Combat*;
-`CHARGE_METER_FULL` in *Charge*.
+rather than here: `TERRAIN_WEIGHT` and `LUCK_MAX` in *Combat*.
 
 ⚠️ `BASE_DAMAGE` is a matrix rather than an attack stat and a defence stat: no
 pair of scalars can express rock-paper-scissors, since any `f(attack, defence)`
@@ -570,6 +571,7 @@ tilesInRange(unit, from, gridWidth, gridHeight)   → Coordinate[]
 wouldCounter(defender, attacker)                  → boolean
 chargeDamage(state, attacker, defender)           → number   // what a charge is certain of
 chargeChance(state, attacker, defender)           → number   // 1..100
+chargeReady(unit)                                 → boolean  // the meter is full
 resolveBattle(state, attacker, defender, rolls)   → BattleResolvedEvent   // attack
 resolveCharge(state, attacker, defender, rolls)   → BattleResolvedEvent   // charge
 computeDamage(state, attacker, defender, roll)    → number
@@ -780,19 +782,20 @@ D      = floor(computeDamage(state, charger, target, LUCK_MAX) × CHARGE_FACING[
 end    = CHARGE_CHANCE_AT_FULL × CHARGE_FACING[side] / 100
 pinned = 100 − (100 − end) × (targetHealth − D) / (MAX_HEALTH − D)
 chance = targetHealth ≤ D ? 100 : max(1, floor(pinned × chargerHealth / MAX_HEALTH))
-a charge is legal  ⇔  charges, meter = CHARGE_METER_FULL, in contact, ground it can stand on
+a charge is legal  ⇔  chargeReady(charger), in contact, ground it can stand on
 it breaks through  ⇔  rolls.charge < chance
 ```
 
 **The charge meter.** `Unit.chargeMeter` fills a point for every attack the unit
-makes, up to `CHARGE_METER_FULL` (3), and a charge spends all of it, whether it
-breaks through or not. Answering an attack fills nothing, and nothing else
-empties it — it leaves only with the unit. It rides as an absolute value on the
-**attacker's** side of `battleResolved`, the only side that carries one, so the
-fold stays exact. ⚠️ **A unit that cannot charge never fills one**: the
-`charges` flag decides both, and without it the meter stays 0. ⚠️ **Full is
-*equal to* full**, never at least, so a unit read back without the field can
-never charge.
+makes, up to its type's `attacksToCharge`, and a charge spends all of it,
+whether it breaks through or not. Answering an attack fills nothing. It rides
+as an absolute value on the **attacker's** side of `battleResolved`, the only
+side that carries one, so the fold stays exact. ⚠️ **A unit that cannot charge
+never fills one**: a `null` size decides both, and the meter stays 0. ⚠️
+**`chargeReady` is *at least* full**, so a meter above its size — a match
+stored before the size came down — is ready, and its next attack brings it
+down to the size. A unit read back without the field is never ready, since
+`undefined >= n` is false.
 
 **Breaking through** takes the target to zero health — an ordinary
 `battleResolved`, so the reducer's `health <= 0` filter removes it — leaves
@@ -806,7 +809,8 @@ defence every unit has, and it can kill the charger. The target is unhurt, the
 charger stays where it charged from, and `answered` means *repelled*.
 
 **Offered whatever its odds**, which never fall under 1%. `refuseCharge` asks
-only for the flag, a full meter, contact and ground the charger can stand on;
+only whether the unit can charge and is ready, contact, and ground the charger
+can stand on;
 the target's strength sets the chance, and the chance is what the player weighs.
 
 **`chargeChance` is the one home for the odds**, read by `resolveCharge`, the
@@ -837,8 +841,8 @@ forecast builds the same one — so the server and the panel price the same
 tile. This is `attackSide`'s second reader and the only
 one to consult `flank`; the counter's rear rule uses only its `rear` case.
 
-⚠️ **Capability is the `charges` flag.** Artillery is not flagged, which is the
-only place *artillery cannot charge* is stated. Any unit is still a valid
+⚠️ **Capability is `attacksToCharge`.** Artillery's is `null`, which is the only
+place *artillery cannot charge* is stated. Any unit is still a valid
 **target**. ⚠️ **`BASE_DAMAGE` tunes charges too**, so raising an entry raises
 what a charge is certain of. ⚠️ **One charge is certain of a full-health
 unit**: cavalry into a gun's rear on open ground, at 111 damage. Accepted, as what getting
@@ -1738,9 +1742,11 @@ unavailable action is omitted — so hover is the only state a row has.
   persistent state; showing *change* belongs to the cutaway. That keeps it out
   of `playEvents`, where an animation on the ring would be a different target
   from the unit node and would survive `scene.stopAnimation(mesh)`.
-- **A unit's charge meter is a small number beside it**, 1 to 3 —
-  `chargeCounter.ts`, a digit on a dark disc, **absent at 0**, so a unit that
-  cannot charge never shows one. ⚠️ A number rather than three segments around
+- **A unit's charge meter is a small number beside it**, counting up —
+  `chargeCounter.ts`, a digit on a dark disc — and an inverted disc once
+  `chargeReady`, the same on every type, since a digit is a different distance
+  from a charge on each. **Absent at 0**, so a unit that cannot charge never
+  shows one. ⚠️ A number rather than three segments around
   the health ring, which has no room outside it on infantry. Made, removed on
   death and synced beside the health ring, by the same three lines, and like it
   parented to the unit node and scaled by `PIECE_SCALE`. ⚠️ **Billboarded**,
