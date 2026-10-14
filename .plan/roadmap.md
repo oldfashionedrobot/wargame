@@ -274,124 +274,178 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 
 #### The next pass
 
-⬜ **Planned and pre-checked, from playing.** Losing the army as well as the
-general; the spent grey a little more saturated; maps of any size, starting
-with four at 20×20; each map declaring where its armies deploy; and a map's
-size shown beside its name.
+⬜ **Planned and pre-checked, from playing.** Ten commits, in this order: the
+default army as it is being played; losing the army as well as the general;
+the spent grey a little more saturated; a map's size beside its name; each map
+declaring where its armies deploy; and four boards at 20×20, a commit each.
+Each passes the gate — `tsc -b --force` included — and lands with its docs.
+Comments, docs and test titles that quote a value, or anything else a change
+can move, are removed rather than updated.
+
+⬜ **The default army as it is being played** — `cagac.....` over `iiiii.....`,
+ten a side at the left of the zone, already in the working tree from
+playtesting. Nothing breaks: the suites pass with it, since every positional
+test supplies its own army. What it touches is prose:
+
+- The opening summary of the architecture doc and the README name the army's
+  make-up and count, and stop doing so — they describe a default army of a
+  general with guns, horse and foot.
+- `ARMY`'s comment describes the layout and counts its rewrites; both go.
+- The roadmap's note under *After the combat pass* that centring the army
+  flipped the opener's edge describes a centred default that is no longer the
+  default, and is cut to the finding.
 
 ⬜ **Losing your army loses the match, as losing your general does.**
-**Decided**: a player left with nothing but its general has lost, so a match
-is won by destroying either the enemy's army or its general. It settles *two
-lone generals never finish*, under *The general's pass*, which goes with it.
+**Decided**: a player left with nothing but its general has lost. It settles
+*two lone generals never finish*, under *The general's pass*, which goes.
 
 - **One clause in `victor`**: a player stands while it has a unit besides its
-  general, as well as while its general has not fallen. A board without a
-  general plays as now, since a unit besides the general is then any unit. An
-  `isGeneral(unit)` query beside `generalOf`, which `generalOf` then reads,
-  keeps the type named in one place in the rules.
-- **Still one loss per resolution**: a battle kills one unit, so the last
-  soldier and a general never fall together.
-- ⚠️ **An army of a general alone loses on the first resolution.** Armies are
-  not validated, so nothing stops one; accepted as a degenerate army.
-- **The bot asks `victor` whether a kill wins**, rather than keeping a bonus of
-  its own for a general: a kill scores as winning when the board without its
-  target has the bot's side as victor. Its own `isGeneral` goes for the shared
-  one. ⚠️ Its *won by general* count reads "the loser still had units", which
-  a loser down to its general would now pass; it reads whether the loser's
-  general fell instead.
+  general and its general has not fallen. An `isGeneral(unit)` query beside
+  `generalOf`, which `generalOf` then reads, keeps the type named once. A
+  board without a general plays as now.
+- **Still one loss per resolution**: a battle kills one unit. ⚠️ An army of a
+  general alone loses on the first resolution; armies are not validated, so
+  that is accepted as a degenerate army.
+- **The bot asks the rules whether a kill wins**: a kill scores the win bonus
+  when `victor` of the board without the target is the bot's own side,
+  replacing its bonus for a general and its own `isGeneral`. `victor`,
+  `generalOf` and `isGeneral` are exported from `shared` for it. ⚠️ *Won by
+  general* read "the loser still had units", which a loser down to its general
+  now passes; it compares the loser's general at the start and the end,
+  which also leaves an army that fielded none uncounted.
 - **Tests** — two change, found by running the suites with the rule in:
-  - `victory.test`'s *is nobody while both generals stand, whatever else
-    falls*: each side gains a second soldier, so a loss leaves an army.
-  - `action.test`'s *does not heal a unit the turn's last action killed*: red
-    gains a soldier out of reach, or the kill would end the match.
-  - New in `victory.test`: a player left with only its general has lost, and
-    that loss and a general's fall are each enough alone. New in
-    `action.test`: killing the last soldier beside a standing general ends the
-    match.
-- **Docs**: the architecture doc's *Victory* and its opening summary, and the
-  README. The simulator's unfinished matches are read before and after.
+  `victory.test`'s *is nobody while both generals stand, whatever else falls*
+  and `action.test`'s *does not heal a unit the turn's last action killed*,
+  each by giving the side a second soldier. New: in `victory.test`, a player
+  left with only its general has lost, and either loss alone is enough; in
+  `action.test`, killing the last soldier beside a standing general ends the
+  match.
+- **Comments and docs**: `victor`'s doc; `action.ts`'s note on the fold, which
+  also loses its count of units; *Victory*, the opening summary and the README.
+  The simulator's unfinished matches are read before and after.
 
-⬜ **The spent grey, a little more saturated.** `SPENT_GREY` comes down a step,
-so a spent unit keeps a little more of its side's colour. Checked in a
-browser beside the current look; no comment names the value.
+⬜ **The spent grey, a little more saturated.** `SPENT_GREY` comes down a step;
+checked in a browser beside the current look.
 
-⬜ **Maps of any size, starting with four at 20×20.** **Decided**: boards come
-in different sizes rather than one standard; the small ones stay as
-skirmishes; four new boards at 20×20 are drawn, two of them rotated 180° and
-two not, each taking its shape from a known Advance Wars map. How many units a
-side a board holds is **not codified** for now: the new boards take the
-default army, and play says what that is like.
+⬜ **A map's size beside its name**, in the start screen's picker and the map
+viewer's.
 
-- **Each borrows a structure** from an Advance Wars map — a river island, a
-  plateau, lanes split by water and high ground — chosen when it is drawn,
-  with the source named in its comment. Rivers stand in for sea and shoal, and
-  hills for mountains and cities, since this game has neither ships nor
-  properties.
-- **Each is new content under a new id**, added to the registry; `maps.test`
-  already sweeps every registered board for standable zones and crossability,
-  so the four are checked with no new test.
-- **Each is simulated** from both openers before it lands, and the simulator's
-  action cap is read against them — it was sized for small boards, its comment
-  quotes the roster and goes, and longer walks to contact may need it raised.
-- ⚠️ **Pre-checked: what a 20×20 touches.** The camera fits the whole board at
-  its default zoom, so tiles draw smaller until zoomed — wheel zoom and panning
-  clamped to the board already exist. Scenery is placed per tile, so a board
-  nearly three times the area draws nearly three times the props. A browser
-  checks the framing, the frame rate and picking on one of them.
-- **Reference, from research into Advance Wars**: its single-screen missions
-  are 15×10 to 16×12, its battles about 16×16 to 21×21, and the competitive
-  pool's median about 21×21, with under 15×15 called small and prone to stall.
-  Its pre-deployed missions hold a unit to every six to fifteen tiles, about
-  nine at the median — the default army on 20×20 is far sparser, which is the
-  thing play will feel. Every competitive map is a 180° rotation, giving each
-  side a strong flank and a weak one; composition runs about half open land,
-  forest sparing, rivers and high ground shaping two or three lanes, and heavy
-  cover off the front. Player two is usually given half a turn's worth —
-  commonly one extra infantry — since units able to strike on the first turn
-  are what make the opener's edge. Sources: the Advance Wars By Web map pool
-  and API (awbw.amarriner.com), the AWBW mapmaking guide
-  (github.com/TheGamerASD/AWBW-Mapmaking-Guide), Wars Wiki (warswiki.org), and
-  the Wargroove wiki on first-turn advantage.
+- `MapSummary` gains `width` and `height` — the names the board's own code
+  uses — worked out from the rows where the list is served, destructured so
+  nothing else leaks; the comment that rows are nobody else's business stays
+  true, since only their count leaves.
+- One helper, `mapLabel` in `client/src/routes`, labels a map for both
+  pickers: the name, then the size, width first, after the lobby's own " · ".
+- **Tests**: `http.test`'s list case checks every map has a size, and a new
+  black-box case checks each listed size against the grid its preview draws,
+  so the two cannot disagree. `StartScreen.test`'s fixtures gain sizes — one
+  not square, so the order shows — and a new case finds a labelled option.
+  `MapViewer.test`'s fixtures take the sizes of the boards its fake preview
+  draws, and its two option assertions follow the label.
+- **Docs**: the protocol's `MapSummary`, and the two routes.
 
 ⬜ **A map declares where its armies deploy.** **Decided**: the zone stays ten
-wide and two deep against the board's edge — the near edge for the first seat,
-the far edge for the second — and each map says where along that edge its two
-zones sit: to a side, centred, or anywhere between. A map that says nothing is
-centred, as every board is today.
+wide and two deep against the board's edge — near for the first seat, far for
+the second — and a map says where along that edge each sits. A map that says
+nothing is centred, as every board is today.
 
-- **The map gives each seat's zone by the board column where it starts**, in
-  board coordinates, so the two can sit anywhere independently. The far
-  army is still drawn from its own left: placed into its zone rotated, as
-  `createMatchState` already places it, but into the declared columns rather
-  than the centred ones.
-- **A zone that does not fit is refused**, as a board too small for its zones
-  is today, rather than clamped.
-- ⚠️ **Pre-checked.** `createMatchState` computes one centred margin and rotates
-  the far army about the board's centre; it takes each seat's start instead,
-  defaulting to the centred one. `DEPLOYMENT_ZONE` keeps the size. `maps.test`
-  validates the zones through `createMatchState`, so a declared zone over water
-  or rock fails it with no change, and the map preview shows it the same way.
-  New in `matchState.test`: a declared zone places each army where the map
-  says, the far one still from its own left; an undeclared one is centred; a
-  zone off the board is refused.
-- **Docs**: the architecture doc's *Maps* and `matchState`, and the map type's
-  own comment.
+- **`GameMap.zoneStarts?: [near, far]`**: the board column of each seat's
+  westmost zone square, in board coordinates whichever way the seat faces. A
+  labelled tuple indexed by seat, as the placement code already is, so a
+  partial declaration cannot be written.
+- **Placement**: with `slack` the board's width less the zone's, the default
+  is `[floor(slack/2), slack - floor(slack/2)]` — the far one the near one
+  turned, which on a board with an odd spare column sits one column east, and a
+  naive `[m, m]` would quietly move. The near army is placed from its zone's
+  start; the far one is turned within its own zone, drawn from its own left.
+  Checked against today's `createMatchState` for every width and zone up to
+  twenty-five: the default reproduces it exactly.
+- **Refused, not clamped**: a declared start that is not a whole number or
+  leaves the zone off the board. The two zones cannot overlap — the existing
+  depth check already puts them on different rows.
+- `DEPLOYMENT_ZONE` keeps the size and every caller keeps its signature;
+  `createMatchState` reads the starts from the map. The preview, the store and
+  the simulator take declared zones through it with no change.
+- **Tests**: every existing `matchState.test` case stays, its boards declaring
+  nothing. New: a declared zone places each army where the map says, the far
+  one still from its own left, at columns that tell declared, centred and
+  turned-from-near apart; an undeclared zone on an odd-width board is centred
+  with the far one a column east; a declared zone off the board is refused,
+  naming the seat. `maps.test` validates declared zones through
+  `createMatchState`, so a zone over water or rock fails it unchanged.
+- **Comments and docs**: `DeploymentZone`'s and `DEPLOYMENT_ZONE`'s say size
+  only, place being the map's; the far army's comment says it is turned within
+  its own zone; the warning about water and rock under the zone moves from
+  `ARMY` to the new field; `maps.test`'s and `matchState.test`'s headers lose
+  their stale lines. The architecture doc's *Maps* passages on the centred zone,
+  its margin, its rotation and the middle ten columns.
 
-⬜ **A map's size beside its name**, in the start screen's picker and in the
-map viewer's. `MapSummary` gains the board's width and height, worked out from
-its rows where the list is served, so the size cannot disagree with the board;
-one helper on the client labels a map for both pickers.
+⬜ **Four boards at 20×20.** **Decided**: maps come in different sizes rather
+than one standard; the small ones stay as skirmishes; four new boards at
+20×20, two rotated 180° and two not, each taking its shape from a known
+Advance Wars map; and how many units a side a board holds is **not codified**
+— the new boards take the default army, and play says what that is like.
 
-- ⚠️ **Pre-checked.** The list endpoint's comment says rows are nobody else's
-  business, which stays true — only their count leaves. `http.test`'s list case
-  checks every map has a size; the route tests' map fixtures gain one, and
-  `MapViewer.test`'s two option assertions follow the label rather than the
-  bare name. Docs: the architecture doc's protocol and the two routes.
-
-⬜ **Order**: the army rule and the grey first, as small and separate; then
-the size beside the name and declared zones, which the new boards use; then
-the four boards, a commit each, each simulated and the set checked in a
-browser.
+- ⚠️ **This has been tried once.** The boards were all 20×20 for seventeen
+  minutes in September, and came back to 12×12 as too empty — Advance Wars
+  fills that space with properties and production, and this game has neither.
+  That was before combat existed, and the commit said the size was settled
+  only until it did; it named army size as the dial if a board plays empty.
+  So the risk is known: the default army on 20×20 is far sparser than Advance
+  Wars' pre-deployed density, and play is what decides it.
+- **Sources for the four**, each named in its board's comment:
+  - rotated 180° — **Twin Isle**: each half a ridge of hills ringed by road,
+    the halves joined by one neck across a river band, the only crossing for
+    wheels. **Duo Falls**: two rivers across the board, each with its crossing
+    at the opposite flank, so the road zigzags and guns go the long way while
+    foot and horse ford.
+  - not rotated — **The Trident**: three lanes split by water or hills on one
+    side, funnelling into a single road through broken ground on the other.
+    **Missile Plains**, already exactly 20×20: three ridges of hills across the
+    board, each with one gap, staggered, so wheels zigzag and foot climbs.
+  - Rivers stand in for sea and shoal, and hills for mountains and cities. A
+    river one tile wide is forded in one move; two wide costs a night in the
+    water — width is the dial between a ford and a commitment.
+- **What a board must pass**: both zones standable by every movement type, so
+  no river or hills under them; wheels able to cross between the zones and to
+  reach more than half the board, which rules out the sea-heavy layouts; and
+  the written conventions — zones on plains or road, roads one tile wide, a
+  road into each zone, broken ground in the middle. Off-centre zones use the
+  declared field.
+- **Each is simulated** from both openers. ⚠️ On scratch 20×20 boards the second
+  mover won from both openers, the reverse of the 12×12s, so both openers are
+  not optional; and guns take several turns to reach a firing position, so
+  their share of damage is read per board. The action cap stays: decisive games
+  on scratch 20×20 boards ended well inside it once the army rule was in, and
+  what hits it is a stalemate no cap fixes. Its comment, which quotes the
+  roster, goes.
+- **The renderer needs no change to work** — the camera, picking, grid lines
+  and terrain all scale with the board, and draw calls follow the palette and
+  the army rather than the area. At the default zoom a 20×20 draws tiles at
+  about three fifths of a 12×12's, so a browser checks, on one board:
+  framing at fit at two window sizes; whether the health rings, the grey and
+  the charge digits read at that size, and whether the counter needs enlarging;
+  whether the maximum zoom gets close enough, or should scale with the board;
+  frame rate and draw calls while orbiting, and canvas-ready time on the most
+  wooded board; picking at the far corners and on hills and decks; and the map
+  viewer's framing.
+- **Optional guard**: the registry builds a lookup with `Object.fromEntries`,
+  which drops a duplicate id silently; with four new files, `maps.test` asserts
+  ids are unique.
+- **Docs**: the architecture doc's map sizes — it records 12×12 as settled with
+  both ends of the old overshoot, which becomes the skirmish size beside the
+  new one — and its table of boards gains four rows.
+- **Reference, from research into Advance Wars**: its single-screen missions
+  are 15×10 to 16×12, its battles about 16×16 to 21×21, and the competitive
+  pool's median about 21×21; its pre-deployed missions hold about a unit to
+  every nine tiles; every competitive map is a 180° rotation, though the
+  official War Room maps mostly are not; composition runs about half open,
+  forest sparing, rivers and high ground shaping two or three lanes, heavy
+  cover off the front; and player two is usually given about half a turn's
+  worth. Sources: the Advance Wars By Web map pool and API
+  (awbw.amarriner.com, including Twin Isle, Duo Falls, The Trident and Missile
+  Plains), the AWBW mapmaking guide (github.com/TheGamerASD/AWBW-Mapmaking-Guide),
+  Wars Wiki (warswiki.org), and the Wargroove wiki on first-turn advantage.
 
 #### The cover pass
 
