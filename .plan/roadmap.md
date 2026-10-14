@@ -202,14 +202,15 @@ interesting. Several rules have already moved on evidence from playing rather
 than from measuring, and more than one of those turned out to be a *rule*
 rather than a dial — which is the shape to expect from this epic too.
 
-⚠️ **It runs in passes: play, then tune.** Four have shipped. The first set
+⚠️ **It runs in passes: play, then tune.** Five have shipped. The first set
 terrain weighting and the first charge numbers by printing grids; the second,
 the combat pass, came from playing — see *After the combat pass*; the third
 reworked charging — see *The charging pass*; the fourth added a general — see
-*The general's pass*. A pass's changes go to
+*The general's pass*; the fifth moved cover to Advance Wars' scale and paced
+the charge per unit — see *The cover pass*. A pass's changes go to
 [`architecture.md`](architecture.md) and leave only their open questions here.
 
-⬜ **The next pass is planned** — see *The next pass*, below.
+⬜ **No pass is planned yet** — the next one comes from playing.
 
 #### Known to want attention
 
@@ -265,51 +266,23 @@ and the harness taking an army a side. What it does now is in
 [`architecture.md`](architecture.md) — what is left is below.
 
 ✅ **Whether composition creates playstyles: swept, and it does not — it
-makes a ladder.** Each army of eight against the default (two guns, two horse,
-four foot), on every map from both openings: more guns wins and more horse
-loses, on every map. ⚠️ **It says as much about the bot as the armies**: a
-greedy bot never screens, and screening is the manoeuvre horse needs, so the
-horse figures are a floor. Sword cavalry flattened the ladder a long way —
-four horse and four foot went from 7% to 38% against the default — without
-changing its order.
+makes a ladder.** Each army against the default, on every map from both seats
+and both openings: more guns wins and more horse loses, on every map, and that
+order has survived sword cavalry, the earned charge, the general and the cover
+pass. ⚠️ **It says as much about the bot as the armies**: a greedy bot never
+screens, and screening is the manoeuvre horse needs, so the horse figures are
+a floor. ⚠️ **`common` says nothing about composition**: the opener wins there
+whatever it fields — see the turn-order note under *After the combat pass*.
 
-✅ **Re-measured under the earned charge**, 300 games a cell from both seats
-and both openings, with the default army centred in its zone. Wins against the
-default:
+#### The cover pass
 
-| army | six shipped maps | `tester` |
-|---|---|---|
-| four guns, four foot | 71% | 62% |
-| four horse, four guns | 65% | 59% |
-| four horse, four foot | 31% | 26% |
-| eight horse | 27% | 1% |
-| eight foot | 25% | 24% |
-
-Guns still win and horse still loses; the earned charge took horse back down
-from 38%, since the bot only ever charges where it is certain. ⚠️ **`common`
-says nothing about composition**: the opener won every game there whatever it
-fielded — see the turn-order note under *After the combat pass*.
-
-#### The next pass
-
-⬜ **Under way, pre-checked three times against the code.** The dev handle for
-tiles, the simulator's new tallies, the charge meter per unit type, `mountain`
-renamed `hills`, cover on Advance Wars' scale, inspecting a unit, and greying
-the units that have acted have all shipped.
-
-⚠️ **Comments, docs and test titles that quote a value, or anything else a
-change can move, are removed rather than updated**, and tests read a size from
-the catalog rather than pinning it. Every item below meets some.
-
-⚠️ **Two items move balance — the charge meter and cover — so they are
-measured apart.** The simulator's settings are fixed before the first run —
-which maps, how many games, both openers — and its figures are reported in
-conversation, not written into docs. Three runs: before the charge meter,
-after it (which is cover's *before*), and after cover. Read the mechanic counts
-before the win rates: charges by type, hits by ground, unfinished matches, wins
-by general. The composition sweep runs once after cover, without `common`
-(where the opener wins whatever it fields); the table under *Armies* and the
-cover figures in *The dials* are removed then, keeping their conclusions.
+✅ **Shipped**, from playing: cover on Advance Wars' scale, with the mountain
+renamed hills; each unit type filling its charge meter at its own pace;
+inspecting a unit that cannot act; and the units that have acted greyed. With
+them came a dev handle for addressing tiles in a browser check, and the
+simulator's charges by type and attacks by ground. What it does is in
+[`architecture.md`](architecture.md); what was measured was reported in
+conversation rather than written down.
 
 ⚠️ **Highlighting the ready units, instead of greying the spent ones, was tried
 and set aside.** A Fresnel rim lit whole flat-shaded facets, washing a unit out
