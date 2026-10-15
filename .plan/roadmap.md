@@ -211,6 +211,8 @@ be, with sea, structures, a frame and boards from Advance Wars, and made losing
 the army lose the match — see *The boards pass*. A pass's changes go to
 [`architecture.md`](architecture.md) and leave only their open questions here.
 
+⬜ **The next pass is planned** — see *The next pass*, below.
+
 #### Known to want attention
 
 - ⬜ **How much lands before the other player answers.** Uncapped, a whole army
@@ -270,6 +272,41 @@ pass. ⚠️ **It says as much about the bot as the armies**: a greedy bot never
 screens, and screening is the manoeuvre horse needs, so the horse figures are
 a floor. ⚠️ **`common` says nothing about composition**: the opener wins there
 whatever it fields — see the turn-order note under *After the combat pass*.
+
+#### The next pass
+
+⬜ **Planned and pre-checked: four more boards from Advance Wars**, drawn as
+the boards pass drew its four — at their originals' sizes, turned so the two
+headquarters face each other across the near and far edges, with sea made land
+under each deployment zone, the zone cleared to plains, and a road into it. A
+commit each, in this order, each simulated from both openers and looked at in
+a browser; the map table in the architecture doc gains a row each.
+
+- **Chosen from the whole War Room**, by drawing every two-player map that way
+  and keeping those where wheels cross between the zones, reach most of the
+  land, and the zones are not mostly invented from sea. ⚠️ **Megalopolis was
+  on the list and is dropped**: drawn out, its city connects to the far end
+  only through its ring of bridges, and the ring meets the city only at the
+  near end — so one army would deploy on the junction the other has to come
+  through. Mirror Islands takes its place.
+- **Long Road** — 15 wide, 20 deep, turned half round. A road winding the
+  length of a narrow coast, crossing one-tile channels on short bridges. The
+  headquarters sit in opposite corners, so the zones are declared toward them;
+  each already has a road running into it.
+- **Little Lion** — 18 square, turned a quarter. The armies start in opposite
+  corners, with ridges and a river between. Zones declared toward the corners;
+  a road is run down the west edge into the near one, and a bridge inside the
+  far one becomes road, since the zone fills the water under it.
+- **Point Stormy** — 25 wide, 22 deep, turned half round. A ring of land round
+  a bay, open on one side, so the way from one army to the other goes the long
+  way round. Zones declared toward the headquarters, the near one a headland
+  as on Twin Isle, with a road run down to it.
+- **Mirror Islands** — 15 wide, 32 deep, turned a quarter; one of the
+  original's Classic maps, built for two players. One island in a ring of sea,
+  its halves split by rivers with a bridge each. Zones centred; each end
+  reaches the board's edge with a road run down to it.
+- **Nothing in the code changes**: the boards use only what the boards pass
+  built.
 
 #### The boards pass
 
