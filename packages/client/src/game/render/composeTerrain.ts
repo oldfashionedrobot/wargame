@@ -551,6 +551,32 @@ function bridgeTurns(grid: TileType[][], col: number, row: number): number {
 }
 
 /**
+ * Which piece of a crossing a bridge tile is. A bridge alone is one piece
+ * ramped at both ends; a bridge in a run along its own length is an end piece,
+ * ramped toward its bank, or a middle span between two more.
+ *
+ * ⚠️ The end piece is drawn ramped to the east -- measured off the geometry,
+ * like every rest here -- and a turn carries east to south, so its turns name
+ * the side its ramp faces.
+ */
+function bridgeDeck(
+  grid: TileType[][],
+  col: number,
+  row: number,
+): { model: TerrainModel; rotation: number } {
+  const turns = bridgeTurns(grid, col, row);
+  const [dc, dr] = turns === 1 ? [0, 1] : [1, 0]; // along the deck: north, or east
+  const ahead = at(grid, col + dc, row + dr) === 'bridge';
+  const behind = at(grid, col - dc, row - dr) === 'bridge';
+  const turned = (model: TerrainModel, by: number) => ({ model, rotation: by * QUARTER_TURN });
+  if (ahead && behind) return turned('bridge_center_wood', turns);
+  if (!ahead && !behind) return turned('bridge_wood', turns);
+  const ramp = { east: 0, south: 1, west: 2, north: 3 };
+  if (turns === 1) return turned('bridge_side_wood', ahead ? ramp.south : ramp.north);
+  return turned('bridge_side_wood', ahead ? ramp.west : ramp.east);
+}
+
+/**
  * Deterministic, so nothing reshuffles whenever the scene rebuilds.
  *
  * ⚠️ Mixed rather than a bare XOR of two multiples. `col * a ^ row * b` cancels
@@ -626,10 +652,9 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
         // on a tile -- a bridge is the one prop that has somewhere it must be.
         props: [
           {
-            model: 'bridge_wood',
+            ...bridgeDeck(grid, col, row),
             x: 0,
             z: 0,
-            rotation: bridgeTurns(grid, col, row) * QUARTER_TURN,
             scale: 1,
             squeeze: BRIDGE_SQUEEZE,
           },

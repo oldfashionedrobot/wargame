@@ -1703,7 +1703,9 @@ unavailable action is omitted — so hover is the only state a row has.
   same for both families, so a river and a road run off the rim rather than
   growing a shore or ending in a cap. **Sea
   is the same body of water**, so a river opens into it with no bank across its
-  mouth; a bridge takes the sea's paint when it spans sea. A terrain it has no
+  mouth; a bridge takes the sea's paint when it spans sea. A bridge alone is
+  one piece ramped at both ends; **a run of bridges along its own length is one
+  crossing**, an end piece ramped onto each bank and middle spans between. A terrain it has no
   drawing for is a **compile error**, by the same `never` check `applyEvents`
   uses, rather than a tile drawn as plains.
 - **A quarter turn replaces twelve of the sixteen sprites a tileset would need.**

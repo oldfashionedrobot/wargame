@@ -297,6 +297,25 @@ describe('bridges', () => {
     expect(cellAt(cells, 1, 1).props[0].rotation).toBe(QUARTER_TURN);
   });
 
+  // A crossing longer than a tile is one bridge rather than several: an end
+  // piece ramped onto each bank, and middle spans between.
+  it('spans a long crossing with an end ramped onto each bank and middles between', () => {
+    const deck = (cells: ReturnType<typeof compose>, col: number, row: number) => {
+      const { model, rotation } = cellAt(cells, col, row).props[0];
+      return [model, rotation / QUARTER_TURN];
+    };
+    // Running north: the south end ramps south, the north end north.
+    const northward = compose('..-..', '~~=~~', '~~=~~', '~~=~~', '..-..');
+    expect(deck(northward, 2, 1)).toEqual(['bridge_side_wood', 1]);
+    expect(deck(northward, 2, 2)).toEqual(['bridge_center_wood', 1]);
+    expect(deck(northward, 2, 3)).toEqual(['bridge_side_wood', 3]);
+    // Running east: the west end ramps west, the east end east.
+    const eastward = compose('.~~~.', '-===-', '.~~~.');
+    expect(deck(eastward, 1, 1)).toEqual(['bridge_side_wood', 2]);
+    expect(deck(eastward, 2, 1)).toEqual(['bridge_center_wood', 0]);
+    expect(deck(eastward, 3, 1)).toEqual(['bridge_side_wood', 0]);
+  });
+
   // A two-lane crossing gives its bridge cells masks 7 and 13 rather than 5
   // and 10, because each lane sees the other beside it -- so orientation
   // cannot be read off the road mask.

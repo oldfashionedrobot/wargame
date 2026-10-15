@@ -58,6 +58,10 @@ const TERRAIN_MODELS = [
   'rock_largeF',
   // Things that stand on the ground rather than being it.
   'bridge_wood',
+  // A crossing longer than a tile: an end piece ramped onto each bank, and
+  // middle spans between.
+  'bridge_side_wood',
+  'bridge_center_wood',
   // Woodland, varied. ⚠️ All of these are painted `woodBark` and `leafsGreen`,
   // the two a single tree already brought, so the variety is free -- the pines
   // are not, carrying `woodBarkDark` and `leafsDark` of their own.
