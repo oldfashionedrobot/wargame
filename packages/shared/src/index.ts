@@ -61,9 +61,9 @@ export {
   orthogonalNeighbours,
   tileDistance,
 } from './coordinate';
-export { defenseAt, getCurrentPlayer, getUnit, getUnitAt } from './queries';
+export { defenseAt, generalOf, getCurrentPlayer, getUnit, getUnitAt, isGeneral } from './queries';
 export { canSelectUnit, isSpent } from './legality';
-export { isOver } from './victory';
+export { isOver, victor } from './victory';
 export { exploreMovement } from './movement';
 export type { Movement } from './movement';
 export { resolveAction, validateCommand } from './action';

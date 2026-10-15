@@ -45,12 +45,15 @@ describe('victor, by elimination', () => {
   });
 });
 
-describe('victor, by the general', () => {
+describe('victor, by the general or the army', () => {
+  // Two soldiers a side, so losing one still leaves an army.
   const before = makeState(8, [
     { id: 'bg', col: 0, row: 0, unitTypeId: 'general' },
     { id: 'b1', col: 1, row: 0 },
+    { id: 'b2', col: 2, row: 0 },
     { id: 'rg', col: 0, row: 7, owner: 'red', unitTypeId: 'general' },
     { id: 'r1', col: 1, row: 7, owner: 'red' },
+    { id: 'r2', col: 2, row: 7, owner: 'red' },
   ]);
   const without = (id: string): GameState => ({
     ...before,
@@ -62,8 +65,16 @@ describe('victor, by the general', () => {
     expect(victor(before, without('rg'))).toBe('blue');
   });
 
-  it('is nobody while both generals stand, whatever else falls', () => {
+  it('is nobody while both generals and both armies stand', () => {
     expect(victor(before, without('b1'))).toBeNull();
+  });
+
+  it('hands the match over when an army falls, with its general still standing', () => {
+    const armyGone: GameState = {
+      ...before,
+      units: before.units.filter((unit) => unit.id !== 'b1' && unit.id !== 'b2'),
+    };
+    expect(victor(before, armyGone)).toBe('red');
   });
 
   // ⚠️ A board with no general says nothing about one: every stored match and

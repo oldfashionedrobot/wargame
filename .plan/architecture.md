@@ -24,8 +24,8 @@ exchange; a charge is earned by attacking, faster for horse than for foot. A
 unit that cannot act — the enemy's, or one of yours that has acted — can be
 inspected: what it could attack from where it stands, then where it could move.
 Every unit acts once, greyed once it has, and the turn ends when the last of
-them has gone; when a player has nothing left, or loses their general, the
-match is over and says so.
+them has gone; when a player loses its army or its general, the match is over
+and says so.
 
 Two players, each fielding the same default army — a general with guns, horse
 and foot — on a map chosen when the match is created. `/maps` shows the boards without starting
@@ -936,11 +936,15 @@ victor(before, after) → PlayerId | null  // who has won with this action
 isOver(state)         → boolean          // whether the marker is set
 ```
 
-Two ways to lose: **a player with no units**, and **a player whose general
-fell**. `victor` reads both states because a board without a general says
-nothing on its own — the general may have fallen, or the army never fielded
-one, and a board of the second kind plays by elimination alone. A general that
-fell earlier ended the match then, so only this action's can matter.
+Two ways to lose: **a player with no army** — no unit besides its general —
+and **a player whose general fell**. On a board with no general the first is
+plain elimination, since every unit counts. `victor` reads both states for the
+second, because a board without a general says nothing on its own — the general
+may have fallen, or the army never fielded one. A general that fell earlier
+ended the match then, so only this action's can matter. `isGeneral`, beside
+`generalOf` in `queries.ts`, is the one place the rules name the type, and the
+simulator's bot asks `victor` whether a kill wins rather than knowing for
+itself.
 
 ⚠️ **`victor` reads the roster; `isOver` reads the marker.** A board can
 satisfy the condition before any resolution has recorded it, and that gap is
@@ -949,7 +953,7 @@ where `resolveAction` asks.
 `victor` is the N-player predicate, not "the one who isn't the loser". An empty
 board answers `null`. At most one player loses per resolution, because
 `wouldCounter` is false at zero health, so a single battle kills exactly one
-unit — one army's last, or one general.
+unit — an army's last soldier, or a general, never both.
 
 ⚠️ **`resolveAction` folds to ask.** Units leave the board in `applyEvents`, so
 the question cannot be answered from `state`, which predates the death. It is

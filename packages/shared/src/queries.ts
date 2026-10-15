@@ -47,12 +47,20 @@ export function inContact(state: GameState, unit: Unit, coordinate: Coordinate):
 /**
  * A player's general on the board, or `undefined` -- either it has fallen, or
  * the army never fielded one.
- *
- * ⚠️ **The one place the rules name the general's unit type**, so the victory
- * check and the heal ask the same question rather than each spelling it.
  */
 export function generalOf(state: GameState, player: PlayerId): Unit | undefined {
-  return state.units.find((unit) => unit.owner === player && unit.unitTypeId === 'general');
+  return state.units.find((unit) => unit.owner === player && isGeneral(unit));
+}
+
+/**
+ * Is this unit a general.
+ *
+ * ⚠️ **The one place the rules name the general's unit type**, so the victory
+ * check, the heal and the bot ask the same question rather than each spelling
+ * it.
+ */
+export function isGeneral(unit: Unit): boolean {
+  return unit.unitTypeId === 'general';
 }
 
 export function getCurrentPlayer(state: GameState): Player {

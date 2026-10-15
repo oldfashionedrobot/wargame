@@ -274,46 +274,15 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 
 #### The next pass
 
-⬜ **Under way, planned and pre-checked, from playing.** The default army as it
-is being played has shipped; thirteen commits remain, in this order: losing the
-army as well as the
-general; the spent grey a little more saturated; a new terrain failing to
-compile until it is drawn; sea; structure; a map's size beside its name; each
-map declaring where its armies deploy; a frame around every board; and four
-boards from Advance Wars at their own sizes, a commit each, drawn with sea and
-structures.
-Each passes the gate — `tsc -b --force` included — and lands with its docs.
-Comments, docs and test titles that quote a value, or anything else a change
-can move, are removed rather than updated.
-
-⬜ **Losing your army loses the match, as losing your general does.**
-**Decided**: a player left with nothing but its general has lost. It settles
-*two lone generals never finish*, under *The general's pass*, which goes.
-
-- **One clause in `victor`**: a player stands while it has a unit besides its
-  general and its general has not fallen. An `isGeneral(unit)` query beside
-  `generalOf`, which `generalOf` then reads, keeps the type named once. A
-  board without a general plays as now.
-- **Still one loss per resolution**: a battle kills one unit. ⚠️ An army of a
-  general alone loses on the first resolution; armies are not validated, so
-  that is accepted as a degenerate army.
-- **The bot asks the rules whether a kill wins**: a kill scores the win bonus
-  when `victor` of the board without the target is the bot's own side,
-  replacing its bonus for a general and its own `isGeneral`. `victor`,
-  `generalOf` and `isGeneral` are exported from `shared` for it. ⚠️ *Won by
-  general* read "the loser still had units", which a loser down to its general
-  now passes; it compares the loser's general at the start and the end,
-  which also leaves an army that fielded none uncounted.
-- **Tests** — two change, found by running the suites with the rule in:
-  `victory.test`'s *is nobody while both generals stand, whatever else falls*
-  and `action.test`'s *does not heal a unit the turn's last action killed*,
-  each by giving the side a second soldier. New: in `victory.test`, a player
-  left with only its general has lost, and either loss alone is enough; in
-  `action.test`, killing the last soldier beside a standing general ends the
-  match.
-- **Comments and docs**: `victor`'s doc; `action.ts`'s note on the fold, which
-  also loses its count of units; *Victory*, the opening summary and the README.
-  The simulator's unfinished matches are read before and after.
+⬜ **Under way, planned and pre-checked, from playing.** Shipped: the default
+army as it is being played, and losing the army as well as the general.
+Remaining, in order: the spent grey a little more saturated; a new terrain
+failing to compile until it is drawn; sea; structure; a map's size beside its
+name; each map declaring where its armies deploy; a frame around every board;
+and four boards from Advance Wars at their own sizes, a commit each, drawn
+with sea and structures. Each passes the gate — `tsc -b --force` included —
+and lands with its docs. Comments, docs and test titles that quote a value, or
+anything else a change can move, are removed rather than updated.
 
 ⬜ **The spent grey, a little more saturated.** `SPENT_GREY` comes down a step;
 checked in a browser beside the current look.
@@ -595,18 +564,6 @@ to heal. It is cavalry in all but name for now, and exposed to guns on purpose,
 so keeping it out of their reach is the game. What it does is in
 [`architecture.md`](architecture.md).
 
-- ⬜ **Two lone generals never finish.** In the simulator, matches the bot
-  leaves unfinished went from none to a fifth on `classic` and `crossroads`, 100
-  games each, and nearly all of them end with one general a side and nothing
-  else: the bot keeps its general away and attacks only where it kills, so once
-  the armies are gone neither general closes. Partly the bot, but not only — a
-  general is as fast as anything that could chase it. Undecided: a rule that
-  settles it, such as a general with no army having lost, or a bot that fights
-  with its general once it stands alone. ⚠️ **The rule is the favoured one,
-  pending play**, and it fits: elimination becomes "no units besides the
-  general", one clause in `victor`, and boards without a general play as now.
-  The bot would then want to ask `victor` whether a kill wins, rather than keep
-  its own copy of what winning is.
 - ⬜ **For play to answer**: whether the heal pulls the wounded back. The bot
   never retreats a unit to heal, so it healed 20 points in 100 games, and its
   generals fell in about 1% of decided matches.

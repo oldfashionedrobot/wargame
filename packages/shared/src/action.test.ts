@@ -370,6 +370,8 @@ describe('resolveAction, with generals on the board', () => {
       { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
       { id: 'rg', col: 0, row: 3, owner: 'red', unitTypeId: 'general', health: generalHealth },
       { id: 'r1', col: 1, row: 3, owner: 'red', health: woundedHealth },
+      // Out of the gun's reach, so red keeps an army whatever happens to r1.
+      { id: 'r2', col: 7, row: 7, owner: 'red' },
     ]);
   const fire = (targetUnitId: string): MoveCommand => ({
     type: 'move',
@@ -377,6 +379,16 @@ describe('resolveAction, with generals on the board', () => {
     path: [at(0, 0)],
     facing: 'north',
     targetUnitId,
+  });
+
+  it('ends the match when the last soldier falls, though the general stands', () => {
+    const state = makeState(8, [
+      { id: 'b1', col: 0, row: 0, unitTypeId: 'artillery' },
+      { id: 'rg', col: 0, row: 3, owner: 'red', unitTypeId: 'general' },
+      { id: 'r1', col: 1, row: 3, owner: 'red', health: 3 },
+    ]);
+    const events = resolveAction(state, accept(state, fire('r1')), NO_LUCK);
+    expect(events.at(-1)).toEqual({ type: 'gameEnded', winner: 'blue' });
   });
 
   it('ends the match when a general falls, though its army still stands', () => {

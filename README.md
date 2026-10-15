@@ -32,8 +32,8 @@ a gamble against a stronger one.
 An attack or a charge cuts away to the two units and plays the exchange. Click
 an enemy, or a unit of yours that has acted, to see what it could attack and
 where it could move. Every unit acts once, greyed once it has, the turn ends
-when the last of them has gone, and a player with nothing left, or without
-their general, has lost.
+when the last of them has gone, and a player who loses its army or its general
+has lost.
 
 Two players, each fielding the same default army — a general with guns, horse
 and foot — on a map chosen when the match is created. `/maps` shows the boards without

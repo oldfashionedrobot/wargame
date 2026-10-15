@@ -121,7 +121,7 @@ export function resolveAction(
       // killing the **attacker** would -- shrinking the roster and moving both
       // terms of that `min` at once, mid-resolution.
       // ⚠️ **The only fold in resolution, and it has to be one.** Losing is "no
-      // units left" or "the general fell", and units leave the board in
+      // army left" or "the general fell", and units leave the board in
       // `applyEvents` -- `resolveBattle` only says what each side *has*. So the
       // question cannot be answered from `state`, which predates the death, nor
       // from the events, which would mean re-deriving what the reducer already
@@ -131,7 +131,7 @@ export function resolveAction(
       // cannot kill anyone -- so the obvious saving is to ask only when
       // `targetUnitId` is set. Not taken: that puts "only attacks kill" in a
       // second place, where it is a rule this function has no business
-      // restating, and the cost it saves is a copy of sixteen units.
+      // restating, and the cost it saves is a copy of the units.
       const after = applyEvents(state, events);
       const winner = victor(state, after);
       if (winner !== null) {

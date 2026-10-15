@@ -28,8 +28,10 @@ import {
   computeDamage,
   exploreMovement,
   facingToward,
+  generalOf,
   getUnit,
   getUnitType,
+  isGeneral,
   isOver,
   LUCK_MAX,
   refuseAttack,
@@ -38,6 +40,7 @@ import {
   resolveBattle,
   tileDistance,
   validateCommand,
+  victor,
 } from '@wargame/shared';
 import type { Command, Coordinate, GameEvent, GameState, Unit, UnitTypeId } from '@wargame/shared';
 import { getMap } from '../src/maps';
@@ -56,9 +59,15 @@ function rng(seed: number): () => number {
   };
 }
 
-/** Scored as a win: taking the enemy's general ends the match. */
-const GENERAL_KILL = 1000;
-const isGeneral = (unit: Unit) => unit.unitTypeId === 'general';
+/** What a kill that ends the match is worth over any other kill. */
+const WIN = 1000;
+
+/**
+ * Would taking `target` win the match for `unit`'s side? Asked of the rules
+ * rather than worked out here, so the bot cannot drift from what winning is.
+ */
+const winsBy = (state: GameState, unit: Unit, target: Unit): boolean =>
+  victor(state, { ...state, units: state.units.filter((u) => u.id !== target.id) }) === unit.owner;
 
 /** A candidate command and what the bot thinks it is worth. */
 interface Scored {
@@ -130,7 +139,7 @@ function candidates(state: GameState): Scored[] {
               targetUnitId: target.id,
               attackKind: 'attack',
             },
-            score: dealt + (kills ? 25 + (isGeneral(target) ? GENERAL_KILL : 0) : 0) - riposte,
+            score: dealt + (kills ? 25 + (winsBy(state, unit, target) ? WIN : 0) : 0) - riposte,
           });
         }
 
@@ -142,7 +151,7 @@ function candidates(state: GameState): Scored[] {
           if (isGeneral(unit) && p < 1) continue;
           const mid = Math.floor(LUCK_MAX / 2);
           const repel = computeDamage(state, target, moved, mid);
-          const prize = target.health + 25 + (isGeneral(target) ? GENERAL_KILL : 0);
+          const prize = target.health + 25 + (winsBy(state, unit, target) ? WIN : 0);
           out.push({
             command: {
               type: 'move',
@@ -243,8 +252,10 @@ function playOne(
   if (winner === null) stats.unfinished++;
   else {
     stats.wins[winner] = (stats.wins[winner] ?? 0) + 1;
-    // The loser with units still standing lost its general rather than its army.
-    if (state.units.some((unit) => unit.owner !== winner)) stats.wonByGeneral++;
+    // Won by the general when the loser fielded one and it is gone; otherwise
+    // the loser's army fell.
+    const loser = base.players.find((player) => player.id !== winner)?.id;
+    if (loser && generalOf(base, loser) && !generalOf(state, loser)) stats.wonByGeneral++;
   }
 }
 
