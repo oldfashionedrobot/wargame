@@ -56,6 +56,14 @@ describe('reaching across', () => {
   });
 });
 
+/**
+ * The most board the default army fills: with no transports, boats or planes,
+ * a bigger one is empty ground to walk across.
+ */
+const LARGEST_SIDE = 16;
+/** A building is cover; a board full of them is cover everywhere, so nowhere. */
+const MOST_BUILDINGS = 5;
+
 describe('every map', () => {
   const maps = listMaps();
 
@@ -97,6 +105,33 @@ describe('every map', () => {
       // damage figure rather than a crash, several phases from here.
       it('deploys every unit at full health', () => {
         for (const { health } of units) expect(health).toBe(MAX_HEALTH);
+      });
+
+      it('is no bigger than the default army fills', () => {
+        expect(Math.max(width, height)).toBeLessThanOrEqual(LARGEST_SIDE);
+      });
+
+      it('carries only a few buildings', () => {
+        const buildings = grid.flat().filter((tile) => tile === 'structure');
+        expect(buildings.length).toBeLessThanOrEqual(MOST_BUILDINGS);
+      });
+
+      // Off the board counts as water, so a strait running off an edge is
+      // whole rather than narrow.
+      it('draws water a tile wide as river, never as sea', () => {
+        const water = (col: number, row: number) => {
+          const tile = grid[row]?.[col];
+          return tile === undefined || tile === 'sea' || tile === 'river' || tile === 'bridge';
+        };
+        grid.forEach((cells, row) =>
+          cells.forEach((tile, col) => {
+            if (tile !== 'sea') return;
+            const narrow =
+              (!water(col - 1, row) && !water(col + 1, row)) ||
+              (!water(col, row - 1) && !water(col, row + 1));
+            expect(`${col},${row}: ${narrow ? 'narrow sea' : 'ok'}`).toBe(`${col},${row}: ok`);
+          }),
+        );
       });
 
       it('never stacks two units on one tile', () => {

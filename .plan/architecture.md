@@ -462,7 +462,11 @@ down in the source.
 **Boards come in different sizes**: small skirmish boards drawn for this game,
 and larger ones cut down from Advance Wars. A board may be any size that fits
 both deployment zones, and `createMatchState` refuses one that does not; a map
-that does not declare its zones has them centred.
+that does not declare its zones has them centred. ⚠️ **`maps.test.ts` also
+holds every board to three limits**: no bigger than the default army fills,
+since it has no transports to cross empty ground; only a few buildings, since
+cover everywhere is cover nowhere; and water a tile wide drawn as river, never
+as sea.
 
 **A board from Advance Wars** is drawn from one of Dual Strike's maps, by way of
 Advance Wars By Web's copy (awbw.amarriner.com), turned so the two headquarters
