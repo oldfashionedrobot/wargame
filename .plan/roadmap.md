@@ -209,7 +209,7 @@ reworked charging — see *The charging pass*; the fourth added a general — se
 the charge per unit — see *The cover pass*. A pass's changes go to
 [`architecture.md`](architecture.md) and leave only their open questions here.
 
-⬜ **The next pass is planned** — see *The next pass*, below.
+⬜ **The next pass is under way** — see *The next pass*, below.
 
 #### Known to want attention
 
@@ -279,71 +279,31 @@ grey a little more saturated, a new terrain failing to compile until it is
 drawn, sea, structure, a map's size beside its name, each map declaring where
 its armies deploy, a frame around every board, and three boards from Advance
 Wars at their own sizes — Missile Plains, Twin Isle and Duo Falls. Remaining:
-The Trident. Each passes the gate — `tsc -b --force` included —
-and lands with its docs. Comments, docs and test titles that quote a value, or
-anything else a change can move, are removed rather than updated.
+a fourth board, which is open — see below. Each passes the gate — `tsc -b
+--force` included — and lands with its docs. Comments, docs and test titles
+that quote a value, or anything else a change can move, are removed rather than
+updated.
 
-⬜ **Four boards from Advance Wars, at their own sizes.** **Decided**: maps
-come in different sizes rather than one standard; the small ones stay as
-skirmishes; four new boards, each drawn from a known Advance Wars map at that
-map's own size, two of them rotated 180° and two not; and how many units a
-side a board holds is **not codified** — the new boards take the default
-army, and play says what that is like.
+⬜ **A fourth board from Advance Wars — open: The Trident does not survive as a
+land board.** Planned as one of four, it turns out to be a naval map: a road
+down a narrow spine with islands either side that Advance Wars reaches by
+transport, so wheels reach only a small part of its land and the map checks
+refuse it. Drawing it would mean inventing land the original does not have.
+**To decide**, one of:
 
-- ⚠️ **Large boards have been tried once.** The boards were all 20×20 for
-  seventeen minutes in September, and came back to 12×12 as too empty —
-  Advance Wars fills that space with properties and production, and this game
-  has neither. That was before combat existed, and the commit said the size
-  was settled only until it did; it named army size as the dial if a board
-  plays empty. So the risk is known: the default army on these boards is far
-  sparser than Advance Wars' pre-deployed density, and play is what decides
-  it. ⚠️ **Duo Falls is 33×13**, its armies at the narrow ends. Zones sit only
-  on the near and far edges, so it is drawn turned a quarter, 13 wide and 33
-  deep — the ten-wide zone fits its narrow ends.
-- **Sources for the four**, each named in its board's comment:
-  - rotated 180° — **Twin Isle**: each half a ridge of hills ringed by road,
-    the halves joined by one neck across a river band, the only crossing for
-    wheels. **Duo Falls**: two rivers across the board, each with its crossing
-    at the opposite flank, so the road zigzags and guns go the long way while
-    foot and horse ford.
-  - not rotated — **The Trident**: three lanes split by water or hills on one
-    side, funnelling into a single road through broken ground on the other.
-    **Missile Plains**, already exactly 20×20: three ridges of hills across the
-    board, each with one gap, staggered, so wheels zigzag and foot climbs.
-  - Sea is drawn as sea, structures stand in for cities and bases, and hills
-    for mountains; pipes and silo walls become ridges of hills. Shoals and
-    reefs become river where they are fordable in spirit. **Decided: each at
-    its original's size** — Twin Isle 22×16, Duo Falls 33×13, The Trident
-    19×19, Missile Plains 20×20 — since sizes are free.
-- **What a board must pass**: both zones standable by every movement type, so
-  no river, sea or hills under them; wheels able to cross between the zones
-  and to reach more than half the land; and
-  the written conventions — zones on plains or road, roads one tile wide, a
-  road into each zone, broken ground in the middle. Off-centre zones use the
-  declared field.
-- **Each is simulated** from both openers. ⚠️ On scratch 20×20 boards the second
-  mover won from both openers, the reverse of the 12×12s, so both openers are
-  not optional; and guns take several turns to reach a firing position, so
-  their share of damage is read per board. The action cap stays: decisive games
-  on scratch 20×20 boards ended well inside it once the army rule was in, and
-  what hits it is a stalemate no cap fixes. Its comment, which quotes the
-  roster, goes.
-- **The renderer needs no change to work** — the camera, picking, grid lines
-  and terrain all scale with the board, and draw calls follow the palette and
-  the army rather than the area. At the default zoom a 20×20 draws tiles at
-  about three fifths of a 12×12's, so a browser checks, on one board:
-  framing at fit at two window sizes; whether the health rings, the grey and
-  the charge digits read at that size, and whether the counter needs enlarging;
-  whether the maximum zoom gets close enough, or should scale with the board;
-  frame rate and draw calls while orbiting, and canvas-ready time on the most
-  wooded board; picking at the far corners and on hills and decks; and the map
-  viewer's framing.
-- **Optional guard**: the registry builds a lookup with `Object.fromEntries`,
-  which drops a duplicate id silently; with four new files, `maps.test` asserts
-  ids are unique.
-- **Docs**: the architecture doc's map sizes — it records 12×12 as settled with
-  both ends of the old overshoot, which becomes the skirmish size beside the
-  new one — and its table of boards gains four rows.
+- **Swap it** for a War Room map built for land. **Ridge Island** (19×16) is
+  the likeliest — one island with ridges through the middle and both
+  headquarters inland, adapted as Twin Isle was; **Little Lion** (18×18, the
+  armies in opposite corners) and **Pivot Isle** (21×14) also pass.
+- **Adapt The Trident** by joining its islands to the spine — a new map under
+  an old name.
+- **Ship three**, and leave the fourth to the Content epic.
+
+Whichever is drawn is held to what the other three were: both zones on plains
+or road against the edges, a road into each, wheels crossing between the zones
+and reaching more than half the land, its original's size, and a simulation
+from both openers.
+
 - **Reference, from research into Advance Wars**: its single-screen missions
   are 15×10 to 16×12, its battles about 16×16 to 21×21, and the competitive
   pool's median about 21×21; its pre-deployed missions hold about a unit to
