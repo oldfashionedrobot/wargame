@@ -226,14 +226,13 @@ under the pass they came from; git log is its history.
   finding that settles it. Artillery's share of kills over 300 games: **8.9%**
   uncapped, then 20.4%, 17.7% and 21.8% at three, two and one. What was felt at
   a budget of one is a property of *capping*, not of one — a rationed army
-  cannot screen or withdraw a wounded unit, so the guns choose freely.
+  cannot put a unit in the way or withdraw a wounded one, so the guns choose
+  freely.
 
-  ⬜ **So the budget is the wrong lever for this, and a *reactive* mechanic is
-  the candidate** — which now lives in *Mobility in contact*, below, where
-  overwatch and engagement turned out to be one question. The same sweep also
-  says a cautious bot would show less first-mover advantage than a greedy one
-  does, which is itself a hint that punishing the advance is aimed at the right
-  thing.
+  ⬜ **So the budget is the wrong lever for this.** ⚠️ **Overwatch, the
+  reactive mechanic designed for it, was dropped**: contact already makes
+  moving round the enemy cost something, and nothing more is wanted. The idea
+  left untried is order dice, below.
 
   ⬜ Still untried, and the one idea the sweep did not cover: making `hasActed`
   persist until the roster is spent, which gives one-at-a-time pacing *and*
@@ -246,9 +245,11 @@ under the pass they came from; git log is its history.
 ✅ **Whether composition creates playstyles: swept, and it does not — it
 makes a ladder.** Each army against the default, on every map from both seats
 and both openings: more guns wins and more horse loses, on every map, and that
-order has held through every change since. ⚠️ **It says as much about the bot as the armies**: a greedy bot never
-screens, and screening is the manoeuvre horse needs, so the horse figures are
-a floor.
+order has held through every change since. ⚠️ **It says as much about the
+bot as the armies**: the bot never stands a unit anywhere to block. Contact
+lets one — an enemy that moves beside a unit has to stop, and none passes
+through it — so fast units pushed forward can slow an advance and shelter the
+guns behind, and whether that makes horse worth more is for play.
 
 #### Boards from Advance Wars
 
@@ -285,8 +286,6 @@ frame, where a material swap costs none.
 
 #### The general's pass
 
-- ⬜ **For play to answer**: whether the heal pulls the wounded back. The bot
-  never retreats a unit to heal, so the simulator cannot say.
 - ⬜ **Later, global bonuses**, as Advance Wars' commanders give. Both sides
   field the same general for now; a commander chosen per player can carry
   modifiers later without the unit changing.
@@ -333,50 +332,6 @@ Centred, the two armies start directly across from each other, so whoever
 strikes first lands on a full line; offset, as the default army is at the
 zone's left, they do not. A thing to watch in play.
 
-#### Mobility in contact — engagement and overwatch
-
-⚠️ **Engagement and overwatch were one question**: both answer *moving around
-near the enemy should cost something*. Contact made the fight itself costly to
-manoeuvre in; overwatch would make moving merely *near* the enemy costly.
-
-⬜ **Overwatch is shelved, as a possible second layer.** Contact covers a unit
-that is in a fight; overwatch would add a cost to moving *near* the enemy without
-contact, which this rule does not ask for, and so would a free blow for leaving.
-Kept as designed, in case play says otherwise:
-
-⬜ **Overwatch — spend the attack to watch instead.** A unit forgoes its shot
-and names a direction to watch; an enemy entering that arc is fired on before
-it acts. XCOM's shape rather than 40k's, and it composes with facing, which
-already exists and already decides whether a shot is answered.
-
-⚠️ **`slow` excludes artillery from it for free.** A gun may move or attack
-but never both, and never answers a shot — so the two arms that can overwatch
-are precisely the two the budget sweep kept buffing guns against. The
-counterweight costs no new rule.
-
-⬜ **Three decisions, cheapest first.** Whether it consumes the action — it
-should, or it is a passive buff rather than a trade. Whether it watches a
-named arc or the whole range band, where the band is free because
-`tilesInRange` already honours artillery's minimum, so enemies can walk
-*under* the guns. And whether it triggers on the destination or anywhere
-along the path: the destination is one more battle in the same command, while
-*through* means walking the path step by step and deciding whether the mover
-stops, which touches `validatePath` and the one-event-carries-a-path design.
-Prove it on the destination first.
-
-⚠️ **The sharp edge is randomness, not the rule.** `rollLuck` draws the same
-rolls for every command and never consults the rules, deliberately — so the
-number of draws cannot depend on whether a path crossed a watched tile. The
-existing precedent is to draw for the worst case: a counter roll and a charge
-roll are already drawn whether or not either is used. It also needs watching
-state on `Unit`, which is a `GameState` shape change and abandons stored matches
-under the ruleset compromise.
-
-⚠️ **The reactive family is unmeasured, and structurally so.** A zone is worked
-out from positions alone, so a scratch search can say what it does; a reaction
-depends on what the other side chose to watch, which nothing can sweep without
-building it.
-
 #### The dials
 
 The tables are `BASE_DAMAGE`, which charges read too, and `CHARGE_FACING`; the
@@ -395,6 +350,10 @@ match length, damage and kills by unit type, and whether each mechanic fired. �
 in two hits, another found cavalry-into-artillery saturating at the flank on its
 opening run, the hits-to-kill grid showed that a wood was worth literally
 nothing, and the simulator settled the turn budget in an afternoon.
+
+⚠️ **The simulator is a temperature check, not an opponent.** Its greedy bot
+plays nothing like a person, so play decides; an AI good enough to play against
+people is a later build of its own, not this bot grown.
 
 ⚠️ **Read the simulator's mechanic counts before its win rates.** A bot
 confirms whatever it is scored on: the greedy one subtracts the expected
@@ -957,8 +916,8 @@ numbers and the argument live; this is the phase that keeps changing them.
   before redrawing a board to chase a number** — the terrain is downstream of
   it.
 
-  ⚠️ **Do not tune these against the bot.** It is greedy, it never screens, and
-  it does not value terrain — so chasing an even split optimises the board for a
+  ⚠️ **Do not tune these against the bot.** It is greedy, it never stands a unit
+  anywhere to block, and it does not value terrain — so chasing an even split optimises the board for a
   player nobody is. The numbers are a floor: a board where one side wins every
   game is broken.
 
