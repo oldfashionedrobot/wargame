@@ -1595,10 +1595,12 @@ unavailable action is omitted — so hover is the only state a row has.
   every angle but the worst one — on a 12×12 the board sits in roughly three
   quarters of the height it could fill looking down an axis.
 
-  Each frame the frustum is sized so `zoom = 1` is *the whole board just fits*,
-  which is both the **floor** the wheel cannot go below and the **default** it
-  starts at. The target is then clamped per axis to whatever board the viewport
-  does not already cover. **Centring is not a rule of its own**: at full zoom-out
+  Each frame the frustum is sized so `zoom = 1` is *the whole board just fits*
+  at the worst angle, the **floor** the wheel cannot go below. ⚠️ **The camera
+  starts closer than that**: `startZoom` fits the board's own rectangle to the
+  window from the starting pose, worked out once, so the frame shows only past
+  the board's edges. The target is then clamped per axis to whatever board the
+  viewport does not already cover. **Centring is not a rule of its own**: at full zoom-out
   the slack goes to zero and the clamp centres the board.
 
   Run every frame rather than on a change, since orbit, tilt, zoom and window

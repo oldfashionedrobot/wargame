@@ -55,20 +55,11 @@ import { loadUnitModels } from './unitModels';
  *
  * ⚠️ **`MIN_ZOOM` of 1 is the floor for a reason, not a taste.** Below it the
  * board stops filling the viewport and the wheel buys nothing but background.
- * The fit it is a multiple *of* is measured at the current camera angle rather
- * than derived from the grid -- see `fitExtent`.
- *
- * ⚠️ **`DEFAULT_ZOOM` sits at the floor, and that was not the first answer.**
- * Going to 20x20 appeared to leave pieces unreadable whole-board, so this began
- * at 2.2 -- which put the camera on the middle of the board with neither army
- * in frame, and was worse. The appearance came from judging a *cropped and
- * downscaled* screenshot rather than the viewport: at full size the fit reads
- * perfectly well, and starting anywhere else is starting somewhere the player
- * did not ask to be. Zoom in for detail; the board is the view.
+ * The camera starts closer than the floor, with the playable board just filling
+ * the window -- see `startZoom`.
  */
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3.5;
-const DEFAULT_ZOOM = MIN_ZOOM;
 const ZOOM_PER_NOTCH = 1.12;
 /** A hair of air around the board at full zoom-out, so it is not flush. */
 const FIT_MARGIN = 1.04;
@@ -401,7 +392,7 @@ export async function createGameRenderer(
   camera.upperBetaLimit = CAMERA_BETA_SHALLOW;
   camera.minZ = 0.1;
 
-  let zoom = DEFAULT_ZOOM;
+  let zoom = MIN_ZOOM;
 
   const handleWheel = (event: WheelEvent): void => {
     event.preventDefault();
@@ -530,6 +521,24 @@ export async function createGameRenderer(
   const reachX = boardRadius;
   const reachY =
     boardRadius * Math.cos(CAMERA_BETA_TOPDOWN) + boardRise * Math.sin(CAMERA_BETA_TOPDOWN);
+
+  /**
+   * Where zoom starts: the board's own rectangle just filling the window from
+   * the starting pose, so the frame shows only past its edges -- where
+   * `zoom = 1`, fitted to the worst angle, leaves it showing all round.
+   */
+  const startZoom = (): number => {
+    camera.getViewMatrix(true);
+    const across = camera.getDirection(Vector3.Right());
+    const upward = camera.getDirection(Vector3.Up());
+    const startX = Math.max(...boardCorners.map((corner) => Math.abs(Vector3.Dot(corner, across))));
+    const startY = Math.max(...boardCorners.map((corner) => Math.abs(Vector3.Dot(corner, upward))));
+    const aspect = canvas.clientWidth / canvas.clientHeight;
+    if (!(aspect > 0 && Number.isFinite(aspect))) return MIN_ZOOM;
+    const fill = Math.max(reachY, reachX / aspect) / Math.max(startY, startX / aspect);
+    return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, fill));
+  };
+  zoom = startZoom();
 
   /**
    * Sizes the frustum, then keeps the board under it.
