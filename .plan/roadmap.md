@@ -275,17 +275,14 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 #### The next pass
 
 ⬜ **Under way, planned and pre-checked, from playing.** Shipped: the default
-army as it is being played, and losing the army as well as the general.
-Remaining, in order: the spent grey a little more saturated; a new terrain
-failing to compile until it is drawn; sea; structure; a map's size beside its
+army as it is being played, losing the army as well as the general, and the
+spent grey a little more saturated. Remaining, in order: a new terrain failing
+to compile until it is drawn; sea; structure; a map's size beside its
 name; each map declaring where its armies deploy; a frame around every board;
 and four boards from Advance Wars at their own sizes, a commit each, drawn
 with sea and structures. Each passes the gate — `tsc -b --force` included —
 and lands with its docs. Comments, docs and test titles that quote a value, or
 anything else a change can move, are removed rather than updated.
-
-⬜ **The spent grey, a little more saturated.** `SPENT_GREY` comes down a step;
-checked in a browser beside the current look.
 
 ⬜ **A map's size beside its name**, in the start screen's picker and the map
 viewer's.

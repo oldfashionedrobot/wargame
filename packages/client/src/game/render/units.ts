@@ -80,7 +80,7 @@ const UNIT_GLOW = 0.28;
  * brightness it keeps -- the look Advance Wars gives a unit that has waited.
  * Tuned by eye in a browser.
  */
-const SPENT_GREY = 0.85;
+const SPENT_GREY = 0.75;
 const SPENT_BRIGHTNESS = 0.8;
 
 /** A side's colour, or the grey it fades to once the unit is spent. */
