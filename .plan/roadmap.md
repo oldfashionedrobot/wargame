@@ -277,9 +277,9 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 army as it is being played, losing the army as well as the general, the spent
 grey a little more saturated, a new terrain failing to compile until it is
 drawn, sea, structure, a map's size beside its name, each map declaring where
-its armies deploy, a frame around every board, Missile Plains and Twin Isle.
-Remaining: the other two boards from Advance Wars at their own sizes, a commit
-each, drawn with sea and structures. Each passes the gate — `tsc -b --force` included —
+its armies deploy, a frame around every board, and three boards from Advance
+Wars at their own sizes — Missile Plains, Twin Isle and Duo Falls. Remaining:
+The Trident. Each passes the gate — `tsc -b --force` included —
 and lands with its docs. Comments, docs and test titles that quote a value, or
 anything else a change can move, are removed rather than updated.
 
