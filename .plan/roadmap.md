@@ -275,12 +275,12 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 #### The next pass
 
 ⬜ **Under way, planned and pre-checked, from playing.** Shipped: the default
-army as it is being played, losing the army as well as the general, and the
-spent grey a little more saturated. Remaining, in order: a new terrain failing
-to compile until it is drawn; sea; structure; a map's size beside its
-name; each map declaring where its armies deploy; a frame around every board;
-and four boards from Advance Wars at their own sizes, a commit each, drawn
-with sea and structures. Each passes the gate — `tsc -b --force` included —
+army as it is being played, losing the army as well as the general, the spent
+grey a little more saturated, and a new terrain failing to compile until it is
+drawn. Remaining, in order: sea; structure; a map's size beside its name; each
+map declaring where its armies deploy; a frame around every board; and four
+boards from Advance Wars at their own sizes, a commit each, drawn with sea and
+structures. Each passes the gate — `tsc -b --force` included —
 and lands with its docs. Comments, docs and test titles that quote a value, or
 anything else a change can move, are removed rather than updated.
 
@@ -336,14 +336,6 @@ nothing is centred, as every board is today.
   `ARMY` to the new field; `maps.test`'s and `matchState.test`'s headers lose
   their stale lines. The architecture doc's *Maps* passages on the centred zone,
   its margin, its rotation and the middle ten columns.
-
-⬜ **A new terrain fails to compile until it is drawn.** Today it compiles and
-draws as plains: `composeTerrain`'s `baseCell` ends in a `default` that
-returns grass, and no client table is keyed by `TileType`, so the comment in
-`terrain.ts` promising "the renderer's colours" become a compile error is
-stale. The `default` becomes `case 'plains'` with the `never` check
-`applyEvents` uses, and the comment is reworded. Its own commit, ahead of the
-two types below, which it then forces through the renderer.
 
 ⬜ **Sea**: water nobody can enter yet, so Advance Wars' island maps — a third
 to a half sea — can be drawn closer to their originals.

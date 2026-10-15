@@ -1649,7 +1649,9 @@ unavailable action is omitted — so hover is the only state a row has.
   4-bit neighbour mask (`N=1, E=2, S=4, W=8`) indexes a table per family. A
   bridge belongs to **both** families — it is water with a road over it — so a
   river is not broken by its own crossing. Off-board counts as water for water,
-  so a river runs off the edge, and as land for roads, so a road ends.
+  so a river runs off the edge, and as land for roads, so a road ends. A
+  terrain it has no drawing for is a **compile error**, by the same `never`
+  check `applyEvents` uses, rather than a tile drawn as plains.
 - **A quarter turn replaces twelve of the sixteen sprites a tileset would need.**
   Base orientations are measured off the geometry, not assumed: `riverStraight`
   runs north–south at rest, `riverSide` banks south, `riverCorner` opens north

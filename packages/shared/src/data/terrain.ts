@@ -30,9 +30,9 @@ export interface Terrain {
   cost: Record<MovementType, number | null>;
 }
 
-// A Record over TileType, so adding a terrain type turns every incomplete
-// table -- here, and the renderer's colours -- into a compile error rather
-// than a tile that silently costs undefined.
+// A Record over TileType, so adding a terrain type is a compile error until it
+// has a row here, rather than a tile that silently costs undefined. The
+// renderer's `baseCell` refuses to compile the same way until it is drawn.
 export const TERRAIN: Record<TileType, Terrain> = {
   // Roads and bridges are mechanically identical; the split exists so the
   // renderer can draw a crossing over water. `wheels` paying 1.5 on plains

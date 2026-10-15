@@ -568,7 +568,7 @@ function doodad(col: number, row: number): Prop[] {
 }
 
 function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
-  const tile = at(grid, col, row);
+  const tile = grid[row][col];
 
   switch (tile) {
     case 'river':
@@ -616,8 +616,15 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
         ],
         standOnProp: 0,
       };
-    default:
+    case 'plains':
       return { ground: 'ground_grass', turns: 0, props: doodad(col, row) };
+    default: {
+      // ⚠️ `never` makes a new terrain a **compile error here** until it is
+      // drawn, rather than a tile that quietly looks like plains. The throw is
+      // for a grid that arrived as JSON, where types guarantee nothing.
+      const unhandled: never = tile;
+      throw new Error(`no drawing for terrain ${String(unhandled)}`);
+    }
   }
 }
 
