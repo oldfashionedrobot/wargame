@@ -280,7 +280,8 @@ the boards pass drew its four — at their originals' sizes, turned so the two
 headquarters face each other across the near and far edges, with sea made land
 under each deployment zone, the zone cleared to plains, and a road into it —
 see *Maps* in the architecture doc. A commit each, each simulated from both
-openers and looked at in a browser; the map table gains a row each.
+openers and looked at in a browser; the map table gains a row each. Shipped:
+Long Road.
 
 - **Chosen from every two-player map among Dual Strike's official ones**, by
   drawing each that way and keeping those where wheels cross between the zones,
@@ -289,10 +290,6 @@ openers and looked at in a browser; the map table gains a row each.
   far zone reach none of the city without passing through the near zone, so one
   army would deploy on the junction the other has to come through. Mirror
   Islands takes its place.
-- **Long Road** — 15 wide, 20 deep, turned half round. A road winding the
-  length of a narrow coast, crossing one-tile channels on short bridges. The
-  headquarters sit in opposite corners, so the zones are declared toward them;
-  each already has a road running into it.
 - **Little Lion** — 18 square, turned a quarter. The armies start in opposite
   corners, with ridges and a river between. Zones declared toward the corners;
   a road is run down the west edge into the near one, and a bridge inside the

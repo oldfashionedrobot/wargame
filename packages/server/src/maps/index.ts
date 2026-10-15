@@ -9,6 +9,7 @@ import { ridgeIsland } from './ridgeIsland';
 import { twoBridges } from './twoBridges';
 import { tester } from './tester';
 import { twinIsle } from './twinIsle';
+import { longRoad } from './longRoad';
 import type { GameMap } from './types';
 
 export type { GameMap } from './types';
@@ -28,6 +29,7 @@ const MAPS: Record<string, GameMap> = Object.fromEntries(
     twinIsle,
     duoFalls,
     ridgeIsland,
+    longRoad,
   ].map((map) => [map.id, map]),
 );
 

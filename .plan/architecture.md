@@ -509,6 +509,7 @@ originals:
 | `twin-isle` | From Dual Strike's *Twin Isle*, turned half round. Two islands in the sea, each a ridge of hills ringed by road, joined by one neck of buildings — the only way across for anything. Near enough a rotation, its zones declared |
 | `duo-falls` | From Dual Strike's *Duo Falls*, turned a quarter so its narrow ends are the near and far edges. A long country between two seas, cut twice by falls bridged where the road crosses, and the road snaking the whole length through a narrow neck in the east — guns go the long way round while foot and horse ford |
 | `ridge-island` | From Dual Strike's *Ridge Island*. One island, with ridges of hills across its middle and roads running in between them from either end, so the ridges decide where the guns can go. Near enough a rotation |
+| `long-road` | From Dual Strike's *Long Road*, turned half round. A road winding the length of a narrow coast, crossing one-tile channels on short bridges, the armies in opposite corners and their zones declared |
 | `tester` | A 10×10 board for playtesting: the road straight down the middle, a river across it at the midline with a single bridge, a wood beside the road on the near bank and a rise on the far one. The smallest board, so the armies meet soonest |
 
 ⚠️ **A river may only leave the board where a deployment zone is not.** The
