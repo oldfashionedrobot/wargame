@@ -10,6 +10,7 @@ import type {
   ErrorResponse,
   EventsResponse,
   MapPreview,
+  MapSummary,
   MatchSummary,
   StateResponse,
 } from '@wargame/shared';
@@ -166,9 +167,21 @@ describe('GET /api/maps', () => {
     const response = await get('/api/maps');
     expect(response.status).toBe(200);
 
-    const maps = (await response.json()) as { id: string; name: string }[];
+    const maps = (await response.json()) as MapSummary[];
     expect(maps.map((map) => map.id)).toContain('classic');
     expect(maps.every((map) => map.name.length > 0)).toBe(true);
+    expect(maps.every((map) => map.width > 0 && map.height > 0)).toBe(true);
+  });
+
+  // Two routes describe the same board, so they are held to agreeing.
+  it('gives each map the size of the board its preview draws', async () => {
+    const maps = (await (await get('/api/maps')).json()) as MapSummary[];
+    for (const map of maps) {
+      const { state } = (await (await get(`/api/maps/${map.id}/preview`)).json()) as MapPreview;
+      expect(`${map.id} ${map.width}x${map.height}`).toBe(
+        `${map.id} ${state.grid[0].length}x${state.grid.length}`,
+      );
+    }
   });
 });
 

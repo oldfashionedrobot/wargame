@@ -220,7 +220,7 @@ CommandResult     { ok: true, seq, events, state } | { ok: false, reason }
 StateResponse     { seq, state }
 EventsResponse    { seq, events, state? }
 MatchSummary      { id, createdAt, seq, currentTurn, mapId, winner }
-MapSummary        { id, name }                       // GET /api/maps
+MapSummary        { id, name, width, height }        // GET /api/maps
 MapPreview        { id, name, state }                // GET /api/maps/:id/preview
 ErrorResponse     { error }                          // the body of every non-2xx
 ```
@@ -1110,7 +1110,8 @@ return. Updates are deduplicated by `seq` before reaching any listener.
 
 **`routes/`** — `/` is `StartScreen` (list, and create on a chosen map; the
 picker does not appear if `GET /api/maps` fails, and creating then takes the
-server's default); `/maps` is `MapViewer`; `/:matchId` is
+server's default); `/maps` is `MapViewer`. Both pickers name a map by
+`mapLabel` — its name, then its size, width first. `/:matchId` is
 `MatchRoute`, which is keyed on the id so a param change remounts the
 connection. It owns the async connect, renders `GameCanvas` only once a server
 is ready, and disposes on unmount including a connection that resolves after

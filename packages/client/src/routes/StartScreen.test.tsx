@@ -15,9 +15,10 @@ const list = vi.mocked(api.matches.list);
 const create = vi.mocked(api.matches.create);
 const mapList = vi.mocked(api.maps.list);
 
+// ⚠️ One board not square, so a label with its sides the wrong way round shows.
 const MAPS: MapSummary[] = [
-  { id: 'classic', name: 'Bridgehead' },
-  { id: 'lakeland', name: 'Lakeland' },
+  { id: 'classic', name: 'Bridgehead', width: 12, height: 12 },
+  { id: 'lakeland', name: 'Lakeland', width: 16, height: 12 },
 ];
 
 beforeEach(() => {
@@ -152,6 +153,12 @@ describe('StartScreen, choosing a map', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New match' }));
 
     await waitFor(() => expect(create).toHaveBeenCalledWith('lakeland'));
+  });
+
+  it('names each map with its size, width first', async () => {
+    list.mockResolvedValue([]);
+    renderScreen();
+    expect(await screen.findByRole('option', { name: 'Lakeland · 16×12' })).toBeTruthy();
   });
 
   // Without a picker the server's default is what you get, which is exactly

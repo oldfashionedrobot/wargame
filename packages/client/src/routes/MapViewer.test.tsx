@@ -22,8 +22,8 @@ const preview = vi.mocked(api.maps.preview);
 const build = vi.mocked(createGameRenderer);
 
 const MAPS: MapSummary[] = [
-  { id: 'classic', name: 'Bridgehead' },
-  { id: 'meadow', name: 'Meadow' },
+  { id: 'classic', name: 'Bridgehead', width: 5, height: 5 },
+  { id: 'meadow', name: 'Meadow', width: 7, height: 7 },
 ];
 
 // ⚠️ A different board per map, so "it drew the one that was asked for" is
@@ -57,8 +57,8 @@ const drewBoardOfWidth = (call: number): number => build.mock.calls[call][1].gri
 describe('MapViewer', () => {
   it('offers every map the server lists', async () => {
     renderViewer();
-    expect(await screen.findByRole('option', { name: 'Bridgehead' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: 'Meadow' })).toBeTruthy();
+    expect(await screen.findByRole('option', { name: 'Bridgehead · 5×5' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Meadow · 7×7' })).toBeTruthy();
   });
 
   // ⚠️ The select and the scene have to start on the *same* map. Leaving the

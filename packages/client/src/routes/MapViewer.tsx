@@ -4,6 +4,7 @@ import type { MapSummary } from '@wargame/shared';
 import { api } from '../net/api';
 import { createGameRenderer } from '../game/render/renderer';
 import type { GameRenderer } from '../game/render/renderer';
+import { mapLabel } from './mapLabel';
 
 /**
  * A board, with nobody playing on it.
@@ -97,7 +98,7 @@ export function MapViewer() {
             <select value={mapId ?? ''} onChange={(event) => setMapId(event.target.value)}>
               {maps.map((map) => (
                 <option key={map.id} value={map.id}>
-                  {map.name}
+                  {mapLabel(map)}
                 </option>
               ))}
             </select>

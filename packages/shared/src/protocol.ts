@@ -80,6 +80,9 @@ export interface CreateMatchRequest {
 export interface MapSummary {
   id: string;
   name: string;
+  /** In tiles, under the names the board's own code uses. */
+  width: number;
+  height: number;
 }
 
 /**

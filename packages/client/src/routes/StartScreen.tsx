@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { MapSummary, MatchSummary } from '@wargame/shared';
 import { api } from '../net/api';
+import { mapLabel } from './mapLabel';
 
 interface MatchData {
   matches: MatchSummary[] | null;
@@ -75,7 +76,7 @@ export function StartScreen() {
               >
                 {maps.map((map) => (
                   <option key={map.id} value={map.id}>
-                    {map.name}
+                    {mapLabel(map)}
                   </option>
                 ))}
               </select>

@@ -56,9 +56,17 @@ export async function createServer({ port, databaseUrl, clientDist }: ServerOpti
     routes: {
       '/api/maps': {
         GET: withSession(async () =>
-          // Ids and names only: the rows are nobody else's business, and a
-          // map's terrain reaches the client inside the match state anyway.
-          Response.json(listMaps().map(({ id, name }) => ({ id, name })) satisfies MapSummary[]),
+          // Ids, names and sizes only: the rows are nobody else's business --
+          // just their count leaves -- and a map's terrain reaches the client
+          // inside the match state anyway.
+          Response.json(
+            listMaps().map(({ id, name, rows }) => ({
+              id,
+              name,
+              width: rows[0].length,
+              height: rows.length,
+            })) satisfies MapSummary[],
+          ),
         ),
       },
 

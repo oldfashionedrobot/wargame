@@ -276,29 +276,12 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 ⬜ **Under way, planned and pre-checked, from playing.** Shipped: the default
 army as it is being played, losing the army as well as the general, the spent
 grey a little more saturated, a new terrain failing to compile until it is
-drawn, sea, and structure. Remaining, in order: a map's size beside its name;
+drawn, sea, structure, and a map's size beside its name. Remaining, in order:
 each map declaring where its armies deploy; a frame around every board; and
 four boards from Advance Wars at their own sizes, a commit each, drawn with sea
 and structures. Each passes the gate — `tsc -b --force` included —
 and lands with its docs. Comments, docs and test titles that quote a value, or
 anything else a change can move, are removed rather than updated.
-
-⬜ **A map's size beside its name**, in the start screen's picker and the map
-viewer's.
-
-- `MapSummary` gains `width` and `height` — the names the board's own code
-  uses — worked out from the rows where the list is served, destructured so
-  nothing else leaks; the comment that rows are nobody else's business stays
-  true, since only their count leaves.
-- One helper, `mapLabel` in `client/src/routes`, labels a map for both
-  pickers: the name, then the size, width first, after the lobby's own " · ".
-- **Tests**: `http.test`'s list case checks every map has a size, and a new
-  black-box case checks each listed size against the grid its preview draws,
-  so the two cannot disagree. `StartScreen.test`'s fixtures gain sizes — one
-  not square, so the order shows — and a new case finds a labelled option.
-  `MapViewer.test`'s fixtures take the sizes of the boards its fake preview
-  draws, and its two option assertions follow the label.
-- **Docs**: the protocol's `MapSummary`, and the two routes.
 
 ⬜ **A map declares where its armies deploy.** **Decided**: the zone stays ten
 wide and two deep against the board's edge — near for the first seat, far for
