@@ -329,9 +329,10 @@ describe('ground cover', () => {
 
   // A grey box for now, so the shape is not asserted -- only that a unit
   // stands on top of the one thing there, in the middle of the tile.
-  it('stands a unit on a structure, with nothing scattered beside it', () => {
+  it('stands a unit on a structure, on paved ground, with nothing scattered beside it', () => {
     const structure = compose('#')[0][0];
     expect(structure.ground).toBe('ground_grass');
+    expect(structure.paint).toBe('paved');
     expect(structure.props).toHaveLength(1);
     expect(structure.standOnProp).toBe(0);
     expect({ x: structure.props[0].x, z: structure.props[0].z }).toEqual({ x: 0, z: 0 });

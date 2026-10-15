@@ -240,13 +240,14 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
  *   from the ground.
  */
 const FOLIAGE = { name: 'foliage', color: new Color3(0.63, 0.97, 0.5) };
+const ROAD_SURFACE = { name: 'roadSurface', color: new Color3(0.62, 0.62, 0.6) };
 
 const RECOLOUR: Record<string, Record<string, { name: string; color: Color3 }>> = {
   rock_: {
     dirt: { name: 'mesaStone', color: new Color3(0.58, 0.64, 0.66) },
   },
   ground_path: {
-    dirt: { name: 'roadSurface', color: new Color3(0.62, 0.62, 0.6) },
+    dirt: ROAD_SURFACE,
     dirtDark: { name: 'roadEdge', color: new Color3(0.47, 0.47, 0.46) },
   },
   // ⚠️ **A bridge's deck ships the same pale blue as river water** -- (184, 226,
@@ -257,7 +258,7 @@ const RECOLOUR: Record<string, Record<string, { name: string; color: Color3 }>> 
   // the road either side and the surface visibly continues over the water --
   // which is what a bridge is. Sharing the name also costs no extra draw call.
   bridge_: {
-    stone: { name: 'roadSurface', color: new Color3(0.62, 0.62, 0.6) },
+    stone: ROAD_SURFACE,
   },
   // ⚠️ Safe as prefixes only because no *ground* model begins with any of
   // them -- the board's own grass is `ground_grass`.
@@ -267,12 +268,14 @@ const RECOLOUR: Record<string, Record<string, { name: string; color: Color3 }>> 
 };
 
 /** A colour a cell asks for, where `RECOLOUR` paints by model. */
-export type Paint = 'sea';
+export type Paint = 'sea' | 'paved';
 
 const PAINT: Record<Paint, Record<string, { name: string; color: Color3 }>> = {
   // ⚠️ Deep, so open sea never reads as water anyone could wade; and teal
   // rather than blue, so the blue army's pieces do not sink into it.
   sea: { water: { name: 'seaWater', color: new Color3(0.1, 0.32, 0.42) } },
+  // The road's own surface, so a building meets the road it stands beside.
+  paved: { grass: ROAD_SURFACE },
 };
 
 function recolour(model: TerrainModel, materialName: string, paint?: Paint) {

@@ -48,9 +48,9 @@ export interface TerrainCell {
   /** Often empty; a peak carries a whole scatter of them. */
   props: Prop[];
   /**
-   * A colour the ground takes in place of the kit's own. Sea is drawn with the
-   * river's models, and this is what keeps it from reading as water a man can
-   * wade.
+   * A colour the ground takes in place of the kit's own: sea is drawn with the
+   * river's models and painted so it never reads as water a man can wade, and a
+   * building's ground is paved.
    */
   paint?: Paint;
   /**
@@ -643,6 +643,7 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
         // nothing scattered round it.
         props: [{ model: 'structure_box', x: 0, z: 0, rotation: 0, scale: 1 }],
         standOnProp: 0,
+        paint: 'paved',
       };
     case 'plains':
       return { ground: 'ground_grass', turns: 0, props: doodad(col, row) };

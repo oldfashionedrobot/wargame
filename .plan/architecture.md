@@ -1682,7 +1682,8 @@ unavailable action is omitted — so hover is the only state a row has.
   name is what merging groups on. ⚠️ **A cell may also ask for a `paint`**,
   where these recolour by model: sea is drawn with the river's own pieces, and
   its paint turns their water a deep teal — nothing anyone could wade, and not
-  the blue army's colour.
+  the blue army's colour; and a structure's ground is paved in the road's own
+  surface, under the road's material name, so it costs no draw call.
 - ⚠️ The loaded PBR materials are **replaced** with flat `StandardMaterial`s
   carrying their albedo. The kit ships `metallicFactor: 1`, and a fully metallic
   surface with no environment map to reflect renders blank white. Flattening
