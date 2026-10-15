@@ -201,15 +201,15 @@ interesting. Several rules have already moved on evidence from playing rather
 than from measuring, and more than one of those turned out to be a *rule*
 rather than a dial — which is the shape to expect from this epic too.
 
-⚠️ **It runs in passes: play, then tune.** Five have shipped. The first set
+⚠️ **It runs in passes: play, then tune.** Six have shipped. The first set
 terrain weighting and the first charge numbers by printing grids; the second,
 the combat pass, came from playing — see *After the combat pass*; the third
 reworked charging — see *The charging pass*; the fourth added a general — see
 *The general's pass*; the fifth moved cover to Advance Wars' scale and paced
-the charge per unit — see *The cover pass*. A pass's changes go to
+the charge per unit — see *The cover pass*; the sixth widened what a board can
+be, with sea, structures, a frame and boards from Advance Wars, and made losing
+the army lose the match — see *The boards pass*. A pass's changes go to
 [`architecture.md`](architecture.md) and leave only their open questions here.
-
-⬜ **The next pass is under way** — see *The next pass*, below.
 
 #### Known to want attention
 
@@ -271,19 +271,25 @@ screens, and screening is the manoeuvre horse needs, so the horse figures are
 a floor. ⚠️ **`common` says nothing about composition**: the opener wins there
 whatever it fields — see the turn-order note under *After the combat pass*.
 
-#### The next pass
+#### The boards pass
 
-⬜ **Under way, planned and pre-checked, from playing.** Shipped: the default
-army as it is being played, losing the army as well as the general, the spent
-grey a little more saturated, a new terrain failing to compile until it is
-drawn, sea, structure, a map's size beside its name, each map declaring where
-its armies deploy, a frame around every board, and four boards from Advance
-Wars at their own sizes — Missile Plains, Twin Isle, Duo Falls and Ridge
-Island, the last in place of The Trident, a naval map with no land board in
-it. Each passes the gate — `tsc -b --force` included — and lands with its
-docs. Comments, docs and test titles that quote a value, or anything else a
-change can move, are removed rather than updated.
+✅ **Shipped**, from playing: losing the army loses the match, as losing the
+general does; the spent grey a little more saturated; a new terrain failing to
+compile until it is drawn; sea and structure; a map's size beside its name;
+maps declaring where their armies deploy; every board drawn inside a frame of
+land; and four boards from Advance Wars at their own sizes — Missile Plains,
+Twin Isle, Duo Falls and Ridge Island. With them, the simulator's bot
+approaches by route rather than as the crow flies. What it does is in
+[`architecture.md`](architecture.md); what was measured was reported in
+conversation rather than written down.
 
+⚠️ **The Trident was planned and dropped.** Drawn out, it is a naval map — a
+road down a narrow spine, its islands reached by transport — with no land board
+in it. Ridge Island took its place.
+
+- ⬜ **For play to answer**: whether the default army fills a board from
+  Advance Wars, which the boards were once shrunk for being too empty; and how
+  each new board leans, which the simulator says they do.
 - **Reference, from research into Advance Wars**: its single-screen missions
   are 15×10 to 16×12, its battles about 16×16 to 21×21, and the competitive
   pool's median about 21×21; its pre-deployed missions hold about a unit to
