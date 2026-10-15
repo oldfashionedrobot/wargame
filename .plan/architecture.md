@@ -1873,7 +1873,9 @@ unavailable action is omitted — so hover is the only state a row has.
   ⚠️ Babylon's
   `ICanvasRenderingContext` has no `lineCap`; the default `butt` is wanted
   anyway, since a flush end is what lets one tile's segment meet the next
-  without a seam.
+  without a seam. ⚠️ **Drawn over everything**, in a rendering group of its own,
+  trees and units included, as Advance Wars draws its arrow — among the trees,
+  a route through a wood showed nothing but its head.
 - Units are glTF models from `public/models/`, one per unit type, loaded once
   into `AssetContainer`s and **cloned** per unit — Babylon's default there, and
   ⚠️ what lets a unit wear a material of its own when it is greyed, since

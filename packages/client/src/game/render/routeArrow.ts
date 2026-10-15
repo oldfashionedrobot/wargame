@@ -190,6 +190,10 @@ export function createRouteArrow(scene: Scene, options: RouteArrowOptions): Rout
   const mesh = new Mesh(name, scene);
   mesh.material = material;
   mesh.isVisible = false;
+  // ⚠️ Drawn over everything, trees and units included, as Advance Wars draws
+  // its arrow: a route through a wood is still a route, and drawn among the
+  // trees it showed nothing but its head.
+  mesh.renderingGroupId = 1;
 
   return {
     setPath(path) {
