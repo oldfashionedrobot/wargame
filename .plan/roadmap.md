@@ -496,9 +496,11 @@ hover or click, no overlays; the camera frames and pans on the board alone.
   are accepted and looked at in a browser; and picking stops falling back to
   an edge tile for a pointer just past the far edge, which the frame would make
   visible — one line.
-- ⚠️ **Open: the frame's outer edge.** At the default zoom four tiles still leave
-  the backdrop showing beyond them; whether that edge is hard, over the slab,
-  or fades into the backdrop is to be settled.
+- **Decided: a hard outer edge**, the slab grown to sit under the frame as well
+  as the board — a diorama, its earth sides showing — since at the default zoom
+  four tiles still leave the backdrop showing beyond them. A fade into the
+  backdrop, a small shader on the terrain materials, was the alternative and is
+  not built.
 
 ⬜ **Four boards from Advance Wars, at their own sizes.** **Decided**: maps
 come in different sizes rather than one standard; the small ones stay as
