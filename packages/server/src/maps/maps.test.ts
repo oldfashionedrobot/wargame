@@ -137,8 +137,9 @@ describe('every map', () => {
         );
       });
 
-      // No piece in the tile set draws water open on three sides with land at
-      // a diagonal between two of them, so it shows a square corner.
+      // Water open on three sides is a shore with water in both its crooks and
+      // a fork with land in both; no piece draws land in just one, which shows
+      // a square corner.
       it('draws its water without square corners', () => {
         const sides = [
           [1, 0],
@@ -156,14 +157,11 @@ describe('every map', () => {
           cells.forEach((tile, col) => {
             if (tile !== 'sea' && tile !== 'river') return;
             const open = sides.filter(([dc, dr]) => wet(grid, col + dc, row + dr)).length;
-            const square =
-              open === 3 &&
-              corners.some(
-                ([dc, dr]) =>
-                  wet(grid, col + dc, row) &&
-                  wet(grid, col, row + dr) &&
-                  !wet(grid, col + dc, row + dr),
-              );
+            const crooks = corners.filter(
+              ([dc, dr]) => wet(grid, col + dc, row) && wet(grid, col, row + dr),
+            );
+            const dry = crooks.filter(([dc, dr]) => !wet(grid, col + dc, row + dr)).length;
+            const square = open === 3 && dry === 1;
             expect(`${col},${row}: ${square ? 'square corner' : 'ok'}`).toBe(`${col},${row}: ok`);
           }),
         );

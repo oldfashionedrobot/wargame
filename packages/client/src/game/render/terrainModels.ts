@@ -39,6 +39,10 @@ const TERRAIN_MODELS = [
   'ground_riverEnd',
   'ground_riverTile',
   'ground_riverCornerSmall',
+  // Water as a channel a tile wide, where the land in a crook says so.
+  'ground_riverBend',
+  'ground_riverSplit',
+  'ground_riverCross',
   // Roads, as connectors -- a road is never a body of anything.
   'ground_pathCross',
   'ground_pathSplit',

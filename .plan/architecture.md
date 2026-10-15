@@ -1722,18 +1722,20 @@ unavailable action is omitted — so hover is the only state a row has.
   accessors say it is while putting the *relief* on the far side of it — so a
   piece read out of the file faces backwards with its extents looking correct.
 - The kit ships **two** water vocabularies — a body set for lakes and a channel
-  set (`Bend`, `Cross`, `Split`) for one-tile rivers — and a 4-bit mask cannot
+  set (`Bend`, `Split`, `Cross`) for one-tile rivers — and a 4-bit mask cannot
   tell which a cell wants: water north and east is a lake's corner if the
-  north-east diagonal is water and a channel's bend if it is land. **The body
-  set alone is used, and it is enough.** A one-tile river bending was the case
-  that would have forced the diagonal test, and it reads correctly on `Two
-  Bridges` — at one tile wide a rounded lake corner and a channel bend are near
-  enough the same shape. The discriminator stays unwritten until something
-  actually reads wrong.
+  north-east diagonal is water and a channel's bend if it is land. **The land in
+  the crooks between a cell's water sides decides**: a corner with land in its
+  crook is a bend, a side with land in both its crooks a fork, and open water
+  with land on every diagonal a crossing. Each channel piece rests the way the
+  body piece it replaces does, so it takes that piece's turns. ⚠️ A side with
+  land in just one crook has no piece in either set and draws a square corner;
+  `maps.test.ts` refuses it.
 - Three things the mask alone cannot answer: an **inner corner** needs a
   diagonal, so mask 15 with exactly one land diagonal takes a corner model;
-  **bridge orientation** comes from strictly-road neighbours, because a two-lane
-  crossing gives its decks masks 7 and 13 rather than 5 and 10; and a bridge is
+  **bridge orientation** comes from the ground at a deck's ends, because a
+  two-lane crossing gives its decks masks 7 and 13 rather than 5 and 10 and a
+  bridge may land on anything that is not water; and a bridge is
   a model standing *on* water rather than ground of its own, which is why it
   carries the one `standOn` in the renderer.
 - Anything standing on a tile rather than being it is a **`Prop`**, and the

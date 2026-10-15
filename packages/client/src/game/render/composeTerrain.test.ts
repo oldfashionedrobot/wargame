@@ -194,6 +194,21 @@ describe('water', () => {
     expect(cellAt(cells, 3, 2).ground).toBe('ground_riverSide');
   });
 
+  // The mask says the same of both -- water north and east -- and only the land
+  // in the crook between them tells a channel's bend from a lake's corner.
+  it('bends a river a tile wide, where a lake keeps its corner', () => {
+    const river = compose('...', '.~~', '.~.')[1][1];
+    const lake = compose('....', '.~~.', '.~~.', '....')[1][1];
+    expect(river.ground).toBe('ground_riverBend');
+    expect(lake.ground).toBe('ground_riverCorner');
+    expect(river.turns).toBe(lake.turns);
+  });
+
+  it('forks and crosses a river a tile wide', () => {
+    expect(compose('...', '~~~', '.~.')[1][1].ground).toBe('ground_riverSplit');
+    expect(compose('.~.', '~~~', '.~.')[1][1].ground).toBe('ground_riverCross');
+  });
+
   // The sprite sheet had nothing for this and fell back to a hard blue square.
   // The kit draws it.
   it('draws a pond with no water neighbours at all', () => {

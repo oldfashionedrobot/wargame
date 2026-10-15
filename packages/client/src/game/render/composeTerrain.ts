@@ -472,27 +472,51 @@ function atSea(grid: TileType[][], col: number, row: number): boolean {
   return orthogonalNeighbours({ col, row }).some((next) => at(grid, next.col, next.row) === 'sea');
 }
 
+type Diagonal = keyof typeof INNER_CORNER;
+const DIAGONAL: Record<Diagonal, readonly [number, number]> = {
+  nw: [-1, 1],
+  ne: [1, 1],
+  se: [1, -1],
+  sw: [-1, -1],
+};
+
+/**
+ * Water a tile wide is a **channel** rather than a body, and the mask cannot
+ * tell them apart: the land in the crooks between its water sides does. A
+ * corner with land in its crook is a bend, a side with land in both its crooks
+ * is a fork, and open water with land on every diagonal is a crossing. Each is
+ * drawn at rest the way the body piece it replaces is, so it takes that piece's
+ * turns.
+ */
+const CHANNEL: Partial<Record<number, { model: TerrainModel; crooks: Diagonal[] }>> = {
+  9: { model: 'ground_riverBend', crooks: ['nw'] },
+  3: { model: 'ground_riverBend', crooks: ['ne'] },
+  6: { model: 'ground_riverBend', crooks: ['se'] },
+  12: { model: 'ground_riverBend', crooks: ['sw'] },
+  11: { model: 'ground_riverSplit', crooks: ['nw', 'ne'] },
+  7: { model: 'ground_riverSplit', crooks: ['ne', 'se'] },
+  14: { model: 'ground_riverSplit', crooks: ['se', 'sw'] },
+  13: { model: 'ground_riverSplit', crooks: ['sw', 'nw'] },
+  15: { model: 'ground_riverCross', crooks: ['nw', 'ne', 'se', 'sw'] },
+};
+
 function waterShape(grid: TileType[][], col: number, row: number): Turned {
   const mask = neighbourMask(grid, col, row, isWater);
+  const dry = (diagonal: Diagonal): boolean => {
+    const [dc, dr] = DIAGONAL[diagonal];
+    const tile = at(grid, col + dc, row + dr);
+    return tile !== undefined && !isWater(tile);
+  };
 
-  // Water on every side: the only thing left that can distinguish this cell is
-  // a diagonal, and exactly one land diagonal is a corner the kit has drawn.
-  // Two or more has no model, so it stays open water.
+  const channel = CHANNEL[mask];
+  if (channel?.crooks.every(dry)) return { model: channel.model, turns: WATER[mask].turns };
+
+  // Open water with exactly one land diagonal is a corner the kit has drawn;
+  // any other mix of land diagonals has no model, so it stays open water.
   if (mask === 15) {
-    const land = (
-      [
-        ['nw', -1, 1],
-        ['ne', 1, 1],
-        ['se', 1, -1],
-        ['sw', -1, -1],
-      ] as const
-    ).filter(([, dc, dr]) => {
-      const tile = at(grid, col + dc, row + dr);
-      return tile !== undefined && !isWater(tile);
-    });
-    if (land.length === 1) {
-      return { model: 'ground_riverCornerSmall', turns: INNER_CORNER[land[0][0]] };
-    }
+    const land = (Object.keys(DIAGONAL) as Diagonal[]).filter(dry);
+    if (land.length === 1)
+      return { model: 'ground_riverCornerSmall', turns: INNER_CORNER[land[0]] };
   }
 
   return WATER[mask];
