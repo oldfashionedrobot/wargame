@@ -463,12 +463,12 @@ down in the source.
 Advance Wars alike, with a smaller `tester-2`. A board may be any size that fits
 both deployment zones, and `createMatchState` refuses one that does not; a map
 that does not declare its zones has them centred. ⚠️ **`maps.test.ts` also
-holds every board to a few limits**: deep enough for a couple of turns to set
-up and take ground before the armies meet, and as wide as the default army
-fills; only a few buildings, since cover everywhere is cover nowhere; water a
-tile wide drawn as river, never as sea; and no water open on three sides with
-land at a diagonal between two of them, which no piece in the tile set draws
-without a square corner.
+holds every board to a few limits**: a longest side — deep enough for a couple
+of turns to set up and take ground before the armies meet, and as wide as the
+default army fills; only a few buildings, since cover everywhere is cover
+nowhere; water a tile wide drawn as river, never as sea; and no water open on
+three sides with land at a diagonal between two of them, which no piece in the
+tile set draws without a square corner.
 
 **A board from Advance Wars** is drawn from one of Dual Strike's maps, by way of
 Advance Wars By Web's copy (awbw.amarriner.com), turned so the two headquarters
