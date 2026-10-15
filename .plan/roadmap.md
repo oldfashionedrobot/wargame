@@ -278,9 +278,9 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 ⬜ **Planned and pre-checked: four more boards from Advance Wars**, drawn as
 the boards pass drew its four — at their originals' sizes, turned so the two
 headquarters face each other across the near and far edges, with sea made land
-under each deployment zone, the zone cleared to plains, and a road into it. A
-commit each, after the provenance below, each simulated from both openers and
-looked at in a browser; the map table in the architecture doc gains a row each.
+under each deployment zone, the zone cleared to plains, and a road into it —
+see *Maps* in the architecture doc. A commit each, each simulated from both
+openers and looked at in a browser; the map table gains a row each.
 
 - **Chosen from every two-player map among Dual Strike's official ones**, by
   drawing each that way and keeping those where wheels cross between the zones,
@@ -310,14 +310,6 @@ looked at in a browser; the map table in the architecture doc gains a row each.
 
 **Found by the pre-check:**
 
-- **Decided: shoals are plains.** Advance Wars lets every land unit cross a
-  shoal at a plain's cost, so drawing one as river would put a moat for guns
-  along coasts that have none. Point Stormy and Little Lion carry them.
-- **Decided: the provenance said once.** Every board from Advance Wars repeats
-  one paragraph — drawn at its own size, from Advance Wars By Web's copy, its
-  properties as buildings, changed only where the zones need it. Said once in
-  the architecture doc's *Maps*, each board's comment keeps its source and only
-  what is particular to it. Its own commit, ahead of the boards.
 - **Accepted, to be looked at**: where a road bends along a board's edge, the
   frame carries it off the board as if it crossed — a short road the original
   does not have. Only Little Lion has such bends; the frame's rule stays as it

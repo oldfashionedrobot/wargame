@@ -1,19 +1,10 @@
 import type { GameMap } from './types';
 
 /**
- * Two islands, each a ridge of hills ringed by road, joined by one neck of
- * buildings across the sea between them -- the only way from one to the other
- * for anything, and the ground the game is about.
- *
- * ⚠️ **Drawn from Advance Wars: Dual Strike's War Room map *Twin Isle***, at its
- * own size, by way of Advance Wars By Web's copy (awbw.amarriner.com), turned
- * half round so that blue's island is the near one. Its cities, bases and
- * headquarters are the buildings. Changed only where the deployment zones need
- * it: each island reaches the board's edge where its army stands, cleared to
- * open ground, with a road down to it from the ring.
- *
- * ⚠️ **Near enough a rotation**, as the original is: each island is the other
- * turned, apart from where their buildings and woods stand.
+ * From Advance Wars: Dual Strike's *Twin Isle*, turned half round. Two islands,
+ * each a ridge of hills ringed by road, joined by one neck of buildings across
+ * the sea -- the only way from one to the other for anything, and the ground
+ * the game is about. Near enough a rotation.
  */
 export const twinIsle: GameMap = {
   id: 'twin-isle',
