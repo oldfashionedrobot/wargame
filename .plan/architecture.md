@@ -1494,7 +1494,17 @@ run while the renderer ref is still `null` and nothing would re-run it.
 `createGameRenderer(canvas, initialState)` is **async** — it loads the unit
 models before any unit exists, so that no window opens in which a unit has state
 but no mesh. `GameCanvas` disposes a renderer that finishes building after
-unmount. It resolves to:
+unmount.
+
+⚠️ **One engine per canvas at a time**: a build waits until the last renderer
+on its canvas has been disposed. A canvas has one WebGL context, and two engines
+on it share the GL state while each keeps its own record of what is bound —
+disposing one unbinds every texture slot, and the other never binds its
+textures again because it believes they still are. The route arrow then sampled
+an empty slot and drew as solid tiles.
+StrictMode builds twice in dev, which is how two met.
+
+It resolves to:
 
 ```ts
 onTileClick(handler)      setSelectedTile(coordinate | null)

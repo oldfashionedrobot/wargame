@@ -354,9 +354,40 @@ function warnIfTooTall(cells: TerrainCell[][], surfaceAt: (at: Coordinate) => nu
   }
 }
 
+// ⚠️ **One engine per canvas at a time.** A canvas has one WebGL context, and
+// two engines on it share the GL state while each keeps its own record of what
+// is bound. Disposing one unbinds every texture slot it holds, the other still
+// believes its textures bound and never binds them again, and the route arrow
+// sampled an empty slot and drew as solid tiles. StrictMode builds twice in
+// dev, so a build waits until the last renderer on its canvas is disposed.
+const canvasFreed = new WeakMap<HTMLCanvasElement, Promise<void>>();
+
 export async function createGameRenderer(
   canvas: HTMLCanvasElement,
   initialState: GameState,
+): Promise<GameRenderer> {
+  const previous = canvasFreed.get(canvas);
+  let free = (): void => {};
+  canvasFreed.set(
+    canvas,
+    new Promise((resolve) => {
+      free = resolve;
+    }),
+  );
+  await previous;
+  try {
+    return await buildGameRenderer(canvas, initialState, free);
+  } catch (cause) {
+    // A build that fails is never disposed, and must not hold the canvas.
+    free();
+    throw cause;
+  }
+}
+
+async function buildGameRenderer(
+  canvas: HTMLCanvasElement,
+  initialState: GameState,
+  free: () => void,
 ): Promise<GameRenderer> {
   const gridHeight = initialState.grid.length;
   const gridWidth = initialState.grid[0]?.length ?? 0;
@@ -1039,6 +1070,7 @@ export async function createGameRenderer(
       window.removeEventListener('resize', handleResize);
       canvas.removeEventListener('wheel', handleWheel);
       engine.dispose();
+      free();
     },
   };
 }
