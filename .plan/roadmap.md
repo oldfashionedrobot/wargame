@@ -988,6 +988,10 @@ numbers and the argument live; this is the phase that keeps changing them.
   ⬜ It also becomes match data, so it lands with the ruleset-versioning
   question rather than before it.
 
+  ⬜ **A larger army is what would justify a wider board**, never a deeper
+  one: the boards' depth is set by how long the armies take to meet, which
+  does not change with what they field.
+
 - **Maps into a table, and an editor over it.** Settled in *Maps in a table*
   above. The storage half is a migration and a foreign key; the editor is the
   half that makes it worth doing, and it is the first tool in this repo written

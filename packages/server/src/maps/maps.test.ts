@@ -57,10 +57,10 @@ describe('reaching across', () => {
 });
 
 /**
- * The most board the default army fills: with no transports, boats or planes,
- * a bigger one is empty ground to walk across.
+ * Deep enough for a couple of turns to set up and take ground before the
+ * armies meet, and as wide as the default army fills.
  */
-const LARGEST_SIDE = 16;
+const LARGEST_SIDE = 12;
 /** A building is cover; a board full of them is cover everywhere, so nowhere. */
 const MOST_BUILDINGS = 5;
 
