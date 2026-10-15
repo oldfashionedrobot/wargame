@@ -1652,7 +1652,10 @@ unavailable action is omitted — so hover is the only state a row has.
     behind it at rest and 0.83 tilted right down. A voxel spike put this at a
     full tile and tile identity fell apart on sight.
 - The models are [Kenney's Nature Kit](https://kenney.nl/assets/nature-kit),
-  CC0, as GLB — the loader units already use. What the code relies on, measured
+  CC0, as GLB — the loader units already use. ⚠️ **The whole kit is in
+  `public/models/terrain`, and only what `TERRAIN_MODELS` names is loaded**, so
+  a piece a board needs is one name away and the rest cost nothing to play.
+  What the code relies on, measured
   rather than assumed: ground tiles are **exactly 1×1 in x and z**, which is
   `TILE_SIZE`, so nothing is scaled; they carry no textures, only flat material
   colours; they are multi-mesh **split by material**, and the set shares a
