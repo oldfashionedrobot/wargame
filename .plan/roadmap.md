@@ -292,7 +292,6 @@ board** as if it crossed. Little Lion has four such bends; they read as roads
 leading on, so the frame's rule was left as it is.
 
 #### The boards pass
-#### The boards pass
 
 ✅ **Shipped**, from playing: losing the army loses the match, as losing the
 general does; the spent grey a little more saturated; a new terrain failing to
