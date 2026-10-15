@@ -1,3 +1,4 @@
+import { Constants } from '@babylonjs/core/Engines/constants';
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
@@ -166,13 +167,16 @@ export interface RouteArrowOptions {
   alpha: number;
   /** Draw height *above the tile's own surface*, as `tileOverlay` uses it. */
   height: number;
+  /** After the board's and before the units'. */
+  renderingGroupId: number;
   surfaceAt: (coordinate: Coordinate) => number;
   gridWidth: number;
   gridHeight: number;
 }
 
 export function createRouteArrow(scene: Scene, options: RouteArrowOptions): RouteArrow {
-  const { name, color, alpha, height, surfaceAt, gridWidth, gridHeight } = options;
+  const { name, color, alpha, height, renderingGroupId, surfaceAt, gridWidth, gridHeight } =
+    options;
 
   const texture = new DynamicTexture(`${name}-atlas`, { width: ATLAS, height: ATLAS }, scene);
   drawAtlas(texture);
@@ -186,14 +190,16 @@ export function createRouteArrow(scene: Scene, options: RouteArrowOptions): Rout
   material.disableLighting = true;
   material.alpha = alpha;
   material.backFaceCulling = false;
+  // ⚠️ Over the board whatever stands on it: a route through a wood is still a
+  // route, and drawn among the trees it showed nothing but its head. Writing no
+  // depth is what lets the units drawn after it stand on it.
+  material.depthFunction = Constants.ALWAYS;
+  material.disableDepthWrite = true;
 
   const mesh = new Mesh(name, scene);
   mesh.material = material;
   mesh.isVisible = false;
-  // ⚠️ Drawn over everything, trees and units included, as Advance Wars draws
-  // its arrow: a route through a wood is still a route, and drawn among the
-  // trees it showed nothing but its head.
-  mesh.renderingGroupId = 1;
+  mesh.renderingGroupId = renderingGroupId;
 
   return {
     setPath(path) {

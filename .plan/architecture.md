@@ -1883,9 +1883,12 @@ unavailable action is omitted — so hover is the only state a row has.
   ⚠️ Babylon's
   `ICanvasRenderingContext` has no `lineCap`; the default `butt` is wanted
   anyway, since a flush end is what lets one tile's segment meet the next
-  without a seam. ⚠️ **Drawn over everything**, in a rendering group of its own,
-  trees and units included, as Advance Wars draws its arrow — among the trees,
-  a route through a wood showed nothing but its head.
+  without a seam. ⚠️ **Over the board and under the units**, as Advance Wars
+  draws its arrow: among the trees, a route through a wood showed nothing but
+  its head. It is drawn in a rendering group after the board's, ignoring depth
+  and writing none, and every mesh of a unit — ring and counter included — in
+  the group after that. Neither group clears depth, so a unit still stands
+  behind a hill.
 - Units are glTF models from `public/models/`, one per unit type, loaded once
   into `AssetContainer`s and **cloned** per unit — Babylon's default there, and
   ⚠️ what lets a unit wear a material of its own when it is greyed, since

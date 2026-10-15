@@ -130,6 +130,12 @@ const RANGE_HEIGHT = 0.015;
 const ROUTE_COLOR = new Color3(0.95, 0.98, 1);
 const ROUTE_ALPHA = 0.75;
 const ROUTE_HEIGHT = 0.018;
+// ⚠️ **The route draws over the board and under the units**, as Advance Wars
+// draws its arrow. Groups draw in order, and neither of these clears depth: the
+// route ignores depth and writes none, so the units after it still meet the
+// terrain's and stand behind a hill as they did.
+const ROUTE_GROUP = 1;
+const UNIT_GROUP = 2;
 // The four tiles a unit may turn to look at. Warm, so it does not read as
 // somewhere to go -- by this point movement is already decided.
 const FACING_COLOR = new Color3(1, 0.82, 0.35);
@@ -628,11 +634,15 @@ async function buildGameRenderer(
     gridWidth,
     gridHeight,
   });
+  for (const group of [ROUTE_GROUP, UNIT_GROUP]) {
+    scene.setRenderingAutoClearDepthStencil(group, false);
+  }
   const routeArrow = createRouteArrow(scene, {
     name: 'movement-route',
     color: ROUTE_COLOR,
     alpha: ROUTE_ALPHA,
     height: ROUTE_HEIGHT,
+    renderingGroupId: ROUTE_GROUP,
     surfaceAt,
     gridWidth,
     gridHeight,
@@ -698,6 +708,7 @@ async function buildGameRenderer(
     unitMeshes.set(unit.id, node);
     healthRings.set(unit.id, createHealthRing(scene, node));
     chargeCounters.set(unit.id, createChargeCounter(scene, node));
+    for (const mesh of node.getChildMeshes()) mesh.renderingGroupId = UNIT_GROUP;
     showUnit(initialState, unit, node);
   }
 
