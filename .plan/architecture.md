@@ -460,7 +460,7 @@ camera** — row index increases north, so a map written out top-down is upside
 down in the source.
 
 **Boards are skirmish-sized**, those drawn for this game and those drawn from
-Advance Wars alike, with a smaller `tester`. A board may be any size that fits
+Advance Wars alike, with a smaller `tester-2`. A board may be any size that fits
 both deployment zones, and `createMatchState` refuses one that does not; a map
 that does not declare its zones has them centred. ⚠️ **`maps.test.ts` also
 holds every board to a few limits**: deep enough for a couple of turns to set
@@ -516,7 +516,7 @@ originals:
 | `ridge-island-12` | From Dual Strike's *Ridge Island*. A ring road round two staggered ridges, and a bay in two opposite corners, the zones declared clear of them. Each half the other turned |
 | `mirror-islands-12` | From Dual Strike's *Mirror Islands*. A river bending across the middle, bridged at either end of the bend, and a ring road either side of it. Each half the other turned |
 | `little-lion-12` | Drawn after Dual Strike's *Little Lion*. The armies in opposite corners, a ridge and a lake in each of the other two, and one road from each army meeting in the middle; the zones declared toward the corners |
-| `tester` | A 10×10 board for playtesting: the road straight down the middle, a river across it at the midline with a single bridge, a wood beside the road on the near bank and a rise on the far one. The smallest board, so the armies meet soonest |
+| `tester-2` | A 10×10 board for playtesting: the road straight down the middle, a river two tiles wide across the midline under a long bridge, a wood beside the road on the near bank and a rise on the far one. The smallest board, so the armies meet soonest |
 
 ⚠️ **A river may only leave the board where a deployment zone is not.** The
 zones are the two rows at each end, as wide as the zone and where the map puts

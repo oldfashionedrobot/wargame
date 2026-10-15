@@ -1,7 +1,7 @@
 import type { GameMap } from './types';
 
 export const tester: GameMap = {
-  id: 'tester',
+  id: 'tester-2',
   name: 'Tester',
   rows: [
     '....-.....',
@@ -9,9 +9,9 @@ export const tester: GameMap = {
     '..ff-.....',
     '..ff-.....',
     '~~~~=~~~~~',
+    '~~~~=~~~~~',
     '....-..^^.',
     '....-..^^.',
-    '....-.....',
     '....-.....',
     '....-.....',
   ],
