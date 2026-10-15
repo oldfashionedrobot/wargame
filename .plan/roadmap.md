@@ -276,48 +276,12 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 ⬜ **Under way, planned and pre-checked, from playing.** Shipped: the default
 army as it is being played, losing the army as well as the general, the spent
 grey a little more saturated, a new terrain failing to compile until it is
-drawn, sea, structure, and a map's size beside its name. Remaining, in order:
-each map declaring where its armies deploy; a frame around every board; and
+drawn, sea, structure, a map's size beside its name, and each map declaring
+where its armies deploy. Remaining, in order: a frame around every board; and
 four boards from Advance Wars at their own sizes, a commit each, drawn with sea
 and structures. Each passes the gate — `tsc -b --force` included —
 and lands with its docs. Comments, docs and test titles that quote a value, or
 anything else a change can move, are removed rather than updated.
-
-⬜ **A map declares where its armies deploy.** **Decided**: the zone stays ten
-wide and two deep against the board's edge — near for the first seat, far for
-the second — and a map says where along that edge each sits. A map that says
-nothing is centred, as every board is today.
-
-- **`GameMap.zoneStarts?: [near, far]`**: the board column of each seat's
-  westmost zone square, in board coordinates whichever way the seat faces. A
-  labelled tuple indexed by seat, as the placement code already is, so a
-  partial declaration cannot be written.
-- **Placement**: with `slack` the board's width less the zone's, the default
-  is `[floor(slack/2), slack - floor(slack/2)]` — the far one the near one
-  turned, which on a board with an odd spare column sits one column east, and a
-  naive `[m, m]` would quietly move. The near army is placed from its zone's
-  start; the far one is turned within its own zone, drawn from its own left.
-  Checked against today's `createMatchState` for every width and zone up to
-  twenty-five: the default reproduces it exactly.
-- **Refused, not clamped**: a declared start that is not a whole number or
-  leaves the zone off the board. The two zones cannot overlap — the existing
-  depth check already puts them on different rows.
-- `DEPLOYMENT_ZONE` keeps the size and every caller keeps its signature;
-  `createMatchState` reads the starts from the map. The preview, the store and
-  the simulator take declared zones through it with no change.
-- **Tests**: every existing `matchState.test` case stays, its boards declaring
-  nothing. New: a declared zone places each army where the map says, the far
-  one still from its own left, at columns that tell declared, centred and
-  turned-from-near apart; an undeclared zone on an odd-width board is centred
-  with the far one a column east; a declared zone off the board is refused,
-  naming the seat. `maps.test` validates declared zones through
-  `createMatchState`, so a zone over water or rock fails it unchanged.
-- **Comments and docs**: `DeploymentZone`'s and `DEPLOYMENT_ZONE`'s say size
-  only, place being the map's; the far army's comment says it is turned within
-  its own zone; the warning about water and rock under the zone moves from
-  `ARMY` to the new field; `maps.test`'s and `matchState.test`'s headers lose
-  their stale lines. The architecture doc's *Maps* passages on the centred zone,
-  its margin, its rotation and the middle ten columns.
 
 ⬜ **A frame around every board**, four tiles wide, continuing the board's edges
 outward so the board reads as a piece of a larger land. No grid lines, no

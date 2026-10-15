@@ -11,8 +11,8 @@ export const PLAYERS: Player[] = [
 ];
 
 /**
- * Where a player's units may be placed: a rectangle on their own edge of the
- * board, centred on its width.
+ * How much of the board a player's units may be placed on: a rectangle against
+ * their own edge, wherever along it the map puts it.
  *
  * ⚠️ **An army grid is exactly this size, not merely bounded by it.** Padding
  * with empties is what makes an *offset* deployment expressible: under
@@ -22,8 +22,8 @@ export const PLAYERS: Player[] = [
  * the trade wanted -- a deployment that does not say where it stands is the
  * thing being removed.
  *
- * ⚠️ **The margin is therefore a property of the zone and not of the army.**
- * Nothing about centring varies with what is fielded any more, which is why
+ * ⚠️ **Where an army stands is therefore the zone's and the map's, never the
+ * army's.** Nothing about placement varies with what is fielded, which is why
  * `armyWidth` is read here as a *check* rather than as an input to the sum.
  */
 export interface DeploymentZone {
@@ -32,12 +32,9 @@ export interface DeploymentZone {
 }
 
 /**
- * ⚠️ **Assumed, not declared by the map -- for now.** The two rows nearest each
- * edge are simply taken, on a board of any size that fits both zones;
- * `createMatchState` refuses one that does not. The day a map carries its own
- * zone, this constant is what it replaces, and an existing convention becomes
- * checkable with it: *a river may only leave the board where the army does not
- * stand* is kept by hand today.
+ * The zone's size, the same on every map -- where it sits is the map's, by
+ * `GameMap.zoneStarts`. The rows nearest each edge are taken, on a board of any
+ * size that fits both zones; `createMatchState` refuses one that does not.
  *
  * ⚠️ **Reachable as an argument**, the same shape `ACTIONS_PER_TURN` has and for
  * the same reason: the suite deploys onto boards this game never ships, so
@@ -54,12 +51,6 @@ export const DEPLOYMENT_ZONE: DeploymentZone = { width: 10, depth: 2 };
  *
  * ⚠️ **A tuning dial rather than a doctrine**, and the thing most likely to move
  * again in playtesting.
- *
- * ⚠️ **A map may not put water or rock under the zone.** `wheels` cannot enter
- * river or hills at any price, so a board that draws either into a
- * deployment square strands a gun wherever a player puts one. `maps.test.ts` is
- * what catches it, and it now checks the *zone* rather than this army -- which
- * is the stronger property, because the zone is what a player may fill.
  */
 const ARMY: string[] = ['cagac.....', 'iiiii.....'];
 
@@ -94,44 +85,60 @@ export function createMatchState(
   const height = grid.length;
   const width = grid[0]?.length ?? 0;
 
-  const margin = Math.floor((width - zone.width) / 2);
+  const slack = width - zone.width;
 
-  // ⚠️ Refused rather than clamped. A board narrower than the zone gives a
-  // negative margin, which silently deploys units at negative columns -- a
-  // state that parses, stores and replays, and is wrong from the first frame.
-  // The depth check sums the zones rather than doubling one, so it still says
-  // the right thing if a third seat is ever dealt in.
-  if (margin < 0 || zone.depth * deployments.length > height) {
+  // ⚠️ Refused rather than clamped. A board narrower than the zone has no room
+  // for it, and placing it anyway deploys units at negative columns -- a state
+  // that parses, stores and replays, and is wrong from the first frame. The
+  // depth check sums the zones rather than doubling one, so it still says the
+  // right thing if a third seat is ever dealt in.
+  if (slack < 0 || zone.depth * deployments.length > height) {
     throw new Error(
       `map ${map.id} is ${width}x${height}, too small for ${deployments.length} deployment ` +
         `zones ${zone.width} wide and ${zone.depth} deep`,
     );
   }
 
+  // ⚠️ The far default is the near one turned, which on a board with an odd
+  // spare column sits a column east of it -- so `[centred, centred]` would
+  // quietly move it.
+  const centred = Math.floor(slack / 2);
+  const starts = map.zoneStarts ?? [centred, slack - centred];
+
   // ⚠️ Checked before parsing, because `parseArmyGrid` speaks about *rows*
   // agreeing with each other and this is about them agreeing with the zone. A
   // grid narrower than the zone is the case that used to be silently centred.
-  for (const { player, army } of deployments) {
+  deployments.forEach(({ player, army }, seat) => {
     if (army.length !== zone.depth || armyWidth(army) !== zone.width) {
       throw new Error(
         `${player.id} fields an army ${armyWidth(army)}x${army.length}, ` +
           `not the ${zone.width}x${zone.depth} deployment zone`,
       );
     }
-  }
+    const start = starts[seat];
+    if (!Number.isInteger(start) || start < 0 || start > slack) {
+      throw new Error(
+        `map ${map.id} puts ${player.id}'s deployment zone at column ${start}, ` +
+          `off a board ${width} wide`,
+      );
+    }
+  });
 
   const units = deployments.flatMap(({ player, army }, seat) =>
     parseArmyGrid(army).map((placement, index): Unit => {
-      const col = margin + placement.at.col;
-      const row = placement.at.row;
+      const { col, row } = placement.at;
+      const start = starts[seat];
 
       return {
         id: `${player.color}-${index + 1}`,
-        // ⚠️ A **rotation** about the board's centre, not a translation. Copy
-        // the zone to the far side and both armies face the same way down the
-        // board with one of them looking at the back of its own guns; turn it,
-        // and each player's line is drawn from its own left.
-        position: seat === 0 ? { col, row } : { col: width - 1 - col, row: height - 1 - row },
+        // ⚠️ The far army is **turned within its own zone**, not copied into
+        // it. Copy it and both armies face the same way down the board with one
+        // of them looking at the back of its own guns; turn it, and each
+        // player's line is drawn from its own left.
+        position:
+          seat === 0
+            ? { col: start + col, row }
+            : { col: start + zone.width - 1 - col, row: height - 1 - row },
         // ⚠️ Toward the enemy, which is the opposite of what this used to say.
         // Row index increases north and seat 0 starts at row 0, so giving it
         // `south` pointed both armies off their own edge. A rule reads this: an

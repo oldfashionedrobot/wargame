@@ -22,4 +22,15 @@ export interface GameMap {
    * down here. Author it bottom-up, or write it out and reverse it.
    */
   rows: string[];
+  /**
+   * Where along its own edge each seat's deployment zone sits: the board
+   * column of its westmost square, near seat first, in board coordinates
+   * whichever way the seat faces. Omitted, both are centred.
+   *
+   * ⚠️ **A map may not put water or rock under a zone.** `wheels` cannot enter
+   * river or hills at any price, and nothing enters sea, so a board that draws
+   * any of them into a deployment square strands whatever a player puts there.
+   * `maps.test.ts` is what catches it, checking every square of both zones.
+   */
+  zoneStarts?: [near: number, far: number];
 }

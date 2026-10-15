@@ -11,9 +11,8 @@ import { DEFAULT_MAP_ID, getMap, listMaps } from './index';
 //
 // ⚠️ Asserted against `createMatchState` rather than against the map alone,
 // because a map no longer carries units -- so what is under test is the board
-// *and the army deployed onto it*. That is more than these used to cover for
-// less content: a deployment zone drawn across a river is a property of the
-// pair, and neither half can see it on its own.
+// *and the army deployed onto it*, through the engine's own placement of the
+// map's zones.
 
 /** Every tile a movement type can walk to from `from`, by flood fill. */
 function reach(grid: TileType[][], from: Coordinate, movementType: MovementType): Set<string> {
@@ -109,9 +108,9 @@ describe('every map', () => {
       // army deploys. It is also what makes an existing convention checkable:
       // a river may only leave the board where an army does not stand.
       //
-      // ⚠️ **Deployed, not worked out.** The engine places the far zone by
-      // rotating the near one, so a test computing the columns itself checks the
-      // wrong ones on an odd-width board. A full zone for both seats puts a unit
+      // ⚠️ **Deployed, not worked out.** The engine places both zones, declared
+      // or centred, so a test computing the columns itself would check its own
+      // arithmetic rather than the board. A full zone for both seats puts a unit
       // on every square; the count makes sure an empty deployment cannot pass.
       it('leaves both deployment zones standable by every movement type', () => {
         const fullZone = Array.from({ length: DEPLOYMENT_ZONE.depth }, () =>

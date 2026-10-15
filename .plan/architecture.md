@@ -398,7 +398,8 @@ no rule reads an army — once units carry `owner` it has done its job and is
 derivable by grouping them.
 
 **Units are placed in a `DeploymentZone`**, `DEPLOYMENT_ZONE` in `matchState.ts`:
-a rectangle on the player's own edge, centred on the board's width. ⚠️ **An army
+a rectangle against the player's own edge, wherever along it the map puts it.
+⚠️ **An army
 grid is exactly the zone's size, not merely bounded by it** — padded with
 empties, which is what makes an *offset* deployment expressible at all:
 
@@ -407,31 +408,37 @@ empties, which is what makes an *offset* deployment expressible at all:
 '...iiii...'    // the same four, centred
 ```
 
-⚠️ **The margin is therefore a property of the zone and not of the army.**
-Nothing about centring varies with what is fielded, so `armyWidth` is read as a
-*check* — is this grid the zone's width — rather than as an input to the sum. A
-grid of the wrong size is refused, naming the player whose army it is.
+⚠️ **Where an army stands is therefore the zone's and the map's, never the
+army's.** Nothing about placement varies with what is fielded, so `armyWidth` is
+read as a *check* — is this grid the zone's width — rather than as an input to
+the sum. A grid of the wrong size is refused, naming the player whose army it
+is.
 
-⚠️ **The zone is assumed, not declared by the map.** The rows nearest each edge
-are simply taken, on a board of any size that fits both zones —
-`createMatchState` refuses one that does not. **Reachable as an argument**, the shape
-`ACTIONS_PER_TURN` has and for the same reason: the suite deploys onto boards
-this game never ships.
+**The zone's size is the same on every map, and where it sits is the map's.**
+`GameMap.zoneStarts` gives the board column of each seat's westmost zone
+square, near seat first; a map that says nothing is centred, the far zone being
+the near one turned, so on a board with an odd spare column it sits a column
+east. A declared start that is not a whole number, or leaves the zone off the
+board, is refused naming the seat. The rows nearest each edge are taken, on a
+board of any size that fits both zones — `createMatchState` refuses one that
+does not. **The size is reachable as an argument**, the shape `ACTIONS_PER_TURN`
+has and for the same reason: the suite deploys onto boards this game never
+ships.
 
 Parsed by `parseArmyGrid` over a `char` column on `UnitType`, the same shape
 terrain has. ⚠️ `.` means *empty* in an army and *plains* in a map — one
 character, two grids, and no row is ever parsed as both.
 
-Each army is laid from its own edge, and the second is placed by a **180°
-rotation about the board's centre** — not a copy, which would run both lines the
-same way down the board. Facing is toward the enemy: north for the first player,
+Each army is laid from its own edge, and the second is **turned within its own
+zone** — not copied into it, which would run both lines the same way down the
+board. Facing is toward the enemy: north for the first player,
 south for the second. Unit ids are `${colour}-${n}` in **army scan order**, row
 then column, **within that player's own army** — so each side numbers from 1
 whatever the other fields — and are deterministic because `initial_state` plus
 the log must replay identically.
 
-**A board too small for the zones is refused, not clamped.** ⚠️ A negative
-centring margin would deploy units at negative coordinates — a state that
+**A board too small for the zones is refused, not clamped.** ⚠️ Placing a zone
+wider than the board would deploy units at negative coordinates — a state that
 parses, stores and replays while being wrong from the first frame. The depth
 check sums the zones rather than doubling one.
 
@@ -454,9 +461,8 @@ down in the source.
 
 **The shipped maps are 12×12, apart from a 10×10 `tester`, and a board may be any
 size that fits both deployment zones** — at least ten columns and four rows —
-and `createMatchState` refuses one that does not, centring the zone on whatever
-width it is handed. On a 12×12 board the zone leaves one spare column a side; on
-`tester` it fills the width.
+and `createMatchState` refuses one that does not. No shipped map declares its
+zones yet, so each is centred on whatever width it is handed.
 
 **Four rules hold across every board**, and they are design rather than code —
 nothing enforces the last two but the eye:
@@ -490,8 +496,8 @@ nothing enforces the last two but the eye:
 | `tester` | A 10×10 board for playtesting: the road straight down the middle, a river across it at the midline with a single bridge, a wood beside the road on the near bank and a rise on the far one. The smallest board, so the armies meet soonest |
 
 ⚠️ **A river may only leave the board where a deployment zone is not.** The
-zones are the middle ten columns of the two rows at each end, and `wheels` cannot
-enter water or rock, so neither may be drawn there. `two-bridges` shows it: its
+zones are the two rows at each end, as wide as the zone and where the map puts
+them, and `wheels` cannot enter water or rock, so neither may be drawn there. `two-bridges` shows it: its
 north–south arm stops one row short of the edge. ⚠️ This is now **checked rather
 than kept by hand** — see `maps.test.ts` above.
 

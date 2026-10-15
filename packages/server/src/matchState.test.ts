@@ -9,9 +9,9 @@ const classic = getMap('classic');
 const board = (rows: string[]): GameMap => ({ id: 'fixture', name: 'Fixture', rows });
 
 // ⚠️ **Every test that pins a *position* supplies its own armies and zone.**
-// Both are tuning dials -- the formation has been rewritten twice mid-playtest,
-// and the zone becomes map data -- so a suite that reads either is a suite that
-// breaks every time the game is tuned. Only the agnostic properties use the
+// Both are tuning dials -- the formation has been rewritten mid-playtest, and
+// where the zone sits is map data -- so a suite that reads either is a suite
+// that breaks every time the game is tuned. Only the agnostic properties use the
 // defaults.
 const versus = (blue: string[], red: string[] = blue): Deployment[] => [
   { player: PLAYERS[0], army: blue },
@@ -110,6 +110,43 @@ describe('createMatchState', () => {
     expect(typeAt(5, 0)).toBe('cavalry');
     expect(typeAt(5, 5)).toBe('artillery');
     expect(typeAt(4, 5)).toBe('cavalry');
+  });
+
+  // ⚠️ Columns chosen so the three readings disagree: centred would put blue at
+  // 3 and 4, and the far zone turned from the near one would put red at 7
+  // and 6. Declared, red's line still runs from its own left.
+  it('deploys each army where the map declares its zone', () => {
+    const map = { ...TEN_BY_SIX(), zoneStarts: [2, 5] as [number, number] };
+    const state = createMatchState(map, versus(['ac..']), zone(4, 1));
+    const typeAt = (col: number, row: number) =>
+      state.units.find((unit) => unit.position.col === col && unit.position.row === row)
+        ?.unitTypeId;
+
+    expect(typeAt(2, 0)).toBe('artillery');
+    expect(typeAt(3, 0)).toBe('cavalry');
+    expect(typeAt(8, 5)).toBe('artillery');
+    expect(typeAt(7, 5)).toBe('cavalry');
+  });
+
+  // An odd spare column cannot be split evenly, and the far zone is the near
+  // one turned -- so it lands a column east, not on the same columns.
+  it('centres an undeclared zone on an odd-width board as the near one turned', () => {
+    const state = createMatchState(
+      board(['...........', '...........']),
+      versus(['i.........']),
+      zone(10, 1),
+    );
+    const at = (owner: string) => state.units.find((unit) => unit.owner === owner)?.position;
+    expect(at('player-blue')).toEqual({ col: 0, row: 0 });
+    expect(at('player-red')).toEqual({ col: 10, row: 1 });
+  });
+
+  it('refuses a declared zone that leaves the board, naming the seat', () => {
+    const declaring = (zoneStarts: [number, number]) => () =>
+      createMatchState({ ...TEN_BY_SIX(), zoneStarts }, versus(['iiii']), zone(4, 1));
+    expect(declaring([0, 7])).toThrow(/player-red's deployment zone at column 7/);
+    expect(declaring([-1, 0])).toThrow(/player-blue's deployment zone at column -1/);
+    expect(declaring([0.5, 0])).toThrow(/player-blue's deployment zone/);
   });
 
   it('faces each army at the other', () => {
