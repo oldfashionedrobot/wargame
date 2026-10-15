@@ -1,30 +1,27 @@
 import type { GameMap } from './types';
 
 /**
- * From Advance Wars: Dual Strike's *Ridge Island*, cut down. A ring road round
- * ridges of hills, and a bay in two opposite corners. The zones are declared,
- * each toward its own end of the ring.
+ * From Advance Wars: Dual Strike's *Ridge Island*, redrawn at a skirmish
+ * board's size. A ring road round two staggered ridges, and a bay in two
+ * opposite corners, so the zones are declared clear of them. Each half is the
+ * other turned.
  */
 export const ridgeIsland: GameMap = {
-  id: 'ridge-island-16',
+  id: 'ridge-island-12',
   name: 'Ridge Island',
   rows: [
-    '...........-wwww',
-    '...........-wwww',
-    '....ff..#..-.www',
-    '....f......-f.ww',
-    '..----------f^..',
-    'f.-....^^ff-f^^.',
-    'f.-..ff^^^^-^^^.',
-    '..-.f^fffff-#ff.',
-    '..-#^^..ff.-..f.',
-    '..-.^f.....-..f.',
-    '.f----------....',
-    'f..f^ff..-...f..',
-    'ww.^^f...-..ff..',
-    'www^^f.#.-fff...',
-    'wwww.....-......',
-    'wwww.....-......',
+    '....-.....ww',
+    '....-.....ww',
+    '....-.....ww',
+    '..--------..',
+    '.#-...#ff-..',
+    '..-^^^^..-..',
+    '..-..^^^^-..',
+    '..-ff#...-#.',
+    '..--------..',
+    'ww.....-....',
+    'ww.....-....',
+    'ww.....-....',
   ],
-  zoneStarts: [2, 4],
+  zoneStarts: [0, 2],
 };
