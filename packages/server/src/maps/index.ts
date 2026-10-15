@@ -1,7 +1,6 @@
 import { classic } from './classic';
 import { common } from './common';
 import { crossroads } from './crossroads';
-import { duoFalls } from './duoFalls';
 import { lakeland } from './lakeland';
 import { meadow } from './meadow';
 import { missilePlains } from './missilePlains';
@@ -9,9 +8,7 @@ import { ridgeIsland } from './ridgeIsland';
 import { twoBridges } from './twoBridges';
 import { tester } from './tester';
 import { twinIsle } from './twinIsle';
-import { longRoad } from './longRoad';
 import { littleLion } from './littleLion';
-import { pointStormy } from './pointStormy';
 import { mirrorIslands } from './mirrorIslands';
 import type { GameMap } from './types';
 
@@ -30,11 +27,8 @@ const MAPS: Record<string, GameMap> = Object.fromEntries(
     tester,
     missilePlains,
     twinIsle,
-    duoFalls,
     ridgeIsland,
-    longRoad,
     littleLion,
-    pointStormy,
     mirrorIslands,
   ].map((map) => [map.id, map]),
 );

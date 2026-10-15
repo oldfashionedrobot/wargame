@@ -1,32 +1,31 @@
 import type { GameMap } from './types';
 
 /**
- * From Advance Wars: Dual Strike's *Little Lion*, turned a quarter. The armies
- * start in opposite corners with ridges and lakes between them, so the zones
- * are declared toward the corners.
+ * Drawn after Advance Wars: Dual Strike's *Little Lion*. The armies start in
+ * opposite corners, with a ridge and a lake in each of the other two, and one
+ * road from each army meeting in the middle. Each half is the other turned,
+ * so the zones are declared toward the corners.
  */
 export const littleLion: GameMap = {
-  id: 'little-lion',
+  id: 'little-lion-16',
   name: 'Little Lion',
   rows: [
-    '-.........#wwwwwww',
-    '-..........===.#.w',
-    '-^#..f#ww=wwww.#.w',
-    '-^^^^..ff.wwwww..w',
-    '--ff^.^^^.wwwwww=w',
-    '#-ff^ff..f===#ww=w',
-    '.-ff^^^^^fwww=ww..',
-    '.-..f...^fwww=w##.',
-    'w-#..ww...fwwf..ff',
-    'w-#..ww.^.#ww.^^^^',
-    'w-...ww.^.#wwf.^^^',
-    'w-..fww.^f#www..f^',
-    'w-wwwww.^f--------',
-    'w-wwwww.^^^^^^^^f-',
-    'w-.wwww.f------^^#',
-    'w-#www#f.-wwww--##',
-    'w-#www--------....',
-    'w------#..........',
+    '.-..............',
+    '.-..............',
+    '.-....ff...www..',
+    '.-..^.ff..wwwww.',
+    '.-..^.....wwwww.',
+    '.-..^....#wwww..',
+    '.-#.^^^^...ww...',
+    '.-------........',
+    '.......--------.',
+    '...ww...^^^^.#-.',
+    '..wwww#....^..-.',
+    '.wwwww.....^..-.',
+    '.wwwww..ff.^..-.',
+    '..www...ff....-.',
+    '..............-.',
+    '..............-.',
   ],
-  zoneStarts: [0, 8],
+  zoneStarts: [0, 6],
 };

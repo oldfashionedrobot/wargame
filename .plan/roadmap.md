@@ -252,15 +252,16 @@ a floor.
 
 #### Boards from Advance Wars
 
-⚠️ **Two were planned and dropped**, so neither is planned again. *The
+⚠️ **Five were planned and dropped**, so none is planned again. *The
 Trident*, drawn out, is a naval map — a road down a narrow spine, its islands
 reached by transport — with no land board in it. *Megalopolis*: wheels from
 its far zone reach none of the city without passing through the near zone, so
-one army would deploy on the junction the other has to come through.
+one army would deploy on the junction the other has to come through. *Point
+Stormy*, *Duo Falls* and *Long Road* did not survive being cut down: the ring
+round a bay, the zigzag and the long road all need the room the cut takes.
 
-- ⬜ **For play to answer**: whether the default army fills a board from
-  Advance Wars, which the boards were once shrunk for being too empty; and how
-  each new board leans, which the simulator says they do.
+- ⬜ **For play to answer**: how each board leans, which the simulator says
+  they do.
 - **Reference, from research into Advance Wars**: its single-screen missions
   are 15×10 to 16×12, its battles about 16×16 to 21×21, and the competitive
   pool's median about 21×21; its pre-deployed missions hold about a unit to

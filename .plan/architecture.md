@@ -460,19 +460,21 @@ camera** — row index increases north, so a map written out top-down is upside
 down in the source.
 
 **Boards come in different sizes**: small skirmish boards drawn for this game,
-and boards drawn from Advance Wars at their originals' sizes. A board may be any
-size that fits both deployment zones, and `createMatchState` refuses one that
-does not; a map that does not declare its zones has them centred.
+and larger ones cut down from Advance Wars. A board may be any size that fits
+both deployment zones, and `createMatchState` refuses one that does not; a map
+that does not declare its zones has them centred.
 
 **A board from Advance Wars** is drawn from one of Dual Strike's maps, by way of
-Advance Wars By Web's copy (awbw.amarriner.com), at its original's size and
-turned so the two headquarters face each other across the near and far edges —
-a rotation, never a mirror. Sea stays sea and reefs join it; shoals are plains,
+Advance Wars By Web's copy (awbw.amarriner.com), turned so the two headquarters
+face each other across the near and far edges — a rotation, never a mirror —
+and cut down. Rows and columns that carry nothing particular are dropped rather
+than the board cropped, so what makes it that board survives; its buildings are
+thinned to the few that guard a gap, a crossing or a junction; and water that
+does no work becomes land. Sea stays sea and reefs join it; shoals are plains,
 since every land unit crosses one at a plain's cost; mountains and pipes are
-hills, a pipe's seam a gap; and every property is a structure. It changes from
-the original only where the deployment zones need it: the land under each zone
-reaches the board's edge, cleared to plains, with a road run into it. Each
-board's comment names its source and what is particular to it.
+hills, a pipe's seam a gap; and every property is a structure. Under each zone
+the land reaches the board's edge, cleared to plains, with a road run into it.
+Each board's comment names its source and what is particular to it.
 
 **Four rules hold across the boards drawn for this game**, and they are design
 rather than code — nothing enforces the last two but the eye. The boards drawn
@@ -505,14 +507,11 @@ originals:
 | `lakeland` | A lake ringing a **wooded** island, and a road down the west shore. The island is where the water's price shows: infantry wades across in one turn, cavalry needs two and spends the night in open water at zero defence, and artillery never arrives at all — so it is cover no gun can ever take, only shell |
 | `meadow` | Open field with one **lateral** road straight across and a spur down to it from each side. A road across rather than along helps you redeploy along your own line more than it helps you advance, and ⚠️ **the two spurs do not line up**, so neither player has a straight run at the other |
 | `common` | Open field with the road up the middle — the fast way *at* the enemy — and a rise on one flank of each approach, ⚠️ **diagonally opposed** so the same plan does not work from both ends. A wood beside the road at the centre is the only real cover anything can occupy, and it is equally far from both |
-| `missile-plains` | From Dual Strike's *Missile Plains*. Three ridges across the board, each with one gap and the gaps staggered, so wheels zigzag while foot climbs; between them, open fields studded with buildings. ⚠️ **Not a rotation**: both armies start on the west side, their zones declared |
-| `twin-isle` | From Dual Strike's *Twin Isle*, turned half round. Two islands in the sea, each a ridge of hills ringed by road, joined by one neck of buildings — the only way across for anything. Near enough a rotation, its zones declared |
-| `duo-falls` | From Dual Strike's *Duo Falls*, turned a quarter so its narrow ends are the near and far edges. A long country between two seas, cut twice by falls bridged where the road crosses, and the road snaking the whole length through a narrow neck in the east — guns go the long way round while foot and horse ford |
-| `ridge-island` | From Dual Strike's *Ridge Island*. One island, with ridges of hills across its middle and roads running in between them from either end, so the ridges decide where the guns can go. Near enough a rotation |
-| `long-road` | From Dual Strike's *Long Road*, turned half round. A road winding the length of a narrow coast, crossing one-tile channels on short bridges, the armies in opposite corners and their zones declared |
-| `little-lion` | From Dual Strike's *Little Lion*, turned a quarter. The armies start in opposite corners with ridges and lakes between them, their zones declared |
-| `point-stormy` | From Dual Strike's *Point Stormy*, turned half round. A ring of land round a bay, open on one side, so the way from one army to the other is the long way round; the far headquarters stands on a point out into the bay. Zones declared |
-| `mirror-islands` | From Dual Strike's *Mirror Islands*, turned a quarter — one of its two-player Classic maps, though only about half symmetric. One island in a ring of sea, crossed by a staggered river in its middle with a bridge at either end of the stagger, and by a second near the far end with a single bridge, so the far army's guns have one way out |
+| `missile-plains-16` | From Dual Strike's *Missile Plains*, cut down. Three ridges across the board, each with one gap, staggered, and one road threading all three. ⚠️ **Not a rotation**: both armies start on the west side, their zones declared |
+| `twin-isle-16` | From Dual Strike's *Twin Isle*, turned half round and cut down. Two shores of a strait, each a ridge inside a ring road, joined by one neck — the only way across for anything. Each half the other turned |
+| `ridge-island-16` | From Dual Strike's *Ridge Island*, cut down. A ring road round ridges of hills, and a bay in two opposite corners; the zones declared toward each end of the ring |
+| `mirror-islands-16` | From Dual Strike's *Mirror Islands*, cut down. A staggered river across the middle, bridged at either end of the stagger, and a ring road either side. Each half the other turned |
+| `little-lion-16` | Drawn after Dual Strike's *Little Lion*. The armies in opposite corners, a ridge and a lake in each of the other two, and one road from each army meeting in the middle. Each half the other turned, the zones declared toward the corners |
 | `tester` | A 10×10 board for playtesting: the road straight down the middle, a river across it at the midline with a single bridge, a wood beside the road on the near bank and a rise on the far one. The smallest board, so the armies meet soonest |
 
 ⚠️ **A river may only leave the board where a deployment zone is not.** The
