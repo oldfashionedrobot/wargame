@@ -35,8 +35,8 @@ where it could move. Every unit acts once, greyed once it has, the turn ends
 when the last of them has gone, and a player with nothing left, or without
 their general, has lost.
 
-Two players, nine units each — a general, two guns, two horse, four foot — on a
-map chosen when the match is created. `/maps` shows the boards without
+Two players, each fielding the same default army — a general with guns, horse
+and foot — on a map chosen when the match is created. `/maps` shows the boards without
 starting one.
 
 ## Layout

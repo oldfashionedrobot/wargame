@@ -52,9 +52,8 @@ export const DEPLOYMENT_ZONE: DeploymentZone = { width: 10, depth: 2 };
  * the seam player-chosen composition arrives through, and which keeps the suite
  * from pinning whatever this happens to say today.
  *
- * Cavalry on the ends, infantry behind, the two guns together in the centre.
- * ⚠️ **A tuning dial rather than a doctrine** -- it has already been rewritten
- * twice mid-playtest, and it is the thing most likely to move again.
+ * ⚠️ **A tuning dial rather than a doctrine**, and the thing most likely to move
+ * again in playtesting.
  *
  * ⚠️ **A map may not put water or rock under the zone.** `wheels` cannot enter
  * river or hills at any price, so a board that draws either into a
@@ -62,7 +61,7 @@ export const DEPLOYMENT_ZONE: DeploymentZone = { width: 10, depth: 2 };
  * what catches it, and it now checks the *zone* rather than this army -- which
  * is the stronger property, because the zone is what a player may fill.
  */
-const ARMY: string[] = ['..cagac...', '...iiii...'];
+const ARMY: string[] = ['cagac.....', 'iiiii.....'];
 
 /** One player, and the army they field. */
 export interface Deployment {

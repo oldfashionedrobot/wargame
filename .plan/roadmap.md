@@ -274,8 +274,9 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 
 #### The next pass
 
-⬜ **Planned and pre-checked, from playing.** Fourteen commits, in this order:
-the default army as it is being played; losing the army as well as the
+⬜ **Under way, planned and pre-checked, from playing.** The default army as it
+is being played has shipped; thirteen commits remain, in this order: losing the
+army as well as the
 general; the spent grey a little more saturated; a new terrain failing to
 compile until it is drawn; sea; structure; a map's size beside its name; each
 map declaring where its armies deploy; a frame around every board; and four
@@ -284,19 +285,6 @@ structures.
 Each passes the gate — `tsc -b --force` included — and lands with its docs.
 Comments, docs and test titles that quote a value, or anything else a change
 can move, are removed rather than updated.
-
-⬜ **The default army as it is being played** — `cagac.....` over `iiiii.....`,
-ten a side at the left of the zone, already in the working tree from
-playtesting. Nothing breaks: the suites pass with it, since every positional
-test supplies its own army. What it touches is prose:
-
-- The opening summary of the architecture doc and the README name the army's
-  make-up and count, and stop doing so — they describe a default army of a
-  general with guns, horse and foot.
-- `ARMY`'s comment describes the layout and counts its rewrites; both go.
-- The roadmap's note under *After the combat pass* that centring the army
-  flipped the opener's edge describes a centred default that is no longer the
-  default, and is cut to the finding.
 
 ⬜ **Losing your army loses the match, as losing your general does.**
 **Decided**: a player left with nothing but its general has lost. It settles
@@ -690,14 +678,10 @@ it, from about 55% to 64% across every map. ✅ **Accepted for now**:
 the first mover still gets its volley off before contact is made, and tuning
 options wait on how it plays.
 
-⚠️ **Centring the default army in its zone flips it, and makes it far
-stronger.** Default against default, 200 games each way: the opener wins 94–97%
-on `classic` and every game on `common`, and 81% / 57% on `meadow`, while on
-`tester` the *second* mover wins 88–99%; `crossroads` stays even. With the army
-at the zone's left edge, as before, the second mover won 57–75% on those same
-boards. Centred, the two armies start directly across from each other rather
-than offset, so whoever strikes first lands on a full line. A thing to watch in
-play before the army's placement is settled.
+⚠️ **Where the army stands in its zone moves the opener's edge a long way.**
+Centred, the two armies start directly across from each other, so whoever
+strikes first lands on a full line; offset, as the default army is at the
+zone's left, they do not. A thing to watch in play.
 
 #### Mobility in contact — engagement and overwatch
 
