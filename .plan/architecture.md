@@ -511,6 +511,7 @@ originals:
 | `ridge-island` | From Dual Strike's *Ridge Island*. One island, with ridges of hills across its middle and roads running in between them from either end, so the ridges decide where the guns can go. Near enough a rotation |
 | `long-road` | From Dual Strike's *Long Road*, turned half round. A road winding the length of a narrow coast, crossing one-tile channels on short bridges, the armies in opposite corners and their zones declared |
 | `little-lion` | From Dual Strike's *Little Lion*, turned a quarter. The armies start in opposite corners with ridges and lakes between them, their zones declared |
+| `point-stormy` | From Dual Strike's *Point Stormy*, turned half round. A ring of land round a bay, open on one side, so the way from one army to the other is the long way round; the far headquarters stands on a point out into the bay. Zones declared |
 | `tester` | A 10×10 board for playtesting: the road straight down the middle, a river across it at the midline with a single bridge, a wood beside the road on the near bank and a rise on the far one. The smallest board, so the armies meet soonest |
 
 ⚠️ **A river may only leave the board where a deployment zone is not.** The

@@ -281,7 +281,7 @@ headquarters face each other across the near and far edges, with sea made land
 under each deployment zone, the zone cleared to plains, and a road into it —
 see *Maps* in the architecture doc. A commit each, each simulated from both
 openers and looked at in a browser; the map table gains a row each. Shipped:
-Long Road and Little Lion.
+Long Road, Little Lion and Point Stormy.
 
 - **Chosen from every two-player map among Dual Strike's official ones**, by
   drawing each that way and keeping those where wheels cross between the zones,
@@ -290,10 +290,6 @@ Long Road and Little Lion.
   far zone reach none of the city without passing through the near zone, so one
   army would deploy on the junction the other has to come through. Mirror
   Islands takes its place.
-- **Point Stormy** — 25 wide, 22 deep, turned half round. A ring of land round
-  a bay, open on one side, so the way from one army to the other goes the long
-  way round. Zones declared toward the headquarters, the near one a headland
-  as on Twin Isle, with a road run down to it.
 - **Mirror Islands** — 15 wide, 32 deep, turned a quarter; one of the
   original's two-player Classic maps, though only about half symmetric. One
   island in a ring of sea, crossed by a staggered river in its middle with a
