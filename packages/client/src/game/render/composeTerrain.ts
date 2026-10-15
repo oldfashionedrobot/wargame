@@ -431,21 +431,20 @@ const isWater = (tile: TileType | undefined): boolean =>
  * How a cell's four orthogonal neighbours stand: `N=1, E=2, S=4, W=8`, set
  * where the neighbour belongs to the same family.
  *
- * `offBoard` decides what the edge of the map counts as, and the two families
- * want different answers: water treats it as more water, so a river runs
- * cleanly off the board rather than growing a shoreline along it, while a road
- * treats it as land and ends.
+ * ⚠️ **Off the grid counts as more of the same**, so a river or a road runs off
+ * the edge rather than growing a shoreline or ending in a cap -- the grid drawn
+ * is the board in its frame, and its rim is the edge of what is shown, not of
+ * the world.
  */
 function neighbourMask(
   grid: TileType[][],
   col: number,
   row: number,
   same: (tile: TileType | undefined) => boolean,
-  offBoard: boolean,
 ): number {
   const test = (c: number, r: number): boolean => {
     const tile = at(grid, c, r);
-    return tile === undefined ? offBoard : same(tile);
+    return tile === undefined || same(tile);
   };
 
   // Row increases north, so `row + 1` is the tile above on screen.
@@ -474,7 +473,7 @@ function atSea(grid: TileType[][], col: number, row: number): boolean {
 }
 
 function waterShape(grid: TileType[][], col: number, row: number): Turned {
-  const mask = neighbourMask(grid, col, row, isWater, true);
+  const mask = neighbourMask(grid, col, row, isWater);
 
   // Water on every side: the only thing left that can distinguish this cell is
   // a diagonal, and exactly one land diagonal is a corner the kit has drawn.
@@ -621,7 +620,7 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
         standOn: BRIDGE_DECK,
       };
     case 'road': {
-      const chosen = ROAD[neighbourMask(grid, col, row, isRoad, false)];
+      const chosen = ROAD[neighbourMask(grid, col, row, isRoad)];
       return { ground: chosen.model, turns: chosen.turns, props: [] };
     }
     case 'forest':
@@ -659,6 +658,74 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
       throw new Error(`no drawing for terrain ${String(unhandled)}`);
     }
   }
+}
+
+/** How many tiles of land the board is drawn inside of, on every side. */
+export const FRAME = 4;
+
+/** A board tile at the edge, as the frame beyond it needs to know it. */
+interface Edge {
+  /** Its road runs on into the board across the edge, so off it as well. */
+  crosses: boolean;
+  /** The water it stands in, if it is a bridge. */
+  water: TileType;
+}
+
+/**
+ * What the frame draws beyond an edge tile. ⚠️ Keyed by `TileType`, so a new
+ * terrain has to say.
+ */
+const BEYOND: Record<TileType, (edge: Edge) => TileType> = {
+  plains: () => 'plains',
+  forest: () => 'forest',
+  hills: () => 'hills',
+  river: () => 'river',
+  sea: () => 'sea',
+  // Not a wall of boxes round the board.
+  structure: () => 'plains',
+  // Only across the edge, or a road along it would widen into a plaza.
+  road: ({ crosses }) => (crosses ? 'road' : 'plains'),
+  // Its road carries on as a causeway, or else its water does.
+  bridge: ({ crosses, water }) => (crosses ? 'road' : water),
+};
+
+/**
+ * The board inside a frame `frame` tiles deep: land that continues each edge
+ * outward, so the board reads as a piece of somewhere larger. Each frame tile
+ * takes the edge tile nearest it, and each corner block the corner tile -- where
+ * no road crosses, since it lies beyond two edges.
+ *
+ * ⚠️ **Drawing only.** It never enters `GameState`, so no rule, the server or a
+ * unit can reach it; the renderer slices the board's own cells back out of what
+ * it composes.
+ */
+export function frameGrid(grid: TileType[][], frame: number): TileType[][] {
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  const clamp = (value: number, size: number) => Math.min(size - 1, Math.max(0, value));
+
+  return Array.from({ length: height + 2 * frame }, (_, r) =>
+    Array.from({ length: width + 2 * frame }, (_, c) => {
+      const [col, row] = [c - frame, r - frame];
+      const [edgeCol, edgeRow] = [clamp(col, width), clamp(row, height)];
+      const [beyondCol, beyondRow] = [col !== edgeCol, row !== edgeRow];
+      if (!beyondCol && !beyondRow) return grid[row][col];
+
+      // The next tile back into the board, across the one edge this lies
+      // beyond. A corner block lies beyond two, and nothing crosses into it.
+      const inward =
+        beyondCol && beyondRow
+          ? undefined
+          : beyondCol
+            ? at(grid, edgeCol + (col < 0 ? 1 : -1), edgeRow)
+            : at(grid, edgeCol, edgeRow + (row < 0 ? 1 : -1));
+
+      return BEYOND[grid[edgeRow][edgeCol]]({
+        crosses: isRoad(inward),
+        water: atSea(grid, edgeCol, edgeRow) ? 'sea' : 'river',
+      });
+    }),
+  );
 }
 
 /** Every cell's models, worked out once -- terrain does not change in a match. */

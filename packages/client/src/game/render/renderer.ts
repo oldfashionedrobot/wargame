@@ -37,7 +37,7 @@ import { createTileOverlay } from './tileOverlay';
 import { screenToTile } from './picking';
 import { createTerrainMesh } from './terrain';
 import { createBoardBase } from './boardBase';
-import { MAX_STAND_HEIGHT, composeTerrain } from './composeTerrain';
+import { FRAME, MAX_STAND_HEIGHT, composeTerrain, frameGrid } from './composeTerrain';
 import type { TerrainCell } from './composeTerrain';
 import { loadTerrainModels } from './terrainModels';
 import type { TerrainModel } from './terrainModels';
@@ -377,7 +377,7 @@ export async function createGameRenderer(
     'camera',
     -Math.PI / 2,
     CAMERA_BETA,
-    Math.max(gridWidth, gridHeight),
+    Math.max(gridWidth, gridHeight) + 2 * FRAME,
     Vector3.Zero(),
     scene,
   );
@@ -391,7 +391,7 @@ export async function createGameRenderer(
   // input away and drive the bounds instead.
   camera.inputs.removeByType('ArcRotateCameraMouseWheelInput');
   // Pinned, so nothing else can drift it, and far enough out that orbiting
-  // never brings a corner of the board through the near plane.
+  // never brings a corner of the board's frame through the near plane.
   camera.lowerRadiusLimit = camera.radius;
   camera.upperRadiusLimit = camera.radius;
   // Rotation stays free; only the tilt is bounded. The camera starts partway up
@@ -422,7 +422,12 @@ export async function createGameRenderer(
   // Awaited alongside the unit models: a board that pops into existence a frame
   // late is a frame nobody needs to see.
   const terrainModels = await loadTerrainModels(scene);
-  const cells = composeTerrain(initialState.grid);
+  // Composed whole, so rivers and roads tile across the seam, and drawn whole;
+  // everything that asks about the board reads its own cells, cut back out.
+  const framed = composeTerrain(frameGrid(initialState.grid, FRAME));
+  const cells = framed
+    .slice(FRAME, FRAME + gridHeight)
+    .map((cellRow) => cellRow.slice(FRAME, FRAME + gridWidth));
 
   /**
    * How high a unit stands on a tile — **the only answer to that question**.
@@ -459,7 +464,7 @@ export async function createGameRenderer(
 
   warnIfTooTall(cells, surfaceAt);
 
-  createTerrainMesh(scene, terrainModels, cells);
+  createTerrainMesh(scene, terrainModels, framed);
   // The board's floor, which every tile shares -- hills raise a rock, not their
   // ground. Taken from the models rather than assumed to be zero.
   const groundLevel = Math.max(...cells.flat().map((cell) => terrainModels.topOf(cell.ground)));
@@ -472,21 +477,30 @@ export async function createGameRenderer(
   // is a different question -- a river is a channel cut into its tile, so its
   // top is the bank at 0.00 while the water it has to stay under is at -0.05.
   // Measuring the top here hangs the slab through every river on the board.
-  const boardFloor = Math.min(...cells.flat().map((cell) => terrainModels.bottomOf(cell.ground)));
-  const boardBase = createBoardBase(scene, boardFloor, gridWidth, gridHeight);
+  const boardFloor = Math.min(...framed.flat().map((cell) => terrainModels.bottomOf(cell.ground)));
+  const boardBase = createBoardBase(
+    scene,
+    boardFloor,
+    gridWidth + 2 * FRAME,
+    gridHeight + 2 * FRAME,
+  );
 
   /**
-   * The eight corners of the board as an object, measured off the slab.
+   * The eight corners of the board as an object: the playable rectangle, from
+   * the floor down to the slab's underside.
    *
-   * ⚠️ The slab is in here rather than just the playing surface: it hangs below
-   * the board and is part of the silhouette, so a fit that ignored it would clip
-   * it at shallow angles -- which is exactly where it is most of what you see.
+   * ⚠️ **The board's rectangle, not the slab's**, which reaches under the frame
+   * too -- the camera fits and pans on what can be played, and the frame is
+   * only what surrounds it. The slab's depth is in here because it hangs below
+   * the board and is part of the silhouette at shallow angles.
    */
   boardBase.computeWorldMatrix(true);
-  const box = boardBase.getBoundingInfo().boundingBox;
-  const boardCorners = [box.minimumWorld.x, box.maximumWorld.x].flatMap((x) =>
-    [box.minimumWorld.z, box.maximumWorld.z].flatMap((z) =>
-      [box.minimumWorld.y, groundLevel].map((y) => new Vector3(x, y, z)),
+  const slabBottom = boardBase.getBoundingInfo().boundingBox.minimumWorld.y;
+  const halfWidth = (gridWidth * TILE_SIZE) / 2;
+  const halfHeight = (gridHeight * TILE_SIZE) / 2;
+  const boardCorners = [-halfWidth, halfWidth].flatMap((x) =>
+    [-halfHeight, halfHeight].flatMap((z) =>
+      [slabBottom, groundLevel].map((y) => new Vector3(x, y, z)),
     ),
   );
 

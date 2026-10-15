@@ -57,11 +57,15 @@ export function screenToTile(
       gridWidth,
       gridHeight,
     );
-    if (!isWithinGrid(coordinate, gridWidth, gridHeight)) continue;
+    // Levels arrive tallest first, so the last one standing is the flattest
+    // reading -- the answer a single ground plane would have given, including
+    // *no tile* for a pointer past the board's edge, where the frame draws land.
+    if (!isWithinGrid(coordinate, gridWidth, gridHeight)) {
+      fallback = null;
+      continue;
+    }
 
     if (surfaceAt(coordinate) === level) return coordinate;
-    // Levels arrive tallest first, so the last one standing is the flattest
-    // reading -- the answer a single ground plane would have given.
     fallback = coordinate;
   }
 

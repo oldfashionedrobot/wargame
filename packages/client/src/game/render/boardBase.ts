@@ -46,13 +46,13 @@ const BASE_COLOR = new Color3(0.27, 0.22, 0.18);
 const BASE_GLOW = 0.35;
 
 /**
- * A slab under the grid, so the board is an object rather than geometry that
- * stops.
+ * A slab under everything drawn, so the board is an object rather than geometry
+ * that stops.
  *
- * Sized to the board exactly: the sides sit flush under the outermost tiles, so
- * the silhouette from directly above is the same rectangle the grid lines draw.
- * A lip would be a second decision about how wide, and this phase does not need
- * one.
+ * Sized to the board in its frame exactly: the sides sit flush under the
+ * outermost tiles, so the land ends in a hard edge with its earth showing, as a
+ * diorama does. A lip would be a second decision about how wide, and nothing
+ * needs one.
  *
  * ⚠️ Not pickable, like the terrain and the grid. `screenToTile` is plane
  * arithmetic against the surfaces a unit can stand on, and a slab is neither --

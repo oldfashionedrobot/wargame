@@ -276,60 +276,11 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 ⬜ **Under way, planned and pre-checked, from playing.** Shipped: the default
 army as it is being played, losing the army as well as the general, the spent
 grey a little more saturated, a new terrain failing to compile until it is
-drawn, sea, structure, a map's size beside its name, and each map declaring
-where its armies deploy. Remaining, in order: a frame around every board; and
-four boards from Advance Wars at their own sizes, a commit each, drawn with sea
-and structures. Each passes the gate — `tsc -b --force` included —
+drawn, sea, structure, a map's size beside its name, each map declaring where
+its armies deploy, and a frame around every board. Remaining: four boards from
+Advance Wars at their own sizes, a commit each, drawn with sea and structures. Each passes the gate — `tsc -b --force` included —
 and lands with its docs. Comments, docs and test titles that quote a value, or
 anything else a change can move, are removed rather than updated.
-
-⬜ **A frame around every board**, four tiles wide, continuing the board's edges
-outward so the board reads as a piece of a larger land. No grid lines, no
-hover or click, no overlays; the camera frames and pans on the board alone.
-
-- **Built from what exists**: one pure function extends the grid by four on
-  every side, each frame tile taking the nearest edge tile and each corner
-  block the corner tile, and the extended grid is composed and drawn whole, so
-  rivers and roads autotile across the seam. The board's own cells are sliced
-  back out for everything that asks about the board — standing heights,
-  picking levels, the close-up. It never enters `GameState`, so no rule, the
-  server or a unit can reach it. Picking already ignores an off-board tile, so
-  the frame takes no clicks with no change to picking.
-- **What copies and what does not**: a road continues only where it crosses
-  the edge, or a road along the edge would widen into a plaza; a bridge
-  continues as road where its road leaves the board — a causeway — and as river
-  where its river does; a structure becomes plains rather than a wall of boxes;
-  sea, river, forest and hills copy. A table keyed by `TileType` holds this, so
-  a new terrain has to say. **Roads run off the rim** — decided — rather than
-  ending in a cap at the frame's outer edge, which flips roads' off-grid rule
-  and changes three of `composeTerrain.test`'s cases.
-- ⚠️ **The camera keeps the board's rectangle** for its fit — today it measures
-  the slab's bounding box, which would swallow the frame — and its radius
-  grows to the framed board's, or at the shallow tilt turned 45° the frame's
-  near corner falls behind the near plane on a 12×12.
-- **Measured**: about twice the instantiations on today's boards, the same
-  draw calls — the frame uses only models the board already has — and a
-  forest-heavy edge as the worst case for build time, which the browser check
-  of canvas-ready time covers.
-- **Tests**: in `composeTerrain.test`, the board unchanged inside its frame;
-  edges and corners continuing; a road crossing the edge running to the rim
-  and its edge tile composing as a straight; a road along the edge not
-  widening; a bridge continuing as road or river; a river keeping its channel;
-  sea continuing and a structure not. Picking is checked in a browser, as are
-  the seams at all four edges, framing at two window sizes, the shallow tilt
-  turned 45° on the tester, and the map viewer.
-- **Docs**: the architecture doc's camera, slab, grid lines and woods bullets,
-  and a new one for the frame.
-- **Decided**: the scenery reshuffles once, every seed shifting by four, rather
-  than keying seeds on board coordinates; frame trees in front of the near row
-  are accepted and looked at in a browser; and picking stops falling back to
-  an edge tile for a pointer just past the far edge, which the frame would make
-  visible — one line.
-- **Decided: a hard outer edge**, the slab grown to sit under the frame as well
-  as the board — a diorama, its earth sides showing — since at the default zoom
-  four tiles still leave the backdrop showing beyond them. A fade into the
-  backdrop, a small shader on the terrain materials, was the alternative and is
-  not built.
 
 ⬜ **Four boards from Advance Wars, at their own sizes.** **Decided**: maps
 come in different sizes rather than one standard; the small ones stay as

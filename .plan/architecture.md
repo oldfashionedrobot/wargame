@@ -1550,14 +1550,17 @@ unavailable action is omitted — so hover is the only state a row has.
   not**. An orthographic camera's apparent size comes entirely from its ortho
   bounds, so moving along `radius` changes nothing visible and only walks the
   camera toward the board until the near plane clips it. The wheel input is
-  removed, `radius` is pinned by matching limits, and a listener on the canvas
-  scales a zoom factor that the ortho bounds divide by — clamped, and removed in
-  `dispose()` alongside the `resize` listener.
+  removed, `radius` is pinned by matching limits — far enough out that orbiting
+  never brings a corner of the frame through the near plane — and a listener on
+  the canvas scales a zoom factor that the ortho bounds divide by — clamped, and
+  removed in `dispose()` alongside the `resize` listener.
 
   ⚠️ **How much room the board needs is settled once, at build, and nothing
   here ever reads the camera.** `boardRadius` is the ground-plane half-diagonal
   and `boardRise` the height either side of the target, both measured off the
-  slab's own bounding box so its overhang counts. From those: `reachX` is the
+  **board's rectangle** down to the slab's underside — not the slab's own
+  bounds, which reach under the frame. The camera fits and pans on what can be
+  played. From those: `reachX` is the
   radius, which no `alpha` exceeds, and `reachY` is taken at
   `CAMERA_BETA_TOPDOWN` — the most overhead tilt allowed, and so the one
   needing the most vertical room. Only the **window** and the **wheel** move the
@@ -1667,8 +1670,9 @@ unavailable action is omitted — so hover is the only state a row has.
 - `composeTerrain.ts` decides each cell's model and quarter turns, purely: a
   4-bit neighbour mask (`N=1, E=2, S=4, W=8`) indexes a table per family. A
   bridge belongs to **both** families — it is water with a road over it — so a
-  river is not broken by its own crossing. Off-board counts as water for water,
-  so a river runs off the edge, and as land for roads, so a road ends. **Sea
+  river is not broken by its own crossing. Off the grid counts as more of the
+  same for both families, so a river and a road run off the rim rather than
+  growing a shore or ending in a cap. **Sea
   is the same body of water**, so a river opens into it with no bank across its
   mouth; a bridge takes the sea's paint when it spans sea. A terrain it has no
   drawing for is a **compile error**, by the same `never` check `applyEvents`
@@ -1725,7 +1729,9 @@ unavailable action is omitted — so hover is the only state a row has.
   `woodlands` flood-fills the forest tiles into four-connected groups — matching
   `neighbourMask` and every other neighbourhood question in the module — and
   `scatterWood` seeds one stream per group from its **scan-order first** tile,
-  so the result is identical whatever order the fill walks in.
+  so the result is identical whatever order the fill walks in. Scattered over
+  the board in its frame, so a wood at the edge carries on into the frame as
+  one wood.
 
   Five trees a tile, planted **round robin**: one pass per tree, each visiting
   every tile of the group once, the first pass required so no square comes out
@@ -1745,12 +1751,25 @@ unavailable action is omitted — so hover is the only state a row has.
 - **Open ground carries light scenery** — grass tufts, a small bush, the odd
   flower, on about a third of plains tiles. ⚠️ None of it means anything: a tile
   with a flower plays exactly like one without.
-- Grid lines are **one flat grid at the board's floor**, mid grey at 7%. Hills
+- **The board is drawn inside a frame** of `FRAME` tiles of land on every side,
+  so it reads as a piece of somewhere larger. `frameGrid` extends the grid and
+  the result is composed and drawn whole, so rivers and roads tile across the
+  seam: each frame tile takes the nearest edge tile and each corner block the
+  corner tile, except as `BEYOND` says — a road continues only where it crosses
+  the edge, or a road along it would widen into a plaza; a bridge carries on as
+  road where its road crosses and as its water otherwise; a structure becomes
+  plains. ⚠️ **Drawing only**: it never enters `GameState`, and the renderer
+  slices the board's own cells back out for standing heights, picking levels and
+  the close-up. No grid lines, hover or overlays reach it, and a pointer past
+  the board's edge finds no tile rather than the edge tile behind it.
+- Grid lines are **one flat grid at the board's floor**, over the board and
+  never the frame, mid grey at 7%. Hills
   raise a *rock*, not their ground, so every tile's floor is the same
   plane. Long spans draw each interior edge once rather than twice, so the alpha
   means what it says.
-- **A slab under the board** — `boardBase.ts`, sized to the grid exactly, 0.8
-  thick, not pickable and unknown to `surfaceAt`. ⚠️ Plain, and the lighting is why: every face of a
+- **A slab under the board** — `boardBase.ts`, sized to the board in its frame
+  exactly, so the land ends in a hard edge with its earth showing, as a diorama
+  does; not pickable and unknown to `surfaceAt`. ⚠️ Plain, and the lighting is why: every face of a
   cliff model is vertical and the only light is hemispheric from above, so
   relief takes one shade the whole way round. The slab is what makes the board
   an object rather than geometry that stops. ⚠️ It hangs off `bottomOf` — the

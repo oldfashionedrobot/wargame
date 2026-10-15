@@ -8,6 +8,7 @@ import {
   MAX_STAND_HEIGHT,
   QUARTER_TURN,
   composeTerrain,
+  frameGrid,
 } from './composeTerrain';
 
 // The pure half of the tiler: a grid of terrain in, a grid of atlas indices
@@ -23,33 +24,92 @@ describe('roads', () => {
   // The sheet's 4x4 is structured -- rows carry the north/south bits, columns
   // the east/west ones -- so these spot-checks are enough to catch a table
   // transcribed a row or a column out.
+  // Kept off the edge of the fixture, which counts as road -- see below.
   it('picks the junction each neighbourhood calls for', () => {
     const cells = compose(
-      '..-..', // 0
-      '.---.', // 1
-      '..-..', // 2
+      '.....', // 0
+      '..-..', // 1
+      '.---.', // 2
+      '..-..', // 3
+      '.....', // 4
     );
-    expect(cells[1][2].ground).toBe('ground_pathCross'); // crossroads: road on all four
-    expect(cells[1][1].ground).toBe('ground_pathEnd'); // road only to the east
-    expect(cells[1][3].ground).toBe('ground_pathEnd'); // road only to the west
-    expect(cells[0][2].ground).toBe('ground_pathEnd'); // road only to the north
-    expect(cells[2][2].ground).toBe('ground_pathEnd'); // road only to the south
+    expect(cells[2][2].ground).toBe('ground_pathCross'); // crossroads: road on all four
+    expect(cells[2][1].ground).toBe('ground_pathEnd'); // road only to the east
+    expect(cells[2][3].ground).toBe('ground_pathEnd'); // road only to the west
+    expect(cells[1][2].ground).toBe('ground_pathEnd'); // road only to the north
+    expect(cells[3][2].ground).toBe('ground_pathEnd'); // road only to the south
   });
 
   it('draws a corner where a road turns, and a straight where it does not', () => {
     const cells = compose(
-      '.--', // 0
-      '.-.', // 1
+      '....', // 0
+      '.--.', // 1
+      '.-..', // 2
+      '....', // 3
     );
-    expect(cells[0][1].ground).toBe('ground_pathBend'); // north and east: a corner
-    expect(cells[0][2].ground).toBe('ground_pathEnd'); // west only: an end
-    expect(cells[1][1].ground).toBe('ground_pathEnd'); // south only: an end
+    expect(cells[1][1].ground).toBe('ground_pathBend'); // north and east: a corner
+    expect(cells[1][2].ground).toBe('ground_pathEnd'); // west only: an end
+    expect(cells[2][1].ground).toBe('ground_pathEnd'); // south only: an end
   });
 
-  // The board's edge is *not* road, so a road running to it stops rather than
-  // trailing off -- the opposite of what water does.
-  it('ends a road at the edge of the board', () => {
-    expect(compose('--')[0][0].ground).toBe('ground_pathEnd'); // east only
+  // ⚠️ The edge of what is drawn counts as more road, as it does as more water,
+  // so a road runs off it rather than ending in a cap. What is drawn is the
+  // board in its frame, so that edge is the rim of the scenery.
+  it('runs a road off the edge rather than capping it', () => {
+    expect(compose('--')[0][0]).toEqual(compose('---')[0][1]);
+  });
+});
+
+describe('the frame', () => {
+  // Framed by an argument rather than by FRAME, so these hold however deep the
+  // frame is tuned.
+  const frame = (depth: number, ...rows: string[]) => frameGrid(parseTerrainGrid(rows), depth);
+
+  it('leaves the board unchanged inside it', () => {
+    const grid = parseTerrainGrid(['.f^', '~=~', '.-#']);
+    const framed = frameGrid(grid, 2);
+    expect(framed).toHaveLength(7);
+    expect(framed[0]).toHaveLength(7);
+    expect(framed.slice(2, 5).map((row) => row.slice(2, 5))).toEqual(grid);
+  });
+
+  it('continues each edge outward, and fills each corner from the corner tile', () => {
+    const framed = frame(2, 'f^', '..');
+    const southward = ['forest', 'forest', 'forest', 'hills', 'hills', 'hills'];
+    expect(framed[2]).toEqual(southward); // the board's near row, carried east and west
+    expect(framed[0]).toEqual(southward); // and south, corners included
+    expect(framed[5]).toEqual(Array(6).fill('plains'));
+  });
+
+  it('runs a road that crosses the edge out to the rim, straight through the seam', () => {
+    const framed = frame(2, '.-.', '.-.');
+    expect(framed.map((row) => row[3])).toEqual(Array(6).fill('road'));
+    const cells = composeTerrain(framed);
+    expect(cells[2][3].ground).toBe('ground_pathStraight'); // the board's own edge tile
+    expect(cells[0][3].ground).toBe('ground_pathStraight'); // and the rim
+  });
+
+  // A road along the edge crosses the edges at its ends, and only those.
+  it('does not widen a road that runs along the edge', () => {
+    const framed = frame(2, '---', '...');
+    expect(framed[1].slice(2, 5)).toEqual(['plains', 'plains', 'plains']);
+    expect(framed[2]).toEqual(Array(7).fill('road'));
+  });
+
+  it('carries a bridge on as road where its road leaves, and as its water where that does', () => {
+    expect(frame(1, '~=~', '.-.')[0][2]).toBe('road');
+    expect(frame(1, '-=-', '.~.')[0][2]).toBe('river');
+    expect(frame(1, '-=-', '.w.')[0][2]).toBe('sea');
+  });
+
+  it('keeps a river its channel across the seam', () => {
+    const cells = composeTerrain(frame(2, '.~.', '.~.'));
+    expect(cells[2][3].ground).toBe('ground_riverStraight');
+    expect(cells[2][3]).toEqual(cells[3][3]);
+  });
+
+  it('continues sea, and not a structure', () => {
+    expect(frame(1, 'w#', '..')[0]).toEqual(['sea', 'sea', 'plains', 'plains']);
   });
 });
 
