@@ -1909,7 +1909,11 @@ unavailable action is omitted — so hover is the only state a row has.
   wrong way. Models face `+Z`, which is north here, so there is no offset.
   Cavalry's rider holds a sabre; `dragoon.gltf`, the same rider with a carbine,
   stands in for the general, at cavalry's scale, until it has a model of its
-  own.
+  own. ⚠️ **Each vertex carries its own face's normal**: the STL conversion the
+  models came through turned every normal a quarter-turn, a different way per
+  model, which lit units from the side and the infantry from the opposite side
+  to the rest. `unitModels.test.ts` holds every model to its triangles, since a
+  turned normal still points outward and nothing else notices.
 - Two `StandardMaterial`s per player colour, plain and spent, looked up by name
   so the scene is the cache. The models arrive untextured and near-white, so
   colour is the whole of a side's identity. ⚠️ **A unit the player to move has
