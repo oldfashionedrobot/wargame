@@ -42,7 +42,15 @@ import {
   validateCommand,
   victor,
 } from '@wargame/shared';
-import type { Command, Coordinate, GameEvent, GameState, Unit, UnitTypeId } from '@wargame/shared';
+import type {
+  Command,
+  Coordinate,
+  GameEvent,
+  GameState,
+  MovementType,
+  Unit,
+  UnitTypeId,
+} from '@wargame/shared';
 import { getMap } from '../src/maps';
 import { createMatchState, PLAYERS } from '../src/matchState';
 import { rollLuck } from '../src/rollLuck';
@@ -68,6 +76,34 @@ const WIN = 1000;
  */
 const winsBy = (state: GameState, unit: Unit, target: Unit): boolean =>
   victor(state, { ...state, units: state.units.filter((u) => u.id !== target.id) }) === unit.owner;
+
+const routeCache = new WeakMap<GameState['grid'], Map<string, Map<string, number>>>();
+
+/**
+ * How far a unit is from a tile, by the route this movement type would walk
+ * over the bare terrain -- not as the crow flies, which parks a unit on the
+ * nearest shore of water it cannot cross. Units are left off the board: they
+ * move, and the terrain does not. Where no route exists, the crow's distance is
+ * all there is to go on.
+ *
+ * ⚠️ Kept per board, tile and movement type, since bare terrain answers the
+ * same every time: searching afresh for every enemy at every decision made a
+ * run many times slower.
+ */
+function stepsBetween(state: GameState, from: Unit, to: Coordinate, movementType: MovementType) {
+  let byOrigin = routeCache.get(state.grid);
+  if (!byOrigin) routeCache.set(state.grid, (byOrigin = new Map()));
+  const origin = `${movementType}:${from.position.col},${from.position.row}`;
+  let steps = byOrigin.get(origin);
+  if (!steps) {
+    const search = exploreMovement({ ...state, units: [] }, from, Infinity, movementType);
+    steps = new Map(
+      search.settled.map((tile) => [`${tile.col},${tile.row}`, search.pathTo(tile)!.length - 1]),
+    );
+    byOrigin.set(origin, steps);
+  }
+  return steps.get(`${to.col},${to.row}`) ?? tileDistance(to, from.position);
+}
 
 /** A candidate command and what the bot thinks it is worth. */
 interface Scored {
@@ -100,14 +136,14 @@ function candidates(state: GameState): Scored[] {
       const path = movement.pathTo(stop);
       if (!path) continue;
       const moved: Unit = { ...unit, position: stop };
-      const nearest = enemies.reduce((a, b) =>
-        tileDistance(stop, a.position) <= tileDistance(stop, b.position) ? a : b,
-      );
+      const { enemy: nearest, steps } = enemies
+        .map((enemy) => ({ enemy, steps: stepsBetween(state, enemy, stop, type.movementType) }))
+        .reduce((a, b) => (a.steps <= b.steps ? a : b));
 
       // A plain reposition. Scored well below any attack, so the bot only
       // walks when it cannot attack -- which is what makes it close at all.
       // ⚠️ Its own general walks the other way: kept back, like a king.
-      const distance = tileDistance(stop, nearest.position) * 0.01;
+      const distance = steps * 0.01;
       out.push({
         command: {
           type: 'move',
@@ -194,16 +230,14 @@ interface Stats {
 }
 
 function playOne(
-  mapId: string,
+  base: GameState,
   seed: number,
   stats: Stats,
   actionCap: number,
   first: string,
   budget: number | null,
-  deployments: Deployment[] | undefined,
 ): void {
   const random = rng(seed);
-  const base = createMatchState(getMap(mapId), deployments);
   // ⚠️ Who moves first is a *balance* question, not a fixture detail -- a whole
   // army acts before the other answers, so the opening is the alpha strike the
   // roadmap flags. Switchable so the two can be compared.
@@ -351,9 +385,11 @@ const first = process.argv[4] ?? PLAYERS[0].id;
 // memory. `all` means the whole roster, which is `ACTIONS_PER_TURN`'s `null`.
 const budgetArg = process.argv[5] ?? 'all';
 const budget: number | null = budgetArg === 'all' ? null : Number(budgetArg);
+// One starting state for every game, which also lets `stepsBetween` keep its
+// routes from one game to the next.
+const base = createMatchState(getMap(mapId), deployments);
 const started = Date.now();
-for (let i = 0; i < games; i++)
-  playOne(mapId, i + 1, stats, ACTION_CAP, first, budget, deployments);
+for (let i = 0; i < games; i++) playOne(base, i + 1, stats, ACTION_CAP, first, budget);
 const elapsed = Date.now() - started;
 
 const pct = (n: number, d: number) => (d === 0 ? '  —  ' : `${((100 * n) / d).toFixed(1)}%`);

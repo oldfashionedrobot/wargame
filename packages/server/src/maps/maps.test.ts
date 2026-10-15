@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { getTerrain, getUnitType, MAX_HEALTH, parseTerrainGrid } from '@wargame/shared';
+import type { Coordinate, MovementType, TileType } from '@wargame/shared';
 import { createMatchState, DEPLOYMENT_ZONE, PLAYERS } from '../matchState';
 import { DEFAULT_MAP_ID, getMap, listMaps } from './index';
 
@@ -13,6 +14,48 @@ import { DEFAULT_MAP_ID, getMap, listMaps } from './index';
 // *and the army deployed onto it*. That is more than these used to cover for
 // less content: a deployment zone drawn across a river is a property of the
 // pair, and neither half can see it on its own.
+
+/** Every tile a movement type can walk to from `from`, by flood fill. */
+function reach(grid: TileType[][], from: Coordinate, movementType: MovementType): Set<string> {
+  const seen = new Set<string>();
+  const queue = [from];
+  while (queue.length) {
+    const { col, row } = queue.shift()!;
+    const key = `${col},${row}`;
+    if (seen.has(key)) continue;
+    if (row < 0 || row >= grid.length || col < 0 || col >= grid[row].length) continue;
+    if (getTerrain(grid[row][col]).cost[movementType] === null) continue;
+    seen.add(key);
+    queue.push({ col: col + 1, row }, { col: col - 1, row });
+    queue.push({ col, row: row + 1 }, { col, row: row - 1 });
+  }
+  return seen;
+}
+
+/**
+ * How many tiles some movement type can enter -- what reach is measured
+ * against, since a board half sea would fail a measure of the whole board by
+ * construction.
+ */
+const land = (grid: TileType[][]) =>
+  grid.flat().filter((tile) => Object.values(getTerrain(tile).cost).some((cost) => cost !== null))
+    .length;
+
+/** Does a unit setting out from `from` reach most of the land? */
+const reachesAcross = (grid: TileType[][], from: Coordinate, movementType: MovementType) =>
+  reach(grid, from, movementType).size > land(grid) / 2;
+
+describe('reaching across', () => {
+  it('measures against land, so a board mostly sea can pass', () => {
+    const grid = parseTerrainGrid(['....', 'ww.w', 'ww.w', 'ww..']);
+    expect(reachesAcross(grid, { col: 0, row: 0 }, 'foot')).toBe(true);
+  });
+
+  it('fails a start cut off from most of the land', () => {
+    const grid = parseTerrainGrid(['.www', 'w...', 'w...']);
+    expect(reachesAcross(grid, { col: 0, row: 0 }, 'foot')).toBe(false);
+  });
+});
 
 describe('every map', () => {
   const maps = listMaps();
@@ -118,40 +161,24 @@ describe('every map', () => {
       });
 
       // The board has to be crossable by everything on it, or a unit is stranded
-      // from the first turn. Checked per movement type actually deployed.
-      // ⚠️ **It only has teeth for `wheels` now.** It was written when a river
-      // stopped horse as well, so it proved a bridge connected the two halves;
-      // since horse can ford, `foot` and `horse` pass on every board that is not
-      // solid rock. Kept at full breadth anyway -- it costs one flood fill, and
-      // it is the movement type *not* yet invented that it is really for.
+      // from the first turn. Checked per movement type actually deployed:
+      // river and hills part a board only for `wheels`, and sea parts it for
+      // every arm.
       const movementTypes = [
         ...new Set(units.map(({ unitTypeId }) => getUnitType(unitTypeId).movementType)),
       ];
       for (const movementType of movementTypes) {
         it(`leaves a route across for ${movementType}`, () => {
-          const passable = (col: number, row: number) =>
-            getTerrain(grid[row][col]).cost[movementType] !== null;
-          const seen = new Set<string>();
           const seed = units.find(
             ({ unitTypeId }) => getUnitType(unitTypeId).movementType === movementType,
           )!;
-          const queue = [{ col: seed.position.col, row: seed.position.row }];
-          while (queue.length) {
-            const { col, row } = queue.shift()!;
-            const key = `${col},${row}`;
-            if (seen.has(key)) continue;
-            if (col < 0 || row < 0 || col >= width || row >= height) continue;
-            if (!passable(col, row)) continue;
-            seen.add(key);
-            queue.push({ col: col + 1, row }, { col: col - 1, row });
-            queue.push({ col, row: row + 1 }, { col, row: row - 1 });
-          }
+          const seen = reach(grid, seed.position, movementType);
           for (const { position, unitTypeId } of units) {
             if (getUnitType(unitTypeId).movementType !== movementType) continue;
             expect(seen.has(`${position.col},${position.row}`)).toBe(true);
           }
           // And the far side is reachable, not just the corner it started in.
-          expect(seen.size).toBeGreaterThan((width * height) / 2);
+          expect(reachesAcross(grid, seed.position, movementType)).toBe(true);
         });
       }
     });

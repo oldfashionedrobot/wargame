@@ -1,6 +1,6 @@
 import { orthogonalNeighbours } from '@wargame/shared';
 import type { Coordinate, TileType } from '@wargame/shared';
-import type { TerrainModel } from './terrainModels';
+import type { Paint, TerrainModel } from './terrainModels';
 
 /** A quarter turn about y — the increment every ground model is turned by. */
 export const QUARTER_TURN = Math.PI / 2;
@@ -47,6 +47,12 @@ export interface TerrainCell {
   turns: number;
   /** Often empty; a peak carries a whole scatter of them. */
   props: Prop[];
+  /**
+   * A colour the ground takes in place of the kit's own. Sea is drawn with the
+   * river's models, and this is what keeps it from reading as water a man can
+   * wade.
+   */
+  paint?: Paint;
   /**
    * Extra height a unit stands at, *above* the ground model's own top.
    *
@@ -416,8 +422,10 @@ const at = (grid: TileType[][], col: number, row: number): TileType | undefined 
 
 const isRoad = (tile: TileType | undefined): boolean => tile === 'road' || tile === 'bridge';
 // A bridge is water with a road over it, so it is *both* families. Leaving it
-// out of this one makes every river dead-end at its own crossing.
-const isWater = (tile: TileType | undefined): boolean => tile === 'river' || tile === 'bridge';
+// out of this one makes every river dead-end at its own crossing. Sea is the
+// same body as a river, so a river opens into it with no bank across its mouth.
+const isWater = (tile: TileType | undefined): boolean =>
+  tile === 'river' || tile === 'bridge' || tile === 'sea';
 
 /**
  * How a cell's four orthogonal neighbours stand: `N=1, E=2, S=4, W=8`, set
@@ -450,6 +458,22 @@ function neighbourMask(
 }
 
 function waterCell(grid: TileType[][], col: number, row: number): TerrainCell {
+  const { model, turns } = waterShape(grid, col, row);
+  const cell: TerrainCell = { ground: model, turns, props: [] };
+  return atSea(grid, col, row) ? { ...cell, paint: 'sea' } : cell;
+}
+
+/**
+ * Is this the sea's water? ⚠️ A bridge takes the water it spans, or a crossing
+ * over the sea draws a pale patch of river under its deck.
+ */
+function atSea(grid: TileType[][], col: number, row: number): boolean {
+  const tile = grid[row][col];
+  if (tile !== 'bridge') return tile === 'sea';
+  return orthogonalNeighbours({ col, row }).some((next) => at(grid, next.col, next.row) === 'sea');
+}
+
+function waterShape(grid: TileType[][], col: number, row: number): Turned {
   const mask = neighbourMask(grid, col, row, isWater, true);
 
   // Water on every side: the only thing left that can distinguish this cell is
@@ -468,12 +492,11 @@ function waterCell(grid: TileType[][], col: number, row: number): TerrainCell {
       return tile !== undefined && !isWater(tile);
     });
     if (land.length === 1) {
-      return { ground: 'ground_riverCornerSmall', turns: INNER_CORNER[land[0][0]], props: [] };
+      return { model: 'ground_riverCornerSmall', turns: INNER_CORNER[land[0][0]] };
     }
   }
 
-  const chosen = WATER[mask];
-  return { ground: chosen.model, turns: chosen.turns, props: [] };
+  return WATER[mask];
 }
 
 /**
@@ -572,6 +595,7 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
 
   switch (tile) {
     case 'river':
+    case 'sea':
       return waterCell(grid, col, row);
     // A bridge is a deck standing on water, so the ground beneath it is
     // whatever the river would have been -- which is why the underside the

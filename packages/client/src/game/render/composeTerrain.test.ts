@@ -141,6 +141,37 @@ describe('water', () => {
   });
 });
 
+describe('sea', () => {
+  // Drawn with the river's own models, so the paint is all that tells them
+  // apart -- and it has to, since one can be waded and the other cannot.
+  it('is painted, where a river is not', () => {
+    const cells = compose('...', '~~~', 'www');
+    expect(cellAt(cells, 1, 2).paint).toBe('sea');
+    expect(cellAt(cells, 1, 1).paint).toBeUndefined();
+  });
+
+  it('takes a river into it with no bank across the mouth', () => {
+    const cells = compose(
+      '.~.', // 0
+      '.~.', // 1
+      'www', // 2
+    );
+    // The sea counts as more water, so the last tile of river is a channel
+    // running on into it rather than an end cap.
+    expect(cellAt(cells, 1, 1).ground).toBe('ground_riverStraight');
+  });
+
+  it('runs off the edge of the board rather than growing a shore along it', () => {
+    const cells = compose('...', 'www', 'www');
+    expect(cellAt(cells, 0, 1)).toEqual(cellAt(cells, 1, 1));
+  });
+
+  it('paints a bridge by the water it spans', () => {
+    expect(cellAt(compose('.-.', 'w=w', '.-.'), 1, 1).paint).toBe('sea');
+    expect(cellAt(compose('.-.', '~=~', '.-.'), 1, 1).paint).toBeUndefined();
+  });
+});
+
 describe('bridges', () => {
   // A bridge is water with a road over it, so it belongs to both families.
   // Leaving it out of the water one makes every river dead-end at its crossing.

@@ -5,7 +5,7 @@ import type { MovementType } from './unitTypes';
 // is content vocabulary -- the set of things a map can be made of -- and this
 // table is what gives each of them meaning.
 
-export type TileType = 'plains' | 'road' | 'bridge' | 'forest' | 'hills' | 'river';
+export type TileType = 'plains' | 'road' | 'bridge' | 'forest' | 'hills' | 'river' | 'sea';
 
 export interface Terrain {
   /**
@@ -51,6 +51,9 @@ export const TERRAIN: Record<TileType, Terrain> = {
   // everywhere. A gun carriage does not go up a rock face at any price.
   hills: { char: '^', defense: 3, cost: { foot: 2, horse: 3, wheels: null } },
   river: { char: '~', defense: 0, cost: { foot: 2, horse: 3, wheels: null } },
+  // Water nobody enters yet, though fire crosses it, as in Advance Wars. Its
+  // defense is never read, since nothing stands there.
+  sea: { char: 'w', defense: 0, cost: { foot: null, horse: null, wheels: null } },
 };
 
 /**

@@ -109,8 +109,10 @@ export interface TerrainModels {
    * stays underneath it carrying the right-handed-to-left-handed conversion as
    * a negative scale, which a rotation set on it would compose with and get
    * wrong -- the same reason unit models are wrapped.
+   *
+   * `paint` recolours it beyond what the model is always recoloured to.
    */
-  instantiate(model: TerrainModel, name: string): TransformNode;
+  instantiate(model: TerrainModel, name: string, paint?: Paint): TransformNode;
 }
 
 /**
@@ -153,7 +155,7 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
     bottomOf(model) {
       return bottoms.get(model) ?? 0;
     },
-    instantiate(model, name) {
+    instantiate(model, name, paint) {
       const container = byModel.get(model);
       if (!container) throw new Error(`no terrain model: ${model}`);
 
@@ -162,7 +164,7 @@ export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
       for (const root of entries.rootNodes) root.parent = holder;
 
       for (const mesh of holder.getChildMeshes()) {
-        shareMaterial(scene, model, mesh, sharedMaterials);
+        shareMaterial(scene, model, mesh, sharedMaterials, paint);
       }
       return holder;
     },
@@ -223,7 +225,18 @@ const RECOLOUR: Record<string, Record<string, { name: string; color: Color3 }>> 
   flower_: { grass: FOLIAGE },
 };
 
-function recolour(model: TerrainModel, materialName: string) {
+/** A colour a cell asks for, where `RECOLOUR` paints by model. */
+export type Paint = 'sea';
+
+const PAINT: Record<Paint, Record<string, { name: string; color: Color3 }>> = {
+  // ⚠️ Deep, so open sea never reads as water anyone could wade; and teal
+  // rather than blue, so the blue army's pieces do not sink into it.
+  sea: { water: { name: 'seaWater', color: new Color3(0.1, 0.32, 0.42) } },
+};
+
+function recolour(model: TerrainModel, materialName: string, paint?: Paint) {
+  const painted = paint && PAINT[paint][materialName];
+  if (painted) return painted;
   for (const prefix in RECOLOUR) {
     if (model.startsWith(prefix)) return RECOLOUR[prefix][materialName];
   }
@@ -254,11 +267,12 @@ function shareMaterial(
   model: TerrainModel,
   mesh: AbstractMesh,
   shared: Map<string, StandardMaterial>,
+  paint?: Paint,
 ): void {
   const source = mesh.material;
   if (!source) return;
 
-  const override = recolour(model, source.name);
+  const override = recolour(model, source.name, paint);
   const key = override?.name ?? source.name;
 
   const existing = shared.get(key);

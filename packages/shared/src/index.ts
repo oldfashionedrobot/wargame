@@ -32,8 +32,9 @@ export { parseTerrainGrid } from './terrainGrid';
 export { armyWidth, parseArmyGrid } from './armyGrid';
 
 // The unit catalog. `UnitTypeId` is out because an army names the units it
-// places; the rest of the catalog is read through `getUnitType`.
-export type { UnitTypeId } from './data/unitTypes';
+// places, and `MovementType` because the server walks its boards as one; the
+// rest of the catalog is read through `getUnitType`.
+export type { MovementType, UnitTypeId } from './data/unitTypes';
 export { getUnitType, MAX_HEALTH } from './data/unitTypes';
 
 // Combat: `LUCK_MAX`, `computeDamage` and `resolveBattle` are out because the

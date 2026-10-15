@@ -44,7 +44,7 @@ export function createTerrainMesh(
       const cell = cells[row][col];
       const center = tileToWorld({ col, row }, gridWidth, gridHeight);
 
-      const ground = models.instantiate(cell.ground, `tile-${col}-${row}`);
+      const ground = models.instantiate(cell.ground, `tile-${col}-${row}`, cell.paint);
       ground.position.set(center.x, 0, center.z);
       ground.rotation.y = cell.turns * QUARTER_TURN;
       built.push(...ground.getChildMeshes());

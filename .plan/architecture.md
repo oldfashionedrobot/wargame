@@ -189,7 +189,7 @@ identity, then terminal state, then the per-command check.
 
 ```ts
 Coordinate  { col, row }
-TileType    'plains' | 'road' | 'bridge' | 'forest' | 'hills' | 'river'
+TileType    'plains' | 'road' | 'bridge' | 'forest' | 'hills' | 'river' | 'sea'
 Facing      'north' | 'east' | 'south' | 'west'      // read by the counter rule; see Combat
 PlayerId    string                                   // never a union of colours
 PlayerColor 'blue' | 'red' | 'green' | 'yellow'      // the renderer keys on it
@@ -343,13 +343,14 @@ is transitive.
 **`terrain.ts`** — `{ char, defense, cost }` per terrain. `char` is the symbol a
 map is drawn with; `defense` is stars of cover, read by `computeDamage` on
 Advance Wars' scale — each takes a point off a hit per band of the defender's
-health. Road, bridge and river carry none. ⚠️ **How many stars ground may carry
+health. Road, bridge, river and sea carry none. ⚠️ **How many stars ground may carry
 is written nowhere as a number**: the *no living attacker is harmless* sweep is
 the limit, and it follows from the damage table. `cost` is
 movement points to *enter*, one per movement type, with `null` for impassable —
 which makes a river a wall to wheels, a toll to boots, and most of a turn to a
 horse. Costly and impassable are different answers: hills are expensive for
-horse and `null` for wheels.
+horse and `null` for wheels. **Sea is `null` to everyone**, and fire crosses it
+as in Advance Wars.
 
 ⚠️ **`road` and `bridge` are identical in *both* columns**, so they are
 indistinguishable to every rule that reads them — the split exists only so the
@@ -433,11 +434,13 @@ parses, stores and replays while being wrong from the first frame. The depth
 check sums the zones rather than doubling one.
 
 **What a map owes a player is a zone they can fill.** `wheels` cannot enter river
-or hills at any price, so a board that draws either inside a zone strands
-whatever gun is put there. ⚠️ **`maps.test.ts` checks every square of both
+or hills at any price, nor anything sea, so a board that draws them inside a
+zone strands whatever is put there. ⚠️ **`maps.test.ts` checks every square of both
 zones, for every movement type the terrain table prices** — not the squares one
 army happens to occupy. That is the stronger property, and it caught a pond
-inside a zone on `lakeland` that the army-based check could not see.
+inside a zone on `lakeland` that the army-based check could not see. Each
+movement type deployed must also reach more than half the board's **land** from
+where it starts — land rather than tiles, since a board may be mostly sea.
 
 ⚠️ **Map ids are immutable.** A match records the id it was built from, so
 changing a map's terrain under its id retroactively changes what every existing
@@ -1640,7 +1643,10 @@ unavailable action is omitted — so hover is the only state a row has.
   and gets grey stone, keeping its grass cap; and **scenery on grass** would
   otherwise be the exact green of the ground it stands on, so it gets a warmer,
   lighter green. An override supplies a *name* as well as a colour, since the
-  name is what merging groups on.
+  name is what merging groups on. ⚠️ **A cell may also ask for a `paint`**,
+  where these recolour by model: sea is drawn with the river's own pieces, and
+  its paint turns their water a deep teal — nothing anyone could wade, and not
+  the blue army's colour.
 - ⚠️ The loaded PBR materials are **replaced** with flat `StandardMaterial`s
   carrying their albedo. The kit ships `metallicFactor: 1`, and a fully metallic
   surface with no environment map to reflect renders blank white. Flattening
@@ -1649,9 +1655,11 @@ unavailable action is omitted — so hover is the only state a row has.
   4-bit neighbour mask (`N=1, E=2, S=4, W=8`) indexes a table per family. A
   bridge belongs to **both** families — it is water with a road over it — so a
   river is not broken by its own crossing. Off-board counts as water for water,
-  so a river runs off the edge, and as land for roads, so a road ends. A
-  terrain it has no drawing for is a **compile error**, by the same `never`
-  check `applyEvents` uses, rather than a tile drawn as plains.
+  so a river runs off the edge, and as land for roads, so a road ends. **Sea
+  is the same body of water**, so a river opens into it with no bank across its
+  mouth; a bridge takes the sea's paint when it spans sea. A terrain it has no
+  drawing for is a **compile error**, by the same `never` check `applyEvents`
+  uses, rather than a tile drawn as plains.
 - **A quarter turn replaces twelve of the sixteen sprites a tileset would need.**
   Base orientations are measured off the geometry, not assumed: `riverStraight`
   runs north–south at rest, `riverSide` banks south, `riverCorner` opens north

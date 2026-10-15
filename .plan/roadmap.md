@@ -276,9 +276,9 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 
 ⬜ **Under way, planned and pre-checked, from playing.** Shipped: the default
 army as it is being played, losing the army as well as the general, the spent
-grey a little more saturated, and a new terrain failing to compile until it is
-drawn. Remaining, in order: sea; structure; a map's size beside its name; each
-map declaring where its armies deploy; a frame around every board; and four
+grey a little more saturated, a new terrain failing to compile until it is
+drawn, and sea. Remaining, in order: structure; a map's size beside its name;
+each map declaring where its armies deploy; a frame around every board; and four
 boards from Advance Wars at their own sizes, a commit each, drawn with sea and
 structures. Each passes the gate — `tsc -b --force` included —
 and lands with its docs. Comments, docs and test titles that quote a value, or
@@ -336,41 +336,6 @@ nothing is centred, as every board is today.
   `ARMY` to the new field; `maps.test`'s and `matchState.test`'s headers lose
   their stale lines. The architecture doc's *Maps* passages on the centred zone,
   its margin, its rotation and the middle ten columns.
-
-⬜ **Sea**: water nobody can enter yet, so Advance Wars' island maps — a third
-to a half sea — can be drawn closer to their originals.
-
-- **Rules**: `w`, cost `null` for every movement type, defense 0, which is
-  never read since nobody stands there. Nothing else is needed: `entryCost`
-  refuses it, a charge cannot ride onto it, deployment zones cannot hold it,
-  and fire crosses it, as in Advance Wars.
-- **Models**: there is no sea or coast model in the shipped subset of the
-  Kenney nature kit, nor any Kenney pack on this machine — but the river
-  pieces already tile a body of water by its neighbours, so sea **is** that
-  body. `isWater` counts sea with river and bridge, so a river mouth opens into
-  the sea with no bank across it, and the board's edge counts as water as it
-  does today.
-- ⚠️ **It must not look like river**, which foot and horse wade. A sea cell
-  carries a paint the river does not, read where the models are coloured, so
-  its water takes a deep teal-navy of its own — one more draw call. Not the
-  blue army's colour, or blue pieces vanish against it. The banks stay as they
-  are, which reads as a beach. The close-up builds its ground the same way, so
-  it gets the paint for free.
-- ⚠️ **A bridge over sea** draws river-coloured water under its deck, since a
-  bridge takes no paint; it is painted from its water neighbours.
-- **`maps.test`'s crossability threshold** — wheels reaching more than half the
-  board — fails by construction on a board more than half sea; it is measured
-  against land, the tiles some movement type can enter. Its comment that the
-  check only has teeth for wheels stops being true: sea strands every arm.
-- ⚠️ **The bot will stall at a coast**: it approaches by distance as the crow
-  flies, so it parks at the nearest shore. Its approach reads the movement
-  search's own path length instead, before any sea board's numbers are read —
-  and `lakeland`'s unfinished matches may be the same thing already.
-- **Tests**: in `movement.test`, sea refused to every movement type and a strait
-  not crossed; in `composeTerrain.test`, sea joining river with no bank, sea
-  cells painted and river cells not, and sea running off the board. Existing
-  sweeps over `TERRAIN` cover it unchanged. `maps.test`'s threshold, and a
-  sea-heavy fixture passing it while an unreachable island fails.
 
 ⬜ **Structure**: a generic building, a grey box on its tile for now, giving
 four stars of cover.
@@ -1251,7 +1216,7 @@ numbers and the argument live; this is the phase that keeps changing them.
   |---|---|---|---|
   | `crossroads` | 54% red | 53% red | near even |
   | `meadow` | 63% blue | 65% blue | a blue board |
-  | `lakeland` | 47% red | 63% red | a red board, 12–16% unresolved |
+  | `lakeland` | 47% red | 63% red | a red board |
   | `classic` | 53% red | 62% blue | whoever moves **second** |
   | `common` | 63% red | 67% blue | whoever moves **second** |
   | `two-bridges` | 61% red | 74% blue | whoever moves **second** |
@@ -1262,12 +1227,6 @@ numbers and the argument live; this is the phase that keeps changing them.
   other three are order-sensitive rather than biased — they reward replying,
   from either side. `two-bridges` always did, a property of its chokepoints;
   `classic` and `common` joined it with contact — see *After the combat pass*.
-
-  ⚠️ **`lakeland` does not finish a sixth of its games**, which is worth more
-  attention than its bias: a board that cannot resolve is a worse failure than
-  one that favours a colour, and the lake is the obvious suspect. The combat pass
-  left the count exactly where it was, 49 of 300 when blue opens, so it is the
-  board's. **Not pursued**: the maps are due a redesign regardless.
 
   ⚠️ **Artillery's `movementRange` was the biggest single lever on all of
   this**, and it is measured rather than argued. At **4** the same six boards

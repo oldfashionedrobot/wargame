@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { getTerrain } from './data/terrain';
 import { exploreMovement, validatePath } from './movement';
 import { at, makeState, route, unitAt } from './testing';
 import type { UnitSpec } from './testing';
@@ -298,6 +299,18 @@ describe('exploreMovement: terrain costs', () => {
 
     // Wheels stay refused outright -- costly and impassable did not collapse.
     expect(has(explore(wide, 'b1', 99, 'wheels').reachable, 1, 0)).toBe(false);
+  });
+
+  // ⚠️ **Sea is a wall for everyone**, where a river is a toll for some -- so
+  // a strait one tile wide parts a board that the same river would not.
+  it('lets nothing onto the sea, however narrow the strait', () => {
+    const strait = makeState(['.w.'], [{ id: 'b1', col: 0, row: 0 }]);
+    for (const movementType of Object.keys(getTerrain('sea').cost) as MovementType[]) {
+      const reach = explore(strait, 'b1', 99, movementType).reachable;
+      expect(`${movementType}: ${has(reach, 1, 0) || has(reach, 2, 0)}`).toBe(
+        `${movementType}: false`,
+      );
+    }
   });
 
   it('takes the cheap way round rather than the short way through', () => {
