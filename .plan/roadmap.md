@@ -281,7 +281,7 @@ headquarters face each other across the near and far edges, with sea made land
 under each deployment zone, the zone cleared to plains, and a road into it —
 see *Maps* in the architecture doc. A commit each, each simulated from both
 openers and looked at in a browser; the map table gains a row each. Shipped:
-Long Road.
+Long Road and Little Lion.
 
 - **Chosen from every two-player map among Dual Strike's official ones**, by
   drawing each that way and keeping those where wheels cross between the zones,
@@ -290,10 +290,6 @@ Long Road.
   far zone reach none of the city without passing through the near zone, so one
   army would deploy on the junction the other has to come through. Mirror
   Islands takes its place.
-- **Little Lion** — 18 square, turned a quarter. The armies start in opposite
-  corners, with ridges and a river between. Zones declared toward the corners;
-  a road is run down the west edge into the near one, and a bridge inside the
-  far one becomes road, since the zone fills the water under it.
 - **Point Stormy** — 25 wide, 22 deep, turned half round. A ring of land round
   a bay, open on one side, so the way from one army to the other goes the long
   way round. Zones declared toward the headquarters, the near one a headland
@@ -309,8 +305,8 @@ Long Road.
 
 - **Accepted, to be looked at**: where a road bends along a board's edge, the
   frame carries it off the board as if it crossed — a short road the original
-  does not have. Only Little Lion has such bends; the frame's rule stays as it
-  is unless they look wrong in the browser.
+  does not have. Only Little Lion has such bends, and in the browser they read
+  as roads leading off the board, so the frame's rule stays as it is.
 - **No road is two tiles wide** on any of the four, as on every shipped board.
 
 #### The boards pass

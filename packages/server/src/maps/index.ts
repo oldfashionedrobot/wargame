@@ -10,6 +10,7 @@ import { twoBridges } from './twoBridges';
 import { tester } from './tester';
 import { twinIsle } from './twinIsle';
 import { longRoad } from './longRoad';
+import { littleLion } from './littleLion';
 import type { GameMap } from './types';
 
 export type { GameMap } from './types';
@@ -30,6 +31,7 @@ const MAPS: Record<string, GameMap> = Object.fromEntries(
     duoFalls,
     ridgeIsland,
     longRoad,
+    littleLion,
   ].map((map) => [map.id, map]),
 );
 
