@@ -277,32 +277,12 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 army as it is being played, losing the army as well as the general, the spent
 grey a little more saturated, a new terrain failing to compile until it is
 drawn, sea, structure, a map's size beside its name, each map declaring where
-its armies deploy, a frame around every board, and three boards from Advance
-Wars at their own sizes — Missile Plains, Twin Isle and Duo Falls. Remaining:
-a fourth board, which is open — see below. Each passes the gate — `tsc -b
---force` included — and lands with its docs. Comments, docs and test titles
-that quote a value, or anything else a change can move, are removed rather than
-updated.
-
-⬜ **A fourth board from Advance Wars — open: The Trident does not survive as a
-land board.** Planned as one of four, it turns out to be a naval map: a road
-down a narrow spine with islands either side that Advance Wars reaches by
-transport, so wheels reach only a small part of its land and the map checks
-refuse it. Drawing it would mean inventing land the original does not have.
-**To decide**, one of:
-
-- **Swap it** for a War Room map built for land. **Ridge Island** (19×16) is
-  the likeliest — one island with ridges through the middle and both
-  headquarters inland, adapted as Twin Isle was; **Little Lion** (18×18, the
-  armies in opposite corners) and **Pivot Isle** (21×14) also pass.
-- **Adapt The Trident** by joining its islands to the spine — a new map under
-  an old name.
-- **Ship three**, and leave the fourth to the Content epic.
-
-Whichever is drawn is held to what the other three were: both zones on plains
-or road against the edges, a road into each, wheels crossing between the zones
-and reaching more than half the land, its original's size, and a simulation
-from both openers.
+its armies deploy, a frame around every board, and four boards from Advance
+Wars at their own sizes — Missile Plains, Twin Isle, Duo Falls and Ridge
+Island, the last in place of The Trident, a naval map with no land board in
+it. Each passes the gate — `tsc -b --force` included — and lands with its
+docs. Comments, docs and test titles that quote a value, or anything else a
+change can move, are removed rather than updated.
 
 - **Reference, from research into Advance Wars**: its single-screen missions
   are 15×10 to 16×12, its battles about 16×16 to 21×21, and the competitive

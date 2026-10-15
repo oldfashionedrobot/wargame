@@ -5,6 +5,7 @@ import { duoFalls } from './duoFalls';
 import { lakeland } from './lakeland';
 import { meadow } from './meadow';
 import { missilePlains } from './missilePlains';
+import { ridgeIsland } from './ridgeIsland';
 import { twoBridges } from './twoBridges';
 import { tester } from './tester';
 import { twinIsle } from './twinIsle';
@@ -26,6 +27,7 @@ const MAPS: Record<string, GameMap> = Object.fromEntries(
     missilePlains,
     twinIsle,
     duoFalls,
+    ridgeIsland,
   ].map((map) => [map.id, map]),
 );
 
