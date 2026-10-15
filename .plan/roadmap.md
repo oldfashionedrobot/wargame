@@ -114,8 +114,8 @@ this was written and makes the case louder rather than differently — a second
 reader of the registry is a second thing a `maps` table would serve.
 
 What follows is the argument as it stood at one map. None of it has been
-refuted, and the one real risk it names was closed in the meantime by making
-map ids immutable. What has *not* happened is the other half — maps that stop
+refuted, and the one real risk it named — editing a map changing what old
+matches were played on — was closed by making map ids immutable. What has *not* happened is the other half — maps that stop
 being written by developers, which is what user-authored maps, random selection
 or filtering would bring.
 
@@ -133,13 +133,6 @@ What holds instead is narrower:
   `initial_state` holds the instantiated grid, so a match replays correctly
   whatever `map_id` points at. A dangling id is a wrong label, not a broken
   match.
-
-⚠️ **One real risk while maps stay in code:** editing `classic.ts` retroactively
-changes what every existing match's `map_id: 'classic'` refers to. This is
-ruleset versioning in miniature. The cheap mitigation is not a table — it is to
-treat **map ids as immutable**: a changed map gets a new id, and the old one
-stays as it was played. Stamping the map rows onto the match row is the other
-option, and both cost a few lines against a table's seeding machinery.
 
 ## Out of scope for v1
 
@@ -201,16 +194,9 @@ interesting. Several rules have already moved on evidence from playing rather
 than from measuring, and more than one of those turned out to be a *rule*
 rather than a dial — which is the shape to expect from this epic too.
 
-⚠️ **It runs in passes: play, then tune.** Seven have shipped. The first set
-terrain weighting and the first charge numbers by printing grids; the second,
-the combat pass, came from playing — see *After the combat pass*; the third
-reworked charging — see *The charging pass*; the fourth added a general — see
-*The general's pass*; the fifth moved cover to Advance Wars' scale and paced
-the charge per unit — see *The cover pass*; the sixth widened what a board can
-be, with sea, structures, a frame and boards from Advance Wars, and made losing
-the army lose the match — see *The boards pass*; the seventh drew four more
-boards from Advance Wars — see *The second boards pass*. A pass's changes go to
-[`architecture.md`](architecture.md) and leave only their open questions here.
+⚠️ **It runs in passes: play, then tune.** A pass's changes go to
+[`architecture.md`](architecture.md) and leave only their open questions here,
+under the pass they came from; git log is its history.
 
 #### Known to want attention
 
@@ -257,55 +243,20 @@ boards from Advance Wars — see *The second boards pass*. A pass's changes go t
 
 #### Armies, and where they deploy
 
-✅ **The mechanism is built.** An army per player, bound to the player rather than
-to an index; a fixed ten-by-two deployment zone with empty squares placing units
-inside it; boards validated against the *zone* rather than against one formation;
-and the harness taking an army a side. What it does now is in
-[`architecture.md`](architecture.md) — what is left is below.
-
 ✅ **Whether composition creates playstyles: swept, and it does not — it
 makes a ladder.** Each army against the default, on every map from both seats
 and both openings: more guns wins and more horse loses, on every map, and that
-order has survived sword cavalry, the earned charge, the general and the cover
-pass. ⚠️ **It says as much about the bot as the armies**: a greedy bot never
+order has held through every change since. ⚠️ **It says as much about the bot as the armies**: a greedy bot never
 screens, and screening is the manoeuvre horse needs, so the horse figures are
-a floor. ⚠️ **`common` says nothing about composition**: the opener wins there
-whatever it fields — see the turn-order note under *After the combat pass*.
+a floor.
 
-#### The second boards pass
+#### Boards from Advance Wars
 
-✅ **Shipped**: four more boards from Advance Wars — Long Road, Little Lion,
-Point Stormy and Mirror Islands — chosen by drawing every two-player map among
-Dual Strike's official ones and keeping those where wheels cross between the
-zones, reach most of the land, and the zones are not mostly invented from sea.
-With them, a bridge deck turns toward the ground at its ends rather than only
-toward road, and how a board from Advance Wars is drawn is said once in the
-architecture doc. What was measured was reported in conversation rather than
-written down.
-
-⚠️ **Megalopolis was planned and dropped.** Drawn out, wheels from its far zone
-reach none of the city without passing through the near zone, so one army
-would deploy on the junction the other has to come through.
-
-⚠️ **Where a road bends along a board's edge, the frame carries it off the
-board** as if it crossed. Little Lion has four such bends; they read as roads
-leading on, so the frame's rule was left as it is.
-
-#### The boards pass
-
-✅ **Shipped**, from playing: losing the army loses the match, as losing the
-general does; the spent grey a little more saturated; a new terrain failing to
-compile until it is drawn; sea and structure; a map's size beside its name;
-maps declaring where their armies deploy; every board drawn inside a frame of
-land; and four boards from Advance Wars at their own sizes — Missile Plains,
-Twin Isle, Duo Falls and Ridge Island. With them, the simulator's bot
-approaches by route rather than as the crow flies. What it does is in
-[`architecture.md`](architecture.md); what was measured was reported in
-conversation rather than written down.
-
-⚠️ **The Trident was planned and dropped.** Drawn out, it is a naval map — a
-road down a narrow spine, its islands reached by transport — with no land board
-in it. Ridge Island took its place.
+⚠️ **Two were planned and dropped**, so neither is planned again. *The
+Trident*, drawn out, is a naval map — a road down a narrow spine, its islands
+reached by transport — with no land board in it. *Megalopolis*: wheels from
+its far zone reach none of the city without passing through the near zone, so
+one army would deploy on the junction the other has to come through.
 
 - ⬜ **For play to answer**: whether the default army fills a board from
   Advance Wars, which the boards were once shrunk for being too empty; and how
@@ -324,14 +275,6 @@ in it. Ridge Island took its place.
 
 #### The cover pass
 
-✅ **Shipped**, from playing: cover on Advance Wars' scale, with the mountain
-renamed hills; each unit type filling its charge meter at its own pace;
-inspecting a unit that cannot act; and the units that have acted greyed. With
-them came a dev handle for addressing tiles in a browser check, and the
-simulator's charges by type and attacks by ground. What it does is in
-[`architecture.md`](architecture.md); what was measured was reported in
-conversation rather than written down.
-
 ⚠️ **Highlighting the ready units, instead of greying the spent ones, was tried
 and set aside.** A Fresnel rim lit whole flat-shaded facets, washing a unit out
 or reading only as paler; Babylon's mesh outline broke into shards, each flat
@@ -341,51 +284,20 @@ frame, where a material swap costs none.
 
 #### The general's pass
 
-✅ **Shipped**, from playing: a general on each side, the action panel opening
-where a unit stands with a Move row while it has not walked, and the board's
-panes kept on the board. What it does is in [`architecture.md`](architecture.md);
-the general's open questions are below.
-
-✅ **The general.** From playing: battles ended as gun duels — the other arms
-fought it out under bombardment, and the guns were what was left. A general
-gives every match something to defend and something to hunt, and plays like
-the king in chess: kept back and protected, with the wounded falling back to it
-to heal. It is cavalry in all but name for now, and exposed to guns on purpose,
-so keeping it out of their reach is the game. What it does is in
-[`architecture.md`](architecture.md).
-
 - ⬜ **For play to answer**: whether the heal pulls the wounded back. The bot
-  never retreats a unit to heal, so it healed 20 points in 100 games, and its
-  generals fell in about 1% of decided matches.
+  never retreats a unit to heal, so the simulator cannot say.
 - ⬜ **Later, global bonuses**, as Advance Wars' commanders give. Both sides
   field the same general for now; a commander chosen per player can carry
   modifiers later without the unit changing.
 
 #### The charging pass
 
-✅ **Shipped**, from playtesting notes. Charging felt off, and the simulator said
-why: a charge was the *wounded* unit's attack, a healthy unit's charge was a
-worse shot, and infantry made half of all charges. So cavalry fights with
-sabres, as a `melee` unit that cannot answer a ranged attacker, and the charge
-is earned: attacks fill a meter, and a full meter buys a charge that is
-certain wherever an attack's best roll, times the side it arrives on, would kill
-— and a gamble above that, its odds falling to a quarter against a fresh unit,
-scaled by the side and by the charger's own health. A failed charge is met by a
-free attack from the defender. A first cut scaled a separate threshold table by
-cover and the charger's health; it never finished anything an attack would not,
-even from the rear, so the line became the attack formula, and offering only
-certain charges then gave way to odds above it. Earlier in the pass the attack
-forecast's counter and the simulator's dice, exchange and distance each got one
-home. What it does is in [`architecture.md`](architecture.md); why, and what was
-measured, is in the commits.
-
 ⬜ **For play to answer:**
 
-- **The side multipliers are first numbers** — 1× head-on, 1.25× flank, 1.5×
-  rear — and so are each type's meter size and the 25% a fresh charger has
-  against a fresh unit head-on. Head-on at 1× was chosen, so a head-on charge
-  is sure of what an attack's best roll might kill. `scripts/charges.ts` prints
-  each charge's line beside the attack's, and its odds against full health.
+- **The side multipliers are first numbers**, and so are each type's meter
+  size and a fresh charger's odds against a fresh unit head-on.
+  `scripts/charges.ts` prints each charge's line beside the attack's, and its
+  odds against full health.
 - **The cliff just over a wounded charger's line** — certain of one target and
   a long shot against one a few points healthier — is the price of scaling the
   whole curve by the charger's health, and was accepted.
@@ -400,28 +312,18 @@ measured, is in the commits.
 
 #### After the combat pass
 
-✅ **The pass shipped**: contact, a flanked defender answering in full,
-artillery's row, and luck scaled in with its rolls recorded; its charge
-half-life went with the charging pass. What it does is in
-[`architecture.md`](architecture.md); why, and what it measured, is in the
-commits that landed it. What is left is for play to answer.
+⚠️ **Most shots go unanswered, and what makes a shot free is the range design
+rather than a rule.** An unanswered shot is nearly always one that killed, one
+whose target cannot reach back — a gun at range, or infantry against cavalry —
+or one at a gun; very few come from the rear. The greedy bot takes a free shot
+whenever one is on offer, so this is what the rules *offer*. If play still says
+attacks are too cheap, the levers are the ranges and `slow`, not facing.
 
-⚠️ **One shot in eight is answered, and what makes a shot free is the range
-design rather than a rule.** A shot goes unanswered because it killed (35%),
-because the target cannot reach back — a gun at three to five, or infantry at two
-against cavalry (33%) — or because the target is a gun (17%); from the rear is
-3%. The greedy bot takes a free shot whenever one is on offer, so this is what
-the rules *offer*. If play still says attacks are too cheap, the levers are the
-ranges and `slow`, not facing.
-
-⚠️ **Contact looks like it rewards moving second.** On `common` the second mover
-wins from both openings — 63% when blue opens, 67% when red does — where before
-contact it was near even, and `classic` turned the same way (53% and 62%).
-`two-bridges` always rewarded replying; `crossroads` is still even. The likely
+⚠️ **Contact looks like it rewards moving second**, and in the simulator the
+second mover now wins most games on most boards, from both openings. The likely
 reason is the rule doing what it says: whoever advances into contact first is
 pinned and answered first. The bot always advances, which a human need not, so
-this is a thing to watch in play rather than a verdict. Sword cavalry widens
-it, from about 55% to 64% across every map. ✅ **Accepted for now**:
+this is a thing to watch in play rather than a verdict. ✅ **Accepted for now**:
 the first mover still gets its volley off before contact is made, and tuning
 options wait on how it plays.
 
@@ -431,11 +333,6 @@ strikes first lands on a full line; offset, as the default army is at the
 zone's left, they do not. A thing to watch in play.
 
 #### Mobility in contact — engagement and overwatch
-
-✅ **Contact shipped.** A unit beside an enemy is in contact; moving into contact
-ends the move, and a unit that starts its action in contact moves or attacks, not
-both. What it does is in [`architecture.md`](architecture.md), under *Movement*
-and *Contact*; why, and what it measured, is in the commit that landed it.
 
 ⚠️ **Engagement and overwatch were one question**: both answer *moving around
 near the enemy should cost something*. Contact made the fight itself costly to
@@ -1041,43 +938,28 @@ numbers and the argument live; this is the phase that keeps changing them.
   `maps.test.ts` already checks a new movement type can cross every board. The
   unit catalog's flags are required too, so a new unit has to say whether it is
   slow, fights hand to hand and charges.
-- **Whatever play says next.** Three things have already moved this way, and two
-  of the three turned out to be rules rather than dials.
-- ⬜ **The boards still lean, and the gun's mobility moves them more than they
-  do.** Running `simulate.ts` with the same policy on both sides — so any
-  departure from even is the board — and playing every map from both openings,
-  300 games a cell:
-
-  | map | blue opens | red opens | reads as |
-  |---|---|---|---|
-  | `crossroads` | 54% red | 53% red | near even |
-  | `meadow` | 63% blue | 65% blue | a blue board |
-  | `lakeland` | 47% red | 63% red | a red board |
-  | `classic` | 53% red | 62% blue | whoever moves **second** |
-  | `common` | 63% red | 67% blue | whoever moves **second** |
-  | `two-bridges` | 61% red | 74% blue | whoever moves **second** |
+- **Whatever play says next** — which has more than once turned out to be a
+  rule rather than a dial.
+- ⬜ **The boards lean, and the gun's mobility moves them more than they do.**
+  `simulate.ts` runs the same policy on both sides, so any departure from even
+  is the board; play every map from both openings.
 
   ⚠️ **Read the pair, not either column.** A fair board gives the opener the same
-  edge from both ends; one colour winning *both* columns is the board talking.
-  By that test `crossroads` is sound, `meadow` and `lakeland` are biased, and the
-  other three are order-sensitive rather than biased — they reward replying,
-  from either side. `two-bridges` always did, a property of its chokepoints;
-  `classic` and `common` joined it with contact — see *After the combat pass*.
+  edge from both ends; one colour winning *both* columns is the board talking,
+  and the second mover winning from both seats is the board rewarding a reply.
 
   ⚠️ **Artillery's `movementRange` was the biggest single lever on all of
-  this**, and it is measured rather than argued. At **4** the same six boards
-  handed the game to whoever moved *second* — 94% on `crossroads` and `meadow`,
-  89% on `two-bridges`, a spread of 54% to 95%. At **3**, before contact, the
-  spread was 50% to 73% and the second-mover effect survived only on
-  `two-bridges`. `wheels` pays 1.5 for plains against 1 for road, so the gun's
-  budget decides how much board it covers between replies, and a road network
-  amplifies whatever that number is. ⚠️ **So settle the gun before redrawing a
-  board to chase a number** — the terrain is downstream of it.
+  this**, measured rather than argued: lengthening the gun's move handed board
+  after board to whoever moved second. `wheels` pays more for plains than for
+  road, so the gun's budget decides how much board it covers between replies,
+  and a road network amplifies whatever that number is. ⚠️ **So settle the gun
+  before redrawing a board to chase a number** — the terrain is downstream of
+  it.
 
   ⚠️ **Do not tune these against the bot.** It is greedy, it never screens, and
   it does not value terrain — so chasing an even split optimises the board for a
-  player nobody is. The numbers are a floor: a board where one side wins 100% is
-  broken, and none of these is that.
+  player nobody is. The numbers are a floor: a board where one side wins every
+  game is broken.
 
   ⚠️ **A map is a balance surface, not just content**, which is the argument for
   the editor rather than against it: the fastest way to fix a board is to be able
@@ -1090,8 +972,8 @@ numbers and the argument live; this is the phase that keeps changing them.
   nothing new during play.
 
   ⚠️ **It is the lever Advance Wars uses on indirect fire and this game does
-  not have.** AW prices its 3–5 range weapon at fifteen infantry; here two of
-  eight units are that weapon, free, every game. Cost is what makes fielding a
+  not have.** AW prices its 3–5 range weapon at fifteen infantry; here guns come
+  free, in every army. Cost is what makes fielding a
   second gun a decision instead of a default.
 
   ✅ **The mechanism is built**: per-player armies and the deployment zone, and

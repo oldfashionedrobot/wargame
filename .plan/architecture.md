@@ -118,7 +118,7 @@ Run from the repo root. All exit non-zero on failure.
 | `bun run db:generate` / `db:migrate` | drizzle-kit — **from the repo root only** |
 | `bun packages/shared/scripts/matchups.ts` | Tuning harness: hits-to-kill for every matchup on every terrain |
 | `bun packages/shared/scripts/charges.ts` | Tuning harness: the most health each charge is certain of from all three sides, beside what an attack kills, and its odds against full health — by ground and charger health |
-| `bun packages/server/scripts/simulate.ts [games] [map] [opener] [budget] [blueArmy] [redArmy]` | Plays the game against itself with a greedy bot and reports outcomes, match length, damage, kills and charges by unit type, attacks by the ground the defender stood on, and whether each mechanic fired. An army is comma-separated rows; omitted, both sides take the default deployment |
+| `bun packages/server/scripts/simulate.ts [games] [map] [opener] [budget] [blueArmy] [redArmy]` | Plays the game against itself with a greedy bot and reports outcomes, match length, damage, kills and charges by unit type, attacks by the ground the defender stood on, and whether each mechanic fired. An army is comma-separated rows; omitted, both sides take the default deployment. Its bot closes on the enemy by route length over the bare terrain, not by straight-line distance |
 | `bun run preview` | `vite preview` — the built client with no `/api` proxy, so it reaches no match |
 | `bun run --filter '@wargame/server' start` | The production shape: one process serving the API and `dist` together |
 
@@ -1782,6 +1782,9 @@ unavailable action is omitted — so hover is the only state a row has.
   slices the board's own cells back out for standing heights, picking levels and
   the close-up. No grid lines, hover or overlays reach it, and a pointer past
   the board's edge finds no tile rather than the edge tile behind it.
+  ⚠️ **A road that bends along the board's edge is carried off it** as if it
+  crossed, since the edge tile's road runs on into the board; it reads as a
+  road leading on.
 - Grid lines are **one flat grid at the board's floor**, over the board and
   never the frame, mid grey at 7%. Hills
   raise a *rock*, not their ground, so every tile's floor is the same
