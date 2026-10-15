@@ -279,7 +279,8 @@ the default army as it is being played; losing the army as well as the
 general; the spent grey a little more saturated; a new terrain failing to
 compile until it is drawn; sea; structure; a map's size beside its name; each
 map declaring where its armies deploy; a frame around every board; and four
-boards at 20×20, a commit each, drawn with sea and structures.
+boards from Advance Wars at their own sizes, a commit each, drawn with sea and
+structures.
 Each passes the gate — `tsc -b --force` included — and lands with its docs.
 Comments, docs and test titles that quote a value, or anything else a change
 can move, are removed rather than updated.
@@ -428,12 +429,11 @@ to a half sea — can be drawn closer to their originals.
 ⬜ **Structure**: a generic building, a grey box on its tile for now, giving
 four stars of cover.
 
-- **Rules**: `#`, defense 4. ⚠️ **Open: what it costs to enter.** Advance Wars
-  charges every ground unit 1 for a city, as for road — which makes it the
-  first four-star ground a gun can hold. Plains' costs keep guns paying more.
-  Four stars passes the *no living attacker is harmless* sweep; the floor
-  comes at seven. Whether it may sit in a deployment zone is open too —
-  `maps.test` would not refuse it.
+- **Rules**: `#`, defense 4, and **1 to enter for every movement type**, as
+  Advance Wars charges for a city — **decided**, knowing it makes the first
+  four-star ground a gun can hold. Four stars passes the *no living attacker
+  is harmless* sweep; the floor comes at seven. Whether one may sit in a
+  deployment zone is left to how maps are drawn, not made a rule.
 - **Model**: a box built in code and registered beside the kit's models, so it
   is measured, merged, instantiated and staged in the close-up like any of
   them, and real art later is a change of one name. A unit stands on top, as on
@@ -471,7 +471,9 @@ hover or click, no overlays; the camera frames and pans on the board alone.
   continues as road where its road leaves the board — a causeway — and as river
   where its river does; a structure becomes plains rather than a wall of boxes;
   sea, river, forest and hills copy. A table keyed by `TileType` holds this, so
-  a new terrain has to say.
+  a new terrain has to say. **Roads run off the rim** — decided — rather than
+  ending in a cap at the frame's outer edge, which flips roads' off-grid rule
+  and changes three of `composeTerrain.test`'s cases.
 - ⚠️ **The camera keeps the board's rectangle** for its fit — today it measures
   the slab's bounding box, which would swallow the frame — and its radius
   grows to the framed board's, or at the shallow tilt turned 45° the frame's
@@ -489,27 +491,32 @@ hover or click, no overlays; the camera frames and pans on the board alone.
   turned 45° on the tester, and the map viewer.
 - **Docs**: the architecture doc's camera, slab, grid lines and woods bullets,
   and a new one for the frame.
-- **Open**: at the default zoom four tiles still leave the backdrop showing
-  beyond them, so the edge is a hard one over the slab — a diorama — unless a
-  fade is wanted, which is a small shader on the terrain materials; whether
-  roads end at the rim or run off it; scenery reshuffling once, as every seed
-  shifts by four, or seeds keyed on board coordinates; frame trees in front of
-  the near row; and the one-line picking fix for a pointer just past the far
-  edge, which the frame makes visible.
+- **Decided**: the scenery reshuffles once, every seed shifting by four, rather
+  than keying seeds on board coordinates; frame trees in front of the near row
+  are accepted and looked at in a browser; and picking stops falling back to
+  an edge tile for a pointer just past the far edge, which the frame would make
+  visible — one line.
+- ⚠️ **Open: the frame's outer edge.** At the default zoom four tiles still leave
+  the backdrop showing beyond them; whether that edge is hard, over the slab,
+  or fades into the backdrop is to be settled.
 
-⬜ **Four boards at 20×20.** **Decided**: maps come in different sizes rather
-than one standard; the small ones stay as skirmishes; four new boards at
-20×20, two rotated 180° and two not, each taking its shape from a known
-Advance Wars map; and how many units a side a board holds is **not codified**
-— the new boards take the default army, and play says what that is like.
+⬜ **Four boards from Advance Wars, at their own sizes.** **Decided**: maps
+come in different sizes rather than one standard; the small ones stay as
+skirmishes; four new boards, each drawn from a known Advance Wars map at that
+map's own size, two of them rotated 180° and two not; and how many units a
+side a board holds is **not codified** — the new boards take the default
+army, and play says what that is like.
 
-- ⚠️ **This has been tried once.** The boards were all 20×20 for seventeen
-  minutes in September, and came back to 12×12 as too empty — Advance Wars
-  fills that space with properties and production, and this game has neither.
-  That was before combat existed, and the commit said the size was settled
-  only until it did; it named army size as the dial if a board plays empty.
-  So the risk is known: the default army on 20×20 is far sparser than Advance
-  Wars' pre-deployed density, and play is what decides it.
+- ⚠️ **Large boards have been tried once.** The boards were all 20×20 for
+  seventeen minutes in September, and came back to 12×12 as too empty —
+  Advance Wars fills that space with properties and production, and this game
+  has neither. That was before combat existed, and the commit said the size
+  was settled only until it did; it named army size as the dial if a board
+  plays empty. So the risk is known: the default army on these boards is far
+  sparser than Advance Wars' pre-deployed density, and play is what decides
+  it. ⚠️ **Duo Falls is 33×13**, its armies at the narrow ends. Zones sit only
+  on the near and far edges, so it is drawn turned a quarter, 13 wide and 33
+  deep — the ten-wide zone fits its narrow ends.
 - **Sources for the four**, each named in its board's comment:
   - rotated 180° — **Twin Isle**: each half a ridge of hills ringed by road,
     the halves joined by one neck across a river band, the only crossing for
@@ -522,10 +529,9 @@ Advance Wars map; and how many units a side a board holds is **not codified**
     board, each with one gap, staggered, so wheels zigzag and foot climbs.
   - Sea is drawn as sea, structures stand in for cities and bases, and hills
     for mountains; pipes and silo walls become ridges of hills. Shoals and
-    reefs become river where they are fordable in spirit. ⚠️ **Open: true size
-    or 20×20** — only Missile Plains is 20×20; Twin Isle is 22×16, Duo Falls
-    33×13 and The Trident 19×19, and with sizes now free a board can be drawn
-    at its original's.
+    reefs become river where they are fordable in spirit. **Decided: each at
+    its original's size** — Twin Isle 22×16, Duo Falls 33×13, The Trident
+    19×19, Missile Plains 20×20 — since sizes are free.
 - **What a board must pass**: both zones standable by every movement type, so
   no river, sea or hills under them; wheels able to cross between the zones
   and to reach more than half the land; and
