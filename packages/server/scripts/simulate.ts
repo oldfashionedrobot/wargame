@@ -358,7 +358,7 @@ const deployments: Deployment[] | undefined =
         { player: PLAYERS[1], army: redArmy },
       ]
     : undefined;
-const ACTION_CAP = 480; // 60 turns of a full eight-unit roster
+const ACTION_CAP = 480;
 
 const stats: Stats = {
   games: 0,

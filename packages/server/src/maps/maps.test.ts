@@ -64,6 +64,16 @@ describe('every map', () => {
     expect(getMap(DEFAULT_MAP_ID).id).toBe(DEFAULT_MAP_ID);
   });
 
+  // ⚠️ The registry is built by id, and a second map under an id already taken
+  // silently replaces the first rather than failing -- so this counts the
+  // files, which is the one place a duplicate still shows. A board left out of
+  // the registry fails it too.
+  it('registers every board under an id of its own', () => {
+    const files = new Bun.Glob('*.ts').scanSync(import.meta.dir);
+    const boards = [...files].filter((file) => !/^(index|types)\.ts$|\.test\.ts$/.test(file));
+    expect(maps).toHaveLength(boards.length);
+  });
+
   for (const map of maps) {
     describe(map.id, () => {
       const grid = parseTerrainGrid(map.rows); // throws on a ragged row or bad char

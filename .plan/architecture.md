@@ -459,13 +459,15 @@ match claims to have been played on. A changed map gets a new id.
 camera** — row index increases north, so a map written out top-down is upside
 down in the source.
 
-**The shipped maps are 12×12, apart from a 10×10 `tester`, and a board may be any
-size that fits both deployment zones** — at least ten columns and four rows —
-and `createMatchState` refuses one that does not. No shipped map declares its
-zones yet, so each is centred on whatever width it is handed.
+**Boards come in different sizes**: small skirmish boards drawn for this game,
+and boards drawn from Advance Wars at their originals' sizes. A board may be any
+size that fits both deployment zones, and `createMatchState` refuses one that
+does not; a map that does not declare its zones has them centred.
 
-**Four rules hold across every board**, and they are design rather than code —
-nothing enforces the last two but the eye:
+**Four rules hold across the boards drawn for this game**, and they are design
+rather than code — nothing enforces the last two but the eye. The boards drawn
+from Advance Wars keep the first three and take their ground from their
+originals:
 
 - **Deployment zones carry nothing but plains and road**, so no side starts in
   a wood or on hills, and `maps.test.ts` refuses ground a unit cannot stand on
@@ -493,6 +495,7 @@ nothing enforces the last two but the eye:
 | `lakeland` | A lake ringing a **wooded** island, and a road down the west shore. The island is where the water's price shows: infantry wades across in one turn, cavalry needs two and spends the night in open water at zero defence, and artillery never arrives at all — so it is cover no gun can ever take, only shell |
 | `meadow` | Open field with one **lateral** road straight across and a spur down to it from each side. A road across rather than along helps you redeploy along your own line more than it helps you advance, and ⚠️ **the two spurs do not line up**, so neither player has a straight run at the other |
 | `common` | Open field with the road up the middle — the fast way *at* the enemy — and a rise on one flank of each approach, ⚠️ **diagonally opposed** so the same plan does not work from both ends. A wood beside the road at the centre is the only real cover anything can occupy, and it is equally far from both |
+| `missile-plains` | From Advance Wars: Dual Strike's *Missile Plains*, at its own size. Three ridges across the board, each with one gap and the gaps staggered, so wheels zigzag while foot climbs; between them, open fields studded with buildings. ⚠️ **Not a rotation**: both armies start on the west side, their zones declared |
 | `tester` | A 10×10 board for playtesting: the road straight down the middle, a river across it at the midline with a single bridge, a wood beside the road on the near bank and a rise on the far one. The smallest board, so the armies meet soonest |
 
 ⚠️ **A river may only leave the board where a deployment zone is not.** The
