@@ -76,6 +76,14 @@ describe('computeDamage', () => {
     expect(defended).toBe(Math.floor((BASE_DAMAGE.infantry.infantry * left) / 100));
   });
 
+  it('shelters a defender in a structure better than on hills', () => {
+    const hills = fight(HILLS);
+    const structure = fight(['.#', '..']);
+    expect(computeDamage(structure.state, structure.a, structure.d, 0)).toBeLessThan(
+      computeDamage(hills.state, hills.a, hills.d, 0),
+    );
+  });
+
   // Cover scales by *defender* health, which is what stops a damaged unit
   // turtling on a peak: the worse it gets, the less the ground does for it.
   it('gives a wounded defender less cover than a healthy one', () => {

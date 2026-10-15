@@ -640,6 +640,15 @@ function baseCell(grid: TileType[][], col: number, row: number): TerrainCell {
         ],
         standOnProp: 0,
       };
+    case 'structure':
+      return {
+        ground: 'ground_grass',
+        turns: 0,
+        // Centred, as a mesa is, because a unit stands on its roof -- and
+        // nothing scattered round it.
+        props: [{ model: 'structure_box', x: 0, z: 0, rotation: 0, scale: 1 }],
+        standOnProp: 0,
+      };
     case 'plains':
       return { ground: 'ground_grass', turns: 0, props: doodad(col, row) };
     default: {

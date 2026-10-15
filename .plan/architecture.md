@@ -190,6 +190,7 @@ identity, then terminal state, then the per-command check.
 ```ts
 Coordinate  { col, row }
 TileType    'plains' | 'road' | 'bridge' | 'forest' | 'hills' | 'river' | 'sea'
+            | 'structure'
 Facing      'north' | 'east' | 'south' | 'west'      // read by the counter rule; see Combat
 PlayerId    string                                   // never a union of colours
 PlayerColor 'blue' | 'red' | 'green' | 'yellow'      // the renderer keys on it
@@ -350,7 +351,8 @@ movement points to *enter*, one per movement type, with `null` for impassable �
 which makes a river a wall to wheels, a toll to boots, and most of a turn to a
 horse. Costly and impassable are different answers: hills are expensive for
 horse and `null` for wheels. **Sea is `null` to everyone**, and fire crosses it
-as in Advance Wars.
+as in Advance Wars. **A structure is the stoutest cover yet costs every arm the
+same as road**, as Advance Wars prices a city — so a gun can hold one.
 
 ⚠️ **`road` and `bridge` are identical in *both* columns**, so they are
 indistinguishable to every rule that reads them — the split exists only so the
@@ -1601,7 +1603,8 @@ unavailable action is omitted — so hover is the only state a row has.
     positioning itself under the board has any use for.
   - `TerrainCell.standOnProp` — the index of a prop a unit stands **on top of**,
     whose height is likewise measured. Hills are this: an ordinary grass
-    tile with a mesa standing on it.
+    tile with a mesa standing on it. So is a structure, with a box for the
+    mesa.
   - `TerrainCell.standOn` — a *declared* offset, for the one case measurement
     gets wrong: standing **partway up** a prop. A bridge deck is 0.15 on a model
     that reaches 0.35, because its own top is the handrail.
@@ -1623,7 +1626,10 @@ unavailable action is omitted — so hover is the only state a row has.
   position accessors gives heights a uniform 0.05 too high. ⚠️ `bridge_wood` is
   1.04 square rather than 1.00 and so overhangs its tile by 2% a side. That is
   deliberate — a deck rests *on* its banks — and is recorded here so nobody
-  later "corrects" it.
+  later "corrects" it. ⚠️ **One model is built in code, not loaded**: a
+  structure is a plain grey box until there is art, made as an asset container
+  the way a loaded file arrives, so it is measured, merged and instantiated like
+  the rest and real art replaces it by name.
 - Terrain is built from **glTF models**, one per tile, and then **merged by
   material** — grouping every tile's meshes by material leaves about fourteen
   draw calls for a board, against several hundred as loose copies. ⚠️ That
@@ -1698,10 +1704,11 @@ unavailable action is omitted — so hover is the only state a row has.
   obeys and decides nothing, which is what keeps *where a tree goes* out of the
   drawing code and in the one module that is pure and tested.
 - ⚠️ **Never the middle of a tile**, since a unit stands there — that is
-  `KEEP_CLEAR`, and it binds anything a unit shares its tile with. The two props
-  it does *not* bind are the ones a unit stands **on**: a bridge deck and a
-  mesa, both dead centre on purpose. Everything is placed from a deterministic
-  per-tile value stream, so the board never reshuffles between scene builds.
+  `KEEP_CLEAR`, and it binds anything a unit shares its tile with. The props
+  it does *not* bind are the ones a unit stands **on**: a bridge deck, a mesa
+  and a structure's box, all dead centre on purpose. Everything is placed from
+  a deterministic per-tile value stream, so the board never reshuffles between
+  scene builds.
 - **Hills are a mesa on an ordinary tile**, not raised ground. The trade is
   deliberate: a block fills its square and keeps every overlay flush but reads
   as masonry, while a rock does not fill a square — the hover and range tints

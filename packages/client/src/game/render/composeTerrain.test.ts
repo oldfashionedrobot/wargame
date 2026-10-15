@@ -262,6 +262,16 @@ describe('ground cover', () => {
     expect(onPlains.some((model) => model.startsWith('stone_'))).toBe(false);
   });
 
+  // A grey box for now, so the shape is not asserted -- only that a unit
+  // stands on top of the one thing there, in the middle of the tile.
+  it('stands a unit on a structure, with nothing scattered beside it', () => {
+    const structure = compose('#')[0][0];
+    expect(structure.ground).toBe('ground_grass');
+    expect(structure.props).toHaveLength(1);
+    expect(structure.standOnProp).toBe(0);
+    expect({ x: structure.props[0].x, z: structure.props[0].z }).toEqual({ x: 0, z: 0 });
+  });
+
   // The only height in the renderer that is stated rather than measured, and
   // the reason is that a bridge's own top is its handrail.
   it('stands a unit on the bridge deck, not on the water under it', () => {
@@ -271,9 +281,10 @@ describe('ground cover', () => {
   });
 
   // The ceiling binds whatever is stated here just as it binds the models --
-  // see terrainHeights.test.ts for the other half.
+  // `warnIfTooTall` is the other half, since a model's height is not known
+  // until it loads.
   it('never stands a unit higher than picking can absorb', () => {
-    const cells = compose('f^-~=', '.~^-.', '=-~^f');
+    const cells = compose('f^-~=#', '.~^-.#', '=-~^f#');
     for (const row of cells) {
       for (const cell of row) {
         expect(cell.standOn ?? 0).toBeLessThanOrEqual(MAX_STAND_HEIGHT);
@@ -286,7 +297,7 @@ describe('ground cover', () => {
   // scatter there is -- peaks, woods and open ground -- because each is placed
   // by different arithmetic and any of them could drift inward.
   it('keeps every prop clear of the middle of the tile', () => {
-    const cells = compose(...Array.from({ length: 12 }, () => '^f.^f.^f.^f.'));
+    const cells = compose(...Array.from({ length: 12 }, () => '^f.#^f.#^f.#'));
     for (const cell of cells.flat()) {
       cell.props.forEach((prop, i) => {
         // ⚠️ Except the one a unit stands *on top of*. A mesa is centred

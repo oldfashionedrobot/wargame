@@ -21,8 +21,6 @@ import type { GameMap } from './types';
 export const meadow: GameMap = {
   id: 'meadow',
   name: 'Meadow',
-
-  // . plains   - road   = bridge   ~ river   ^ hills   f forest
   rows: [
     '..-.........',
     '..-.........',

@@ -148,8 +148,7 @@ option, and both cost a few lines against a table's seeding machinery.
   additive when it comes, because nothing in `GameState` marks elimination for
   an absent event to desync.
 - **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
-- **Buildings.** A terrain type — a garrison — carrying the most cover: four stars, with nothing beyond the tile's type stored.
-- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — hills are the best cover on the board and dear to reach, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
+- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — hills are stout cover and dear to reach, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
 
   ⚠️ Two findings worth keeping if it is ever reopened. `entryCost` takes a *destination*; height would make it take a **step**, which is a real signature change but a contained one — `exploreMovement` and `validatePath` are its only callers, and invariant 10 is what guarantees that. And if height ever did enter combat, the door is an **attack** bonus for striking downhill rather than a defence bonus for standing high, because terrain does not express the former and already expresses the latter.
 - **Manual routing.** Dragging out a deliberately non-optimal path. Unblocked by the protocol carrying a path and the server validating it — purely a matter of building the UI for it. ⚠️ The substrate now exists and did not before: a route is **pinned, re-pinnable, and drawn as an arrow**, so waypoints have something to hang off rather than needing the whole idea built at once.
@@ -277,10 +276,10 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 ⬜ **Under way, planned and pre-checked, from playing.** Shipped: the default
 army as it is being played, losing the army as well as the general, the spent
 grey a little more saturated, a new terrain failing to compile until it is
-drawn, and sea. Remaining, in order: structure; a map's size beside its name;
-each map declaring where its armies deploy; a frame around every board; and four
-boards from Advance Wars at their own sizes, a commit each, drawn with sea and
-structures. Each passes the gate — `tsc -b --force` included —
+drawn, sea, and structure. Remaining, in order: a map's size beside its name;
+each map declaring where its armies deploy; a frame around every board; and
+four boards from Advance Wars at their own sizes, a commit each, drawn with sea
+and structures. Each passes the gate — `tsc -b --force` included —
 and lands with its docs. Comments, docs and test titles that quote a value, or
 anything else a change can move, are removed rather than updated.
 
@@ -336,34 +335,6 @@ nothing is centred, as every board is today.
   `ARMY` to the new field; `maps.test`'s and `matchState.test`'s headers lose
   their stale lines. The architecture doc's *Maps* passages on the centred zone,
   its margin, its rotation and the middle ten columns.
-
-⬜ **Structure**: a generic building, a grey box on its tile for now, giving
-four stars of cover.
-
-- **Rules**: `#`, defense 4, and **1 to enter for every movement type**, as
-  Advance Wars charges for a city — **decided**, knowing it makes the first
-  four-star ground a gun can hold. Four stars passes the *no living attacker
-  is harmless* sweep; the floor comes at seven. Whether one may sit in a
-  deployment zone is left to how maps are drawn, not made a rule.
-- **Model**: a box built in code and registered beside the kit's models, so it
-  is measured, merged, instantiated and staged in the close-up like any of
-  them, and real art later is a change of one name. A unit stands on top, as on
-  a mesa: about four fifths of a tile across, so neighbouring buildings stay
-  apart, and low enough that its top sits under the stand-height ceiling and
-  below a mesa's. No scenery is scattered on it. Its grey differs clearly from
-  road gravel and mesa stone; a browser decides.
-- **Tests**: in `composeTerrain.test`, a structure is grass with one centred
-  prop a unit stands on and nothing scattered; the existing prop fixtures gain
-  one. In `combat.test`, a defender on a structure takes less than one on
-  hills, as an ordering rather than a value.
-- **Docs, for both**: `terrain.ts`'s comments — hills stop being the best cover;
-  the architecture doc's terrain, zone, water, prop and recolour passages; and
-  the roadmap's *New terrain is worse than nothing until a number reads it*,
-  which both pass, and its count of distinct terrains.
-- **DRY**: `charges.ts` lists its grounds by hand, so a structure would be
-  silently missing — it reads them off `TERRAIN`, as `matchups.ts` does. The
-  legend comment copied into all seven maps contradicts `terrain.ts`'s "the
-  legend lives here and nowhere else", and goes.
 
 ⬜ **A frame around every board**, four tiles wide, continuing the board's edges
 outward so the board reads as a piece of a larger land. No grid lines, no
@@ -1280,13 +1251,14 @@ numbers and the argument live; this is the phase that keeps changing them.
   exactly two mechanical dimensions — `cost`, which movement reads, and
   `defense`, which `computeDamage` reads — so a type differing only in `defense`
   is invisible in play, and one differing only in `cost` mostly duplicates
-  `river`. ⚠️ **And the distinct count is five, not six**: `road` and `bridge`
-  are mechanically identical, differing only in the character that draws them
-  and the model that renders them. Revolutionary-war terrain is a real want —
-  fields, woodlots, orchards, marsh, and stone walls above all — but the first
-  three are a **palette** job touching no rule, and a wall is not a tile at all:
-  cover *from one direction* is an **edge** feature against a grid that only has
-  cells, and it multiplies with facing.
+  `river`. ⚠️ **And `road` and `bridge` count once**: they are mechanically
+  identical, differing only in the character that draws them and the model
+  that renders them. Sea and structure both pass — sea the one ground nobody
+  enters, structure the stoutest cover at a road's price. Revolutionary-war
+  terrain is a real want — fields, woodlots, orchards, marsh, and stone walls
+  above all — but the first three are a **palette** job touching no rule, and a
+  wall is not a tile at all: cover *from one direction* is an **edge** feature
+  against a grid that only has cells, and it multiplies with facing.
 
 ### 15 — Platforms beyond itch
 

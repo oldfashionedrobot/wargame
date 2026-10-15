@@ -18,6 +18,7 @@
  */
 import { chargeChance, chargeDamage, computeDamage } from '../src/combat';
 import { LUCK_MAX } from '../src/data/combat';
+import { TERRAIN } from '../src/data/terrain';
 import { getUnitType } from '../src/data/unitTypes';
 import type { UnitTypeId } from '../src/data/unitTypes';
 import { makeState } from '../src/testing';
@@ -25,12 +26,15 @@ import type { Facing } from '../src/types';
 
 const TYPES: UnitTypeId[] = ['infantry', 'cavalry', 'artillery', 'general'];
 const CHARGERS = [100, 70, 40];
-const GROUNDS = [
-  ['road', '-'],
-  ['plains', '.'],
-  ['forest', 'f'],
-  ['hills', '^'],
-] as const;
+// ⚠️ **Read off `TERRAIN`**, as `matchups.ts` does, so a new ground is not
+// silently missing -- one per level of cover, since cover is all ground changes
+// in a charge.
+const GROUNDS = Object.entries(TERRAIN)
+  .filter(
+    ([, terrain], i, all) => all.findIndex(([, other]) => other.defense === terrain.defense) === i,
+  )
+  .map(([name, { char }]) => [name, char] as const);
+const NAME_WIDTH = Math.max(...GROUNDS.map(([name]) => name.length)) + 1;
 
 /**
  * ⚠️ The **defender's** facing decides the side, so the approach is set by
@@ -88,7 +92,7 @@ for (const attacker of TYPES.filter((type) => getUnitType(type).attacksToCharge 
           return `${chargeChance(state, state.units[0], state.units[1])}%`;
         });
         console.log(
-          `  ${`${charger}hp`.padEnd(7)}${name.padEnd(8)}${`${attack(0)}–${attack(LUCK_MAX)}`.padEnd(9)}| ${charge.join(' / ').padEnd(16)}| ${odds.join(' / ')}`,
+          `  ${`${charger}hp`.padEnd(7)}${name.padEnd(NAME_WIDTH)}${`${attack(0)}–${attack(LUCK_MAX)}`.padEnd(9)}| ${charge.join(' / ').padEnd(16)}| ${odds.join(' / ')}`,
         );
       }
     }

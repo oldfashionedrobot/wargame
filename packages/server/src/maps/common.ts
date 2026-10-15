@@ -6,9 +6,9 @@ import type { GameMap } from './types';
  *
  * ⚠️ **The two rises are diagonally opposed**, west on the near approach and
  * east on the far one, so the board is not a mirror and the same plan does not
- * work from both ends. The stoutest cover on the board and shut to `wheels`: a
- * strong position no gun can ever hold, which is what stops either being simply
- * the best place to be.
+ * work from both ends. Stout cover and shut to `wheels`: a strong position no
+ * gun can ever hold, which is what stops either being simply the best place to
+ * be.
  *
  * ⚠️ **A wood sits beside the road at the centre**, which is the tile both
  * players actually want. It is the only real cover on the board anything can
@@ -18,8 +18,6 @@ import type { GameMap } from './types';
 export const common: GameMap = {
   id: 'common',
   name: 'Common',
-
-  // . plains   - road   = bridge   ~ river   ^ hills   f forest
   rows: [
     '.....-......',
     '.....-......',

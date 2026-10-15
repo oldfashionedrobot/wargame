@@ -1,7 +1,9 @@
 // Side effect: registers the .glb loader. Already imported by unitModels, but
 // stated here too -- this module does not want to depend on load order.
 import '@babylonjs/loaders/glTF/2.0';
+import { AssetContainer } from '@babylonjs/core/assetContainer';
 import { LoadAssetContainerAsync } from '@babylonjs/core/Loading/sceneLoader';
+import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
@@ -71,6 +73,8 @@ const TERRAIN_MODELS = [
   'grass_leafs',
   'plant_bushSmall',
   'flower_purpleA',
+  // Built in code rather than loaded -- see `BUILT`.
+  'structure_box',
 ] as const;
 
 export type TerrainModel = (typeof TERRAIN_MODELS)[number];
@@ -116,6 +120,40 @@ export interface TerrainModels {
 }
 
 /**
+ * Models made here rather than loaded: stand-ins until there is art. Each comes
+ * as a container, as a loaded file does, so it is measured, merged and
+ * instantiated like the rest, and real art replaces it by name.
+ */
+const BUILT: Partial<Record<TerrainModel, (scene: Scene) => AssetContainer>> = {
+  structure_box: buildStructure,
+};
+
+/**
+ * A plain grey block for a building, which a unit stands on top of. Under a
+ * tile across, so neighbouring buildings stand apart, and low enough that its
+ * roof sits below a mesa's top.
+ */
+function buildStructure(scene: Scene): AssetContainer {
+  const height = 0.35;
+  const box = CreateBox('structure_box', { width: 0.8, depth: 0.8, height }, scene);
+  // Resting on its own base, as the kit's models do, so it stands on whatever
+  // ground it is put on.
+  box.position.y = height / 2;
+  box.bakeCurrentTransformIntoVertices();
+  box.refreshBoundingInfo();
+  // PBR, as the kit's materials are, so `shareMaterial` flattens it like them.
+  const material = new PBRMaterial('structure', scene);
+  material.albedoColor = new Color3(0.8, 0.8, 0.82);
+  box.material = material;
+
+  const container = new AssetContainer(scene);
+  container.meshes.push(box);
+  container.materials.push(material);
+  container.removeAllFromScene();
+  return container;
+}
+
+/**
  * Loads every terrain model once, sharing materials by name across all of them.
  *
  * The sharing is the point: `grass` appears in `ground_grass`, `ground_riverSide`
@@ -125,7 +163,10 @@ export interface TerrainModels {
  */
 export async function loadTerrainModels(scene: Scene): Promise<TerrainModels> {
   const containers = await Promise.all(
-    TERRAIN_MODELS.map((model) => LoadAssetContainerAsync(`${MODEL_DIR}/${model}.glb`, scene)),
+    TERRAIN_MODELS.map(
+      (model) =>
+        BUILT[model]?.(scene) ?? LoadAssetContainerAsync(`${MODEL_DIR}/${model}.glb`, scene),
+    ),
   );
 
   const byModel = new Map(TERRAIN_MODELS.map((model, i) => [model, containers[i]]));

@@ -18,8 +18,6 @@ import type { GameMap } from './types';
 export const crossroads: GameMap = {
   id: 'crossroads',
   name: 'Crossroads',
-
-  // . plains   - road   = bridge   ~ river   ^ hills   f forest
   rows: [
     '..-......-..',
     '..-......-..',

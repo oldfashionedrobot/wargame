@@ -23,8 +23,6 @@ import type { GameMap } from './types';
 export const twoBridges: GameMap = {
   id: 'two-bridges',
   name: 'Two Bridges',
-
-  // . plains   - road   = bridge   ~ river   ^ hills   f forest
   rows: [
     '..-.........',
     '..-.........',

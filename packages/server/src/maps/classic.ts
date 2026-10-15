@@ -17,8 +17,6 @@ import type { GameMap } from './types';
 export const classic: GameMap = {
   id: 'classic',
   name: 'Classic',
-
-  // . plains   - road   = bridge   ~ river   ^ hills   f forest
   rows: [
     '.....-......',
     '.....-......',

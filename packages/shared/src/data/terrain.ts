@@ -5,7 +5,8 @@ import type { MovementType } from './unitTypes';
 // is content vocabulary -- the set of things a map can be made of -- and this
 // table is what gives each of them meaning.
 
-export type TileType = 'plains' | 'road' | 'bridge' | 'forest' | 'hills' | 'river' | 'sea';
+export type TileType =
+  'plains' | 'road' | 'bridge' | 'forest' | 'hills' | 'river' | 'sea' | 'structure';
 
 export interface Terrain {
   /**
@@ -43,17 +44,20 @@ export const TERRAIN: Record<TileType, Terrain> = {
   bridge: { char: '=', defense: 0, cost: { foot: 1, horse: 1, wheels: 1 } },
   plains: { char: '.', defense: 1, cost: { foot: 1, horse: 1, wheels: 1.5 } },
   forest: { char: 'f', defense: 2, cost: { foot: 1.5, horse: 2, wheels: 3 } },
-  // Rough ground, and the best cover on the board. A man climbs it at a price
-  // and a horse can be led up it -- but 3 against cavalry's range of 4 means
-  // the climb is three quarters of a turn. A cavalry reaches a peak only from
-  // close by, at most one step of approach, and never takes one in passing.
-  // That is the shape of the decision: cavalry is fast *in the open*, not fast
-  // everywhere. A gun carriage does not go up a rock face at any price.
+  // Rough ground, and stout cover. A man climbs it at a price and a horse can
+  // be led up it -- but 3 against cavalry's range of 4 means the climb is
+  // three quarters of a turn. A cavalry reaches a peak only from close by, at
+  // most one step of approach, and never takes one in passing. That is the
+  // shape of the decision: cavalry is fast *in the open*, not fast everywhere.
+  // A gun carriage does not go up a rock face at any price.
   hills: { char: '^', defense: 3, cost: { foot: 2, horse: 3, wheels: null } },
   river: { char: '~', defense: 0, cost: { foot: 2, horse: 3, wheels: null } },
   // Water nobody enters yet, though fire crosses it, as in Advance Wars. Its
   // defense is never read, since nothing stands there.
   sea: { char: 'w', defense: 0, cost: { foot: null, horse: null, wheels: null } },
+  // A building, and the stoutest cover there is -- yet as cheap to enter as a
+  // road, as Advance Wars prices a city, so a gun can hold one.
+  structure: { char: '#', defense: 4, cost: { foot: 1, horse: 1, wheels: 1 } },
 };
 
 /**
