@@ -64,6 +64,15 @@ const LARGEST_SIDE = 12;
 /** A building is cover; a board full of them is cover everywhere, so nowhere. */
 const MOST_BUILDINGS = 5;
 
+/**
+ * Off the board counts as water, as the renderer counts it, so water running
+ * off an edge is whole rather than cut short.
+ */
+const wet = (grid: TileType[][], col: number, row: number) => {
+  const tile = grid[row]?.[col];
+  return tile === undefined || tile === 'sea' || tile === 'river' || tile === 'bridge';
+};
+
 describe('every map', () => {
   const maps = listMaps();
 
@@ -116,20 +125,46 @@ describe('every map', () => {
         expect(buildings.length).toBeLessThanOrEqual(MOST_BUILDINGS);
       });
 
-      // Off the board counts as water, so a strait running off an edge is
-      // whole rather than narrow.
       it('draws water a tile wide as river, never as sea', () => {
-        const water = (col: number, row: number) => {
-          const tile = grid[row]?.[col];
-          return tile === undefined || tile === 'sea' || tile === 'river' || tile === 'bridge';
-        };
         grid.forEach((cells, row) =>
           cells.forEach((tile, col) => {
             if (tile !== 'sea') return;
             const narrow =
-              (!water(col - 1, row) && !water(col + 1, row)) ||
-              (!water(col, row - 1) && !water(col, row + 1));
+              (!wet(grid, col - 1, row) && !wet(grid, col + 1, row)) ||
+              (!wet(grid, col, row - 1) && !wet(grid, col, row + 1));
             expect(`${col},${row}: ${narrow ? 'narrow sea' : 'ok'}`).toBe(`${col},${row}: ok`);
+          }),
+        );
+      });
+
+      // No piece in the tile set draws water open on three sides with land at
+      // a diagonal between two of them, so it shows a square corner.
+      it('draws its water without square corners', () => {
+        const sides = [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ] as const;
+        const corners = [
+          [1, 1],
+          [1, -1],
+          [-1, 1],
+          [-1, -1],
+        ] as const;
+        grid.forEach((cells, row) =>
+          cells.forEach((tile, col) => {
+            if (tile !== 'sea' && tile !== 'river') return;
+            const open = sides.filter(([dc, dr]) => wet(grid, col + dc, row + dr)).length;
+            const square =
+              open === 3 &&
+              corners.some(
+                ([dc, dr]) =>
+                  wet(grid, col + dc, row) &&
+                  wet(grid, col, row + dr) &&
+                  !wet(grid, col + dc, row + dr),
+              );
+            expect(`${col},${row}: ${square ? 'square corner' : 'ok'}`).toBe(`${col},${row}: ok`);
           }),
         );
       });
