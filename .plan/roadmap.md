@@ -201,17 +201,16 @@ interesting. Several rules have already moved on evidence from playing rather
 than from measuring, and more than one of those turned out to be a *rule*
 rather than a dial — which is the shape to expect from this epic too.
 
-⚠️ **It runs in passes: play, then tune.** Six have shipped. The first set
+⚠️ **It runs in passes: play, then tune.** Seven have shipped. The first set
 terrain weighting and the first charge numbers by printing grids; the second,
 the combat pass, came from playing — see *After the combat pass*; the third
 reworked charging — see *The charging pass*; the fourth added a general — see
 *The general's pass*; the fifth moved cover to Advance Wars' scale and paced
 the charge per unit — see *The cover pass*; the sixth widened what a board can
 be, with sea, structures, a frame and boards from Advance Wars, and made losing
-the army lose the match — see *The boards pass*. A pass's changes go to
+the army lose the match — see *The boards pass*; the seventh drew four more
+boards from Advance Wars — see *The second boards pass*. A pass's changes go to
 [`architecture.md`](architecture.md) and leave only their open questions here.
-
-⬜ **The next pass is planned** — see *The next pass*, below.
 
 #### Known to want attention
 
@@ -273,37 +272,24 @@ screens, and screening is the manoeuvre horse needs, so the horse figures are
 a floor. ⚠️ **`common` says nothing about composition**: the opener wins there
 whatever it fields — see the turn-order note under *After the combat pass*.
 
-#### The next pass
+#### The second boards pass
 
-⬜ **Planned and pre-checked: four more boards from Advance Wars**, drawn as
-the boards pass drew its four — at their originals' sizes, turned so the two
-headquarters face each other across the near and far edges, with sea made land
-under each deployment zone, the zone cleared to plains, and a road into it —
-see *Maps* in the architecture doc. A commit each, each simulated from both
-openers and looked at in a browser; the map table gains a row each. Shipped:
-Long Road, Little Lion and Point Stormy.
+✅ **Shipped**: four more boards from Advance Wars — Long Road, Little Lion,
+Point Stormy and Mirror Islands — chosen by drawing every two-player map among
+Dual Strike's official ones and keeping those where wheels cross between the
+zones, reach most of the land, and the zones are not mostly invented from sea.
+With them, a bridge deck turns toward the ground at its ends rather than only
+toward road, and how a board from Advance Wars is drawn is said once in the
+architecture doc. What was measured was reported in conversation rather than
+written down.
 
-- **Chosen from every two-player map among Dual Strike's official ones**, by
-  drawing each that way and keeping those where wheels cross between the zones,
-  reach most of the land, and the zones are not mostly invented from sea.
-  ⚠️ **Megalopolis was on the list and is dropped**: drawn out, wheels from the
-  far zone reach none of the city without passing through the near zone, so one
-  army would deploy on the junction the other has to come through. Mirror
-  Islands takes its place.
-- **Mirror Islands** — 15 wide, 32 deep, turned a quarter; one of the
-  original's two-player Classic maps, though only about half symmetric. One
-  island in a ring of sea, crossed by a staggered river in its middle with a
-  bridge at either end of the stagger, and by a second river near the far end
-  with a single bridge — the far army's guns have one way out. Zones centred;
-  each end reaches the board's edge with a road run down to it.
+⚠️ **Megalopolis was planned and dropped.** Drawn out, wheels from its far zone
+reach none of the city without passing through the near zone, so one army
+would deploy on the junction the other has to come through.
 
-**Found by the pre-check:**
-
-- **Accepted, to be looked at**: where a road bends along a board's edge, the
-  frame carries it off the board as if it crossed — a short road the original
-  does not have. Only Little Lion has such bends, and in the browser they read
-  as roads leading off the board, so the frame's rule stays as it is.
-- **No road is two tiles wide** on any of the four, as on every shipped board.
+⚠️ **Where a road bends along a board's edge, the frame carries it off the
+board** as if it crossed. Little Lion has four such bends; they read as roads
+leading on, so the frame's rule was left as it is.
 
 #### The boards pass
 #### The boards pass
