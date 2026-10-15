@@ -20,13 +20,14 @@ number**. Reordering is editing one row of this table and nothing else.
 
 | Order | Epic | |
 |---|---|---|
-| 1 | **Tuning and gameplay tweaks** | Iterate on how it actually plays, before anything is built on top of it |
-| 2 | **UI and interaction** | The chrome, and how it feels to give an order |
-| 3 | **Presentation** (11) | The 3D look, then animation and sound |
-| 4 | **A hosted build** (13) | itch.io — hot-seat, in front of real players |
-| 5 | **Multiplayer** (12) | Identity, and two clients in one match |
-| 6 | **Content** (14) | More units, maps in a table, an editor |
-| 7 | **Platforms** (15) | The portals that gate, review, or supply accounts |
+| 1 | **UI and interaction** | The chrome, and how it feels to give an order |
+| 2 | **Presentation** (11) | The 3D look, then animation and sound |
+| 3 | **A hosted build** (13) | itch.io — hot-seat, in front of real players |
+| 4 | **Multiplayer** (12) | Identity, and two clients in one match |
+| 5 | **Content** (14) | Maps in a table, an editor, and the numbers |
+| 6 | **Platforms** (15) | The portals that gate, review, or supply accounts |
+
+Wanted but unscheduled is under *Ideas*, at the bottom.
 
 ⚠️ **Two ordering constraints are real, and they both end at *Platforms***:
 *A hosted build* → *Platforms*, because nothing outward-facing happens without a
@@ -101,7 +102,7 @@ while ago and the decision is now taken rather than pending. ⚠️ It also grow
 second half that was never in the original argument — **a map editor**. Rows in
 a table are only better than modules if something other than a text editor
 writes them, and an editor is what turns "maps are content" from a claim into a
-fact. That is a phase of its own and belongs near *Depth*, not here; what
+fact. That is a phase of its own and belongs in *Content*, not here; what
 belongs here is that the storage decision no longer waits on anything.
 
 ⚠️ **The original argument, unchanged, and its condition:** It said *revisit when there are enough maps to choose among* —
@@ -141,7 +142,7 @@ What holds instead is narrower:
   additive when it comes, because nothing in `GameState` marks elimination for
   an absent event to desync.
 - **Transports.** `Unit.position` becomes `{ kind: 'onBoard'; coordinate } | { kind: 'carried'; by: string }` so the invalid state is unrepresentable, with cargo derived by query rather than stored on the transport.
-- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — hills are stout cover and dear to reach, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics are still settling** — charge and facing both shipped, and play has since moved three things to get them sitting right; a third interacting axis is the trap this document warns about elsewhere, and it is a worse bet now there is evidence the first two needed the tuning. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
+- **Elevation as a rule.** Height stays presentation only: `surfaceAt` lifts a unit onto a mesa and picking finds it there, but no rule reads a height and no tile carries one. Declined for four reasons, in the order they bite. **Terrain already says it** — hills are stout cover and dear to reach, which is "high ground is worth holding and dear to reach" under another name, so a height *defence* bonus would tune one dial twice. **Two original mechanics already interact** — charge and facing both needed play to move three things before they sat right, and a third interacting axis multiplies that. **The camera caps it** — at 38.6° a surface at height `h` draws `1.25h` tiles up-screen, and a spike showed tile identity collapsing by a full tile, so real relief needs a lower, rotating camera. And **it changes the pace**: "can I get up there" becomes a question on every move, which is Final Fantasy Tactics' game rather than Advance Wars'.
 
   ⚠️ Two findings worth keeping if it is ever reopened. `entryCost` takes a *destination*; height would make it take a **step**, which is a real signature change but a contained one — `exploreMovement` and `validatePath` are its only callers, and invariant 10 is what guarantees that. And if height ever did enter combat, the door is an **attack** bonus for striking downhill rather than a defence bonus for standing high, because terrain does not express the former and already expresses the latter.
 - **Manual routing.** Dragging out a deliberately non-optimal path. Unblocked by the protocol carrying a path and the server validating it — purely a matter of building the UI for it. ⚠️ The substrate now exists and did not before: a route is **pinned, re-pinnable, and drawn as an arrow**, so waypoints have something to hang off rather than needing the whole idea built at once.
@@ -158,9 +159,9 @@ that hot-seat was scaffolding and shipping it would teach nothing true. That
 premise is withdrawn: **two people sharing one device is a way to play**, kept
 alongside matchmaking rather than replaced by it, and a turn-based game is the
 genre where it survives. What follows is that a build can go in front of real
-players long before identity exists — and *Tuning* says play is the authority
-over both the tables and the harness, so the sooner someone who is not us plays
-it, the sooner that epic has anything to go on.
+players long before identity exists — and play, not the harness, is the
+authority on the numbers, so the sooner someone who is not us plays it the
+better.
 
 ✅ **The old cost disappears and a better position replaces it.** *Multiplayer*
 used to have to take *A hosted build*'s constraint as a **prediction** —
@@ -181,200 +182,6 @@ dated, and change — see the *Publishing Pipeline* doc in Drive, which
 carries the gate, exclusivity, identity and size rules for each portal with the
 date each was verified. Anything copied into this file is a second copy to keep
 in step, and the last audit of this document was mostly about exactly that.
-
-### Tuning and gameplay tweaks
-
-**Iterate on how it plays, before anything is built on top of it.** Graphics,
-multiplayer and deployment all add surface to whatever the game currently is;
-changing how it plays afterwards means changing them too.
-
-⚠️ **Play is the authority here, not the tables, and not the harness either.**
-The harness says what a number does; it cannot say whether a turn is
-interesting. Several rules have already moved on evidence from playing rather
-than from measuring, and more than one of those turned out to be a *rule*
-rather than a dial — which is the shape to expect from this epic too.
-
-⚠️ **It runs in passes: play, then tune.** A pass's changes go to
-[`architecture.md`](architecture.md) and leave only their open questions here,
-under the pass they came from; git log is its history.
-
-#### Known to want attention
-
-- ⬜ **How much lands before the other player answers.** Uncapped, a whole army
-  can fall on one unit before it gets a reply. ⚠️ **That is how the tabletop
-  games this is modelled on work**, so it is a dislike rather than a defect —
-  but it is the strongest open question about the turn structure.
-
-  ✅ **`ACTIONS_PER_TURN` is settled at `null`, and it was measured rather than
-  argued.** One action a turn was played and reverted — the pace was good, and
-  artillery ruined it — and the whole dial was then swept with
-  `scripts/simulate.ts`. Opener's win share on `classic`, 500 games a cell:
-
-  | budget | opener wins |
-  |---|---|
-  | all units | 100% |
-  | 3 actions | 91.6% |
-  | 2 actions | 91.4% |
-  | 1 action | 76.4% |
-
-  ⚠️ **Two and three are the same number**, inside the noise at that sample, and
-  both are barely nine points off uncapped. The whole movement in the dial is
-  between two and one, and even one leaves a twenty-six point first-mover edge.
-  There is no setting that buys real counterplay.
-
-  ⚠️ **And capping makes artillery deadlier at *every* level**, which is the
-  finding that settles it. Artillery's share of kills over 300 games: **8.9%**
-  uncapped, then 20.4%, 17.7% and 21.8% at three, two and one. What was felt at
-  a budget of one is a property of *capping*, not of one — a rationed army
-  cannot put a unit in the way or withdraw a wounded one, so the guns choose
-  freely.
-
-  ⬜ **So the budget is the wrong lever for this.** ⚠️ **Overwatch, the
-  reactive mechanic designed for it, was dropped**: contact already makes
-  moving round the enemy cost something, and nothing more is wanted. The idea
-  left untried is order dice, below.
-
-  ⬜ Still untried, and the one idea the sweep did not cover: making `hasActed`
-  persist until the roster is spent, which gives one-at-a-time pacing *and*
-  everyone-acts-once. Bolt Action's order dice are that design, and its units
-  have exactly one die each — which is the artillery problem solved at the
-  structural level rather than tuned around.
-
-#### Armies, and where they deploy
-
-✅ **Whether composition creates playstyles: swept, and it does not — it
-makes a ladder.** Each army against the default, on every map from both seats
-and both openings: more guns wins and more horse loses, on every map, and that
-order has held through every change since. ⚠️ **It says as much about the
-bot as the armies**: the bot never stands a unit anywhere to block. Contact
-lets one — an enemy that moves beside a unit has to stop, and none passes
-through it — so fast units pushed forward can slow an advance and shelter the
-guns behind, and whether that makes horse worth more is for play.
-
-#### Boards from Advance Wars
-
-⚠️ **Five were planned and dropped**, so none is planned again. *The
-Trident*, drawn out, is a naval map — a road down a narrow spine, its islands
-reached by transport — with no land board in it. *Megalopolis*: wheels from
-its far zone reach none of the city without passing through the near zone, so
-one army would deploy on the junction the other has to come through. *Point
-Stormy*, *Duo Falls* and *Long Road* did not survive being cut down: the ring
-round a bay, the zigzag and the long road all need the room the cut takes.
-
-- ⬜ **For play to answer**: how each board leans, which the simulator says
-  they do.
-- **Reference, from research into Advance Wars**: its single-screen missions
-  are 15×10 to 16×12, its battles about 16×16 to 21×21, and the competitive
-  pool's median about 21×21; its pre-deployed missions hold about a unit to
-  every nine tiles; every competitive map is a 180° rotation, though the
-  official War Room maps mostly are not; composition runs about half open,
-  forest sparing, rivers and high ground shaping two or three lanes, heavy
-  cover off the front; and player two is usually given about half a turn's
-  worth. Sources: the Advance Wars By Web map pool and API
-  (awbw.amarriner.com, including Twin Isle, Duo Falls, The Trident and Missile
-  Plains), the AWBW mapmaking guide (github.com/TheGamerASD/AWBW-Mapmaking-Guide),
-  Wars Wiki (warswiki.org), and the Wargroove wiki on first-turn advantage.
-
-#### The cover pass
-
-⚠️ **Highlighting the ready units, instead of greying the spent ones, was tried
-and set aside.** A Fresnel rim lit whole flat-shaded facets, washing a unit out
-or reading only as paler; Babylon's mesh outline broke into shards, each flat
-face pushed along its own normal; a screen-space outline was clean but a line
-was too much; a glow layer was not it either. Each costs a pass or more every
-frame, where a material swap costs none.
-
-#### The general's pass
-
-- ⬜ **Later, global bonuses**, as Advance Wars' commanders give. Both sides
-  field the same general for now; a commander chosen per player can carry
-  modifiers later without the unit changing.
-
-#### The charging pass
-
-⬜ **For play to answer:**
-
-- **The side multipliers are first numbers**, and so are each type's meter
-  size and a fresh charger's odds against a fresh unit head-on.
-  `scripts/charges.ts` prints each charge's line beside the attack's, and its
-  odds against full health.
-- **The cliff just over a wounded charger's line** — certain of one target and
-  a long shot against one a few points healthier — is the price of scaling the
-  whole curve by the charger's health, and was accepted.
-- **A rear charge can be certain of a full-health unit** where there is no
-  cover. Accepted rather than tuned away; the rear multiplier is the dial if it
-  reads as too much in play.
-- **The simulator's bot weighs a charge's kill by its odds** against the free
-  attack it risks, so it charges at odds when nothing else scores better. What
-  it does with the odds says little about what a player would.
-- ⬜ Later: **dragoons**, horse with carbines — the `melee` flag is what makes
-  room for them, and their model is already in `public/models/`.
-
-#### After the combat pass
-
-⚠️ **Most shots go unanswered, and what makes a shot free is the range design
-rather than a rule.** An unanswered shot is nearly always one that killed, one
-whose target cannot reach back — a gun at range, or infantry against cavalry —
-or one at a gun; very few come from the rear. The greedy bot takes a free shot
-whenever one is on offer, so this is what the rules *offer*. If play still says
-attacks are too cheap, the levers are the ranges and `slow`, not facing.
-
-⚠️ **Contact looks like it rewards moving second**, and in the simulator the
-second mover now wins most games on most boards, from both openings. The likely
-reason is the rule doing what it says: whoever advances into contact first is
-pinned and answered first. The bot always advances, which a human need not, so
-this is a thing to watch in play rather than a verdict. ✅ **Accepted for now**:
-the first mover still gets its volley off before contact is made, and tuning
-options wait on how it plays.
-
-⚠️ **Where the army stands in its zone moves the opener's edge a long way.**
-Centred, the two armies start directly across from each other, so whoever
-strikes first lands on a full line; offset, as the default army is at the
-zone's left, they do not. A thing to watch in play.
-
-#### The dials
-
-The tables are `BASE_DAMAGE`, which charges read too, and `CHARGE_FACING`; the
-scalars beside them are `LUCK_MAX` and `CHARGE_CHANCE_AT_FULL`, and the
-catalog's `attacksToCharge` sets each type's meter. The `defense`
-column of `terrain.ts` is a dial too,
-and turned out to be the one carrying the most weight.
-
-**Tune against the harnesses, never against a damage number.**
-`scripts/matchups.ts` prints hits-to-kill across every matchup and terrain,
-`charges.ts` prints what each charge is certain of from all three sides beside
-what an attack kills, with its odds against full health, and
-`server/scripts/simulate.ts` plays the game against itself and reports outcomes,
-match length, damage and kills by unit type, and whether each mechanic fired. ⚠️
-**All three have earned themselves** — one killed a table where everything died
-in two hits, another found cavalry-into-artillery saturating at the flank on its
-opening run, the hits-to-kill grid showed that a wood was worth literally
-nothing, and the simulator settled the turn budget in an afternoon.
-
-⚠️ **The simulator is a temperature check, not an opponent.** Its greedy bot
-plays nothing like a person, so play decides; an AI good enough to play against
-people is a later build of its own, not this bot grown.
-
-⚠️ **Read the simulator's mechanic counts before its win rates.** A bot
-confirms whatever it is scored on: the greedy one subtracts the expected
-riposte from its own score, so it reports counters landing in a tenth of
-exchanges, which is the bot avoiding them rather than a fact about counters.
-⚠️ **It cannot say whether cover is well placed**, and will not until a bot
-values ground: it never *chooses* terrain, so what it reports is where fights
-happened to land rather than what either side thought ground was worth.
-⚠️ **What it will say is whether cover is anywhere near the fighting**, and that
-turned out to be worth having — moving the boards' broken ground off the
-deployment edges and into the contested middle took the attacks landing on it
-from almost none to a real share, with no change to the bot at all. It counts
-attacks by the defender's ground, so a board nobody fights over shows as one;
-it is a geometry check, not a verdict on the terrain.
-⚠️ **What it says robustly is asymmetry**: both sides run the identical policy,
-so any departure from an even split is the map or the deployment rather than
-the bot.
-
-⚠️ **A star is worth a percentage and hits-to-kill is an integer**, so most
-single-star changes sit below the resolution of the system and read as no change
-at all. This has fooled the document twice. Print the grid.
 
 ### UI and interaction
 
@@ -398,8 +205,8 @@ terminal, and it is deliberately short until then.
 
 ⚠️ **Interaction is where play is the authority, the same as tuning.** The
 usability work already done was found by reading the code; what is left will be
-found by someone using it, which is why this epic sits behind *Tuning* and in
-front of everything that adds surface.
+found by someone using it, which is why this epic comes first, in front of
+everything that adds surface.
 
 ### 11 — Presentation
 
@@ -887,77 +694,25 @@ free**, and a review sharpened it into two items rather than one.
   able on bytes; the file count is already half the cap, and a terrain kit is
   what grows it.
 
-### 14 — Content: units, maps, and the numbers
+### 14 — Content: maps, and the numbers
 
 A track, not a queue — it depends on nothing above and it is what moves the
-metrics a portal actually gates on. *Tuning and gameplay tweaks* is where the
-numbers and the argument live; this is the phase that keeps changing them.
+metrics a portal actually gates on. The numbers live in `shared/src/data/`, and
+the harnesses that read them are in the architecture doc's *Commands*; this is
+the phase that keeps changing them. New units and an army budget are under
+*Ideas*.
 
-- **More unit types.** The catalog is built for this: `Record<UnitTypeId, …>`
-  means adding one is a compile error in every table that needs an entry, and
-  `maps.test.ts` already checks a new movement type can cross every board. The
-  unit catalog's flags are required too, so a new unit has to say whether it is
-  slow, fights hand to hand and charges.
 - **Whatever play says next** — which has more than once turned out to be a
   rule rather than a dial.
-- ⬜ **The boards lean, and the gun's mobility moves them more than they do.**
-  `simulate.ts` runs the same policy on both sides, so any departure from even
-  is the board; play every map from both openings.
-
-  ⚠️ **Read the pair, not either column.** A fair board gives the opener the same
-  edge from both ends; one colour winning *both* columns is the board talking,
-  and the second mover winning from both seats is the board rewarding a reply.
-
-  ⚠️ **Artillery's `movementRange` was the biggest single lever on all of
-  this**, measured rather than argued: lengthening the gun's move handed board
-  after board to whoever moved second. `wheels` pays more for plains than for
-  road, so the gun's budget decides how much board it covers between replies,
-  and a road network amplifies whatever that number is. ⚠️ **So settle the gun
-  before redrawing a board to chase a number** — the terrain is downstream of
-  it.
-
-  ⚠️ **Do not tune these against the bot.** It is greedy, it never stands a unit
-  anywhere to block, and it does not value terrain — so chasing an even split optimises the board for a
-  player nobody is. The numbers are a floor: a board where one side wins every
-  game is broken.
-
-  ⚠️ **A map is a balance surface, not just content**, which is the argument for
-  the editor rather than against it: the fastest way to fix a board is to be able
-  to change it and re-run.
-
-- ⬜ **An army budget.** Every unit type gets a cost; a player spends a fixed
-  budget on what they field. ⚠️ **Warhammer's answer rather than Advance Wars'**
-  — points spent *before* the match, not income earned during it — which is the
-  far cheaper half: no bases, no capture economy, no production queue, and
-  nothing new during play.
-
-  ⚠️ **It is the lever Advance Wars uses on indirect fire and this game does
-  not have.** AW prices its 3–5 range weapon at fifteen infantry; here guns come
-  free, in every army. Cost is what makes fielding a
-  second gun a decision instead of a default.
-
-  ✅ **The mechanism is built**: per-player armies and the deployment zone, and
-  a simulator that takes an army a side, which is what pricing needs. What is
-  left is a cost column beside the catalog, a budget constant to tune like any
-  other dial, an army builder — UI, so *UI and interaction*'s — and validation
-  that answers rather than throws: `createMatchState` and `parseArmyGrid` throw
-  on a bad army, right for a server constant and a 500 for a client-supplied
-  one.
-
-  ⬜ It also becomes match data, so it lands with the ruleset-versioning
-  question rather than before it.
-
-  ⬜ **A larger army is what would justify a wider board**, never a deeper
-  one: the boards' depth is set by how long the armies take to meet, which
-  does not change with what they field.
-
 - **Maps into a table, and an editor over it.** Settled in *Maps in a table*
   above. The storage half is a migration and a foreign key; the editor is the
   half that makes it worth doing, and it is the first tool in this repo written
   for an author rather than a player. ⚠️ Almost all of it already exists:
   `parseTerrainGrid` reads the rows, `maps.test.ts` already knows what makes a
   board valid — deployable, crossable, one army each way — and `/maps` already
-  draws one. An editor is those three joined by a paint tool.
+  draws one. An editor is those three joined by a paint tool. ⚠️ **A map is a
+  balance surface, not just content**, which is the argument for the editor:
+  the fastest way to fix a board is to be able to change it and re-run.
 - ⚠️ **New terrain is worse than nothing until a number reads it.** Terrain has
   exactly two mechanical dimensions — `cost`, which movement reads, and
   `defense`, which `computeDamage` reads — so a type differing only in `defense`
@@ -995,3 +750,51 @@ rather than against a portal-wide average.
   these audiences are built around. Online multiplayer doubles long-term
   retention there, which is the strongest argument for *Multiplayer* preceding
   this phase rather than being deferred to it.
+
+## Ideas
+
+Wanted, not scheduled. An idea that is picked up moves into an epic, or becomes
+one, and leaves this list.
+
+- **Commanders.** Global bonuses for a side, as Advance Wars' commanders give.
+  Both sides field the same general for now; a commander chosen per player can
+  carry modifiers without the general unit changing.
+- **Army composition and custom deployment.** A player chooses what they field
+  and where it stands in their zone, rather than taking the default army where
+  the map puts it.
+
+  ⚠️ **Composition alone made a ladder, not playstyles**, when the simulator
+  swept it: more guns won and more horse lost, on every board. The bot never
+  stands a unit anywhere to block, though — contact lets one stop an enemy that
+  moves beside it — so whether screening makes horse worth more is for play.
+  ⚠️ **Where an army stands moves the opener's edge a long way**: two armies
+  directly across from each other give whoever strikes first a full line.
+
+  **An army budget** is the shape composition would take: every unit type gets
+  a cost, and a player spends a fixed budget on what they field. ⚠️
+  **Warhammer's answer rather than Advance Wars'** — points spent *before* the
+  match, not income earned during it — which is the far cheaper half: no bases,
+  no capture economy, no production queue, and nothing new during play. ⚠️ **It
+  is the lever Advance Wars uses on indirect fire and this game does not
+  have.** AW prices its 3–5 range weapon at fifteen infantry; here guns come
+  free, in every army. Cost is what makes fielding a second gun a decision
+  instead of a default.
+
+  ✅ **The mechanism is built**: per-player armies and the deployment zone, and
+  a simulator that takes an army a side, which is what pricing needs. What is
+  left is a cost column beside the catalog, a budget constant to tune like any
+  other dial, an army builder — UI, so *UI and interaction*'s — and validation
+  that answers rather than throws: `createMatchState` and `parseArmyGrid` throw
+  on a bad army, right for a server constant and a 500 for a client-supplied
+  one. It becomes match data, so it lands with the ruleset-versioning question
+  rather than before it. ⚠️ **A larger army is what would justify a wider
+  board**, never a deeper one: the boards' depth is set by how long the armies
+  take to meet, which does not change with what they field.
+- **Dragoons.** Horse with carbines. The `melee` flag makes room for them, and
+  `dragoon.gltf` is already in `public/models/` — standing in for the general's
+  model, so one of the two needs a model of its own.
+- **More unit types.** The catalog is built for this: `Record<UnitTypeId, …>`
+  means adding one is a compile error in every table that needs an entry, and
+  `maps.test.ts` already checks a new movement type can cross every board. The
+  unit catalog's flags are required too, so a new unit has to say whether it is
+  slow, fights hand to hand and charges.

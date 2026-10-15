@@ -125,6 +125,16 @@ Run from the repo root. All exit non-zero on failure.
 Single test file: `bun test packages/server/src/match.test.ts` (`-t 'name'` to
 filter); client: `cd packages/client && bunx vitest run src/net/gameServer.test.ts`.
 
+⚠️ **The simulator is a temperature check, not an opponent**, and its bot shapes
+what it can say. Both sides run the same policy, so a departure from an even
+split is the board or the deployment — that is what it says robustly. It
+subtracts the expected riposte from each attack's score, so counters look rare
+because it avoids them; it never stands a unit anywhere to block; and it never
+chooses ground, so its attacks by ground say where fights landed, not what cover
+is worth. ⚠️ **Most one-star changes to `defense` move no hits-to-kill at all**
+— a star is a percentage and the grid is whole hits — so `matchups.ts` is how to
+tell whether one did anything.
+
 `db:*` must run from the root: `file:` URLs in `DATABASE_URL` resolve against
 the repo root, and running them through `bun run --filter` sets the cwd to the
 package and loses the single root `.env`.
@@ -1905,8 +1915,11 @@ unavailable action is omitted — so hover is the only state a row has.
   colour is the whole of a side's identity. ⚠️ **A unit the player to move has
   acted with is greyed** — `isSpent`, beside `canSelectUnit` — its colour and
   its glow faded toward grey and darkened a little, as Advance Wars greys a
-  unit that has waited. The swap reaches only the model's meshes, recorded when
-  the unit is built: the health ring and the charge counter hang off the same
+  unit that has waited. ⚠️ Greying the spent rather than lighting the ready:
+  a rim washed out whole flat facets, Babylon's outline broke into shards, a
+  screen-space line was too much and a glow was not it either — each a pass a
+  frame, where a material swap costs none. The swap reaches only the model's
+  meshes, recorded when the unit is built: the health ring and the charge counter hang off the same
   node and keep their own colours. One per-unit update sets the ring, the
   counter and the grey, from the build as well as from `syncUnits`, because the
   first board sync arrives before the renderer exists. Matte like the terrain — specular is zeroed — plus a

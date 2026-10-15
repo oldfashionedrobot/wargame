@@ -10,8 +10,9 @@ describe:
 - **`.plan/architecture.md`** — what the code does *now*. No rationale, no
   history, no plans. Read the relevant section before changing anything
   structural, and update it with the change.
-- **`.plan/roadmap.md`** — what is designed but unbuilt: combat, facing,
-  remaining phases, accepted limits. Nothing in it describes current behaviour.
+- **`.plan/roadmap.md`** — what is designed but unbuilt: the remaining epics,
+  accepted limits, and, at the bottom, *Ideas* — features wanted but not
+  scheduled. Nothing in it describes current behaviour.
 
 When something ships, it moves out of the roadmap into the architecture doc and
 is deleted from where it came. Neither keeps a changelog; `git log` is the
