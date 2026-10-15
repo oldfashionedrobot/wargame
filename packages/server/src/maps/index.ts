@@ -12,6 +12,7 @@ import { twinIsle } from './twinIsle';
 import { longRoad } from './longRoad';
 import { littleLion } from './littleLion';
 import { pointStormy } from './pointStormy';
+import { mirrorIslands } from './mirrorIslands';
 import type { GameMap } from './types';
 
 export type { GameMap } from './types';
@@ -34,6 +35,7 @@ const MAPS: Record<string, GameMap> = Object.fromEntries(
     longRoad,
     littleLion,
     pointStormy,
+    mirrorIslands,
   ].map((map) => [map.id, map]),
 );
 
