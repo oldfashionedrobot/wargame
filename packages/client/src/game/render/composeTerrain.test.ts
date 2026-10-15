@@ -277,9 +277,14 @@ describe('bridges', () => {
     });
   });
 
+  it('runs a deck toward the ground at its ends, whatever stands there', () => {
+    const cells = compose('...', '~=~', '.#.');
+    expect(cellAt(cells, 1, 1).props[0].rotation).toBe(QUARTER_TURN);
+  });
+
   // A two-lane crossing gives its bridge cells masks 7 and 13 rather than 5
   // and 10, because each lane sees the other beside it -- so orientation
-  // cannot be read off the road mask, and asks about strictly-road neighbours.
+  // cannot be read off the road mask.
   it('runs a two-lane deck the way the road does, not the way the mask says', () => {
     const cells = compose(
       '..--..', // 0

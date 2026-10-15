@@ -279,8 +279,8 @@ whatever it fields — see the turn-order note under *After the combat pass*.
 the boards pass drew its four — at their originals' sizes, turned so the two
 headquarters face each other across the near and far edges, with sea made land
 under each deployment zone, the zone cleared to plains, and a road into it. A
-commit each, after the two below, each simulated from both openers and looked
-at in a browser; the map table in the architecture doc gains a row each.
+commit each, after the provenance below, each simulated from both openers and
+looked at in a browser; the map table in the architecture doc gains a row each.
 
 - **Chosen from every two-player map among Dual Strike's official ones**, by
   drawing each that way and keeping those where wheels cross between the zones,
@@ -310,27 +310,14 @@ at in a browser; the map table in the architecture doc gains a row each.
 
 **Found by the pre-check:**
 
-- ⚠️ **Bridge decks need one change first.** `bridgeTurns` runs a deck
-  north–south only when *road* lies north or south of it, and every shipped
-  bridge happens to end in road. Long Road and Little Lion have bridges that
-  end in plains, buildings or more bridge, and eight of their decks would lie
-  along the water instead of across it. The fix is one rule rather than a
-  second one beside it: a deck runs north–south when what lies north or south
-  of it is not water. Checked against every bridge on every board and in the
-  tests, it changes exactly those eight. A `composeTerrain.test` case: a deck
-  between a building and open ground, over water east and west, runs
-  north–south.
-- **Proposed: shoals drawn as plains**, not river. Advance Wars lets every
-  land unit cross a shoal at a plain's cost — a shoal is a beach — and drawing
-  it as river puts a moat for guns along coasts that have none. The rule that
-  said river left the roadmap with the boards pass, so this is open again;
-  Point Stormy and Little Lion carry shoals, along the bay and the shores.
-- **Proposed: the provenance said once.** Every board from Advance Wars repeats
+- **Decided: shoals are plains.** Advance Wars lets every land unit cross a
+  shoal at a plain's cost, so drawing one as river would put a moat for guns
+  along coasts that have none. Point Stormy and Little Lion carry them.
+- **Decided: the provenance said once.** Every board from Advance Wars repeats
   one paragraph — drawn at its own size, from Advance Wars By Web's copy, its
-  properties as buildings, changed only where the zones need it — and four more
-  would make eight copies. Said once in the architecture doc's *Maps*, each
-  board's comment keeps its source and only what is particular to it. Its own
-  commit, ahead of the boards.
+  properties as buildings, changed only where the zones need it. Said once in
+  the architecture doc's *Maps*, each board's comment keeps its source and only
+  what is particular to it. Its own commit, ahead of the boards.
 - **Accepted, to be looked at**: where a road bends along a board's edge, the
   frame carries it off the board as if it crossed — a short road the original
   does not have. Only Little Lion has such bends; the frame's rule stays as it

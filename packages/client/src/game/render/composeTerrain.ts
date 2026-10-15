@@ -499,15 +499,6 @@ function waterShape(grid: TileType[][], col: number, row: number): Turned {
 }
 
 /**
- * Which way a bridge runs.
- *
- * ⚠️ Not read off the road mask, which would seem to be the same question and
- * is not: a road two tiles wide gives its bridge cells masks 7 and 13 rather
- * than 5 and 10, because each lane sees the other beside it. Asking only about
- * *strictly* road neighbours ignores the lane next door and answers correctly
- * however wide the crossing is.
- */
-/**
  * How much narrower the crossing is drawn than the model ships.
  *
  * ⚠️ **A width agreement, not a taste.** `bridge_wood` is 1.04 across where the
@@ -520,14 +511,19 @@ function waterShape(grid: TileType[][], col: number, row: number): Turned {
  */
 const BRIDGE_SQUEEZE = 0.88;
 
+/**
+ * Which way a bridge runs: toward whatever is not water at its ends, since a
+ * bridge may land on a building, open ground or more bridge as well as road.
+ */
 function bridgeTurns(grid: TileType[][], col: number, row: number): number {
-  const road = (c: number, r: number): boolean => at(grid, c, r) === 'road';
-  const northSouth = road(col, row + 1) || road(col, row - 1);
-  // The deck is drawn spanning east to west, so a road running north to south
-  // is the one that turns it. Unlike the ground models this could not be read
-  // off a bounding box -- a bridge is near enough square -- so it is settled by
-  // looking at the board.
-  return northSouth ? 1 : 0;
+  const ground = (c: number, r: number): boolean => {
+    const tile = at(grid, c, r);
+    return tile !== 'river' && tile !== 'sea';
+  };
+  // The deck is drawn spanning east to west, so ground north or south turns it.
+  // A bridge is near enough square that this could not be read off a bounding
+  // box, so it is settled by looking at the board.
+  return ground(col, row + 1) || ground(col, row - 1) ? 1 : 0;
 }
 
 /**

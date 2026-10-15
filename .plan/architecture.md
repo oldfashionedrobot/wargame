@@ -474,8 +474,8 @@ originals:
   there.
 - ⚠️ **Roads are one tile wide, everywhere.** A two-lane road was never a wider
   road — it was two roads — and it doubled the width of every corridor it drew.
-  The renderer does not care: `bridgeTurns` reads *strictly* road neighbours and
-  so answers correctly at any width.
+  The renderer does not care: `bridgeTurns` turns a deck toward whatever is not
+  water at its ends, which answers at any width.
 - **Every board has road reaching into both zones.** `wheels` pays less to
   enter road than plains, so a road multiplies a gun's reach for the turn —
   which makes where the road goes the same question as where artillery can be,
